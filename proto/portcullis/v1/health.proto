@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package portcullis.v1;
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// Health is a minimal service used to validate the codegen pipeline end to end.
+service Health {
+  rpc Check(CheckRequest) returns (CheckResponse) {}
+}
+
+message CheckRequest {}
+
+message CheckResponse {
+  string status = 1;
+}

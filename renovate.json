@@ -1,0 +1,29 @@
+{
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    "docker:pinDigests"
+  ],
+  "packageRules": [
+    {
+      "description": "Group Go module updates into one PR",
+      "matchManagers": ["gomod"],
+      "groupName": "go modules"
+    },
+    {
+      "description": "Group frontend updates (the npm manager also handles pnpm)",
+      "matchManagers": ["npm"],
+      "groupName": "frontend deps"
+    },
+    {
+      "description": "Group base image updates (Dockerfile + compose)",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "docker images"
+    },
+    {
+      "description": "Pinned preview compiler — only manual bumps",
+      "matchPackageNames": ["@typescript/native-preview"],
+      "enabled": false
+    }
+  ]
+}

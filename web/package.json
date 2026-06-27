@@ -1,0 +1,24 @@
+{
+  "name": "portcullis-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.12.1",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-web": "^2.1.2",
+    "solid-js": "^1.9.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@typescript/native-preview": "7.0.0-dev.20260627.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "vite-plugin-solid": "^2.11.12"
+  }
+}

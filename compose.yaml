@@ -1,0 +1,50 @@
+name: portcullis
+
+# Local quickstart: `docker compose up --build`, then open http://localhost:8080.
+# The master key is generated once on first run and persisted in the `secrets`
+# volume, so it stays stable across restarts (regenerating it would make all
+# previously encrypted data unreadable). For production, inject the key from a
+# managed secret instead and use a managed/persistent PostgreSQL.
+
+services:
+  postgres:
+    image: postgres:18.4-alpine3.24
+    environment:
+      POSTGRES_USER: portcullis
+      POSTGRES_PASSWORD: portcullis
+      POSTGRES_DB: portcullis
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portcullis -d portcullis"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: generate a 32-byte base64 master key into the secrets volume,
+  # only if one does not already exist.
+  keygen:
+    image: alpine:3.24.1
+    command: ["sh", "-c", "[ -s /secrets/master.key ] || head -c 32 /dev/urandom | base64 > /secrets/master.key"]
+    volumes:
+      - secrets:/secrets
+
+  portcullis:
+    build:
+      context: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keygen:
+        condition: service_completed_successfully
+    environment:
+      PORTCULLIS_DATABASE_URL: postgres://portcullis:portcullis@postgres:5432/portcullis?sslmode=disable
+      PORTCULLIS_MASTER_KEY_FILE: /secrets/master.key
+    volumes:
+      - secrets:/secrets:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
+  secrets:
