@@ -26,12 +26,18 @@ type Querier interface {
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
-	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) error
+	// Idempotent only for the same user: a new (issuer, subject) inserts; an
+	// existing one owned by the same user refreshes the email; one owned by a
+	// different user matches the conflict but fails the WHERE, so no row is
+	// returned and the caller detects the collision (vs. silently succeeding).
+	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// Join roles so a soft-deleted role stops granting its permissions even while
 	// memberships still reference it (FKs are RESTRICT, so the row lingers).
 	PermissionsForUser(ctx context.Context, userID pgtype.UUID) ([]string, error)
 	RevokeSession(ctx context.Context, id pgtype.UUID) error
+	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
+	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error
 }
 

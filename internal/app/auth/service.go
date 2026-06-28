@@ -50,6 +50,7 @@ type Service struct {
 	absolute  time.Duration
 	idleRenew time.Duration
 	argon2    crypto.Argon2Params
+	dummyHash string // verified for unknown accounts to equalize login timing
 }
 
 // New builds the service with sensible defaults (12h idle, 7d absolute, idle
@@ -67,7 +68,10 @@ func New(repo Repository, kr *crypto.Keyring, cfg Config) *Service {
 	if cfg.Argon2 == (crypto.Argon2Params{}) {
 		cfg.Argon2 = crypto.DefaultArgon2Params
 	}
-	return &Service{repo: repo, keyring: kr, now: time.Now, idle: cfg.Idle, absolute: cfg.Absolute, idleRenew: cfg.IdleRenewInterval, argon2: cfg.Argon2}
+	// Precompute a hash so a login for an unknown account spends the same Argon2
+	// time as a real one, closing the account-enumeration timing side channel.
+	dummy, _ := crypto.HashPassword("portcullis-login-timing-equalizer", cfg.Argon2)
+	return &Service{repo: repo, keyring: kr, now: time.Now, idle: cfg.Idle, absolute: cfg.Absolute, idleRenew: cfg.IdleRenewInterval, argon2: cfg.Argon2, dummyHash: dummy}
 }
 
 // WithClock overrides the time source (tests).
@@ -109,7 +113,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (Session, e
 	u, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, identity.ErrUserNotFound) {
-			return Session{}, identity.ErrInvalidCredentials
+			return Session{}, s.rejectWithEqualizedTiming(password)
 		}
 		return Session{}, err
 	}
@@ -120,7 +124,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (Session, e
 	hash, err := s.repo.GetPasswordHash(ctx, u.ID)
 	if err != nil {
 		if errors.Is(err, identity.ErrUserNotFound) {
-			return Session{}, identity.ErrInvalidCredentials
+			return Session{}, s.rejectWithEqualizedTiming(password)
 		}
 		return Session{}, err
 	}
@@ -201,7 +205,19 @@ func (s *Service) VerifyCSRF(sessionID identity.SessionID, token string) bool {
 	return subtle.ConstantTimeCompare([]byte(expected), []byte(token)) == 1
 }
 
+// rejectWithEqualizedTiming verifies the password against a dummy hash before
+// returning ErrInvalidCredentials, so an unknown account costs the same Argon2
+// time as a wrong password (anti-enumeration, OWASP).
+func (s *Service) rejectWithEqualizedTiming(password string) error {
+	_, _, _ = crypto.VerifyPassword(password, s.dummyHash, s.argon2)
+	return identity.ErrInvalidCredentials
+}
+
 func (s *Service) issueSession(ctx context.Context, u identity.User) (Session, error) {
+	// Rotate: a new login invalidates the user's prior sessions (ADR-0006).
+	if err := s.repo.RevokeUserSessions(ctx, u.ID); err != nil {
+		return Session{}, err
+	}
 	raw, err := newToken()
 	if err != nil {
 		return Session{}, err

@@ -1,5 +1,20 @@
 .PHONY: generate web web-install web-dev web-typecheck web-audit build release run devkey test test-race lint vuln audit verify hooks tidy clean
 
+# Bootstrap: install the git hooks on the first make invocation in a clone, so
+# any make command sets them up (git runs nothing on clone itself). Only the
+# default hooks dir is auto-managed: if core.hooksPath is customized, lefthook's
+# install needs --force, so we leave it alone and rely on an explicit `make
+# hooks`. The path is worktree-aware (git rev-parse), both hooks are checked, and
+# install errors surface on stderr but never fail make.
+ifeq (,$(shell git config core.hooksPath 2>/dev/null))
+GIT_HOOKS := $(shell git rev-parse --git-path hooks 2>/dev/null)
+ifneq (,$(GIT_HOOKS))
+ifeq (,$(and $(wildcard $(GIT_HOOKS)/pre-commit),$(wildcard $(GIT_HOOKS)/pre-push)))
+$(shell go tool lefthook install >/dev/null)
+endif
+endif
+endif
+
 # Static analysis. Built from source with the project's Go toolchain so the
 # linter's go/types matches the module's Go version (a prebuilt binary built
 # with an older Go fails with "no go files to analyze").
@@ -75,10 +90,11 @@ verify:
 	$(MAKE) lint
 	$(MAKE) test
 
-# Install the git hooks (pre-commit gofmt, pre-push verify) via lefthook.
-LEFTHOOK_VERSION := v1.13.6
+# Install the git hooks (pre-commit gofmt, pre-push verify). lefthook is pinned
+# as a go tool dependency in go.mod, so the installed hooks resolve it through
+# `go tool lefthook` — no global install or PATH entry required.
 hooks:
-	go run github.com/evilmartians/lefthook@$(LEFTHOOK_VERSION) install
+	go tool lefthook install
 
 tidy:
 	go mod tidy

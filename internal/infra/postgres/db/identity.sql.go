@@ -241,6 +241,17 @@ func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const revokeUserSessions = `-- name: RevokeUserSessions :exec
+update sessions set revoked_at = now()
+where user_id = $1 and revoked_at is null
+`
+
+// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
+func (q *Queries) RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, revokeUserSessions, userID)
+	return err
+}
+
 const upsertPasswordAuth = `-- name: UpsertPasswordAuth :exec
 insert into auth_methods (user_id, type, secret)
 values ($1, 'password', $2)

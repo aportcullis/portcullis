@@ -116,6 +116,16 @@ func (f *fakeRepo) RevokeSession(_ context.Context, id identity.SessionID) error
 	f.sessions[id] = s
 	return nil
 }
+func (f *fakeRepo) RevokeUserSessions(_ context.Context, user identity.UserID) error {
+	now := time.Now()
+	for id, s := range f.sessions {
+		if s.UserID == user && s.RevokedAt == nil {
+			s.RevokedAt = &now
+			f.sessions[id] = s
+		}
+	}
+	return nil
+}
 func (f *fakeRepo) ExtendSessionIdle(_ context.Context, id identity.SessionID, idle time.Time) error {
 	s := f.sessions[id]
 	s.IdleExpiresAt = idle
@@ -130,7 +140,11 @@ func (f *fakeRepo) FindUserBySubject(_ context.Context, issuer, subject string) 
 	return f.users[id], nil
 }
 func (f *fakeRepo) LinkIdentity(_ context.Context, id identity.OIDCIdentity) error {
-	f.oidc[id.Issuer+"|"+id.Subject] = id.UserID
+	key := id.Issuer + "|" + id.Subject
+	if existing, ok := f.oidc[key]; ok && existing != id.UserID {
+		return identity.ErrIdentityLinkedToAnotherUser
+	}
+	f.oidc[key] = id.UserID
 	return nil
 }
 
@@ -270,5 +284,52 @@ func TestAuthenticateSlidesIdle(t *testing.T) {
 	}
 	if sess.IdleExpiresAt.After(sess.AbsoluteExpiresAt) {
 		t.Error("idle expiry must not exceed absolute expiry")
+	}
+}
+
+func TestLoginRevokesPriorSession(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := newService(t, newFake())
+	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2", "Admin"); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := svc.Login(ctx, "admin@example.com", "hunter2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Login(ctx, "admin@example.com", "hunter2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ADR-0006: a new login invalidates the prior session.
+	if _, _, err := svc.Authenticate(ctx, first.Token); err == nil {
+		t.Error("the first session should be revoked after a second login")
+	}
+	if _, _, err := svc.Authenticate(ctx, second.Token); err != nil {
+		t.Errorf("the newest session should authenticate: %v", err)
+	}
+}
+
+func TestLinkIdentityConflict(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := newFake()
+	a, _ := repo.CreateUser(ctx, "a@example.com", "A")
+	b, _ := repo.CreateUser(ctx, "b@example.com", "B")
+
+	const iss, sub = "https://accounts.google.com", "sub-1"
+	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
+		t.Fatalf("first link: %v", err)
+	}
+	// Same identity, same user — idempotent.
+	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
+		t.Errorf("re-link to same user should succeed: %v", err)
+	}
+	// Same identity, different user — must be rejected, not silently accepted.
+	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: b.ID, Issuer: iss, Subject: sub}); !errors.Is(err, identity.ErrIdentityLinkedToAnotherUser) {
+		t.Errorf("re-pointing to another user = %v, want ErrIdentityLinkedToAnotherUser", err)
 	}
 }

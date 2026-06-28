@@ -16,4 +16,7 @@ var (
 	// ErrNoLinkedAccount means an external identity has no matching local user
 	// (no auto-provisioning — see ADR-0007).
 	ErrNoLinkedAccount = errors.New("identity: no local account for this identity")
+	// ErrIdentityLinkedToAnotherUser means the (issuer, subject) is already linked
+	// to a different local user, so it must not be re-pointed.
+	ErrIdentityLinkedToAnotherUser = errors.New("identity: external identity already linked to another user")
 )

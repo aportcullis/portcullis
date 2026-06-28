@@ -36,10 +36,12 @@ func (q *Queries) FindUserBySubject(ctx context.Context, arg FindUserBySubjectPa
 	return i, err
 }
 
-const linkOIDCIdentity = `-- name: LinkOIDCIdentity :exec
+const linkOIDCIdentity = `-- name: LinkOIDCIdentity :one
 insert into oidc_identities (user_id, issuer, subject, email)
 values ($1, $2, $3, $4)
-on conflict (issuer, subject) do nothing
+on conflict (issuer, subject) do update set email = excluded.email
+where oidc_identities.user_id = excluded.user_id
+returning user_id
 `
 
 type LinkOIDCIdentityParams struct {
@@ -49,12 +51,18 @@ type LinkOIDCIdentityParams struct {
 	Email   string
 }
 
-func (q *Queries) LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) error {
-	_, err := q.db.Exec(ctx, linkOIDCIdentity,
+// Idempotent only for the same user: a new (issuer, subject) inserts; an
+// existing one owned by the same user refreshes the email; one owned by a
+// different user matches the conflict but fails the WHERE, so no row is
+// returned and the caller detects the collision (vs. silently succeeding).
+func (q *Queries) LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, linkOIDCIdentity,
 		arg.UserID,
 		arg.Issuer,
 		arg.Subject,
 		arg.Email,
 	)
-	return err
+	var user_id pgtype.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
 }

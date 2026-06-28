@@ -43,6 +43,9 @@ type SessionRepository interface {
 	CreateSession(ctx context.Context, s Session, tokenHash []byte) (Session, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	RevokeSession(ctx context.Context, id SessionID) error
+	// RevokeUserSessions invalidates all of a user's active sessions (a new login
+	// or a privilege change rotates them out — ADR-0006).
+	RevokeUserSessions(ctx context.Context, user UserID) error
 	// ExtendSessionIdle slides the idle expiry forward on activity (capped at the
 	// absolute expiry by the store); a no-op on revoked sessions.
 	ExtendSessionIdle(ctx context.Context, id SessionID, idle time.Time) error

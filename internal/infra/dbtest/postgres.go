@@ -90,7 +90,9 @@ func FreshPostgres(t testing.TB) *pgxpool.Pool {
 
 	name := fmt.Sprintf("pc_fresh_%d", freshDB.Add(1))
 	if _, err := admin.Exec(ctx, "create database "+name); err != nil {
-		t.Fatalf("create database: %v", err)
+		// An external test DB (PORTCULLIS_TEST_DATABASE_URL) may connect as a
+		// non-superuser without CREATEDB; skip rather than fail there.
+		t.Skipf("FreshPostgres needs CREATEDB privilege: %v", err)
 	}
 
 	u, err := url.Parse(pgDSN)

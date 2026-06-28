@@ -44,6 +44,11 @@ select * from sessions where token_hash = $1;
 -- name: RevokeSession :exec
 update sessions set revoked_at = now() where id = $1;
 
+-- name: RevokeUserSessions :exec
+-- Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
+update sessions set revoked_at = now()
+where user_id = $1 and revoked_at is null;
+
 -- name: ExtendSessionIdle :exec
 -- Slide the idle window forward on activity, never past the absolute expiry and
 -- never backward (greatest() guards against a late, older request regressing it).

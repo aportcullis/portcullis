@@ -243,12 +243,15 @@ func (s *IdentityStore) LinkIdentity(ctx context.Context, id identity.OIDCIdenti
 	if err != nil {
 		return err
 	}
-	return s.q.LinkOIDCIdentity(ctx, db.LinkOIDCIdentityParams{
+	// No row comes back when the (issuer, subject) is already linked to a
+	// different user (the conflict's WHERE fails), which we surface as a collision.
+	_, err = s.q.LinkOIDCIdentity(ctx, db.LinkOIDCIdentityParams{
 		UserID:  uid,
 		Issuer:  id.Issuer,
 		Subject: id.Subject,
 		Email:   id.Email,
 	})
+	return notFound(err, identity.ErrIdentityLinkedToAnotherUser)
 }
 
 // --- SessionRepository ---
@@ -284,6 +287,14 @@ func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID
 		return err
 	}
 	return s.q.RevokeSession(ctx, sid)
+}
+
+func (s *IdentityStore) RevokeUserSessions(ctx context.Context, user identity.UserID) error {
+	uid, err := stringToUUID(string(user))
+	if err != nil {
+		return err
+	}
+	return s.q.RevokeUserSessions(ctx, uid)
 }
 
 func (s *IdentityStore) ExtendSessionIdle(ctx context.Context, id identity.SessionID, idle time.Time) error {
