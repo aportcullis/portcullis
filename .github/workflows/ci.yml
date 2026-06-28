@@ -1,0 +1,42 @@
+name: CI
+
+# The unbypassable enforcement of the Definition of Done. Make the `verify` and
+# `web` jobs required status checks on the default branch so nothing merges
+# without the backend gate (build + vet + lint + full tests) and the frontend
+# gate (typecheck + build) passing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: backend (make verify)
+    runs-on: ubuntu-latest # ships a running Docker daemon for testcontainers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make verify
+
+  web:
+    name: frontend (typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm -C web install --frozen-lockfile
+      - run: pnpm -C web typecheck
+      - run: pnpm -C web build

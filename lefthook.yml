@@ -1,0 +1,14 @@
+# Git hooks (install with `make hooks`). These are fast local guards that mirror
+# CI; the unbypassable gate is GitHub Actions, since local hooks can be skipped
+# with `git commit/push --no-verify`.
+pre-commit:
+  commands:
+    gofmt:
+      glob: "*.go"
+      run: test -z "$(gofmt -l {staged_files})"
+      fail_text: "Go files need gofmt — run: gofmt -w ."
+
+pre-push:
+  commands:
+    verify:
+      run: make verify

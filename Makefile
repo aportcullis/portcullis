@@ -1,4 +1,4 @@
-.PHONY: generate web web-install web-dev web-typecheck web-audit build release run devkey test test-race lint vuln audit tidy clean
+.PHONY: generate web web-install web-dev web-typecheck web-audit build release run devkey test test-race lint vuln audit verify hooks tidy clean
 
 # Static analysis. Built from source with the project's Go toolchain so the
 # linter's go/types matches the module's Go version (a prebuilt binary built
@@ -65,6 +65,20 @@ vuln:
 
 # Full dependency security audit: frontend deps + Go vulnerabilities.
 audit: web-audit vuln
+
+# Definition-of-Done gate in one target: build, vet, lint, and the full test
+# suite. CI, the pre-push git hook, and contributors all call this, so "green"
+# means the same thing everywhere. (Integration tests need Docker.)
+verify:
+	go build ./...
+	go vet ./...
+	$(MAKE) lint
+	$(MAKE) test
+
+# Install the git hooks (pre-commit gofmt, pre-push verify) via lefthook.
+LEFTHOOK_VERSION := v1.13.6
+hooks:
+	go run github.com/evilmartians/lefthook@$(LEFTHOOK_VERSION) install
 
 tidy:
 	go mod tidy
