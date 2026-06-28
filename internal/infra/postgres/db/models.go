@@ -40,6 +40,15 @@ type AuthMethod struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type OidcIdentity struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Issuer    string
+	Subject   string
+	Email     string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID        pgtype.UUID
 	Name      string
@@ -51,8 +60,28 @@ type OrganizationMembership struct {
 	ID             pgtype.UUID
 	OrganizationID pgtype.UUID
 	UserID         pgtype.UUID
-	Role           string
 	CreatedAt      pgtype.Timestamptz
+	RoleID         pgtype.UUID
+}
+
+type Permission struct {
+	Key         string
+	Description string
+}
+
+type Role struct {
+	ID                 pgtype.UUID
+	OrganizationID     pgtype.UUID
+	Name               string
+	IsSystem           bool
+	IsBootstrapDefault bool
+	CreatedAt          pgtype.Timestamptz
+	DeletedAt          pgtype.Timestamptz
+}
+
+type RolePermission struct {
+	RoleID        pgtype.UUID
+	PermissionKey string
 }
 
 type Session struct {

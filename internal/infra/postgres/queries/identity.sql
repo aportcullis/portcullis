@@ -16,7 +16,7 @@ select * from users where lower(email) = lower($1);
 select * from users where id = $1;
 
 -- name: CreateMembership :one
-insert into organization_memberships (organization_id, user_id, role)
+insert into organization_memberships (organization_id, user_id, role_id)
 values ($1, $2, $3)
 returning *;
 
@@ -43,3 +43,10 @@ select * from sessions where token_hash = $1;
 
 -- name: RevokeSession :exec
 update sessions set revoked_at = now() where id = $1;
+
+-- name: ExtendSessionIdle :exec
+-- Slide the idle window forward on activity, never past the absolute expiry and
+-- never backward (greatest() guards against a late, older request regressing it).
+update sessions
+set idle_expires_at = least(greatest(idle_expires_at, sqlc.arg(idle_expires_at)), absolute_expires_at)
+where id = sqlc.arg(id) and revoked_at is null;

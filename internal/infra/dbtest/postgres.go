@@ -8,9 +8,12 @@ package dbtest
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,9 +26,11 @@ import (
 )
 
 var (
-	pgOnce sync.Once
-	pgPool *pgxpool.Pool
-	pgErr  error
+	pgOnce  sync.Once
+	pgPool  *pgxpool.Pool
+	pgDSN   string
+	pgErr   error
+	freshDB atomic.Int64
 )
 
 // Postgres returns a connection pool to a shared test Postgres. It uses
@@ -71,4 +76,36 @@ func startPostgres() {
 		return
 	}
 	pgPool = pool
+	pgDSN = dsn
+}
+
+// FreshPostgres creates a brand-new, empty database in the shared container and
+// returns a pool to it (migrations NOT applied — the caller migrates). Use it
+// for tests that need global isolation, e.g. first-run bootstrap which asserts
+// on the whole users table. The database is dropped at test end.
+func FreshPostgres(t testing.TB) *pgxpool.Pool {
+	t.Helper()
+	admin := Postgres(t) // ensures the container/DSN are up
+	ctx := context.Background()
+
+	name := fmt.Sprintf("pc_fresh_%d", freshDB.Add(1))
+	if _, err := admin.Exec(ctx, "create database "+name); err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+
+	u, err := url.Parse(pgDSN)
+	if err != nil {
+		t.Fatalf("parse dsn: %v", err)
+	}
+	u.Path = "/" + name
+	pool, err := pgxpool.New(ctx, u.String())
+	if err != nil {
+		t.Fatalf("connect fresh db: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Close()
+		// DROP needs no active connections to the target database.
+		_, _ = admin.Exec(context.Background(), "drop database if exists "+name+" with (force)")
+	})
+	return pool
 }

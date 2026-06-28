@@ -11,16 +11,26 @@ import (
 )
 
 type Querier interface {
+	BootstrapRoleID(ctx context.Context, organizationID pgtype.UUID) (pgtype.UUID, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (OrganizationMembership, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	// Slide the idle window forward on activity, never past the absolute expiry and
+	// never backward (greatest() guards against a late, older request regressing it).
+	ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) error
+	FindUserBySubject(ctx context.Context, arg FindUserBySubjectParams) (User, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
+	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) error
+	ListPermissionKeys(ctx context.Context) ([]string, error)
+	// Join roles so a soft-deleted role stops granting its permissions even while
+	// memberships still reference it (FKs are RESTRICT, so the row lingers).
+	PermissionsForUser(ctx context.Context, userID pgtype.UUID) ([]string, error)
 	RevokeSession(ctx context.Context, id pgtype.UUID) error
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error
 }

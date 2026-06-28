@@ -23,26 +23,26 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const createMembership = `-- name: CreateMembership :one
-insert into organization_memberships (organization_id, user_id, role)
+insert into organization_memberships (organization_id, user_id, role_id)
 values ($1, $2, $3)
-returning id, organization_id, user_id, role, created_at
+returning id, organization_id, user_id, created_at, role_id
 `
 
 type CreateMembershipParams struct {
 	OrganizationID pgtype.UUID
 	UserID         pgtype.UUID
-	Role           string
+	RoleID         pgtype.UUID
 }
 
 func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipParams) (OrganizationMembership, error) {
-	row := q.db.QueryRow(ctx, createMembership, arg.OrganizationID, arg.UserID, arg.Role)
+	row := q.db.QueryRow(ctx, createMembership, arg.OrganizationID, arg.UserID, arg.RoleID)
 	var i OrganizationMembership
 	err := row.Scan(
 		&i.ID,
 		&i.OrganizationID,
 		&i.UserID,
-		&i.Role,
 		&i.CreatedAt,
+		&i.RoleID,
 	)
 	return i, err
 }
@@ -104,6 +104,24 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const extendSessionIdle = `-- name: ExtendSessionIdle :exec
+update sessions
+set idle_expires_at = least(greatest(idle_expires_at, $1), absolute_expires_at)
+where id = $2 and revoked_at is null
+`
+
+type ExtendSessionIdleParams struct {
+	IdleExpiresAt pgtype.Timestamptz
+	ID            pgtype.UUID
+}
+
+// Slide the idle window forward on activity, never past the absolute expiry and
+// never backward (greatest() guards against a late, older request regressing it).
+func (q *Queries) ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) error {
+	_, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleExpiresAt, arg.ID)
+	return err
+}
+
 const getDefaultOrganization = `-- name: GetDefaultOrganization :one
 select id, name, slug, created_at from organizations where slug = 'default'
 `
@@ -121,7 +139,7 @@ func (q *Queries) GetDefaultOrganization(ctx context.Context) (Organization, err
 }
 
 const getMembership = `-- name: GetMembership :one
-select id, organization_id, user_id, role, created_at from organization_memberships
+select id, organization_id, user_id, created_at, role_id from organization_memberships
 where organization_id = $1 and user_id = $2
 `
 
@@ -137,8 +155,8 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (O
 		&i.ID,
 		&i.OrganizationID,
 		&i.UserID,
-		&i.Role,
 		&i.CreatedAt,
+		&i.RoleID,
 	)
 	return i, err
 }

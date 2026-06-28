@@ -18,6 +18,12 @@ These must be `Accepted` before Core 1 coding begins.
 | [0004](0004-metadata-rls.md) | Metadata RLS — apply or not | Accepted (no RLS) |
 | [0005](0005-cellvalue-wire-contract.md) | CellValue / ColumnMeta wire contract | Accepted |
 
+## Feature ADRs
+| ADR | Topic | Status |
+|---|---|---|
+| [0006](0006-authentication-and-sessions.md) | Authentication & sessions (cookies, CSRF) | Accepted |
+| [0007](0007-social-login-google-oidc.md) | Social login via Google (OIDC) | Accepted |
+
 ## Template
 ```markdown
 # ADR-XXXX: <title>
