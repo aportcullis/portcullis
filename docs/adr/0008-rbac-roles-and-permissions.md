@@ -34,7 +34,8 @@ get roles via membership; and **authorization is checked against permissions, no
   `(organization_id, name)`; at most one `is_bootstrap_default` per org.
 - `role_permissions(role_id, permission)` — `permission` is a code-defined catalog key; the app
   validates it against the catalog on write.
-- **Custom roles**: admins (with `roles.manage`) create roles and assign any catalog permissions.
+- **Custom roles**: admins (with `roles.create`/`roles.update`/`roles.delete` from the catalog)
+  create roles and assign any catalog permissions.
 - **System roles** (`is_system = true`) are seeded **defaults, not a closed set**: `admin` (all
   permissions), `approver` (create/execute/review requests, saved queries, audit.view),
   `requester` (create/execute requests, saved queries). They cannot be deleted/renamed, but the set
@@ -50,7 +51,8 @@ get roles via membership; and **authorization is checked against permissions, no
 ### Authorization checks permissions, not roles
 - The runtime resolves a user's effective permissions (membership → role → role_permissions) and
   checks **`has(permission)`**, never `role == "admin"`. The last active admin protection is
-  expressed as "at least one active member with `users.manage`/all-permissions".
+  expressed as "at least one active member with `users.update` **and** `users.disable`" (the
+  catalog keys — there is no aggregate `users.manage` permission).
 
 ## Consequences
 - New domain types: `Permission` (+catalog), `Role{ID, Name, IsSystem, Permissions}`; ports

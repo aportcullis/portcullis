@@ -16,6 +16,10 @@ Docker · buf + sqlc codegen.
 3. **Web-verify** the standard approach before deciding (OWASP, Google IAM, library docs) — never
    from memory.
 4. If an ADR shows the PRD is wrong/insufficient, **amend the PRD** (ADR-backed), then implement.
+5. Aim for **clean architecture (ports & adapters)** and implement in the **DDD × TDD cycle**:
+   domain model → port (consumer-defined interface) → **red scenario test** (TDD verifies
+   *scenarios* — observable use-case behavior, not implementation) → green → refactor → wire the
+   adapter in `cmd/portcullis`. See [code.md — Development order](docs/conventions/code.md).
 
 ## Definition of done
 `go build ./...`, `go vet ./...`, `make lint` (0 issues), and `make test` all green.

@@ -8,10 +8,9 @@ plugins:
   - remote: buf.build/connectrpc/go
     out: gen
     opt: paths=source_relative
-  # TypeScript client for the frontend (protobuf-es + connect-es)
+  # TypeScript client for the frontend. protobuf-es v2 emits both the messages and
+  # the service descriptor (GenService), so Connect-ES v2 needs no separate plugin
+  # — the client is createClient(Service, transport) from the generated *_pb.ts.
   - remote: buf.build/bufbuild/es
-    out: web/src/gen
-    opt: target=ts
-  - remote: buf.build/connectrpc/es
     out: web/src/gen
     opt: target=ts

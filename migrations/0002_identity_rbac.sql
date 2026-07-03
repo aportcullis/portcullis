@@ -20,9 +20,14 @@ create table if not exists roles (
     is_bootstrap_default boolean not null default false,
     created_at           timestamptz not null default now(),
     deleted_at           timestamptz, -- soft delete; never hard-deleted
-    unique (organization_id, name)
+    -- FK target for memberships: lets a membership require its role to be in the
+    -- same org (a role can't be assigned across organizations).
+    unique (id, organization_id)
 );
--- one bootstrap-default and one name per org, ignoring soft-deleted rows.
+-- Unique role name per org, and a single bootstrap-default per org — both ignore
+-- soft-deleted rows, so deleting a role frees its name for reuse.
+create unique index if not exists roles_org_name
+    on roles (organization_id, name) where deleted_at is null;
 create unique index if not exists roles_one_bootstrap_default
     on roles (organization_id) where is_bootstrap_default and deleted_at is null;
 
@@ -39,8 +44,12 @@ create index if not exists role_permissions_permission_idx on role_permissions (
 -- on a populated table. If 0001 ever ships with data, replace this with a
 -- nullable-add -> backfill -> set-not-null sequence, or fold role_id into 0001.
 alter table organization_memberships drop column role;
+alter table organization_memberships add column role_id uuid not null;
+-- Composite FK: the assigned role must belong to the membership's own org, so a
+-- user can never be granted a role from a different organization (ADR-0004).
 alter table organization_memberships
-    add column role_id uuid not null references roles (id) on delete restrict;
+    add constraint organization_memberships_role_in_org
+    foreign key (role_id, organization_id) references roles (id, organization_id) on delete restrict;
 -- index the FK columns: user_id powers permission resolution, role_id powers FK checks.
 create index if not exists organization_memberships_user_idx on organization_memberships (user_id);
 create index if not exists organization_memberships_role_idx on organization_memberships (role_id);
@@ -99,7 +108,7 @@ select o.id, r.name, true, r.boot
 from organizations o
 cross join (values ('admin', true), ('approver', false), ('requester', false)) as r(name, boot)
 where o.slug = 'default'
-on conflict (organization_id, name) do nothing;
+on conflict (organization_id, name) where deleted_at is null do nothing;
 
 -- admin: every permission.
 insert into role_permissions (role_id, permission_key)

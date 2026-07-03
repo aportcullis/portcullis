@@ -3,19 +3,16 @@ package postgres
 import (
 	"context"
 	"errors"
+	"hash/fnv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/aportcullis/portcullis/internal/domain/audit"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
-
-// bootstrapAdvisoryLock serializes concurrent first-run bootstraps. The value is
-// arbitrary but fixed ('PORT'); the lock is held for the bootstrap transaction
-// and released when it ends.
-const bootstrapAdvisoryLock int64 = 0x504F5254
 
 // IdentityStore implements the identity domain's repository ports over the sqlc
 // queries. A single type satisfies the user, role, OIDC, session, and permission
@@ -28,6 +25,33 @@ type IdentityStore struct {
 // NewIdentityStore builds the store on a connection pool.
 func NewIdentityStore(pool *pgxpool.Pool) *IdentityStore {
 	return &IdentityStore{pool: pool, q: db.New(pool)}
+}
+
+// userLockObject hashes a user id into the int32 object space for a per-user
+// advisory lock; a collision only over-serializes two users' logins, which is
+// harmless (the lock guards correctness, not exclusivity of access).
+func userLockObject(user identity.UserID) int32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(user))
+	return int32(h.Sum32())
+}
+
+// withLockedTx runs fn in a transaction holding the (class, object) advisory lock,
+// committing on success and rolling back on error. It centralizes the tx +
+// advisory-lock lifecycle so BootstrapAdmin and RotateSession can't drift apart.
+func (s *IdentityStore) withLockedTx(ctx context.Context, class, object int32, fn func(*db.Queries) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful commit
+	if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock($1, $2)", class, object); err != nil {
+		return err
+	}
+	if err := fn(s.q.WithTx(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func notFound(err, domainErr error) error {
@@ -88,6 +112,23 @@ func (s *IdentityStore) GetUserByEmail(ctx context.Context, email string) (ident
 	return toUser(u), nil
 }
 
+// GetUserForLogin returns the user and password hash in one query; the hash is
+// "" for an OIDC-only user with no password row.
+func (s *IdentityStore) GetUserForLogin(ctx context.Context, email string) (identity.User, string, error) {
+	row, err := s.q.GetUserForLogin(ctx, email)
+	if err != nil {
+		return identity.User{}, "", notFound(err, identity.ErrUserNotFound)
+	}
+	u := identity.User{
+		ID:          identity.UserID(uuidToString(row.ID)),
+		Email:       row.Email,
+		DisplayName: row.DisplayName,
+		Status:      identity.UserStatus(row.Status),
+		CreatedAt:   tsToTime(row.CreatedAt),
+	}
+	return u, row.PasswordHash, nil
+}
+
 func (s *IdentityStore) GetUserByID(ctx context.Context, id identity.UserID) (identity.User, error) {
 	uid, err := stringToUUID(string(id))
 	if err != nil {
@@ -137,12 +178,16 @@ func (s *IdentityStore) AddMembership(ctx context.Context, org identity.Organiza
 	return err
 }
 
-func (s *IdentityStore) PermissionsForUser(ctx context.Context, id identity.UserID) ([]identity.Permission, error) {
+func (s *IdentityStore) PermissionsForUser(ctx context.Context, org identity.OrganizationID, id identity.UserID) ([]identity.Permission, error) {
+	orgU, err := stringToUUID(string(org))
+	if err != nil {
+		return nil, err
+	}
 	uid, err := stringToUUID(string(id))
 	if err != nil {
 		return nil, err
 	}
-	keys, err := s.q.PermissionsForUser(ctx, uid)
+	keys, err := s.q.PermissionsForUser(ctx, db.PermissionsForUserParams{OrganizationID: orgU, UserID: uid})
 	if err != nil {
 		return nil, err
 	}
@@ -155,49 +200,45 @@ func (s *IdentityStore) PermissionsForUser(ctx context.Context, id identity.User
 
 // BootstrapAdmin atomically creates the first admin: under an advisory lock (so
 // concurrent bootstraps serialize), it re-checks that no user exists, then writes
-// the user, password, and bootstrap-role membership in one transaction. A partial
-// failure rolls back fully, so a retry can still bootstrap.
-func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string) (identity.User, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return identity.User{}, err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful commit
-	q := s.q.WithTx(tx)
-
-	if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock($1)", bootstrapAdvisoryLock); err != nil {
-		return identity.User{}, err
-	}
-	n, err := q.CountUsers(ctx)
-	if err != nil {
-		return identity.User{}, err
-	}
-	if n > 0 {
-		return identity.User{}, identity.ErrAlreadyBootstrapped
-	}
-
-	org, err := q.GetDefaultOrganization(ctx)
-	if err != nil {
-		return identity.User{}, err
-	}
-	role, err := q.BootstrapRoleID(ctx, org.ID)
-	if err != nil {
-		return identity.User{}, notFound(err, errors.New("postgres: no bootstrap-default role seeded"))
-	}
-	u, err := q.CreateUser(ctx, db.CreateUserParams{Email: email, DisplayName: displayName})
-	if err != nil {
-		return identity.User{}, err
-	}
-	if err := q.UpsertPasswordAuth(ctx, db.UpsertPasswordAuthParams{UserID: u.ID, Secret: passwordHash}); err != nil {
-		return identity.User{}, err
-	}
-	if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{OrganizationID: org.ID, UserID: u.ID, RoleID: role}); err != nil {
-		return identity.User{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return identity.User{}, err
-	}
-	return toUser(u), nil
+// the user, password, bootstrap-role membership, AND the audit event in one
+// transaction (ADR-0009) — completing the event's actor with the user created
+// inside the tx. A partial failure rolls back fully, so a retry can still
+// bootstrap and a created admin can never lack its trail.
+func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, evt audit.Event) (identity.User, error) {
+	var out identity.User
+	err := s.withLockedTx(ctx, lockClassBootstrap, 0, func(q *db.Queries) error {
+		n, err := q.CountUsers(ctx)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return identity.ErrAlreadyBootstrapped
+		}
+		org, err := q.GetDefaultOrganization(ctx)
+		if err != nil {
+			return err
+		}
+		role, err := q.BootstrapRoleID(ctx, org.ID)
+		if err != nil {
+			return notFound(err, errors.New("postgres: no bootstrap-default role seeded"))
+		}
+		u, err := q.CreateUser(ctx, db.CreateUserParams{Email: email, DisplayName: displayName})
+		if err != nil {
+			return err
+		}
+		if err := q.UpsertPasswordAuth(ctx, db.UpsertPasswordAuthParams{UserID: u.ID, Secret: passwordHash}); err != nil {
+			return err
+		}
+		if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{OrganizationID: org.ID, UserID: u.ID, RoleID: role}); err != nil {
+			return err
+		}
+		out = toUser(u)
+		evt.OrganizationID = identity.OrganizationID(uuidToString(org.ID))
+		evt.ActorUserID = &out.ID
+		evt.TargetID = string(out.ID)
+		return insertAuditTx(ctx, q, evt)
+	})
+	return out, err
 }
 
 // --- RoleRepository ---
@@ -281,12 +322,26 @@ func (s *IdentityStore) GetSessionByTokenHash(ctx context.Context, tokenHash []b
 	return toSession(row), nil
 }
 
-func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID) error {
+// RevokeSession revokes one session and writes the audit event in the same
+// transaction (ADR-0009), so a logout can never commit without its trail.
+func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID, evt audit.Event) error {
 	sid, err := stringToUUID(string(id))
 	if err != nil {
 		return err
 	}
-	return s.q.RevokeSession(ctx, sid)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful commit
+	q := s.q.WithTx(tx)
+	if err := q.RevokeSession(ctx, sid); err != nil {
+		return err
+	}
+	if err := insertAuditTx(ctx, q, evt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *IdentityStore) RevokeUserSessions(ctx context.Context, user identity.UserID) error {
@@ -303,4 +358,33 @@ func (s *IdentityStore) ExtendSessionIdle(ctx context.Context, id identity.Sessi
 		return err
 	}
 	return s.q.ExtendSessionIdle(ctx, db.ExtendSessionIdleParams{ID: sid, IdleExpiresAt: timeToTS(idle)})
+}
+
+// RotateSession revokes the user's active sessions, inserts the new one, and
+// writes the login audit event in one transaction, serialized by a per-user
+// advisory lock — concurrent logins still leave exactly one active session
+// (ADR-0006) and a session can never be issued without its trail (ADR-0009).
+func (s *IdentityStore) RotateSession(ctx context.Context, user identity.UserID, sess identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error) {
+	uid, err := stringToUUID(string(user))
+	if err != nil {
+		return identity.Session{}, err
+	}
+	var out identity.Session
+	err = s.withLockedTx(ctx, lockClassSession, userLockObject(user), func(q *db.Queries) error {
+		if err := q.RevokeUserSessions(ctx, uid); err != nil {
+			return err
+		}
+		row, err := q.CreateSession(ctx, db.CreateSessionParams{
+			UserID:            uid,
+			TokenHash:         tokenHash,
+			IdleExpiresAt:     timeToTS(sess.IdleExpiresAt),
+			AbsoluteExpiresAt: timeToTS(sess.AbsoluteExpiresAt),
+		})
+		if err != nil {
+			return err
+		}
+		out = toSession(row)
+		return insertAuditTx(ctx, q, evt)
+	})
+	return out, err
 }

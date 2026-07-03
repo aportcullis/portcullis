@@ -82,3 +82,19 @@ func TestMiddlewareReusesIncomingRequestID(t *testing.T) {
 		t.Errorf("X-Request-Id = %q, want abc123 (incoming id should be reused)", got)
 	}
 }
+
+func TestMiddlewareKeepsResponseWriterFlushable(t *testing.T) {
+	t.Parallel()
+	// connect-go does a direct w.(http.Flusher) assertion for server-streaming, so
+	// the logging wrapper must not hide the Flusher from the inner handler.
+	var flushable bool
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, flushable = w.(http.Flusher)
+	})
+	h := logging.Middleware(logging.New("error", "json"))(next)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if !flushable {
+		t.Error("wrapped ResponseWriter must implement http.Flusher (Connect streaming)")
+	}
+}

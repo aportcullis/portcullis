@@ -16,8 +16,9 @@ type UserRepository interface {
 	SetPassword(ctx context.Context, id UserID, phc string) error
 	GetPasswordHash(ctx context.Context, id UserID) (string, error)
 	AddMembership(ctx context.Context, org OrganizationID, user UserID, role RoleID) error
-	// PermissionsForUser returns the union of the user's roles' permissions.
-	PermissionsForUser(ctx context.Context, id UserID) ([]Permission, error)
+	// PermissionsForUser returns the union of the user's roles' permissions within
+	// one organization (org-scoped per ADR-0004).
+	PermissionsForUser(ctx context.Context, org OrganizationID, id UserID) ([]Permission, error)
 }
 
 // RoleRepository resolves roles. Roles are referenced by id, never by a hardcoded
@@ -39,10 +40,12 @@ type OIDCRepository interface {
 }
 
 // SessionRepository persists server-side sessions keyed by token hash.
+// Single-session revocation lives on the auth application port (auth.Repository)
+// instead: it is always audited, and audit.Event already imports this package,
+// so declaring it here would create a domain-level import cycle.
 type SessionRepository interface {
 	CreateSession(ctx context.Context, s Session, tokenHash []byte) (Session, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
-	RevokeSession(ctx context.Context, id SessionID) error
 	// RevokeUserSessions invalidates all of a user's active sessions (a new login
 	// or a privilege change rotates them out — ADR-0006).
 	RevokeUserSessions(ctx context.Context, user UserID) error

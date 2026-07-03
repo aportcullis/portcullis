@@ -1,7 +1,6 @@
 .git
 bin
 web/node_modules
-web/src/gen
 node_modules
 # The frontend build output is produced by the web build stage; excluding the
 # local copy avoids merging stale hashed assets into the image.
@@ -11,5 +10,6 @@ todo.md
 .env
 .env.*
 !.env.example
-# NOTE: gen/ (generated Go) and internal/infra/postgres/db (sqlc) are committed
-# and required by `go build`, so they are intentionally NOT ignored here.
+# NOTE: gen/ (generated Go), internal/infra/postgres/db (sqlc), and web/src/gen
+# (Connect TS client) are committed and required by the Go and web builds, so
+# they are intentionally NOT ignored here (the web stage runs pnpm, not buf).

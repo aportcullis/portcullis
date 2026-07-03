@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
@@ -26,6 +27,42 @@ func TestMigrateIdempotentAndSeedsDefaultOrg(t *testing.T) {
 	}
 	if orgs != 1 {
 		t.Errorf("default org count = %d, want 1", orgs)
+	}
+}
+
+func TestMigrateSerializesConcurrentCallers(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+
+	// Several instances booting against the same empty database at once: the
+	// advisory lock must serialize them so none races the check-then-apply loop.
+	const callers = 4
+	var wg sync.WaitGroup
+	errs := make(chan error, callers)
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- pg.Migrate(ctx, pool)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent Migrate: %v", err)
+		}
+	}
+
+	// Every migration recorded exactly once (no duplicate-apply, no gaps).
+	var dups int
+	if err := pool.QueryRow(ctx,
+		`select count(*) from (select version from schema_migrations group by version having count(*) > 1) d`,
+	).Scan(&dups); err != nil {
+		t.Fatalf("query schema_migrations: %v", err)
+	}
+	if dups != 0 {
+		t.Errorf("found %d migrations applied more than once", dups)
 	}
 }
 

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package portcullis.v1;
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// Auth is the authentication surface: first-run bootstrap, password login, and
+// the current-session endpoints. The opaque session token and the CSRF token are
+// carried in __Host- cookies (set by Login, cleared by Logout), never in these
+// messages (ADR-0006).
+service Auth {
+  // Bootstrap creates the first admin; refused once any user exists. It does not
+  // start a session — the client logs in afterward.
+  rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse) {}
+  // Login verifies the password and starts a session (sets the session + CSRF cookies).
+  rpc Login(LoginRequest) returns (LoginResponse) {}
+  // Logout revokes the current session and clears the cookies.
+  rpc Logout(LogoutRequest) returns (LogoutResponse) {}
+  // Me returns the currently authenticated user.
+  rpc Me(MeRequest) returns (MeResponse) {}
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string display_name = 3;
+  // "active" | "disabled".
+  string status = 4;
+}
+
+message BootstrapRequest {
+  string email = 1;
+  string password = 2;
+  string display_name = 3;
+}
+message BootstrapResponse {
+  User user = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+message LoginResponse {
+  User user = 1;
+}
+
+message LogoutRequest {}
+message LogoutResponse {}
+
+message MeRequest {}
+message MeResponse {
+  User user = 1;
+}

@@ -9,6 +9,12 @@ var (
 	ErrSessionNotFound = errors.New("identity: session not found")
 	// ErrInvalidCredentials means the email/password pair did not verify.
 	ErrInvalidCredentials = errors.New("identity: invalid credentials")
+	// ErrInvalidEmail means an email failed the syntactic checks (empty, missing
+	// "@", or over the RFC 5321 length limit).
+	ErrInvalidEmail = errors.New("identity: invalid email")
+	// ErrWeakPassword means a password was shorter than the minimum or longer than
+	// the maximum allowed length.
+	ErrWeakPassword = errors.New("identity: password does not meet policy")
 	// ErrUserDisabled means the account exists but may not authenticate.
 	ErrUserDisabled = errors.New("identity: user is disabled")
 	// ErrAlreadyBootstrapped means bootstrap ran when users already exist.

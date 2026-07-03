@@ -12,6 +12,15 @@ returning *;
 -- name: GetUserByEmail :one
 select * from users where lower(email) = lower($1);
 
+-- name: GetUserForLogin :one
+-- User + password hash in one round-trip, so a password login costs the same
+-- number of queries whether or not the account exists (anti-enumeration). The
+-- hash is empty for OIDC-only users (no password row).
+select u.*, coalesce(am.secret, '') as password_hash
+from users u
+left join auth_methods am on am.user_id = u.id and am.type = 'password'
+where lower(u.email) = lower($1);
+
 -- name: GetUserByID :one
 select * from users where id = $1;
 

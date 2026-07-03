@@ -34,7 +34,7 @@ type Mount struct {
 // provided API mounts. drainDelay is how long readiness reports "draining"
 // before connections are closed, giving Kubernetes time to deregister the pod.
 func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...Mount) *Server {
-	h := health.New()
+	h := health.New().WithLogger(logger)
 	s := &Server{logger: logger, health: h, drainDelay: drainDelay}
 
 	mux := http.NewServeMux()
@@ -49,6 +49,13 @@ func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...M
 		Addr:              addr,
 		Handler:           logging.Middleware(logger)(mux),
 		ReadHeaderTimeout: 10 * time.Second,
+		// Bound the whole request read so a slow-body (slowloris) connection can't
+		// hold a goroutine open indefinitely, and reap idle keep-alives. WriteTimeout
+		// is intentionally unset: once streaming RPCs land, a blanket write deadline
+		// would kill long-lived streams — use per-request http.ResponseController
+		// deadlines there instead.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 120 * time.Second,
 	}
 	return s
 }

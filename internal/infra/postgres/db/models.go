@@ -9,26 +9,27 @@ import (
 )
 
 type AuditEvent struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	OccurredAt     pgtype.Timestamptz
-	ActorType      string
-	ActorUserID    pgtype.UUID
-	ActorService   *string
-	Action         string
-	TargetType     string
-	TargetID       *string
-	Outcome        string
-	PreviousState  *string
-	NextState      *string
-	PayloadDigest  []byte
-	RequestID      *string
-	ConnectionID   pgtype.UUID
-	QueryType      *string
-	RowsAffected   *int64
-	DurationMs     *int64
-	RiskScore      *float64
-	Metadata       []byte
+	ID                      pgtype.UUID
+	OrganizationID          pgtype.UUID
+	OccurredAt              pgtype.Timestamptz
+	ActorType               string
+	ActorUserID             pgtype.UUID
+	ActorService            *string
+	Action                  string
+	TargetType              string
+	TargetID                *string
+	Outcome                 string
+	PreviousState           *string
+	NextState               *string
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	RequestID               *string
+	ConnectionID            pgtype.UUID
+	QueryType               *string
+	RowsAffected            *int64
+	DurationMs              *int64
+	RiskScore               *float64
+	Metadata                []byte
 }
 
 type AuthMethod struct {

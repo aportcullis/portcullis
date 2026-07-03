@@ -11,7 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
+	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
 	"github.com/aportcullis/portcullis/internal/platform/config"
@@ -19,6 +22,38 @@ import (
 	"github.com/aportcullis/portcullis/internal/transport/connectapi"
 	"github.com/aportcullis/portcullis/internal/transport/server"
 )
+
+// maxRequestBytes caps the size of an inbound RPC request. Connect defaults to
+// unlimited, so a large Bootstrap/Login body could OOM the process; auth and
+// health messages are tiny, so 64 KiB is generous.
+const maxRequestBytes = 64 << 10
+
+// migrate opens the owner DSN, verifies connectivity, applies the migrations,
+// and closes the pool — the owner credential stays alive only for this window.
+// Errors are logged with generic messages/classified fields only: the raw error
+// can echo the DSN, which carries the password.
+func migrate(ctx context.Context, logger *slog.Logger, ownerURL, runtimeRole string) error {
+	pool, err := postgres.Open(ctx, ownerURL)
+	if err != nil {
+		logger.Error("database config invalid", "hint", "check PORTCULLIS_MIGRATE_DATABASE_URL / PORTCULLIS_DATABASE_URL")
+		return err
+	}
+	defer pool.Close()
+	// Force the first connection so a connectivity/auth failure is caught with a
+	// generic message; after this, Migrate runs on a verified connection.
+	if err := pool.Ping(ctx); err != nil {
+		logger.Error("database connect failed", "hint", "check the database URL and that the database is reachable")
+		return err
+	}
+	if err := postgres.Migrate(ctx, pool, postgres.WithRuntimeRole(runtimeRole)); err != nil {
+		// pgxpool acquires a connection per operation, so even after the Ping this can
+		// be a connect error that echoes the DSN — classify: a server SQL error logs
+		// its code + structural identifiers, anything else logs only its type.
+		logger.Error("migration failed", postgres.ErrorLogFields(err)...)
+		return err
+	}
+	return nil
+}
 
 func main() {
 	// run returns an error on any startup or runtime failure; main maps that to a
@@ -55,23 +90,65 @@ func run() error {
 	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelStartup()
 
-	pool, err := postgres.Open(startupCtx, cfg.DatabaseURL)
-	if err != nil {
-		logger.Error("database connect failed", "err", err)
-		return err
-	}
-	defer pool.Close()
-
-	if err := postgres.Migrate(startupCtx, pool); err != nil {
-		logger.Error("migration failed", "err", err)
+	// Migrations run as the schema OWNER on a short-lived pool; the server then
+	// runs on the (least-privilege) runtime DSN — the permission boundary that
+	// keeps audit_events append-only even against the application (ADR-0009).
+	if err := migrate(startupCtx, logger, cfg.MigrateDatabaseURL, cfg.RuntimeRole); err != nil {
 		return err
 	}
 	logger.Info("metadata schema ready")
 
-	healthPath, healthHandler := portcullisv1connect.NewHealthHandler(connectapi.HealthService{})
+	pool, err := postgres.Open(startupCtx, cfg.DatabaseURL)
+	if err != nil {
+		// Open only parses the DSN (pgxpool.New is lazy); a malformed config lands here.
+		logger.Error("database config invalid", "hint", "check PORTCULLIS_DATABASE_URL")
+		return err
+	}
+	defer pool.Close()
+	if err := pool.Ping(startupCtx); err != nil {
+		logger.Error("database connect failed", "hint", "check PORTCULLIS_DATABASE_URL and that the database is reachable")
+		return err
+	}
+	// The boundary must hold for the connection the server ACTUALLY runs on, not
+	// just the configured role: an owner/superuser DSN or a drifted login user is
+	// refused unless the insecure dev flag explicitly allows it (ADR-0009).
+	if err := postgres.VerifyRuntimeConnection(startupCtx, pool, cfg.RuntimeRole); err != nil {
+		if !cfg.AllowPrivilegedRuntime {
+			logger.Error("runtime connection failed verification", "err", err)
+			return err
+		}
+		logger.Warn("runtime connection is privileged — allowed by PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME (dev only, never production)", "err", err)
+	}
+
+	// Cap request size: Connect defaults to unlimited, so bound both the per-message
+	// read and the whole request stream (auth/health messages are tiny).
+	readLimit := connect.WithReadMaxBytes(maxRequestBytes)
+	healthPath, healthHandler := portcullisv1connect.NewHealthHandler(connectapi.HealthService{}, readLimit)
+
+	// Identity vertical: inject the crypto and audit adapters into the auth use
+	// cases, then expose them as the Auth RPC behind the interceptor chain.
+	store := postgres.NewIdentityStore(pool)
+	authSvc, err := auth.New(store, crypto.NewArgon2Hasher(crypto.DefaultArgon2Params, cfg.Argon2MaxConcurrent), crypto.NewCSRFProtector(keyring), postgres.NewAuditStore(pool), auth.Config{})
+	if err != nil {
+		logger.Error("auth init failed", "err", err)
+		return err
+	}
+	authSvc.WithLogger(logger)
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(
+		connectapi.NewAuthService(authSvc),
+		// Client IP first (one resolution shared by rate limiting and audit), then
+		// rate-limit before auth so a login flood is shed before any password hashing.
+		connect.WithInterceptors(
+			connectapi.NewClientIPInterceptor(cfg.TrustedProxyNets()),
+			connectapi.NewRateLimitInterceptor(),
+			connectapi.NewAuthInterceptor(authSvc),
+		),
+		readLimit,
+	)
 
 	srv := server.New(cfg.Addr, logger, cfg.DrainDelay,
-		server.Mount{Pattern: healthPath, Handler: healthHandler},
+		server.Mount{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, maxRequestBytes)},
+		server.Mount{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, maxRequestBytes)},
 	)
 	srv.Health().Register("metadata-db", func(ctx context.Context) error { return pool.Ping(ctx) })
 

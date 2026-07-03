@@ -34,10 +34,6 @@ func New(level, format string) *slog.Logger {
 	return slog.New(h)
 }
 
-type ctxKey int
-
-const requestIDKey ctxKey = iota
-
 // RequestID returns the request id carried in ctx, or "" if absent.
 func RequestID(ctx context.Context) string {
 	if v, ok := ctx.Value(requestIDKey).(string); ok {
@@ -99,6 +95,19 @@ func (r *recorder) Write(b []byte) (int, error) {
 	r.bytes += int64(n)
 	return n, err
 }
+
+// Flush forwards to the wrapped writer's Flusher. connect-go detects streaming
+// support with a direct `w.(http.Flusher)` assertion (not http.ResponseController),
+// so the recorder must implement Flush itself or server-streaming RPCs are rejected.
+func (r *recorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap exposes the wrapped writer so http.ResponseController can still reach the
+// underlying Hijacker/deadline setters.
+func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func newID() string {
 	var b [8]byte

@@ -38,16 +38,32 @@ Standards verified on 2026-06-28 (OWASP):
   sessions. Logout sets `revoked_at`.
 
 ### CSRF — HMAC, session-bound double-submit
-- On login, issue a CSRF token = **HMAC-SHA-256(keyring payload-integrity key, session_id || nonce)**
+- On login, issue a CSRF token = **HMAC-SHA-256(keyring payload-integrity key, session_token || nonce)**
   with the nonce suffixed, delivered in a readable cookie **`__Host-portcullis_csrf`**
-  (`Secure; SameSite=Lax; Path=/`, **not** HttpOnly so the SPA can echo it).
+  (`Secure; SameSite=Lax; Path=/`, **not** HttpOnly so the SPA can echo it). It binds the opaque
+  **session token** (the secret in the `__Host-portcullis_session` cookie), not the DB session id, so
+  it is issued *before* the session is persisted — keeping the rotation commit the last fallible step
+  — and the verifier (which already holds the cookie token) recomputes the HMAC. Binding the secret
+  token is equal-or-stronger than the id (which may surface in logs) and still satisfies OWASP's
+  "session-dependent value".
 - State-changing / authenticated RPCs must send the token in the **`X-CSRF-Token`** header; the
-  server verifies the HMAC binds to the request's session **and** that header == cookie. This avoids
-  the bypasses of naive (unsigned, unbound) double-submit.
+  server verifies the HMAC binds to the request's session token **and** that header == cookie. This
+  avoids the bypasses of naive (unsigned, unbound) double-submit.
 - `Bootstrap` and `Login` are public (no session yet); `Logout`/`Me` and future mutations require it.
 
 ### Passwords & bootstrap
-- Passwords use Argon2id via the crypto package (ADR-0003), with its validated parameters.
+- Passwords use Argon2id via the crypto package (ADR-0003), with its validated parameters. Concurrent
+  hashes are capped (`PORTCULLIS_ARGON2_MAX_CONCURRENT`, default 2) so a login flood can't exhaust
+  memory (each hash costs ~64 MiB); the cap is context-aware, so a cancelled request stops waiting.
+- **Credential policy.** Passwords are Unicode **NFC**-normalized before hashing and verification (so
+  equivalent code-point sequences match), and must be **≥ 15 code points** — NIST SP 800-63B-4's floor
+  for a sole authenticator, which local login is. Emails are canonicalized (trim + lowercase) for
+  storage, lookup, and rate-limit keying, and validated syntactically (non-empty local/domain, a dotted
+  domain, no spaces/control chars, ≤ 254 chars).
+- **Brute force / enumeration.** Login and Bootstrap are throttled by a per-IP and per-email token
+  bucket (`ResourceExhausted` over the limit, before any hashing). Behind a reverse proxy the real
+  client IP is recovered from `X-Forwarded-For` only for peers in `PORTCULLIS_TRUSTED_PROXIES` (CIDRs);
+  otherwise the direct peer IP is used, so a client can't spoof its own key.
 - **Bootstrap** creates the first admin (active user + `admin` membership in the default org) only
   when zero users exist; otherwise it is refused.
 

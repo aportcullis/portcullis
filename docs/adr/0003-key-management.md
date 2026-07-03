@@ -46,6 +46,14 @@ Constraints:
 - A `key rotate` CLI re-wraps DEKs and re-encrypts request payloads to the new version
   (batch or lazy-on-access); once all records are migrated the old version may be retired.
 - `payload_digest` carries its `key_version`; verification uses the version recorded on the row.
+- **Implementation status:** the rotation model (versioned columns, multi-version coexistence) is
+  fixed here, but the multi-version keyring load and the `key rotate` CLI are implemented alongside
+  the Core 1 features that use envelope encryption (connection credentials, result snapshots). Until
+  then the keyring loads a single active version.
+- **Operational note (CSRF):** the session CSRF token (ADR-0006) is HMAC'd with the active key and
+  carries **no** `key_version`, so rotating the master key invalidates outstanding CSRF tokens —
+  users must re-login. Tagging the CSRF token with a `key_version` for graceful rotation is a future
+  option, taken with the rotation CLI.
 
 ### Password hashing (Argon2id)
 - Store the Argon2id variant/version, salt, and cost parameters with each hash.

@@ -9,32 +9,32 @@ importers:
   .:
     dependencies:
       '@bufbuild/protobuf':
-        specifier: ^2.12.1
+        specifier: 2.12.1
         version: 2.12.1
       '@connectrpc/connect':
-        specifier: ^2.1.2
+        specifier: 2.1.2
         version: 2.1.2(@bufbuild/protobuf@2.12.1)
       '@connectrpc/connect-web':
-        specifier: ^2.1.2
+        specifier: 2.1.2
         version: 2.1.2(@bufbuild/protobuf@2.12.1)(@connectrpc/connect@2.1.2(@bufbuild/protobuf@2.12.1))
       solid-js:
-        specifier: ^1.9.13
+        specifier: 1.9.13
         version: 1.9.13
     devDependencies:
       '@types/node':
-        specifier: ^24.3.0
+        specifier: 24.13.2
         version: 24.13.2
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260627.2
         version: 7.0.0-dev.20260627.2
       typescript:
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3
       vite:
-        specifier: ^8.1.0
+        specifier: 8.1.0
         version: 8.1.0(@types/node@24.13.2)
       vite-plugin-solid:
-        specifier: ^2.11.12
+        specifier: 2.11.12
         version: 2.11.12(solid-js@1.9.13)(vite@8.1.0(@types/node@24.13.2))
 
 packages:

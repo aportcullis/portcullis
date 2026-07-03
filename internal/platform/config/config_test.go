@@ -26,6 +26,39 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestAllowPrivilegedRuntimeFlag(t *testing.T) {
+	// Insecure dev mode must be an explicit opt-in, never the default.
+	if cfg, err := config.Load(); err != nil || cfg.AllowPrivilegedRuntime {
+		t.Errorf("AllowPrivilegedRuntime default = %t, %v; want false", cfg.AllowPrivilegedRuntime, err)
+	}
+	t.Setenv("PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME", "true")
+	if cfg, err := config.Load(); err != nil || !cfg.AllowPrivilegedRuntime {
+		t.Errorf("AllowPrivilegedRuntime = %t, %v; want true", cfg.AllowPrivilegedRuntime, err)
+	}
+}
+
+func TestRuntimeRoleValidation(t *testing.T) {
+	// Default is the standard role name.
+	if cfg, err := config.Load(); err != nil || cfg.RuntimeRole != "portcullis_runtime" {
+		t.Errorf("default RuntimeRole = %q, %v; want portcullis_runtime", cfg.RuntimeRole, err)
+	}
+
+	// A custom identifier is accepted.
+	t.Setenv("PORTCULLIS_RUNTIME_ROLE", "pc_install_a")
+	if cfg, err := config.Load(); err != nil || cfg.RuntimeRole != "pc_install_a" {
+		t.Errorf("custom RuntimeRole = %q, %v", cfg.RuntimeRole, err)
+	}
+
+	// Anything that is not a plain lowercase identifier must fail fast: the name
+	// is spliced into migration SQL.
+	for _, bad := range []string{"role; drop table users--", "Role", "1role", "a b"} {
+		t.Setenv("PORTCULLIS_RUNTIME_ROLE", bad)
+		if _, err := config.Load(); err == nil {
+			t.Errorf("RuntimeRole %q should be rejected", bad)
+		}
+	}
+}
+
 func TestBarePortIsNormalized(t *testing.T) {
 	t.Setenv("PORTCULLIS_ADDR", "8080")
 	cfg, err := config.Load()

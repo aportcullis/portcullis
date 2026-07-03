@@ -1,0 +1,6 @@
+# Committed code-generation output. Marked generated so hosts collapse it in
+# diffs/reviews, and exempted from git's whitespace checks (git diff --check,
+# apply) since the generators emit trailing newlines we never hand-edit.
+gen/** linguist-generated=true -whitespace
+internal/infra/postgres/db/** linguist-generated=true -whitespace
+web/src/gen/** linguist-generated=true -whitespace

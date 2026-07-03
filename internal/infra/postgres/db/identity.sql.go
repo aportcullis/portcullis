@@ -232,6 +232,39 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
+const getUserForLogin = `-- name: GetUserForLogin :one
+select u.id, u.email, u.display_name, u.status, u.created_at, coalesce(am.secret, '') as password_hash
+from users u
+left join auth_methods am on am.user_id = u.id and am.type = 'password'
+where lower(u.email) = lower($1)
+`
+
+type GetUserForLoginRow struct {
+	ID           pgtype.UUID
+	Email        string
+	DisplayName  string
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	PasswordHash string
+}
+
+// User + password hash in one round-trip, so a password login costs the same
+// number of queries whether or not the account exists (anti-enumeration). The
+// hash is empty for OIDC-only users (no password row).
+func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error) {
+	row := q.db.QueryRow(ctx, getUserForLogin, lower)
+	var i GetUserForLoginRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.Status,
+		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
 const revokeSession = `-- name: RevokeSession :exec
 update sessions set revoked_at = now() where id = $1
 `

@@ -15,6 +15,9 @@ services:
       POSTGRES_DB: portcullis
     volumes:
       - pgdata:/var/lib/postgresql
+      # Creates the least-privilege portcullis_app login user on FIRST init only
+      # (runs on an empty data volume; `docker compose down -v` resets it).
+      - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U portcullis -d portcullis"]
       interval: 5s
@@ -38,7 +41,10 @@ services:
       keygen:
         condition: service_completed_successfully
     environment:
-      PORTCULLIS_DATABASE_URL: postgres://portcullis:portcullis@postgres:5432/portcullis?sslmode=disable
+      # Serve as the least-privilege runtime user; migrate as the schema owner
+      # (ADR-0009 — the runtime cannot mutate audit_events or alter tables).
+      PORTCULLIS_DATABASE_URL: postgres://portcullis_app:portcullis@postgres:5432/portcullis?sslmode=disable
+      PORTCULLIS_MIGRATE_DATABASE_URL: postgres://portcullis:portcullis@postgres:5432/portcullis?sslmode=disable
       PORTCULLIS_MASTER_KEY_FILE: /secrets/master.key
     volumes:
       - secrets:/secrets:ro

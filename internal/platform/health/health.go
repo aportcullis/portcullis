@@ -9,6 +9,8 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -24,11 +26,22 @@ type Handler struct {
 	checks   map[string]CheckFunc
 	draining atomic.Bool
 	timeout  time.Duration
+	logger   *slog.Logger
 }
 
 // New returns a Handler with no checks registered and a default per-probe timeout.
 func New() *Handler {
-	return &Handler{checks: map[string]CheckFunc{}, timeout: 2 * time.Second}
+	return &Handler{checks: map[string]CheckFunc{}, timeout: 2 * time.Second, logger: slog.Default()}
+}
+
+// WithLogger sets the logger that records the detail of a failing readiness check
+// server-side (the unauthenticated response only ever says "unavailable"). Returns
+// the handler for chaining.
+func (h *Handler) WithLogger(l *slog.Logger) *Handler {
+	if l != nil {
+		h.logger = l
+	}
+	return h
 }
 
 // Register adds a named readiness check (e.g. the metadata database).
@@ -72,7 +85,12 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 	for name, c := range checks {
 		if err := c(ctx); err != nil {
 			ready = false
-			results[name] = err.Error()
+			// Log only the error TYPE, never its message: a dependency error (e.g. a
+			// DB connect failure) can echo a DSN/password, and even server-side logs
+			// must stay secret-free (OWASP). The type names the category; the response
+			// body only says "unavailable".
+			h.logger.WarnContext(ctx, "readiness check failed", "check", name, "error_type", fmt.Sprintf("%T", err))
+			results[name] = "unavailable"
 			continue
 		}
 		results[name] = "ok"
@@ -83,11 +101,6 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response{Status: "ok", Checks: results})
-}
-
-type response struct {
-	Status string            `json:"status"`
-	Checks map[string]string `json:"checks,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v response) {
