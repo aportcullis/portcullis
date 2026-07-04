@@ -1,10 +1,27 @@
 package auth
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
+
+// Service implements the auth use cases. Its constructor (New) and methods live
+// in service.go; the type definition lives here with the package's other types
+// (file-split convention). Collaborators are the consumer-defined ports (ports.go).
+type Service struct {
+	repo      Repository
+	hasher    PasswordHasher
+	csrf      CSRFProtector
+	auditor   AuditRecorder
+	logger    *slog.Logger
+	now       func() time.Time
+	idle      time.Duration
+	absolute  time.Duration
+	idleRenew time.Duration
+	dummyHash string // verified for unknown accounts to equalize login timing
+}
 
 // Config tunes session lifetimes. The password-hash profile lives in the
 // injected PasswordHasher, not here.

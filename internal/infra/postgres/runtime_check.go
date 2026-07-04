@@ -3,65 +3,113 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // VerifyRuntimeConnection asserts that the connection the server actually runs
-// on upholds the audit boundary (ADR-0009) — verifying the configured group
-// role alone is not enough, because the DSN's login user is what acts: it could
-// be the schema owner or a superuser (implicit, irrevocable privileges), carry
-// direct grants, inherit another privileged role, or point at a different
-// database entirely. Run against the runtime pool right after connecting;
-// PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME downgrades a failure to a warning for
-// single-role dev setups.
+// on upholds the audit boundary (ADR-0009) — verifying the configured group role
+// alone is not enough, because the DSN's login user is what acts.
+//
+// Every check targets SESSION_USER, not current_user: `ALTER ROLE ... SET role`
+// makes current_user the runtime role at connect while the session user keeps
+// its own privileges, and `SET ROLE NONE` restores them at will — the session
+// user is the floor identity a connection can always return to.
 func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRole string) error {
-	// Wrong database / never migrated: fail with a pointer at the schema rather
-	// than a confusing SQL error on first use.
+	// Wrong database / never migrated: fatal (not ErrRuntimeInsecure) — a pointer
+	// at the schema rather than a confusing SQL error on first use.
 	var auditOK, historyOK bool
 	if err := pool.QueryRow(ctx,
-		`select to_regclass('audit_events') is not null, to_regclass('schema_migrations') is not null`,
+		`select to_regclass('public.audit_events') is not null, to_regclass('public.schema_migrations') is not null`,
 	).Scan(&auditOK, &historyOK); err != nil {
 		return fmt.Errorf("inspect runtime database: %w", err)
 	}
 	if !auditOK || !historyOK {
-		return fmt.Errorf("runtime database has no audit_events/schema_migrations — is PORTCULLIS_DATABASE_URL pointing at the migrated database?")
+		return safeErrorf("runtime database has no audit_events/schema_migrations — is PORTCULLIS_DATABASE_URL pointing at the migrated database?")
 	}
 
+	// One query resolves every property of the session user, so all the
+	// ErrRuntimeInsecure errors below are our own crafted strings — never a
+	// wrapped query/connect error that could echo the DSN (the dev flag logs the
+	// reason text).
 	var user string
-	var member, canBecomeOwner bool
+	var member, unsafeAttrs, ownerReach bool
+	var strayRoles []string
 	if err := pool.QueryRow(ctx, `
-		select current_user,
-		       current_user = $1 or pg_has_role(current_user, $1, 'MEMBER'),
-		       pg_has_role(current_user, (select relowner from pg_class where oid = 'audit_events'::regclass), 'MEMBER')`,
+		select session_user,
+		       session_user = $1 or pg_has_role(session_user, $1, 'MEMBER'),
+		       -- Dangerous cluster attributes held directly by the session user
+		       -- (predicate shared with the owner-side checks — see privcheck.go).
+		       (select `+unsafeRoleAttrsSQL+`
+		        from pg_roles where rolname = session_user),
+		       -- Owner reach over any object whose owner can DROP/ALTER the audit
+		       -- table: the database, the public schema, or either protected table.
+		       -- USAGE = the owner's privileges are live right now (e.g. an INHERIT
+		       -- membership, or being the owner itself); SET = can become the owner;
+		       -- ADMIN OPTION = can grant itself SET at will, so it can become the owner.
+		       (select bool_or(pg_has_role(session_user, o.oid, 'USAGE') or pg_has_role(session_user, o.oid, 'SET') or pg_has_role(session_user, o.oid, 'MEMBER WITH ADMIN OPTION'))
+		        from (
+		            select datdba as oid from pg_database where datname = current_database()
+		            union all
+		            select nspowner from pg_namespace where nspname = 'public'
+		            union all
+		            select relowner from pg_class where oid = 'public.audit_events'::regclass
+		            union all
+		            select relowner from pg_class where oid = 'public.schema_migrations'::regclass
+		        ) o),
+		       -- Every OTHER role reachable via SET ROLE: an escalation path
+		       -- regardless of what it currently holds. A membership WITH ADMIN OPTION
+		       -- is equally an escalation path even when granted SET FALSE — the member
+		       -- can grant ITSELF the SET option (GRANT r TO self WITH SET TRUE) and then
+		       -- SET ROLE. A plain SET FALSE, no-admin membership is inert and stays
+		       -- allowed; INHERIT-only strays leak concrete privileges, which the matrix
+		       -- and owner-USAGE checks catch.
+		       coalesce((
+		           select array_agg(r.rolname order by r.rolname)
+		           from pg_roles r
+		           where (pg_has_role(session_user, r.oid, 'SET') or pg_has_role(session_user, r.oid, 'MEMBER WITH ADMIN OPTION'))
+		             and r.rolname <> session_user
+		             and r.rolname <> $1
+		       ), '{}')`,
 		runtimeRole,
-	).Scan(&user, &member, &canBecomeOwner); err != nil {
+	).Scan(&user, &member, &unsafeAttrs, &ownerReach, &strayRoles); err != nil {
 		return fmt.Errorf("inspect runtime connection: %w", err)
 	}
-	if !member {
-		return fmt.Errorf("runtime user %q is not a member of runtime role %q (ADR-0009) — grant it or fix PORTCULLIS_DATABASE_URL/PORTCULLIS_RUNTIME_ROLE", user, runtimeRole)
-	}
-	if err := checkRuntimeRoleAttributes(ctx, pool, user); err != nil {
-		return err
-	}
-	// The owner can ALTER the audit table and disable its append-only triggers —
-	// a runtime user that can SET ROLE into the owner voids the boundary.
-	// (A superuser evaluates true here and on the matrix below.)
-	if canBecomeOwner {
-		return fmt.Errorf("runtime user %q can become the audit_events owner; the server must not run with owner/superuser credentials (ADR-0009) — use a least-privilege user, or set PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true for local development only", user)
-	}
 
+	// Functional floor first, and ALWAYS fatal: a server that cannot connect or
+	// write audit rows must not boot, dev flag or not.
 	m, err := queryPrivilegeMatrix(ctx, pool, user)
 	if err != nil {
 		return fmt.Errorf("verify runtime user %q: %w", user, err)
 	}
-	switch {
-	case !m.connect || !m.auditRead || !m.auditAppend:
-		return fmt.Errorf("runtime user %q lacks required privileges (CONNECT=%t, audit SELECT=%t, audit INSERT=%t) (ADR-0009)", user, m.connect, m.auditRead, m.auditAppend)
-	case m.auditMutate:
-		return fmt.Errorf("runtime user %q holds UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES, or MAINTAIN on audit_events; the append-only boundary is broken (ADR-0009)", user)
-	case m.historyAny:
-		return fmt.Errorf("runtime user %q has access to schema_migrations; migration history must be owner-only (ADR-0009)", user)
+	if err := m.floorErr(fmt.Sprintf("runtime user %q", user), ""); err != nil {
+		return err
+	}
+
+	// Over-privilege violations: downgradable by the explicit dev flag only. The two
+	// checks below are the ONLY shapes the flag is meant to permit — the intentional
+	// single-role dev setup, where DATABASE_URL is the schema owner (ownerReach) or a
+	// superuser (a dangerous attribute). Both hold implicitly without any membership.
+	if unsafeAttrs {
+		return safeErrorf("%w: runtime user %q holds a dangerous attribute (%s) (ADR-0009)", ErrRuntimeInsecure, user, unsafeRoleAttrsList)
+	}
+	if ownerReach {
+		return safeErrorf("%w: runtime user %q owns (or can use/become the owner of) the database, public schema, or a protected table — the server must not run with owner/superuser credentials (ADR-0009)", ErrRuntimeInsecure, user)
+	}
+	// Membership is checked BEFORE the remaining over-privilege classes: a non-member
+	// is configuration drift (a wrong principal), not the owner/superuser dev shape
+	// caught above, so the dev flag must NEVER mask it — even when the drifted
+	// principal also holds a stray role or an excess table privilege (which would
+	// otherwise classify as downgradable ErrRuntimeInsecure and boot).
+	if !member {
+		return safeErrorf("runtime user %q is not a member of runtime role %q (ADR-0009) — grant it or fix PORTCULLIS_DATABASE_URL/PORTCULLIS_RUNTIME_ROLE", user, runtimeRole)
+	}
+	if len(strayRoles) > 0 {
+		return safeErrorf("%w: runtime user %q can SET ROLE into %s beyond the runtime role — it must be a member of only %q (ADR-0009)", ErrRuntimeInsecure, user, strings.Join(strayRoles, ", "), runtimeRole)
+	}
+	if err := m.excessErr(fmt.Sprintf("runtime user %q", user)); err != nil {
+		return safeErrorf("%w: %s", ErrRuntimeInsecure, err)
 	}
 	return nil
 }

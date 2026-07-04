@@ -11,8 +11,9 @@ const (
 	// maxPasswordLength bounds the Argon2 input so an oversized password can't be
 	// used to amplify hashing cost.
 	maxPasswordLength = 1024
-	// maxEmailLength is the RFC 5321 maximum for a forward path (address).
-	maxEmailLength = 254
+	// maxDisplayNameLength bounds the stored display name (Unicode code points) so
+	// an unbounded value can't bloat rows, logs, or UI. Generous for any real name.
+	maxDisplayNameLength = 256
 )
 
 // auditWriteTimeout bounds a best-effort audit write after it is detached from

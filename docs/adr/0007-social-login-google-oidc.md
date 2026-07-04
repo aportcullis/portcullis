@@ -1,7 +1,8 @@
 # ADR-0007: Social login via Google (OIDC)
 
-- **Status:** Accepted
-- **Date:** 2026-06-28
+- **Status:** Accepted (amended 2026-07-04: PKCE method, redirect target, and the pending
+  cookie's exact TTL pinned)
+- **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
 The MVP must support **Google social login** in addition to local email/password (ADR-0006). This
@@ -20,7 +21,11 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 
 ### Flow & libraries
 - `golang.org/x/oauth2` for the OAuth2 exchange; `github.com/coreos/go-oidc/v3/oidc` for provider
-  discovery and ID-token verification. Scopes `openid email profile`; Google uses `access_type=offline`.
+  discovery and ID-token verification. Scopes exactly `openid email profile` — nothing else, and
+  **no `access_type=offline`**: sign-in only needs the ID token once; a refresh token would be
+  standing credential we never use (amended 2026-07-04 — least privilege).
+- **PKCE method: `S256`** (RFC 7636 — `plain` is compatibility-only and prohibited here); use
+  `oauth2.GenerateVerifier()` + `oauth2.S256ChallengeOption`.
 - Two plain HTTP routes (the redirect flow does not fit Connect RPC):
   - `GET /auth/google/start` → generate `state`, `nonce`, PKCE `verifier`; 302 to Google's auth URL.
   - `GET /auth/google/callback` → validate `state`, exchange `code` (with PKCE verifier), verify the
@@ -28,7 +33,9 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 
 ### Pending-auth state
 - `state`, `nonce`, and the PKCE `code_verifier` are carried across the redirect in a **short-lived
-  AEAD-encrypted cookie** (`crypto.Keyring`), `__Host-` prefixed, ~10 min TTL — stateless, no table.
+  AEAD-encrypted cookie** (`crypto.Keyring` envelope, AAD record type `oidc_pending` — ADR-0003),
+  `__Host-` prefixed, TTL **10 min** exactly (cookie `Max-Age` and an encrypted-payload expiry
+  both enforced — the cookie attribute alone is client-controlled) — stateless, no table.
 
 ### Account model — link, never auto-create
 - Identity link stored in **`oidc_identities(user_id, issuer, subject, email, created_at)`**,
@@ -43,8 +50,11 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
   SDK and never handles tokens; it only renders a plain "Continue with Google" link to
   `GET /auth/google/start`.
 - The backend owns the redirect dance and, on success, sets the session cookie and 302-redirects
-  back to the SPA (a fixed app path). So the frontend stays dumb and UI changes are trivial — the
-  button is just an anchor; sign-in state is read from the session (the `Me` RPC).
+  back to the SPA at the fixed path **`/`** (never a client-supplied return URL — no open-redirect
+  surface; the SPA routes from its own state after `Me`). Failures redirect to
+  **`/login?error=oidc`** with no detail (specifics go to the server log only). So the frontend
+  stays dumb and UI changes are trivial — the button is just an anchor; sign-in state is read
+  from the session (the `Me` RPC).
 
 ### Config (Google login is optional)
 - `PORTCULLIS_GOOGLE_CLIENT_ID`, `PORTCULLIS_GOOGLE_CLIENT_SECRET`, `PORTCULLIS_GOOGLE_REDIRECT_URL`.
@@ -57,7 +67,8 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
   users, and Google is an authentication method, not a sign-up path. Multi-provider/LDAP/SAML remain
   out of scope.
 
-## Sources (checked 2026-06-28)
+## Sources (checked 2026-06-28; amendment items 2026-07-04)
 - coreos/go-oidc: https://github.com/coreos/go-oidc
 - Google OAuth 2.0 for web server apps: https://developers.google.com/identity/protocols/oauth2/web-server
 - OpenID Connect Core (sub, nonce): https://openid.net/specs/openid-connect-core-1_0.html
+- RFC 7636 (S256 mandatory-to-implement; plain discouraged): https://datatracker.ietf.org/doc/html/rfc7636

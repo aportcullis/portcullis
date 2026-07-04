@@ -12,7 +12,7 @@ import (
 )
 
 const bootstrapRoleID = `-- name: BootstrapRoleID :one
-select id from roles
+select id from public.roles
 where organization_id = $1 and is_bootstrap_default and deleted_at is null
 limit 1
 `
@@ -25,7 +25,7 @@ func (q *Queries) BootstrapRoleID(ctx context.Context, organizationID pgtype.UUI
 }
 
 const listPermissionKeys = `-- name: ListPermissionKeys :many
-select key from permissions order by key
+select key from public.permissions order by key
 `
 
 func (q *Queries) ListPermissionKeys(ctx context.Context) ([]string, error) {
@@ -50,9 +50,9 @@ func (q *Queries) ListPermissionKeys(ctx context.Context) ([]string, error) {
 
 const permissionsForUser = `-- name: PermissionsForUser :many
 select distinct rp.permission_key
-from organization_memberships m
-join roles r on r.id = m.role_id and r.deleted_at is null
-join role_permissions rp on rp.role_id = m.role_id
+from public.organization_memberships m
+join public.roles r on r.id = m.role_id and r.deleted_at is null
+join public.role_permissions rp on rp.role_id = m.role_id
 where m.organization_id = $1 and m.user_id = $2
 `
 

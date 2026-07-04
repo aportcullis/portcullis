@@ -15,6 +15,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -24,20 +25,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/platform/logging"
 	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 )
-
-// Service implements the auth use cases.
-type Service struct {
-	repo      Repository
-	hasher    PasswordHasher
-	csrf      CSRFProtector
-	auditor   AuditRecorder
-	logger    *slog.Logger
-	now       func() time.Time
-	idle      time.Duration
-	absolute  time.Duration
-	idleRenew time.Duration
-	dummyHash string // verified for unknown accounts to equalize login timing
-}
 
 // New builds the service with sensible defaults (12h idle, 7d absolute, idle
 // writes throttled to once a minute). The password hasher, CSRF protector, and
@@ -127,7 +114,18 @@ func (s *Service) recordAudit(ctx context.Context, e audit.Event) {
 // no-user invariant under a lock and writes user + password + membership
 // atomically (so a partial failure can't leave a half-created admin that
 // permanently blocks bootstrap).
-func (s *Service) Bootstrap(ctx context.Context, email, password, displayName string) (identity.User, error) {
+func (s *Service) Bootstrap(ctx context.Context, email, password, displayName string) (_ identity.User, err error) {
+	// EVERY failure exit records one best-effort event (as Login does), so probing
+	// the public bootstrap endpoint on an already-installed instance leaves a trail.
+	// The success path writes its own event in the creation transaction (below), so
+	// this fires only on a failed/refused attempt. There is no actor to attribute
+	// (the request either predates any user or is refused before one is created).
+	failed := newEvent(ctx, audit.ActionAuthBootstrap, audit.OutcomeFailed)
+	defer func() {
+		if err != nil {
+			s.recordAudit(ctx, failed)
+		}
+	}()
 	// Validate before any DB work or hashing so a malformed request is cheap to
 	// reject and can't create an admin with an unusable credential.
 	email = identity.NormalizeEmail(email)
@@ -136,6 +134,9 @@ func (s *Service) Bootstrap(ctx context.Context, email, password, displayName st
 	}
 	password = normalizePassword(password)
 	if err := validatePassword(password); err != nil {
+		return identity.User{}, err
+	}
+	if err := validateDisplayName(displayName); err != nil {
 		return identity.User{}, err
 	}
 	// Fast path: skip the expensive hash if already bootstrapped (the repository
@@ -178,6 +179,14 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 		}
 	}()
 
+	// Oversized input can never match a stored credential (Bootstrap enforces the
+	// same caps), so reject before any DB or hashing work — the upper password
+	// bound exists precisely to cap Argon2 input cost on verification (ADR-0006).
+	// The response stays the uniform credential rejection.
+	if identity.EmailTooLong(email) || utf8.RuneCountInString(password) > maxPasswordLength {
+		return Session{}, identity.ErrInvalidCredentials
+	}
+
 	// One query for the user + password hash, so existing and unknown accounts cost
 	// the same number of round-trips (anti-enumeration, OWASP).
 	u, hash, err := s.repo.GetUserForLogin(ctx, email)
@@ -195,7 +204,15 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 	}
 	ok, needsRehash, err := s.hasher.Verify(ctx, password, hash)
 	if err != nil {
-		return Session{}, err
+		// Only caller cancellation propagates (the deferred failure event still
+		// records the aborted attempt). Anything else — e.g. an unparsable stored
+		// hash — gets the same generic rejection as a wrong password, so the
+		// response stays uniform (ADR-0006); the cause is logged, types only.
+		if ctx.Err() != nil {
+			return Session{}, err
+		}
+		s.logger.WarnContext(ctx, "stored password hash unverifiable", "error_type", fmt.Sprintf("%T", err))
+		return Session{}, identity.ErrInvalidCredentials
 	}
 	// Uniform result for wrong-password and disabled-account (OWASP: a generic error
 	// regardless of whether the password was wrong or the account is disabled, with
@@ -228,15 +245,16 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 }
 
 // Authenticate resolves the user for a raw session token, rejecting revoked,
-// expired, or disabled sessions/users.
+// expired, or disabled sessions/users. It is a pure READ — the idle window is
+// slid by SlideIdle, which the transport calls only AFTER the CSRF check passes,
+// so a request that fails authorization can't keep a session alive.
 func (s *Service) Authenticate(ctx context.Context, token string) (identity.User, identity.Session, error) {
 	sum := sha256.Sum256([]byte(token))
 	sess, err := s.repo.GetSessionByTokenHash(ctx, sum[:])
 	if err != nil {
 		return identity.User{}, identity.Session{}, err
 	}
-	now := s.now()
-	if !sess.Valid(now) {
+	if !sess.Valid(s.now()) {
 		return identity.User{}, identity.Session{}, identity.ErrSessionNotFound
 	}
 	u, err := s.repo.GetUserByID(ctx, sess.UserID)
@@ -246,22 +264,23 @@ func (s *Service) Authenticate(ctx context.Context, token string) (identity.User
 	if !u.Active() {
 		return identity.User{}, identity.Session{}, identity.ErrUserDisabled
 	}
+	return u, sess, nil
+}
 
-	// Slide the idle window forward on activity, capped at the absolute expiry.
-	// Throttle the write to once per IdleRenewInterval so a busy session doesn't
-	// UPDATE on every request; the store uses greatest() so a late-arriving older
-	// request can't move the expiry backward.
-	newIdle := now.Add(s.idle)
+// SlideIdle advances the session's idle expiry on activity, capped at the
+// absolute expiry. The write is throttled to once per IdleRenewInterval so a busy
+// session doesn't UPDATE on every request; the store uses greatest() so a
+// late-arriving older request can't move the expiry backward. Best-effort about
+// ordering, but errors surface so the caller can fail the request.
+func (s *Service) SlideIdle(ctx context.Context, sess identity.Session) error {
+	newIdle := s.now().Add(s.idle)
 	if newIdle.After(sess.AbsoluteExpiresAt) {
 		newIdle = sess.AbsoluteExpiresAt
 	}
-	if newIdle.Sub(sess.IdleExpiresAt) >= s.idleRenew {
-		if err := s.repo.ExtendSessionIdle(ctx, sess.ID, newIdle); err != nil {
-			return identity.User{}, identity.Session{}, err
-		}
-		sess.IdleExpiresAt = newIdle
+	if newIdle.Sub(sess.IdleExpiresAt) < s.idleRenew {
+		return nil
 	}
-	return u, sess, nil
+	return s.repo.ExtendSessionIdle(ctx, sess.ID, newIdle)
 }
 
 // VerifyCSRF reports whether csrfToken is valid for the session identified by its
@@ -273,9 +292,15 @@ func (s *Service) VerifyCSRF(sessionToken, csrfToken string) bool {
 
 // rejectWithEqualizedTiming verifies the password against a dummy hash before
 // returning ErrInvalidCredentials, so an unknown account costs the same hashing
-// time as a wrong password (anti-enumeration, OWASP).
+// time as a wrong password (anti-enumeration, OWASP). Caller cancellation
+// propagates (as it does on the known-user path), so a request aborted mid-verify
+// returns the same context error for a known and an unknown email — otherwise the
+// divergence (ctx error vs ErrInvalidCredentials) would itself be an enumeration
+// signal. The deferred failure event still records the aborted attempt.
 func (s *Service) rejectWithEqualizedTiming(ctx context.Context, password string) error {
-	_, _, _ = s.hasher.Verify(ctx, password, s.dummyHash)
+	if _, _, err := s.hasher.Verify(ctx, password, s.dummyHash); err != nil && ctx.Err() != nil {
+		return err
+	}
 	return identity.ErrInvalidCredentials
 }
 
@@ -311,7 +336,7 @@ func (s *Service) issueSession(ctx context.Context, u identity.User) (Session, e
 // parser leaves permissive: it must be a bare addr-spec (no display name), carry
 // a dot, and have labels with no leading/trailing hyphen (rejects "a@b", "a@-x.com").
 func validateEmail(email string) error {
-	if email == "" || len(email) > maxEmailLength {
+	if email == "" || identity.EmailTooLong(email) {
 		return identity.ErrInvalidEmail
 	}
 	addr, err := mail.ParseAddress(email)
@@ -326,6 +351,25 @@ func validateEmail(email string) error {
 	for _, label := range strings.Split(domain, ".") {
 		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
 			return identity.ErrInvalidEmail
+		}
+	}
+	return nil
+}
+
+// validateDisplayName bounds the stored display name and rejects control (Cc),
+// format (Cf), and line/paragraph separator (Zl/Zp) characters, which could
+// corrupt logs or the UI. unicode.IsControl catches only Cc, so each other class
+// is tested explicitly: Cf covers bidi overrides (U+202E) and zero-width joiners
+// that spoof rendered names; Zl/Zp (U+2028/U+2029) render as real line breaks that
+// a plain "\n" — rejected as Cc — would, so omitting them leaves the same line
+// injection open. Empty is allowed — the UI falls back to the email.
+func validateDisplayName(name string) error {
+	if utf8.RuneCountInString(name) > maxDisplayNameLength {
+		return identity.ErrInvalidDisplayName
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+			return identity.ErrInvalidDisplayName
 		}
 	}
 	return nil

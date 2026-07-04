@@ -1,7 +1,8 @@
 # ADR-0008: RBAC — permissions in code, roles in the database
 
-- **Status:** Accepted
-- **Date:** 2026-06-28
+- **Status:** Accepted (amended 2026-07-04: the seeded catalog and system-role grants are
+  transcribed as the normative appendix; column/name fixes to match the shipped schema)
+- **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
 The PRD originally fixed three roles (admin/approver/requester) as an enum. We need **custom
@@ -30,15 +31,20 @@ get roles via membership; and **authorization is checked against permissions, no
   key is referenced only at the exact site that enforces it, when that feature ships.
 
 ### Roles = database rows (custom roles allowed)
-- `roles(id, organization_id, name, is_system, is_bootstrap_default, created_at)`, unique
-  `(organization_id, name)`; at most one `is_bootstrap_default` per org.
-- `role_permissions(role_id, permission)` — `permission` is a code-defined catalog key; the app
-  validates it against the catalog on write.
+- `roles(id, organization_id, name, is_system, is_bootstrap_default, created_at, deleted_at)` —
+  soft-deleted, never hard-deleted (`docs/conventions/data.md`), plus `unique (id,
+  organization_id)` as the composite-FK target so a membership's role must belong to the
+  membership's own org (ADR-0004).
+- Partial unique indexes (both ignore soft-deleted rows, so a deleted role frees its name):
+  `roles_org_name` on `(organization_id, name)`, and `roles_one_bootstrap_default` on
+  `(organization_id) where is_bootstrap_default` — at most one bootstrap default per org.
+- `role_permissions(role_id, permission_key)` — `permission_key` FKs `permissions(key)`
+  (the catalog is the referential source of truth), primary key `(role_id, permission_key)`,
+  plus a reverse-lookup index on `permission_key`.
 - **Custom roles**: admins (with `roles.create`/`roles.update`/`roles.delete` from the catalog)
   create roles and assign any catalog permissions.
-- **System roles** (`is_system = true`) are seeded **defaults, not a closed set**: `admin` (all
-  permissions), `approver` (create/execute/review requests, saved queries, audit.view),
-  `requester` (create/execute requests, saved queries). They cannot be deleted/renamed, but the set
+- **System roles** (`is_system = true`) are seeded **defaults, not a closed set** — their exact
+  permission sets are in the appendix below. They cannot be deleted/renamed, but the set
   of roles is open — admins add custom roles, and **the code never enumerates role names** (e.g.
   `role == "admin"`) for authorization; only permissions are checked.
 
@@ -54,10 +60,36 @@ get roles via membership; and **authorization is checked against permissions, no
   expressed as "at least one active member with `users.update` **and** `users.disable`" (the
   catalog keys — there is no aggregate `users.manage` permission).
 
+## Appendix — seeded catalog & system-role grants (normative, mirrors migration 0002)
+The SQL seed remains the runtime source of truth (loaded at startup); this appendix is its
+documentation-side mirror — a divergence between the two is a defect. Adding a permission =
+a new migration inserting the key **and** an amendment here.
+
+**Catalog (32 keys):**
+- `users.{list,get,create,update,disable}`
+- `roles.{list,get,create,update,delete}`
+- `connections.{list,get,create,update,delete,test}`
+- `policies.{get,update}`
+- `requests.{list,get,create,execute,approve,reject}`
+- `savedqueries.{list,get,create,update,delete,share}`
+- `audit.{list,get}`
+
+**System-role grants (seeded for the default org; `admin` carries `is_bootstrap_default`):**
+| Role | Permissions |
+|---|---|
+| `admin` | every catalog key (seeded as a cross join — a key added in a later migration must extend the admin grant in that same migration) |
+| `approver` | `requests.{list,get,create,execute,approve,reject}`, `savedqueries.{list,get,create,update,delete,share}`, `audit.{list,get}` |
+| `requester` | `requests.{list,get,create,execute}`, `savedqueries.{list,get,create,update,delete}` |
+
+(Prose shorthands like "review requests" or "audit view" in earlier drafts meant
+`requests.approve`/`requests.reject` and `audit.list`/`audit.get` — only the keys above
+exist.)
+
 ## Consequences
 - New domain types: `Permission` (+catalog), `Role{ID, Name, IsSystem, Permissions}`; ports
-  `RoleRepository` and permission resolution on the user side. New migration introduces `roles`,
-  `role_permissions`, seeds the three system roles, and switches memberships to `role_id`.
+  `RoleRepository` and permission resolution on the user side. Migration 0002 introduces
+  `permissions`/`roles`/`role_permissions`, seeds the catalog and the three system roles, and
+  switches memberships to `role_id` (composite FK `(role_id, organization_id)`).
 - PRD §4.3 amended: roles are DB-stored with a permission set; three system roles are seeded;
   custom roles are supported; authorization is permission-based. §6 gains `roles`/`role_permissions`
   and `organization_memberships.role_id`.

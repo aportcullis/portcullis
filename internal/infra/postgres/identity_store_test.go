@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,14 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
+
+// unique returns a per-run unique name so tests on the SHARED dbtest.Postgres
+// database stay re-runnable against a persistent PORTCULLIS_TEST_DATABASE_URL:
+// rows are soft-delete-only (data.md), so a fixed email/name would collide with
+// the previous run's unique index entry.
+func unique(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
+}
 
 // testEvent is a minimal valid audit event for exercising the transactional ops
 // in tests whose subject is not the audit trail itself.
@@ -48,8 +57,8 @@ func TestIdentityStore(t *testing.T) {
 		t.Fatalf("BootstrapRoleID: %v", err)
 	}
 
-	// Create the first user with a password and the bootstrap (admin) role.
-	const email = "admin@example.com"
+	// Create a user with a password and the bootstrap (admin) role.
+	email := unique("admin") + "@example.com"
 	u, err := store.CreateUser(ctx, email, "Admin")
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
@@ -80,10 +89,10 @@ func TestIdentityStore(t *testing.T) {
 		t.Errorf("want ErrUserNotFound, got %v", err)
 	}
 
-	// Sessions round-trip and revoke.
+	// Sessions round-trip and revoke. (token_hash is unique — per-run value.)
 	now := time.Now()
 	sess := identity.NewSession("", u.ID, now, 12*time.Hour, 7*24*time.Hour)
-	tokenHash := sha256.Sum256([]byte("raw-token"))
+	tokenHash := sha256.Sum256([]byte(unique("raw-token")))
 	created, err := store.CreateSession(ctx, sess, tokenHash[:])
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -95,17 +104,192 @@ func TestIdentityStore(t *testing.T) {
 		t.Fatalf("RevokeSession: %v", err)
 	}
 
-	// OIDC link + lookup.
+	// OIDC link + lookup. ((issuer, subject) is unique — per-run subject.)
+	subject := unique("sub")
 	if err := store.LinkIdentity(ctx, identity.OIDCIdentity{
-		UserID: u.ID, Issuer: "https://accounts.google.com", Subject: "sub-123", Email: email,
+		UserID: u.ID, Issuer: "https://accounts.google.com", Subject: subject, Email: email,
 	}); err != nil {
 		t.Fatalf("LinkIdentity: %v", err)
 	}
-	if got, err := store.FindUserBySubject(ctx, "https://accounts.google.com", "sub-123"); err != nil || got.ID != u.ID {
+	if got, err := store.FindUserBySubject(ctx, "https://accounts.google.com", subject); err != nil || got.ID != u.ID {
 		t.Errorf("FindUserBySubject mismatch: %v", err)
 	}
 	if _, err := store.FindUserBySubject(ctx, "https://accounts.google.com", "nope"); !errors.Is(err, identity.ErrNoLinkedAccount) {
 		t.Errorf("want ErrNoLinkedAccount, got %v", err)
+	}
+}
+
+// A duplicate email (case-insensitive, per the lower(email) unique index) maps to
+// the domain sentinel ErrEmailTaken, not a raw driver error, so callers can tell a
+// conflict from an infrastructure failure across the port boundary.
+func TestCreateUserDuplicateEmailMapsToErrEmailTaken(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	email := unique("dup") + "@example.com"
+	if _, err := store.CreateUser(ctx, email, "First"); err != nil {
+		t.Fatalf("first CreateUser: %v", err)
+	}
+	// Same address in different case must still collide on the lower(email) index.
+	_, err := store.CreateUser(ctx, "DUP"+email[3:], "Second")
+	if !errors.Is(err, identity.ErrEmailTaken) {
+		t.Errorf("duplicate CreateUser = %v, want ErrEmailTaken", err)
+	}
+}
+
+// A second revocation of the same session (concurrent double logout) must not
+// overwrite the original revoked_at — forensic evidence of WHEN the session
+// actually died — nor append a second AUTH_LOGOUT event: the audit trail
+// mirrors real state changes only (ADR-0009).
+func TestRevokeSessionIsIdempotent(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	u, err := store.CreateUser(ctx, unique("revoke")+"@example.com", "R")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	sess := identity.NewSession("", u.ID, time.Now(), 12*time.Hour, 7*24*time.Hour)
+	tokenHash := sha256.Sum256([]byte(unique("revoke-token")))
+	created, err := store.CreateSession(ctx, sess, tokenHash[:])
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	evt := testEvent(audit.ActionAuthLogout)
+	evt.TargetID = string(u.ID) // so this test's events are countable on a shared DB
+	if err := store.RevokeSession(ctx, created.ID, evt); err != nil {
+		t.Fatalf("RevokeSession: %v", err)
+	}
+	var firstRevokedAt time.Time
+	if err := pool.QueryRow(ctx, `select revoked_at from sessions where id = $1::uuid`, string(created.ID)).Scan(&firstRevokedAt); err != nil {
+		t.Fatalf("read revoked_at: %v", err)
+	}
+
+	// Second revoke: a no-op, not an error — and no new evidence.
+	if err := store.RevokeSession(ctx, created.ID, evt); err != nil {
+		t.Fatalf("second RevokeSession should be a no-op, got: %v", err)
+	}
+	var again time.Time
+	if err := pool.QueryRow(ctx, `select revoked_at from sessions where id = $1::uuid`, string(created.ID)).Scan(&again); err != nil {
+		t.Fatalf("re-read revoked_at: %v", err)
+	}
+	if !again.Equal(firstRevokedAt) {
+		t.Errorf("revoked_at overwritten: first %v, now %v", firstRevokedAt, again)
+	}
+	var events int
+	if err := pool.QueryRow(ctx,
+		`select count(*) from audit_events where action = 'AUTH_LOGOUT' and target_id = $1`, string(u.ID),
+	).Scan(&events); err != nil {
+		t.Fatalf("count audit events: %v", err)
+	}
+	if events != 1 {
+		t.Errorf("AUTH_LOGOUT events = %d, want exactly 1 (no trail without a state change)", events)
+	}
+}
+
+// Authentication and the post-CSRF idle slide are separate operations. If the
+// idle deadline passes between them, the UPDATE must not resurrect the session.
+func TestExtendSessionIdleDoesNotResurrectExpiredSession(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	u, err := store.CreateUser(ctx, unique("expired-session")+"@example.com", "Expired")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	sess := identity.NewSession("", u.ID, time.Now(), time.Hour, 24*time.Hour)
+	hash := sha256.Sum256([]byte(unique("expired-session-token")))
+	created, err := store.CreateSession(ctx, sess, hash[:])
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`update public.sessions set idle_expires_at = now() - interval '1 second' where id = $1::uuid`,
+		string(created.ID)); err != nil {
+		t.Fatalf("expire session: %v", err)
+	}
+
+	if err := store.ExtendSessionIdle(ctx, created.ID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("ExtendSessionIdle: %v", err)
+	}
+	var resurrected bool
+	if err := pool.QueryRow(ctx,
+		`select idle_expires_at > now() from public.sessions where id = $1::uuid`,
+		string(created.ID)).Scan(&resurrected); err != nil {
+		t.Fatalf("read session expiry: %v", err)
+	}
+	if resurrected {
+		t.Fatal("expired session was resurrected by idle slide")
+	}
+}
+
+// The idle-slide UPDATE carries two normative guards (ADR-0006): greatest()
+// so a late-arriving older request can never move the expiry backward, and
+// least() so the idle expiry never exceeds the absolute one.
+func TestExtendSessionIdleGuardsBackwardAndAbsolute(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	u, err := store.CreateUser(ctx, unique("idle-guards")+"@example.com", "Idle")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	sess := identity.NewSession("", u.ID, time.Now(), time.Hour, 24*time.Hour)
+	hash := sha256.Sum256([]byte(unique("idle-guards-token")))
+	created, err := store.CreateSession(ctx, sess, hash[:])
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	var baseline time.Time
+	if err := pool.QueryRow(ctx,
+		`select idle_expires_at from public.sessions where id = $1::uuid`,
+		string(created.ID)).Scan(&baseline); err != nil {
+		t.Fatalf("read baseline: %v", err)
+	}
+
+	// A stale request carrying an EARLIER deadline must not regress the expiry.
+	if err := store.ExtendSessionIdle(ctx, created.ID, time.Now().Add(30*time.Minute)); err != nil {
+		t.Fatalf("ExtendSessionIdle (earlier): %v", err)
+	}
+	var unchanged bool
+	if err := pool.QueryRow(ctx,
+		`select idle_expires_at = $2 from public.sessions where id = $1::uuid`,
+		string(created.ID), baseline).Scan(&unchanged); err != nil {
+		t.Fatalf("read after earlier slide: %v", err)
+	}
+	if !unchanged {
+		t.Error("an earlier deadline moved idle_expires_at backward; greatest() guard is broken")
+	}
+
+	// A deadline past the absolute expiry must clamp to it.
+	if err := store.ExtendSessionIdle(ctx, created.ID, time.Now().Add(1000*time.Hour)); err != nil {
+		t.Fatalf("ExtendSessionIdle (huge): %v", err)
+	}
+	var capped bool
+	if err := pool.QueryRow(ctx,
+		`select idle_expires_at = absolute_expires_at from public.sessions where id = $1::uuid`,
+		string(created.ID)).Scan(&capped); err != nil {
+		t.Fatalf("read after huge slide: %v", err)
+	}
+	if !capped {
+		t.Error("idle_expires_at exceeded absolute_expires_at; least() clamp is broken")
 	}
 }
 
@@ -212,8 +396,8 @@ func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 	// A throwaway custom role granting exactly one permission.
 	var roleID string
 	if err := pool.QueryRow(ctx,
-		`insert into roles (organization_id, name) values ($1::uuid, 'tmp-role') returning id::text`,
-		string(org)).Scan(&roleID); err != nil {
+		`insert into roles (organization_id, name) values ($1::uuid, $2) returning id::text`,
+		string(org), unique("tmp-role")).Scan(&roleID); err != nil {
 		t.Fatalf("insert role: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
@@ -222,7 +406,7 @@ func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 		t.Fatalf("grant permission: %v", err)
 	}
 
-	u, err := store.CreateUser(ctx, "perm@example.com", "Perm")
+	u, err := store.CreateUser(ctx, unique("perm")+"@example.com", "Perm")
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

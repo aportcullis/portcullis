@@ -13,8 +13,8 @@ import (
 
 const findUserBySubject = `-- name: FindUserBySubject :one
 select u.id, u.email, u.display_name, u.status, u.created_at
-from oidc_identities i
-join users u on u.id = i.user_id
+from public.oidc_identities i
+join public.users u on u.id = i.user_id
 where i.issuer = $1 and i.subject = $2
 `
 
@@ -37,7 +37,7 @@ func (q *Queries) FindUserBySubject(ctx context.Context, arg FindUserBySubjectPa
 }
 
 const linkOIDCIdentity = `-- name: LinkOIDCIdentity :one
-insert into oidc_identities (user_id, issuer, subject, email)
+insert into public.oidc_identities (user_id, issuer, subject, email)
 values ($1, $2, $3, $4)
 on conflict (issuer, subject) do update set email = excluded.email
 where oidc_identities.user_id = excluded.user_id

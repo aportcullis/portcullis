@@ -83,6 +83,21 @@ func TestMiddlewareReusesIncomingRequestID(t *testing.T) {
 	}
 }
 
+func TestMiddlewareReplacesUnsafeRequestID(t *testing.T) {
+	t.Parallel()
+	h := logging.Middleware(logging.New("error", "json"))(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	for _, incoming := range []string{strings.Repeat("a", 129), "line break", "한글-id"} {
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		req.Header.Set("X-Request-Id", incoming)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get("X-Request-Id"); got == "" || got == incoming || len(got) > 128 {
+			t.Errorf("unsafe X-Request-Id %q was not replaced safely; got %q", incoming, got)
+		}
+	}
+}
+
 func TestMiddlewareKeepsResponseWriterFlushable(t *testing.T) {
 	t.Parallel()
 	// connect-go does a direct w.(http.Flusher) assertion for server-streaming, so

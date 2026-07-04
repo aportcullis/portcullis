@@ -1,7 +1,8 @@
 # ADR-0006: Authentication & sessions
 
-- **Status:** Accepted
-- **Date:** 2026-06-28
+- **Status:** Accepted (amended 2026-07-04: normative Parameters section — every numeric
+  limit, ordering invariant, and wire format the implementation uses)
+- **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
 The MVP authenticates with local email/password and server-side sessions, and bootstraps the first
@@ -64,12 +65,88 @@ Standards verified on 2026-06-28 (OWASP):
   bucket (`ResourceExhausted` over the limit, before any hashing). Behind a reverse proxy the real
   client IP is recovered from `X-Forwarded-For` only for peers in `PORTCULLIS_TRUSTED_PROXIES` (CIDRs);
   otherwise the direct peer IP is used, so a client can't spoof its own key.
-- **Bootstrap** creates the first admin (active user + `admin` membership in the default org) only
-  when zero users exist; otherwise it is refused.
+- **Bootstrap** creates the first admin (active user + the `is_bootstrap_default` role's
+  membership in the default org — resolved by flag, never by name, ADR-0008) only when zero
+  users exist; otherwise it is refused.
+
+## Parameters (normative — amended 2026-07-04)
+
+### Tokens & wire formats
+- Session token: 32 CSPRNG bytes, cookie value = **`base64.RawURLEncoding`** of those bytes;
+  store keeps `sha256(raw cookie string bytes)` in `sessions.token_hash`.
+- CSRF token wire format: **`base64url(mac) + "." + base64url(nonce)`** (raw/unpadded), where
+  `nonce` = 16 CSPRNG bytes and
+  `mac = HMAC-SHA-256(payload-integrity key, "csrf:" + session_cookie_value + ":" + nonce)` —
+  the literal `csrf:`/`:` namespacing prevents cross-purpose digest collisions on the shared
+  keyring; verification is constant-time.
+- Login timing equalizer: at service construction, precompute one Argon2 hash of the fixed
+  string `"portcullis-login-timing-equalizer"`; construction **fails** if hashing fails (a
+  half-built service never starts). Unknown-email and OIDC-only (no password row) logins
+  verify against this dummy hash so they cost the same as a wrong password; the user lookup
+  is a single query either way (equal round-trips). The attempted email of an unknown account
+  is never persisted. Caller cancellation propagates on the unknown-email path too, so a
+  request aborted mid-verify returns the same context error for a known and an unknown email
+  (the divergence would itself be an enumeration signal) (amended 2026-07-05).
+  - **Accepted residual (parameter changes).** The dummy is hashed with the *current* Argon2
+    profile. After an operator *raises* the profile, an existing account whose stored hash was
+    written under the old (cheaper) profile verifies faster than the dummy until it is rehashed,
+    which only happens on a *successful* login — so a wrong-password probe of a dormant
+    old-profile account is measurably faster than a probe of an unknown email. OWASP's guidance
+    (compare against a dummy hash) is satisfied; per-account parameter matching is not
+    achievable without a stored-hash migration. Operational guidance: when raising the Argon2
+    profile, force re-login (revoke sessions) so accounts rehash promptly and the window closes.
+    (Documented 2026-07-05.)
+
+### Session lifecycle
+- Idle expiry **12h**, absolute **7d** (both from issuance; idle capped at absolute).
+- Idle slide is throttled: the `idle_expires_at` UPDATE runs at most once per **1 min**
+  (`IdleRenewInterval`) per session, and the store uses `greatest()` so a late-arriving older
+  request can never move expiry backward.
+- **Ordering invariant:** `Authenticate` is a pure read; the idle slide happens only **after
+  the CSRF check passes**, so a CSRF-rejected request cannot keep a session alive.
+- An **infra failure** while resolving or sliding a session (the lookup, or the idle-slide
+  write of an authenticated, CSRF-valid request) surfaces as Connect `Unavailable`
+  (retryable), never `Unauthenticated` — a DB blip must not read as a logout. Only the
+  invalid-session sentinels (not-found / disabled) map to `Unauthenticated`.
+- Rotation on login is one transaction: revoke the user's prior sessions + insert the new one
+  + commit the login audit event (ADR-0009); concurrent logins leave exactly one active
+  session (serialized by advisory-lock class 2, ADR-0010). The CSRF token is issued *before*
+  the rotation commit — the commit is the last fallible step.
+- On successful login with an outdated stored profile, rehash and store best-effort (a rehash
+  failure does not fail the login).
+- Bootstrap fast-path: `CountUsers` runs before any hashing (already-bootstrapped requests
+  are cheap to refuse); the repository re-checks the zero-user invariant authoritatively
+  under advisory-lock class 1 inside the transaction.
+
+### Input validation limits
+| Input | Rule |
+|---|---|
+| password | NFC-normalized, then **15–1024 Unicode code points** (upper bound caps Argon2 input cost) |
+| email | canonicalized (trim + lowercase); ≤ **254** chars; stdlib RFC 5322 parse as a bare addr-spec, then domain must contain a dot and every label must be non-empty with no leading/trailing hyphen |
+| display name | ≤ **256** code points, **no control (Cc), format (Cf), or line/paragraph separator (Zl/Zp) characters** — Cf covers bidi overrides (U+202E) and zero-width characters that spoof rendered names; Zl/Zp (U+2028/U+2029) render as real line breaks that a plain `\n` (rejected as Cc) would, so omitting them leaves the same log/UI line-injection open (amended 2026-07-05); empty allowed (UI falls back to email) |
+
+The password/email UPPER bounds also apply to **login input** (not just registration):
+an over-cap value can never match a stored credential, so Login rejects it before any
+DB or hashing work — the upper password bound exists precisely to cap Argon2 input
+cost on verification. The 15-code-point minimum is a registration-time policy only.
+
+### Rate limiting & backoff
+- Token buckets per client IP **and** per normalized email: burst **10**, refill **1/3s**,
+  idle TTL **10 min**, max **50,000** buckets per store, LRU eviction — full detail and the
+  client-IP resolution rules in ADR-0010. Applied to Bootstrap/Login before any hashing;
+  over limit → `ResourceExhausted`.
+- **Progressive backoff** (PRD §8.3 — ships as its own work item, parameters pinned now):
+  a per-account failure counter in the DB (shared across replicas, unlike the process-local
+  buckets). After **5** consecutive failures, reject logins for a lockout window starting at
+  **1 min**, doubling per subsequent failure to a **15 min** cap, with **±20% jitter** on
+  expiry (so unlock times can't be probed exactly); the counter resets on success or expiry.
+  Lockout responses are indistinguishable from wrong-credential responses (no oracle).
+  *Provisional:* window sizes re-checked against support-load reality after MVP.
 
 ## Consequences
-- `app/identity.AuthService` owns Login/Logout/Authenticate/Bootstrap; transport sets/clears the two
-  `__Host-` cookies and runs a session+CSRF interceptor. The CSRF HMAC reuses the keyring, so no new
+- `app/auth.Service` (package `internal/app/auth`) owns Login/Logout/Authenticate/Bootstrap;
+  transport sets/clears the two `__Host-` cookies and runs the interceptor chain
+  (ClientIP → RateLimit → Auth, ADR-0010). The CSRF HMAC reuses the keyring, so no new
   key material is introduced.
 - PRD §8.3 is amended to specify the `__Host-` prefix, `SameSite=Lax`, and the HMAC-bound
   double-submit CSRF token (it previously said only "CSRF token").

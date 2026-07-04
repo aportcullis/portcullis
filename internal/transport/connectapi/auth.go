@@ -119,6 +119,8 @@ func authError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid email"))
 	case errors.Is(err, identity.ErrWeakPassword):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("password does not meet policy"))
+	case errors.Is(err, identity.ErrInvalidDisplayName):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid display name"))
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}

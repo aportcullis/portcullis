@@ -24,12 +24,6 @@ type Server struct {
 	drainDelay time.Duration
 }
 
-// Mount attaches an HTTP route — typically a Connect RPC handler — to the server.
-type Mount struct {
-	Pattern string
-	Handler http.Handler
-}
-
 // New builds the server with health endpoints, the embedded frontend, and any
 // provided API mounts. drainDelay is how long readiness reports "draining"
 // before connections are closed, giving Kubernetes time to deregister the pod.
@@ -49,6 +43,7 @@ func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...M
 		Addr:              addr,
 		Handler:           logging.Middleware(logger)(mux),
 		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    maxHeaderBytes,
 		// Bound the whole request read so a slow-body (slowloris) connection can't
 		// hold a goroutine open indefinitely, and reap idle keep-alives. WriteTimeout
 		// is intentionally unset: once streaming RPCs land, a blanket write deadline
@@ -73,7 +68,12 @@ func (s *Server) ListenAndServe() error { return s.http.ListenAndServe() }
 
 // Shutdown sheds traffic, then gracefully drains in-flight requests. Readiness
 // flips to draining first so Kubernetes stops routing before connections close.
-func (s *Server) Shutdown(ctx context.Context) error {
+// The drain delay and the timeout are SEQUENTIAL budgets (ADR-0010): the delay
+// elapses in full so deregistration propagates, and only then does
+// http.Server.Shutdown get the entire timeout to drain in-flight requests —
+// sharing one deadline would let the delay eat the drain budget. ctx is an
+// escape hatch for a caller-forced abort, not the drain deadline.
+func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) error {
 	s.health.StartDraining()
 	if s.drainDelay > 0 {
 		s.logger.Info("draining", "delay", s.drainDelay)
@@ -82,6 +82,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		case <-ctx.Done():
 		}
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	return s.http.Shutdown(ctx)
 }
 
@@ -96,12 +98,21 @@ func (s *Server) spa() http.Handler {
 	if _, err := fs.Stat(dist, "index.html"); err != nil {
 		return http.HandlerFunc(frontendNotBuilt)
 	}
+	return spaHandler(dist)
+}
 
+// spaHandler serves files from dist (which must contain index.html), falling
+// back to index.html for anything that is not an existing regular file —
+// client-side routes and directories alike.
+func spaHandler(dist fs.FS) http.Handler {
 	fileServer := http.FileServerFS(dist)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		if name != "" {
-			if _, err := fs.Stat(dist, name); err == nil {
+			// Serve only real FILES directly: a directory (e.g. /assets/) would make
+			// http.FileServerFS render an auto-generated listing of the embedded
+			// bundle, so it falls through to the SPA fallback like any client route.
+			if fi, err := fs.Stat(dist, name); err == nil && !fi.IsDir() {
 				fileServer.ServeHTTP(w, r)
 				return
 			}

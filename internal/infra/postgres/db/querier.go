@@ -18,6 +18,9 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Slide the idle window forward on activity, never past the absolute expiry and
 	// never backward (greatest() guards against a late, older request regressing it).
+	// Re-check both expiries in the write: a session can expire after Authenticate
+	// reads it but before the post-CSRF slide, and an expired session must never be
+	// resurrected by that race.
 	ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) error
 	FindUserBySubject(ctx context.Context, arg FindUserBySubjectParams) (User, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
@@ -41,7 +44,11 @@ type Querier interface {
 	// repository contract) and joined to roles so a soft-deleted role stops granting
 	// its permissions even while a membership still references it (FKs are RESTRICT).
 	PermissionsForUser(ctx context.Context, arg PermissionsForUserParams) ([]string, error)
-	RevokeSession(ctx context.Context, id pgtype.UUID) error
+	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must
+	// not overwrite the original revoked_at — forensic evidence of WHEN the session
+	// actually died — and the caller skips the audit event when no row changed, so
+	// the trail records only real state changes (ADR-0009).
+	RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error)
 	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
 	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error

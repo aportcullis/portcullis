@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -101,5 +102,24 @@ func TestE2E_SPAPlaceholder(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "Portcullis") {
 		t.Errorf("/ body missing app name; got %q", string(body))
+	}
+}
+
+// The drain delay and the shutdown timeout are SEQUENTIAL budgets (ADR-0010):
+// the delay must elapse in full — so Kubernetes deregisters the pod — even when
+// it exceeds the shutdown timeout, and Shutdown must still succeed instead of
+// handing http.Server.Shutdown an already-expired context.
+func TestShutdownDrainDelayNotChargedToShutdownTimeout(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	const drain = 80 * time.Millisecond
+	s := server.New("127.0.0.1:0", logger, drain)
+
+	start := time.Now()
+	if err := s.Shutdown(context.Background(), 20*time.Millisecond); err != nil {
+		t.Fatalf("Shutdown = %v; the drain delay must not consume the shutdown budget", err)
+	}
+	if elapsed := time.Since(start); elapsed < drain {
+		t.Errorf("drain delay cut short: elapsed %v, want >= %v", elapsed, drain)
 	}
 }

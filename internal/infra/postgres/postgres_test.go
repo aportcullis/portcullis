@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
@@ -27,6 +29,44 @@ func TestMigrateIdempotentAndSeedsDefaultOrg(t *testing.T) {
 	}
 	if orgs != 1 {
 		t.Errorf("default org count = %d, want 1", orgs)
+	}
+}
+
+func TestMigratePinsPublicSearchPath(t *testing.T) {
+	base := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if _, err := base.Exec(ctx, `create schema trap`); err != nil {
+		t.Fatalf("create trap schema: %v", err)
+	}
+
+	cfg, err := pgxpool.ParseConfig(base.Config().ConnString())
+	if err != nil {
+		t.Fatalf("parse pool config: %v", err)
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = "trap"
+	cfg.MaxConns = 1 // force Migrate to reuse the connection carrying the temp table below
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("open trap-search-path pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := pool.Exec(ctx, `create temporary table users (id integer)`); err != nil {
+		t.Fatalf("create shadow temp table: %v", err)
+	}
+
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	var inPublic, inTrap, inTemp bool
+	if err := pool.QueryRow(ctx,
+		`select to_regclass('public.users') is not null,
+		        to_regclass('trap.users') is not null,
+		        to_regclass('pg_temp.users') is not null`,
+	).Scan(&inPublic, &inTrap, &inTemp); err != nil {
+		t.Fatalf("inspect migrated relations: %v", err)
+	}
+	if !inPublic || inTrap || inTemp {
+		t.Fatalf("migration namespace escaped public: public.users=%t trap.users=%t temp.users=%t", inPublic, inTrap, inTemp)
 	}
 }
 

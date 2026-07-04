@@ -16,12 +16,23 @@ Design an index for every lookup and foreign key (e.g. `organization_memberships
 Ordered SQL in `migrations/` (embedded, applied at startup, tracked in `schema_migrations`). A
 committed migration is **immutable once released** — add a new file, never edit an applied one. Use
 `if not exists` / `or replace` so migrations are re-runnable.
+The migration runner drops any session-local temporary objects and pins its dedicated session to
+`search_path = public` (`pg_catalog` remains implicitly first); never rely on a role/DSN-provided
+search path without schema-qualifying every migration.
 
-Migrations run as the **schema owner**; the server runs as `portcullis_runtime` (ADR-0009), which
-gets DML on new tables automatically via default privileges. A migration adding a **sensitive**
-table (append-only or restricted, like `audit_events`) must `REVOKE` the forbidden verbs from
-`portcullis_runtime` **in that same migration**. `schema_migrations` stays **owner-only** — never
-grant the runtime any access to it (0003 revokes all; Migrate verifies this on every boot).
+Migrations run as the **schema owner**; the server runs as the configured runtime role
+(`PORTCULLIS_RUNTIME_ROLE`, default `portcullis_runtime`; ADR-0009), which gets DML on new tables
+automatically via default privileges. A table is **sensitive** when the
+application must not be able to rewrite its rows — concretely: append-only history
+(`audit_events`), migration/version bookkeeping (`schema_migrations`), and any future table
+whose rows are evidence (immutable artifacts, approval records once terminal). A migration
+adding a sensitive table must `REVOKE` the forbidden verbs from the role named by the
+`portcullis.runtime_role` migration GUC **in that same migration** and say so in a SQL comment; a
+new table without either the revoke or an explicit "not sensitive" judgment in review is a defect.
+`schema_migrations` stays **owner-only** — never grant the runtime any access to it (0003 revokes
+all; Migrate verifies this on every boot).
+Application SQL schema-qualifies metadata relations with `public.`; the runtime has no database
+`TEMPORARY`, so a temporary relation cannot shadow a protected table.
 
 ## RBAC permissions (ADR-0008)
 Permissions are **Google-IAM-style `resource.verb`** (verbs `list`/`get`/`create`/`update`/`delete`

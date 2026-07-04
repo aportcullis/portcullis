@@ -1,7 +1,9 @@
 # ADR-0005: CellValue / ColumnMeta wire contract
 
-- **Status:** Accepted — wire contract and sort/filter/CSV rules fixed. Per-engine scan-type → LogicalType mapping tables filled and fixture-pinned during adapter work.
-- **Date:** 2026-06-27
+- **Status:** Accepted — wire contract and sort/filter/CSV rules fixed. (Amended 2026-07-04:
+  per-engine scan-type → LogicalType mapping tables and the NULL-ordering / tie-breaker rules
+  are pinned; adapter work pins them with fixtures, it no longer designs them.)
+- **Date:** 2026-06-27 (amended 2026-07-04)
 
 ## Context
 The result grid is a core differentiator: it streams arbitrary result cells from three engines
@@ -63,8 +65,12 @@ message CellValue {
 - `STRING`/`UUID`/`JSON`/`ARRAY`/`UNKNOWN` compare lexically (byte order, UTF-8).
 - Temporal types compare on the normalized instant/value.
 - `BOOL` false < true. `BYTES` lexicographic.
-- **NULL ordering is explicit and stable** (nulls last by default) and combined with the
-  pagination tie-breaker so page boundaries are stable.
+- **NULL ordering is fixed: nulls sort last in both directions** (ASC and DESC), not
+  configurable in the MVP — one rule, no per-request surface.
+- **Pagination tie-breaker: the snapshot row ordinal** (the row's position in the original
+  result order, stored per row), ascending, appended to every sort. Page boundaries are
+  therefore stable across identical requests, and "unsorted" is exactly the original result
+  order.
 
 ### CSV serialization
 - Each cell → text: `is_null` → empty field; `bytes` → base64; `JSON`/`ARRAY` → raw text;
@@ -80,5 +86,54 @@ message CellValue {
   logical type, so they are engine-agnostic.
 - Lossless-by-default: anything not confidently typed becomes `UNKNOWN`+string rather than a lossy
   cast, matching the fail-closed posture elsewhere.
-- Open item: per-engine mapping tables (driver scan type → `LogicalType`) are filled during the
-  adapter work and pinned with fixtures alongside the classification suite.
+
+## Per-engine mapping tables (normative; fixture-pinned alongside the classification suite)
+
+Anything not listed maps to `UNKNOWN` and travels as the driver's text rendering in
+`string_value` — never a coerced native type.
+
+### PostgreSQL (pgx — by type OID / name)
+| PG type | LogicalType | CellValue kind |
+|---|---|---|
+| `bool` | BOOL | bool_value |
+| `int2`, `int4`, `int8` | INT | int_value (decimal string) |
+| `numeric` | DECIMAL | decimal_value (exact text) |
+| `float4`, `float8` | FLOAT | double_value |
+| `text`, `varchar`, `bpchar`, `name`, `citext` | STRING | string_value |
+| `bytea` | BYTES | bytes_value |
+| `date` | DATE | temporal_value `YYYY-MM-DD` |
+| `time`, `timetz` | TIME | temporal_value `HH:MM:SS[.ffffff]` (timetz keeps its offset) |
+| `timestamp` | TIMESTAMP | temporal_value, naive ISO-8601 |
+| `timestamptz` | TIMESTAMPTZ | temporal_value, UTC-normalized with offset |
+| `json`, `jsonb` | JSON | string_value (raw text) |
+| `uuid` | UUID | string_value (canonical lowercase) |
+| any array type (typelem ≠ 0) | ARRAY | string_value (PG text rendering, e.g. `{1,2}`) |
+| `oid`, `xid`, `interval`, ranges, geo, everything else | UNKNOWN | string_value |
+
+### MySQL (go-sql-driver — by `ColumnType.DatabaseTypeName()`)
+| MySQL type | LogicalType | Notes |
+|---|---|---|
+| `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, `BIGINT` (signed or `UNSIGNED`) | INT | int_value; `TINYINT(1)` stays INT (display width is not a type — no bool guessing) |
+| `YEAR` | INT | |
+| `DECIMAL` | DECIMAL | exact text |
+| `FLOAT`, `DOUBLE` | FLOAT | |
+| `CHAR`, `VARCHAR`, `TEXT`/`TINYTEXT`/`MEDIUMTEXT`/`LONGTEXT`, `ENUM`, `SET` | STRING | |
+| `BINARY`, `VARBINARY`, `BLOB`/`TINYBLOB`/`MEDIUMBLOB`/`LONGBLOB`, `BIT` | BYTES | |
+| `DATE` | DATE | |
+| `TIME` | TIME | |
+| `DATETIME` | TIMESTAMP | naive — MySQL stores it as-entered |
+| `TIMESTAMP` | TIMESTAMPTZ | MySQL converts through the session tz; adapter fixes the session to UTC and emits UTC |
+| `JSON` | JSON | raw text |
+| `GEOMETRY` etc. | UNKNOWN | |
+
+### SQLite (dynamic typing — two-level rule)
+- **`ColumnMeta.logical_type` comes from the declared type** (decltype) via SQLite's affinity
+  rules: INTEGER affinity → INT, REAL → FLOAT, TEXT → STRING, BLOB (or no decltype) → BYTES,
+  NUMERIC affinity → DECIMAL; expression columns without a decltype → UNKNOWN.
+- **Each `CellValue` follows the cell's actual storage class** (`sqlite3_column_type`):
+  INTEGER → int_value, FLOAT → double_value, TEXT → string_value, BLOB → bytes_value,
+  NULL → is_null. A cell whose storage class contradicts the column's logical type is legal
+  in SQLite and travels by its storage class — the grid renders by cell, sorts by the rules
+  above per cell.
+- SQLite has no native date/time/uuid/json types; such columns surface as their storage
+  class (typically STRING) — no format sniffing.

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"hash/fnv"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aportcullis/portcullis/internal/domain/audit"
@@ -20,6 +22,11 @@ import (
 type IdentityStore struct {
 	pool *pgxpool.Pool
 	q    *db.Queries
+
+	// orgID caches the single-org id (immutable after seeding) so audit writes on
+	// hot paths (every failed login, every rotate/revoke tx) don't re-query it.
+	orgMu sync.Mutex
+	orgID identity.OrganizationID
 }
 
 // NewIdentityStore builds the store on a connection pool.
@@ -61,6 +68,21 @@ func notFound(err, domainErr error) error {
 	return err
 }
 
+// onUniqueViolation maps a unique-constraint violation (SQLSTATE 23505) to a domain
+// sentinel so a duplicate is distinguishable from a real failure across the port
+// boundary — callers branch on the sentinel, never on the raw driver error. When
+// constraint is non-empty it must also match ConstraintName (the index/constraint
+// that was violated), so unrelated unique conflicts on the same statement still
+// surface as themselves. Other errors pass through unchanged.
+func onUniqueViolation(err error, constraint string, domainErr error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode &&
+		(constraint == "" || pgErr.ConstraintName == constraint) {
+		return domainErr
+	}
+	return err
+}
+
 func toUser(u db.User) identity.User {
 	return identity.User{
 		ID:          identity.UserID(uuidToString(u.ID)),
@@ -89,17 +111,27 @@ func (s *IdentityStore) CountUsers(ctx context.Context) (int64, error) {
 }
 
 func (s *IdentityStore) DefaultOrganizationID(ctx context.Context) (identity.OrganizationID, error) {
+	s.orgMu.Lock()
+	cached := s.orgID
+	s.orgMu.Unlock()
+	if cached != "" {
+		return cached, nil
+	}
 	org, err := s.q.GetDefaultOrganization(ctx)
 	if err != nil {
-		return "", err
+		return "", err // don't cache a transient failure
 	}
-	return identity.OrganizationID(uuidToString(org.ID)), nil
+	id := identity.OrganizationID(uuidToString(org.ID))
+	s.orgMu.Lock()
+	s.orgID = id
+	s.orgMu.Unlock()
+	return id, nil
 }
 
 func (s *IdentityStore) CreateUser(ctx context.Context, email, displayName string) (identity.User, error) {
 	u, err := s.q.CreateUser(ctx, db.CreateUserParams{Email: email, DisplayName: displayName})
 	if err != nil {
-		return identity.User{}, err
+		return identity.User{}, onUniqueViolation(err, usersEmailLowerIndex, identity.ErrEmailTaken)
 	}
 	return toUser(u), nil
 }
@@ -175,7 +207,9 @@ func (s *IdentityStore) AddMembership(ctx context.Context, org identity.Organiza
 		return err
 	}
 	_, err = s.q.CreateMembership(ctx, db.CreateMembershipParams{OrganizationID: orgU, UserID: userU, RoleID: roleU})
-	return err
+	// The one unique constraint on the insert is (organization_id, user_id); map its
+	// violation to the domain sentinel rather than leaking the raw driver error.
+	return onUniqueViolation(err, "", identity.ErrMembershipExists)
 }
 
 func (s *IdentityStore) PermissionsForUser(ctx context.Context, org identity.OrganizationID, id identity.UserID) ([]identity.Permission, error) {
@@ -322,11 +356,30 @@ func (s *IdentityStore) GetSessionByTokenHash(ctx context.Context, tokenHash []b
 	return toSession(row), nil
 }
 
+// completeEventOrg fills a missing OrganizationID from the cached single-org id
+// BEFORE the transaction opens (insertAuditTx can also resolve it, but only via
+// an extra query inside the tx). Every state-changing method that rides an audit
+// event calls this one helper so the invariant can't be forgotten per call site.
+func (s *IdentityStore) completeEventOrg(ctx context.Context, evt *audit.Event) error {
+	if evt.OrganizationID != "" {
+		return nil
+	}
+	org, err := s.DefaultOrganizationID(ctx)
+	if err != nil {
+		return err
+	}
+	evt.OrganizationID = org
+	return nil
+}
+
 // RevokeSession revokes one session and writes the audit event in the same
 // transaction (ADR-0009), so a logout can never commit without its trail.
 func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID, evt audit.Event) error {
 	sid, err := stringToUUID(string(id))
 	if err != nil {
+		return err
+	}
+	if err := s.completeEventOrg(ctx, &evt); err != nil {
 		return err
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -335,8 +388,15 @@ func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful commit
 	q := s.q.WithTx(tx)
-	if err := q.RevokeSession(ctx, sid); err != nil {
+	rows, err := q.RevokeSession(ctx, sid)
+	if err != nil {
 		return err
+	}
+	if rows == 0 {
+		// Already revoked (concurrent double logout): no state changed, so no
+		// audit event — the trail must mirror real state changes (ADR-0009) and
+		// the original revoked_at stays intact. Nothing to commit.
+		return nil
 	}
 	if err := insertAuditTx(ctx, q, evt); err != nil {
 		return err
@@ -367,6 +427,9 @@ func (s *IdentityStore) ExtendSessionIdle(ctx context.Context, id identity.Sessi
 func (s *IdentityStore) RotateSession(ctx context.Context, user identity.UserID, sess identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error) {
 	uid, err := stringToUUID(string(user))
 	if err != nil {
+		return identity.Session{}, err
+	}
+	if err := s.completeEventOrg(ctx, &evt); err != nil {
 		return identity.Session{}, err
 	}
 	var out identity.Session

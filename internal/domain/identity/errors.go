@@ -15,6 +15,9 @@ var (
 	// ErrWeakPassword means a password was shorter than the minimum or longer than
 	// the maximum allowed length.
 	ErrWeakPassword = errors.New("identity: password does not meet policy")
+	// ErrInvalidDisplayName means a display name was over the length limit or
+	// contained control characters.
+	ErrInvalidDisplayName = errors.New("identity: invalid display name")
 	// ErrUserDisabled means the account exists but may not authenticate.
 	ErrUserDisabled = errors.New("identity: user is disabled")
 	// ErrAlreadyBootstrapped means bootstrap ran when users already exist.
@@ -25,4 +28,11 @@ var (
 	// ErrIdentityLinkedToAnotherUser means the (issuer, subject) is already linked
 	// to a different local user, so it must not be re-pointed.
 	ErrIdentityLinkedToAnotherUser = errors.New("identity: external identity already linked to another user")
+	// ErrEmailTaken means a user with the same (case-folded) email already exists —
+	// a unique-constraint conflict mapped to a domain sentinel so callers can tell a
+	// duplicate from an infrastructure failure.
+	ErrEmailTaken = errors.New("identity: email already registered")
+	// ErrMembershipExists means the (organization, user) already has a membership —
+	// the duplicate mapped to a domain sentinel rather than a raw driver error.
+	ErrMembershipExists = errors.New("identity: membership already exists")
 )

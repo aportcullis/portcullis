@@ -65,6 +65,20 @@ func assertRuntimeRoleBoundary(t *testing.T, pool *pgxpool.Pool, role string) {
 	if _, err := conn.Exec(ctx, `drop table audit_events`); err == nil {
 		t.Error("runtime DROP TABLE must be denied")
 	}
+	// Object creation is forbidden entirely: a temporary relation wins name
+	// resolution over an identically named permanent table, and a permanent one
+	// in public could shadow via search_path — the runtime must be unable to
+	// create ANY relation (no TEMPORARY on the database, no CREATE on public, no
+	// CREATE on the database to make new schemas).
+	if _, err := conn.Exec(ctx, `create temporary table audit_events (id int)`); err == nil {
+		t.Error("runtime CREATE TEMP TABLE must be denied on the metadata database")
+	}
+	if _, err := conn.Exec(ctx, `create table public.pc_shadow (id int)`); err == nil {
+		t.Error("runtime CREATE TABLE in public must be denied")
+	}
+	if _, err := conn.Exec(ctx, `create schema pc_evil`); err == nil {
+		t.Error("runtime CREATE SCHEMA must be denied")
+	}
 
 	// The runtime role still operates the app's other tables (smoke check).
 	if _, err := conn.Exec(ctx, `update users set display_name = 'Renamed' where email = 'admin@example.com'`); err != nil {
@@ -101,8 +115,31 @@ func TestRuntimeRoleCannotMutateAuditEvents(t *testing.T) {
 func TestMigrateWithCustomRuntimeRoleIsolatesConnect(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
+
+	// A foreign install on the same cluster already left a 'portcullis_app' login
+	// user behind. A custom-role migration must NOT grant it the runtime role.
+	if _, err := pool.Exec(ctx, `
+		do $$ begin
+			if not exists (select 1 from pg_roles where rolname = 'portcullis_app') then
+				create role portcullis_app nologin;
+			end if;
+		end $$`); err != nil {
+		t.Fatalf("seed foreign portcullis_app: %v", err)
+	}
 	if err := pg.Migrate(ctx, pool, pg.WithRuntimeRole("pc_custom_rt")); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+
+	// The dev-membership grant is default-role-only: portcullis_app must not have
+	// gained membership in the custom runtime role (cross-install leak).
+	var leaked bool
+	if err := pool.QueryRow(ctx,
+		`select pg_has_role('portcullis_app', 'pc_custom_rt', 'MEMBER')`,
+	).Scan(&leaked); err != nil {
+		t.Fatalf("check leak: %v", err)
+	}
+	if leaked {
+		t.Error("custom-name install granted the runtime role to a foreign login user")
 	}
 
 	// The custom-named role gets the exact same permission boundary.
@@ -131,15 +168,24 @@ func TestMigrateWithCustomRuntimeRoleIsolatesConnect(t *testing.T) {
 		end $$`); err != nil {
 		t.Fatalf("create bystander role: %v", err)
 	}
-	var runtimeCan, bystanderCan bool
+	var runtimeCan, runtimeTemp, runtimeDBCreate, runtimeSchemaCreate, bystanderCan bool
 	if err := pool.QueryRow(ctx,
 		`select has_database_privilege('pc_custom_rt', current_database(), 'CONNECT'),
+		        has_database_privilege('pc_custom_rt', current_database(), 'TEMPORARY'),
+		        has_database_privilege('pc_custom_rt', current_database(), 'CREATE'),
+		        has_schema_privilege('pc_custom_rt', 'public', 'CREATE'),
 		        has_database_privilege('pc_bystander', current_database(), 'CONNECT')`,
-	).Scan(&runtimeCan, &bystanderCan); err != nil {
+	).Scan(&runtimeCan, &runtimeTemp, &runtimeDBCreate, &runtimeSchemaCreate, &bystanderCan); err != nil {
 		t.Fatalf("check connect privileges: %v", err)
 	}
 	if !runtimeCan {
 		t.Error("runtime role must hold CONNECT on the database")
+	}
+	// No object-creation capability of any kind — the runtime must not be able to
+	// craft a relation (temp, permanent, or via a new schema) that shadows audit.
+	if runtimeTemp || runtimeDBCreate || runtimeSchemaCreate {
+		t.Errorf("runtime role must hold no create capability: temp=%t db_create=%t schema_create=%t",
+			runtimeTemp, runtimeDBCreate, runtimeSchemaCreate)
 	}
 	if bystanderCan {
 		t.Error("an unrelated role must NOT hold CONNECT (PUBLIC grant should be revoked)")
@@ -243,6 +289,83 @@ func TestMigrateAllowsLoginUserAsRuntimeRole(t *testing.T) {
 		t.Fatalf("Migrate with the login user as runtime role must not self-grant: %v", err)
 	}
 	assertRuntimeRoleBoundary(t, pool, "portcullis_app")
+}
+
+// Scenario: a database migrated BEFORE the 0003 rework recorded 0003 without
+// the PUBLIC revocations (TEMPORARY/CREATE on the database, USAGE/CREATE on
+// schema public). An applied migration is immutable (data.md), so the next boot
+// must repair the boundary through the NEW migration 0004 — not fail forever on
+// the postflight privilege check.
+func TestMigrateRepairsPreReworkPublicGrants(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	// Rewind to the pre-rework state: PUBLIC re-holds its default grants and
+	// 0004 is not recorded, exactly as if only the old 0003 had ever run.
+	for _, stmt := range []string{
+		`do $$ begin execute format('grant temporary, create on database %I to public', current_database()); end $$`,
+		`grant usage, create on schema public to public`,
+		`delete from schema_migrations where version = '0004_public_revokes'`,
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("rewind to pre-rework state (%s): %v", stmt, err)
+		}
+	}
+	var temp bool
+	if err := pool.QueryRow(ctx,
+		`select has_database_privilege('portcullis_runtime', current_database(), 'TEMPORARY')`,
+	).Scan(&temp); err != nil {
+		t.Fatalf("check precondition: %v", err)
+	}
+	if !temp {
+		t.Fatal("precondition: the PUBLIC grant should reach the runtime role")
+	}
+
+	// Next boot: 0004 re-runs, revokes the PUBLIC grants, and verification passes.
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate must repair pre-rework PUBLIC grants via 0004, got: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`select has_database_privilege('portcullis_runtime', current_database(), 'TEMPORARY')`,
+	).Scan(&temp); err != nil {
+		t.Fatalf("check repaired state: %v", err)
+	}
+	if temp {
+		t.Error("0004 should have revoked PUBLIC's TEMPORARY grant")
+	}
+}
+
+// Scenario (ADR-0009): schema USAGE is part of the required floor. Table
+// privileges evaluate independently of it, so a role missing only USAGE (the
+// easiest grant to forget in the rotation procedure) would otherwise verify
+// healthy and then fail every runtime query.
+func TestMigrateDetectsMissingSchemaUsage(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `revoke usage on schema public from portcullis_runtime`); err != nil {
+		t.Fatalf("revoke usage: %v", err)
+	}
+	err := pg.Migrate(ctx, pool)
+	if err == nil {
+		t.Fatal("Migrate must fail while the runtime role lacks USAGE on schema public")
+	}
+	if !strings.Contains(err.Error(), "USAGE") {
+		t.Errorf("error should name the missing privilege, got: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `grant usage on schema public to portcullis_runtime`); err != nil {
+		t.Fatalf("restore usage: %v", err)
+	}
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Errorf("restored USAGE should boot again: %v", err)
+	}
 }
 
 // Scenario: a pre-existing role with dangerous cluster attributes must be

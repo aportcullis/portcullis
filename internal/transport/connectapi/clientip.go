@@ -19,10 +19,23 @@ import (
 func NewClientIPInterceptor(trustedProxies []*net.IPNet) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			ip := clientIP(req.Peer().Addr, req.Header(), trustedProxies)
+			ip := canonicalIP(clientIP(req.Peer().Addr, req.Header(), trustedProxies))
 			return next(reqmeta.WithClientIP(ctx, ip), req)
 		}
 	}
+}
+
+// canonicalIP normalizes textual IP forms (e.g. IPv6 zero-compression, so
+// "2001:0db8::1" and "2001:db8::1" read as one client). It runs here, where the
+// value is minted, so EVERY consumer — the rate limiter's bucket key and the
+// audit trail's source_ip — sees the same form and stays correlatable
+// (ADR-0010). An unparsable value stays as-is: it is its own key, same as
+// clientIP's untrusted fallback.
+func canonicalIP(ip string) string {
+	if p := net.ParseIP(ip); p != nil {
+		return p.String()
+	}
+	return ip
 }
 
 // clientIP resolves the address to attribute a request to. When the direct peer
@@ -33,12 +46,25 @@ func NewClientIPInterceptor(trustedProxies []*net.IPNet) connect.UnaryIntercepto
 // connection rightward is written by trusted proxies. Untrusted peers (or a
 // missing header) fall back to the peer IP, so a client can't spoof its key.
 func clientIP(addr string, h http.Header, trusted []*net.IPNet) string {
+	// No trusted proxies (the common direct-exposure case): the peer is the client;
+	// skip parsing the peer IP and the X-Forwarded-For machinery entirely.
+	if len(trusted) == 0 {
+		return hostOnly(addr)
+	}
 	peer := hostOnly(addr)
 	if !ipInNets(peer, trusted) {
 		return peer
 	}
 	forwarded := parseForwardedFor(h)
 	for i := len(forwarded) - 1; i >= 0; i-- {
+		// A hop that is not a valid IP can't be a real client address: a trusted
+		// proxy could forward a malformed/oversized value, or an attacker prepends
+		// one past the known-proxy hops. Stop trusting the chain here and attribute
+		// to the peer, so a spoofed X-Forwarded-For can never mint an arbitrary
+		// (unbounded) rate-limit key or a bogus audit source_ip (ADR-0010).
+		if net.ParseIP(forwarded[i]) == nil {
+			return peer
+		}
 		if !ipInNets(forwarded[i], trusted) {
 			return forwarded[i]
 		}

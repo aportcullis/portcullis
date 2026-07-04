@@ -23,11 +23,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/transport/server"
 )
 
-// maxRequestBytes caps the size of an inbound RPC request. Connect defaults to
-// unlimited, so a large Bootstrap/Login body could OOM the process; auth and
-// health messages are tiny, so 64 KiB is generous.
-const maxRequestBytes = 64 << 10
-
 // migrate opens the owner DSN, verifies connectivity, applies the migrations,
 // and closes the pool — the owner credential stays alive only for this window.
 // Errors are logged with generic messages/classified fields only: the raw error
@@ -111,19 +106,24 @@ func run() error {
 	}
 	// The boundary must hold for the connection the server ACTUALLY runs on, not
 	// just the configured role: an owner/superuser DSN or a drifted login user is
-	// refused unless the insecure dev flag explicitly allows it (ADR-0009).
+	// refused (ADR-0009). The insecure dev flag downgrades ONLY over-privilege
+	// violations; a wrong/unmigrated database or a query failure is always fatal.
 	if err := postgres.VerifyRuntimeConnection(startupCtx, pool, cfg.RuntimeRole); err != nil {
-		if !cfg.AllowPrivilegedRuntime {
-			logger.Error("runtime connection failed verification", "err", err)
+		if cfg.AllowPrivilegedRuntime && errors.Is(err, postgres.ErrRuntimeInsecure) {
+			logger.Warn("runtime connection is over-privileged — allowed by PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME (dev only, never production)", "reason", err.Error())
+		} else {
+			logger.Error("runtime connection failed verification", postgres.ErrorLogFields(err)...)
 			return err
 		}
-		logger.Warn("runtime connection is privileged — allowed by PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME (dev only, never production)", "err", err)
 	}
 
 	// Cap request size: Connect defaults to unlimited, so bound both the per-message
 	// read and the whole request stream (auth/health messages are tiny).
-	readLimit := connect.WithReadMaxBytes(maxRequestBytes)
-	healthPath, healthHandler := portcullisv1connect.NewHealthHandler(connectapi.HealthService{}, readLimit)
+	readLimit := connect.WithReadMaxBytes(server.MaxRequestBytes)
+	// Recover panics into a clean CodeInternal (logged via slog, not a stderr stack
+	// dump); wired first so it wraps every interceptor and the handler.
+	recoverOpt := connectapi.NewRecoverOption(logger)
+	healthPath, healthHandler := portcullisv1connect.NewHealthHandler(connectapi.HealthService{}, recoverOpt, readLimit)
 
 	// Identity vertical: inject the crypto and audit adapters into the auth use
 	// cases, then expose them as the Auth RPC behind the interceptor chain.
@@ -136,6 +136,8 @@ func run() error {
 	authSvc.WithLogger(logger)
 	authPath, authHandler := portcullisv1connect.NewAuthHandler(
 		connectapi.NewAuthService(authSvc),
+		// Recover first so it wraps the whole interceptor chain and the handler.
+		recoverOpt,
 		// Client IP first (one resolution shared by rate limiting and audit), then
 		// rate-limit before auth so a login flood is shed before any password hashing.
 		connect.WithInterceptors(
@@ -147,8 +149,8 @@ func run() error {
 	)
 
 	srv := server.New(cfg.Addr, logger, cfg.DrainDelay,
-		server.Mount{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, maxRequestBytes)},
-		server.Mount{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, maxRequestBytes)},
+		server.Mount{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
+		server.Mount{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
 	)
 	srv.Health().Register("metadata-db", func(ctx context.Context) error { return pool.Ping(ctx) })
 
@@ -167,15 +169,21 @@ func run() error {
 
 	select {
 	case <-ctx.Done():
+		// Restore default signal handling now that the first signal is being handled,
+		// so a SECOND SIGINT/SIGTERM force-quits during a long drain instead of being
+		// swallowed by NotifyContext (os/signal: stop as soon as the first signal is
+		// handled). The deferred stop() still covers the serveErr path.
+		stop()
 		logger.Info("shutting down")
 	case err := <-serveErr:
 		logger.Error("server error", "err", err)
 		return err
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	// Background, not a timeout: the drain delay and the shutdown timeout are
+	// sequential budgets (ADR-0010) — Server.Shutdown applies the timeout to the
+	// drain of in-flight requests only, after the delay has fully elapsed.
+	if err := srv.Shutdown(context.Background(), cfg.ShutdownTimeout); err != nil {
 		logger.Error("graceful shutdown failed", "err", err)
 		return err
 	}

@@ -12,7 +12,7 @@ import (
 )
 
 const countUsers = `-- name: CountUsers :one
-select count(*) from users
+select count(*) from public.users
 `
 
 func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
@@ -23,7 +23,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const createMembership = `-- name: CreateMembership :one
-insert into organization_memberships (organization_id, user_id, role_id)
+insert into public.organization_memberships (organization_id, user_id, role_id)
 values ($1, $2, $3)
 returning id, organization_id, user_id, created_at, role_id
 `
@@ -48,7 +48,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 }
 
 const createSession = `-- name: CreateSession :one
-insert into sessions (user_id, token_hash, idle_expires_at, absolute_expires_at)
+insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at)
 values ($1, $2, $3, $4)
 returning id, user_id, token_hash, idle_expires_at, absolute_expires_at, revoked_at, created_at
 `
@@ -81,7 +81,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 }
 
 const createUser = `-- name: CreateUser :one
-insert into users (email, display_name)
+insert into public.users (email, display_name)
 values ($1, $2)
 returning id, email, display_name, status, created_at
 `
@@ -105,9 +105,12 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const extendSessionIdle = `-- name: ExtendSessionIdle :exec
-update sessions
+update public.sessions
 set idle_expires_at = least(greatest(idle_expires_at, $1), absolute_expires_at)
-where id = $2 and revoked_at is null
+where id = $2
+  and revoked_at is null
+  and idle_expires_at > now()
+  and absolute_expires_at > now()
 `
 
 type ExtendSessionIdleParams struct {
@@ -117,13 +120,16 @@ type ExtendSessionIdleParams struct {
 
 // Slide the idle window forward on activity, never past the absolute expiry and
 // never backward (greatest() guards against a late, older request regressing it).
+// Re-check both expiries in the write: a session can expire after Authenticate
+// reads it but before the post-CSRF slide, and an expired session must never be
+// resurrected by that race.
 func (q *Queries) ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) error {
 	_, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleExpiresAt, arg.ID)
 	return err
 }
 
 const getDefaultOrganization = `-- name: GetDefaultOrganization :one
-select id, name, slug, created_at from organizations where slug = 'default'
+select id, name, slug, created_at from public.organizations where slug = 'default'
 `
 
 func (q *Queries) GetDefaultOrganization(ctx context.Context) (Organization, error) {
@@ -139,7 +145,7 @@ func (q *Queries) GetDefaultOrganization(ctx context.Context) (Organization, err
 }
 
 const getMembership = `-- name: GetMembership :one
-select id, organization_id, user_id, created_at, role_id from organization_memberships
+select id, organization_id, user_id, created_at, role_id from public.organization_memberships
 where organization_id = $1 and user_id = $2
 `
 
@@ -162,7 +168,7 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (O
 }
 
 const getPasswordAuth = `-- name: GetPasswordAuth :one
-select id, user_id, type, secret, created_at, updated_at from auth_methods where user_id = $1 and type = 'password'
+select id, user_id, type, secret, created_at, updated_at from public.auth_methods where user_id = $1 and type = 'password'
 `
 
 func (q *Queries) GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error) {
@@ -180,7 +186,7 @@ func (q *Queries) GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (Auth
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-select id, user_id, token_hash, idle_expires_at, absolute_expires_at, revoked_at, created_at from sessions where token_hash = $1
+select id, user_id, token_hash, idle_expires_at, absolute_expires_at, revoked_at, created_at from public.sessions where token_hash = $1
 `
 
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error) {
@@ -199,7 +205,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-select id, email, display_name, status, created_at from users where lower(email) = lower($1)
+select id, email, display_name, status, created_at from public.users where lower(email) = lower($1)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (User, error) {
@@ -216,7 +222,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-select id, email, display_name, status, created_at from users where id = $1
+select id, email, display_name, status, created_at from public.users where id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -234,8 +240,8 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 
 const getUserForLogin = `-- name: GetUserForLogin :one
 select u.id, u.email, u.display_name, u.status, u.created_at, coalesce(am.secret, '') as password_hash
-from users u
-left join auth_methods am on am.user_id = u.id and am.type = 'password'
+from public.users u
+left join public.auth_methods am on am.user_id = u.id and am.type = 'password'
 where lower(u.email) = lower($1)
 `
 
@@ -265,17 +271,25 @@ func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserFor
 	return i, err
 }
 
-const revokeSession = `-- name: RevokeSession :exec
-update sessions set revoked_at = now() where id = $1
+const revokeSession = `-- name: RevokeSession :execrows
+update public.sessions set revoked_at = now()
+where id = $1 and revoked_at is null
 `
 
-func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, revokeSession, id)
-	return err
+// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must
+// not overwrite the original revoked_at — forensic evidence of WHEN the session
+// actually died — and the caller skips the audit event when no row changed, so
+// the trail records only real state changes (ADR-0009).
+func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSession, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeUserSessions = `-- name: RevokeUserSessions :exec
-update sessions set revoked_at = now()
+update public.sessions set revoked_at = now()
 where user_id = $1 and revoked_at is null
 `
 
@@ -286,7 +300,7 @@ func (q *Queries) RevokeUserSessions(ctx context.Context, userID pgtype.UUID) er
 }
 
 const upsertPasswordAuth = `-- name: UpsertPasswordAuth :exec
-insert into auth_methods (user_id, type, secret)
+insert into public.auth_methods (user_id, type, secret)
 values ($1, 'password', $2)
 on conflict (user_id, type)
 do update set secret = excluded.secret, updated_at = now()

@@ -9,26 +9,70 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 )
 
+// levels is the supported log-level vocabulary — the single source of truth
+// shared by New and by config validation via ParseLevel.
+var levels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
+}
+
+// ParseLevel resolves a config value to its slog level. This package owns the
+// supported vocabulary ("debug"|"info"|"warn"|"error", case-insensitive,
+// surrounding space ignored); config validation delegates here so the accepted
+// values and the logger's behavior can't drift apart.
+func ParseLevel(level string) (slog.Level, bool) {
+	lvl, ok := levels[strings.ToLower(strings.TrimSpace(level))]
+	return lvl, ok
+}
+
+// parseFormat resolves a config value to a supported handler name, mirroring
+// ParseLevel so the "json"|"text" vocabulary is normalized in ONE place: both
+// ValidFormat (config validation) and New call it, so the accepted values and the
+// logger's behavior can't drift. An unknown value reports false with the json
+// default, so New's fallback and config's rejection stay consistent.
+func parseFormat(format string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case formatText:
+		return formatText, true
+	case formatJSON:
+		return formatJSON, true
+	default:
+		return formatJSON, false
+	}
+}
+
+// ValidFormat reports whether format names a supported handler ("json"|"text",
+// case-insensitive, surrounding space ignored).
+func ValidFormat(format string) bool {
+	_, ok := parseFormat(format)
+	return ok
+}
+
 // New builds a logger at the given level ("debug"|"info"|"warn"|"error") and
-// format ("json"|"text"). Unknown values fall back to info / json.
+// format ("json"|"text"). Unknown values fall back to info / json — config.Load
+// pre-validates via ParseLevel/ValidFormat, so the fallback only serves direct
+// callers (tests, tools) that skip config.
 func New(level, format string) *slog.Logger {
-	var lvl slog.Level
-	if err := lvl.UnmarshalText([]byte(strings.ToUpper(strings.TrimSpace(level)))); err != nil {
+	lvl, ok := ParseLevel(level)
+	if !ok {
 		lvl = slog.LevelInfo
 	}
 	opts := &slog.HandlerOptions{Level: lvl}
 
+	f, _ := parseFormat(format)
 	var h slog.Handler
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "text":
+	if f == formatText {
 		h = slog.NewTextHandler(os.Stdout, opts)
-	default:
+	} else {
 		h = slog.NewJSONHandler(os.Stdout, opts)
 	}
 	return slog.New(h)
@@ -50,7 +94,7 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := r.Header.Get("X-Request-Id")
-			if id == "" {
+			if !validRequestID(id) {
 				id = newID()
 			}
 			ctx := context.WithValue(r.Context(), requestIDKey, id)
@@ -77,13 +121,25 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func isHealthPath(p string) bool { return p == "/livez" || p == "/readyz" }
-
-type recorder struct {
-	http.ResponseWriter
-	status int
-	bytes  int64
+// validRequestID accepts compact, log-safe correlation ids. Anything else is
+// replaced rather than truncated, so two attacker-controlled values cannot be
+// made to collide by sharing a prefix.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > maxRequestIDLength {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ':' || c == '/' {
+			continue
+		}
+		return false
+	}
+	return true
 }
+
+func isHealthPath(p string) bool { return p == "/livez" || p == "/readyz" }
 
 func (r *recorder) WriteHeader(code int) {
 	r.status = code
@@ -115,11 +171,13 @@ func newID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// remoteIP strips the port. Forwarded headers are intentionally ignored here;
-// trusting them is decided at the proxy boundary, not in request logging.
+// remoteIP strips the port via net.SplitHostPort, which handles bracketed IPv6
+// ("[2001:db8::1]:443" → "2001:db8::1") — a naive last-colon split would keep the
+// brackets or truncate a bare IPv6 address. Forwarded headers are intentionally
+// ignored here; trusting them is decided at the proxy boundary, not in logging.
 func remoteIP(remoteAddr string) string {
-	if i := strings.LastIndex(remoteAddr, ":"); i >= 0 {
-		return remoteAddr[:i]
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return host
 	}
 	return remoteAddr
 }

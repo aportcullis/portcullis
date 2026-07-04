@@ -31,7 +31,11 @@ Within a package, separate declarations: interfaces → `port.go`/`repository.go
 methods in the main file. Prefer separation.
 
 ## Tests — TDD, black-box
-- Always external `package X_test`.
+- Default to external `package X_test` (black-box) — test through the exported surface.
+- **White-box (`package X`) is allowed only** to assert an invariant with no observable black-box
+  surface — e.g. a memory bound in an unexported map / key derivation, or an unexported handler
+  with no wired route. Name such files `*_internal_test.go` and open with a comment stating why
+  the black-box surface can't reach it. Everything else stays black-box.
 - Practice **TDD**; table-driven; add `t.Parallel()` where safe (not with `t.Setenv` or shared
   mutable DB state).
 - Integration tests use **testcontainers** via `internal/infra/dbtest` (Docker required).

@@ -46,11 +46,10 @@ func (k *Keyring) Open(b Blob, associatedData []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	ns := gcmNonceSize()
-	if len(b.WrappedDEK) < ns {
+	if len(b.WrappedDEK) < gcmNonceLen {
 		return nil, ErrDecrypt
 	}
-	wrapNonce, wrapped := b.WrappedDEK[:ns], b.WrappedDEK[ns:]
+	wrapNonce, wrapped := b.WrappedDEK[:gcmNonceLen], b.WrappedDEK[gcmNonceLen:]
 
 	dek, err := openAEAD(wrapKey, wrapNonce, wrapped, associatedData)
 	if err != nil {
@@ -64,7 +63,9 @@ func sealAEAD(key, plaintext, associatedData []byte) (nonce, ciphertext []byte, 
 	if err != nil {
 		return nil, nil, err
 	}
-	nonce = make([]byte, gcm.NonceSize())
+	// gcmNonceLen is the one source of truth for the nonce size (ADR-0003 pins 12):
+	// Open slices WrappedDEK at this same constant, so seal and open can't diverge.
+	nonce = make([]byte, gcmNonceLen)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, nil, err
 	}
@@ -76,7 +77,7 @@ func openAEAD(key, nonce, ciphertext, associatedData []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(nonce) != gcm.NonceSize() {
+	if len(nonce) != gcmNonceLen {
 		return nil, ErrDecrypt
 	}
 	pt, err := gcm.Open(nil, nonce, ciphertext, associatedData)
@@ -92,9 +93,4 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 		return nil, err
 	}
 	return cipher.NewGCM(block)
-}
-
-func gcmNonceSize() int {
-	gcm, _ := newGCM(make([]byte, dekLen))
-	return gcm.NonceSize()
 }

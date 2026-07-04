@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/aportcullis/portcullis/internal/domain/audit"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
@@ -86,6 +88,52 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 	// Append-only: the trigger must reject mutation.
 	if _, err := pool.Exec(ctx, `update audit_events set outcome = 'FAILED' where outcome = 'SUCCEEDED'`); err == nil {
 		t.Error("UPDATE on audit_events succeeded, want append-only rejection")
+	}
+}
+
+// The adapter must target the permanent audit table explicitly. PostgreSQL
+// searches pg_temp before public, so an unqualified insert would be diverted.
+func TestAuditStoreIgnoresTemporaryAuditShadow(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	org, err := pg.NewIdentityStore(pool).DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("organization: %v", err)
+	}
+
+	cfg := pool.Config().Copy()
+	cfg.MaxConns = 1
+	one, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("single-connection pool: %v", err)
+	}
+	t.Cleanup(one.Close)
+	if _, err := one.Exec(ctx, `create temporary table audit_events (like public.audit_events including defaults)`); err != nil {
+		t.Fatalf("create shadow: %v", err)
+	}
+	if err := pg.NewAuditStore(one).Record(ctx, audit.Event{
+		OrganizationID: org,
+		ActorType:      audit.ActorUser,
+		Action:         audit.ActionAuthLogin,
+		TargetType:     audit.TargetTypeUser,
+		Outcome:        audit.OutcomeFailed,
+		RequestID:      "qualified-write",
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	var permanent, shadow int
+	if err := pool.QueryRow(ctx, `select count(*) from public.audit_events where request_id = 'qualified-write'`).Scan(&permanent); err != nil {
+		t.Fatalf("permanent count: %v", err)
+	}
+	if err := one.QueryRow(ctx, `select count(*) from pg_temp.audit_events`).Scan(&shadow); err != nil {
+		t.Fatalf("shadow count: %v", err)
+	}
+	if permanent != 1 || shadow != 0 {
+		t.Errorf("audit destination permanent=%d shadow=%d, want 1/0", permanent, shadow)
 	}
 }
 

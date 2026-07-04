@@ -2,6 +2,8 @@ package connectapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"time"
@@ -42,8 +44,22 @@ func newRateLimiter(interval time.Duration, burst int, ttl time.Duration, maxBuc
 	}
 }
 
+// boundKey caps a bucket key's byte length: an over-long key (only ever from an
+// attacker-influenced dimension — a spoofed/malformed X-Forwarded-For, or a future
+// per-token key) is replaced by its SHA-256 hex digest so the map can never hold
+// large strings. Short keys (every legitimate IP/email key) pass through unchanged,
+// so the common path allocates nothing and keys stay human-readable in tests.
+func boundKey(key string) string {
+	if len(key) <= maxRateLimitKeyBytes {
+		return key
+	}
+	sum := sha256.Sum256([]byte(key))
+	return "h:" + hex.EncodeToString(sum[:])
+}
+
 // allow reports whether the key has a token to spend, consuming one if so.
 func (l *rateLimiter) allow(key string) bool {
+	key = boundKey(key)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -99,29 +115,53 @@ func (l *rateLimiter) evictOldestLocked() {
 	}
 }
 
-// NewRateLimitInterceptor throttles the unauthenticated Login/Bootstrap
-// procedures per client IP and per email, so neither a single host nor a single
-// targeted account can be hammered. Over-limit requests are rejected with
-// ResourceExhausted before any password hashing runs. The client IP is read from
-// the context (resolved once by NewClientIPInterceptor, which must run first).
+// NewRateLimitInterceptor throttles every procedure per client IP, and the
+// unauthenticated Login/Bootstrap procedures additionally per email, so neither a
+// single host nor a single targeted account can be hammered. Login/Bootstrap use a
+// tight bucket (rejected before any password hashing); authenticated procedures use
+// a more generous per-IP bucket that still sheds a garbage-session flood before the
+// auth interceptor's per-request DB session lookup (ADR-0010). The client IP is read
+// from the context (resolved once by NewClientIPInterceptor, which must run first).
 func NewRateLimitInterceptor() connect.UnaryInterceptorFunc {
 	byIP := newRateLimiter(loginRefill, loginBurst, rateLimiterTTL, maxLimiterBuckets)
 	byEmail := newRateLimiter(loginRefill, loginBurst, rateLimiterTTL, maxLimiterBuckets)
+	byIPAuth := newRateLimiter(authRefill, authBurst, rateLimiterTTL, maxLimiterBuckets)
 	exhausted := connect.NewError(connect.CodeResourceExhausted, errors.New("too many attempts, retry later"))
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			// The context IP is already canonical (NewClientIPInterceptor normalizes
+			// it once for every consumer), so it keys the bucket as-is.
+			ip := reqmeta.ClientIP(ctx)
 			if !publicProcedures[req.Spec().Procedure] {
+				// Authenticated procedures (Me/Logout): per-IP only, generous bucket.
+				if ip != "" && !byIPAuth.allow("ip:"+ip) {
+					return nil, exhausted
+				}
 				return next(ctx, req)
 			}
-			if ip := reqmeta.ClientIP(ctx); ip != "" && !byIP.allow("ip:"+ip) {
+			if ip != "" && !byIP.allow("ip:"+ip) {
 				return nil, exhausted
 			}
-			if email := loginEmail(req.Any()); email != "" && !byEmail.allow("email:"+identity.NormalizeEmail(email)) {
+			if key := emailBucketKey(req.Any()); key != "" && !byEmail.allow(key) {
 				return nil, exhausted
 			}
 			return next(ctx, req)
 		}
 	}
+}
+
+// emailBucketKey derives the per-email bucket key, or "" when the message must
+// not open a bucket: no email, or an oversized one — it can never match a
+// stored account (validation caps addresses at MaxEmailLength), so it only
+// needs the per-IP limit. Without the length gate the bucket CAP bounds the
+// COUNT but not the key bytes: 50k keys at the 64 KiB body cap is gigabytes of
+// attacker-sized strings.
+func emailBucketKey(msg any) string {
+	email := identity.NormalizeEmail(loginEmail(msg))
+	if email == "" || identity.EmailTooLong(email) {
+		return ""
+	}
+	return "email:" + email
 }
 
 // loginEmail extracts the email from a Login/Bootstrap message, or "" for any

@@ -17,9 +17,6 @@ import (
 	"time"
 )
 
-// CheckFunc reports whether a dependency is ready. A nil error means ready.
-type CheckFunc func(ctx context.Context) error
-
 // Handler serves the liveness and readiness endpoints and owns the check registry.
 type Handler struct {
 	mu       sync.RWMutex

@@ -7,6 +7,9 @@ const (
 	dekLen = 32
 	// subKeyLen is the size of HKDF-derived purpose keys.
 	subKeyLen = 32
+	// gcmNonceLen is the standard AES-GCM nonce size (ADR-0003 pins it): Seal
+	// stores nonces of exactly this length and Open rejects anything else.
+	gcmNonceLen = 12
 )
 
 // HKDF purpose labels derive distinct sub-keys from a master key version.
