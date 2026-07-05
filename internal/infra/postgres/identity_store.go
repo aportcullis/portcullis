@@ -269,6 +269,7 @@ func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, 
 		out = toUser(u)
 		evt.OrganizationID = identity.OrganizationID(uuidToString(org.ID))
 		evt.ActorUserID = &out.ID
+		evt.TargetType = audit.TargetTypeUser
 		evt.TargetID = string(out.ID)
 		return insertAuditTx(ctx, q, evt)
 	})

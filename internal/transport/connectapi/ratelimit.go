@@ -153,9 +153,11 @@ func NewRateLimitInterceptor() connect.UnaryInterceptorFunc {
 // emailBucketKey derives the per-email bucket key, or "" when the message must
 // not open a bucket: no email, or an oversized one — it can never match a
 // stored account (validation caps addresses at MaxEmailLength), so it only
-// needs the per-IP limit. Without the length gate the bucket CAP bounds the
-// COUNT but not the key bytes: 50k keys at the 64 KiB body cap is gigabytes of
-// attacker-sized strings.
+// needs the per-IP limit. boundKey already caps the STORED key's bytes, so this
+// gate isn't about key size; it conserves bucket SLOTS: opening a bucket for an
+// address that can never authenticate would spend one of the maxBuckets entries
+// (and, under a flood, evict a real account's counter via the LRU), so junk is
+// dropped to the per-IP limit rather than churning the per-email map.
 func emailBucketKey(msg any) string {
 	email := identity.NormalizeEmail(loginEmail(msg))
 	if email == "" || identity.EmailTooLong(email) {

@@ -50,12 +50,14 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
-	// An actor-less failure (unknown email) must also persist (nullable actor).
+	// An actor-less failure (unknown email) must also persist: no actor AND no
+	// target (A3) — this is the exact shape the auth service emits for a failed
+	// login with no resolved user, so the empty target_type is exercised against
+	// the real NOT NULL column, not just the in-memory fake.
 	if err := store.Record(ctx, audit.Event{
 		OrganizationID: org,
 		ActorType:      audit.ActorUser,
 		Action:         audit.ActionAuthLogin,
-		TargetType:     audit.TargetTypeUser,
 		Outcome:        audit.OutcomeFailed,
 	}); err != nil {
 		t.Fatalf("Record (no actor): %v", err)
@@ -75,14 +77,24 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 		t.Errorf("metadata = %s, want source_ip and note", metadata)
 	}
 
-	var failedActor *string
+	var failedActor, failedTargetID *string
+	var failedTargetType string
 	if err := pool.QueryRow(ctx,
-		`select actor_user_id::text from audit_events where outcome = 'FAILED'`,
-	).Scan(&failedActor); err != nil {
+		`select actor_user_id::text, target_type, target_id from audit_events where outcome = 'FAILED'`,
+	).Scan(&failedActor, &failedTargetType, &failedTargetID); err != nil {
 		t.Fatalf("query actor-less event: %v", err)
 	}
 	if failedActor != nil {
 		t.Errorf("actor-less event stored actor %v, want NULL", *failedActor)
+	}
+	// A3: with no resolved target the pair stays consistent — target_type persists
+	// as "" (the empty value of the NOT NULL column) and target_id as NULL, never a
+	// spurious "user" target.
+	if failedTargetType != "" {
+		t.Errorf("actor-less event target_type = %q, want empty", failedTargetType)
+	}
+	if failedTargetID != nil {
+		t.Errorf("actor-less event target_id = %v, want NULL", *failedTargetID)
 	}
 
 	// Append-only: the trigger must reject mutation.

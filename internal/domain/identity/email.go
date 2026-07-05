@@ -1,6 +1,9 @@
 package identity
 
-import "strings"
+import (
+	"net/mail"
+	"strings"
+)
 
 // EmailTooLong reports whether email exceeds MaxEmailLength (RFC 5321 forward-path
 // bound, byte length). It lives beside the constant so the one cap is enforced in a
@@ -8,6 +11,33 @@ import "strings"
 // oversized-input gate, and the rate limiter's bucket-key derivation.
 func EmailTooLong(email string) bool {
 	return len(email) > MaxEmailLength
+}
+
+// ValidateEmail checks an already-normalized (trimmed, folded — see NormalizeEmail)
+// address, so the email value object owns its full validity rule rather than
+// leaving structural checks to a caller. It uses the stdlib RFC 5322 parser for
+// structure — which rejects "a@@x", ".a@x", embedded spaces, and empty
+// local/domain — then tightens the domain, which the parser leaves permissive: it
+// must be a bare addr-spec (no display name), carry a dot, and have labels with no
+// leading/trailing hyphen (rejects "a@b", "a@-x.com"). Returns ErrInvalidEmail.
+func ValidateEmail(email string) error {
+	if email == "" || EmailTooLong(email) {
+		return ErrInvalidEmail
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return ErrInvalidEmail
+	}
+	domain := email[strings.LastIndex(email, "@")+1:]
+	if !strings.Contains(domain, ".") {
+		return ErrInvalidEmail
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return ErrInvalidEmail
+		}
+	}
+	return nil
 }
 
 // NormalizeEmail canonicalizes an email for storage, lookup, and rate-limit

@@ -105,6 +105,34 @@ func TestE2E_SPAPlaceholder(t *testing.T) {
 	}
 }
 
+// Every response carries the hardening headers (defense-in-depth behind the
+// TLS-terminating proxy). HSTS is intentionally absent — it is the proxy's job.
+func TestE2E_SecurityHeaders(t *testing.T) {
+	t.Parallel()
+	_, ts := newTestServer(t)
+	resp := get(t, ts.URL, "/")
+	defer func() { _ = resp.Body.Close() }()
+
+	want := map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+	}
+	for k, v := range want {
+		if got := resp.Header.Get(k); got != v {
+			t.Errorf("%s = %q, want %q", k, got, v)
+		}
+	}
+	if resp.Header.Get("Content-Security-Policy") == "" {
+		t.Error("missing Content-Security-Policy header")
+	}
+	if resp.Header.Get("Referrer-Policy") == "" {
+		t.Error("missing Referrer-Policy header")
+	}
+	if got := resp.Header.Get("Strict-Transport-Security"); got != "" {
+		t.Errorf("HSTS = %q, want empty (owned by the TLS-terminating proxy)", got)
+	}
+}
+
 // The drain delay and the shutdown timeout are SEQUENTIAL budgets (ADR-0010):
 // the delay must elapse in full — so Kubernetes deregisters the pod — even when
 // it exceeds the shutdown timeout, and Shutdown must still succeed instead of

@@ -63,6 +63,7 @@ func (f *fakeRepo) BootstrapAdmin(ctx context.Context, email, displayName, passw
 	f.passwords[u.ID] = passwordHash
 	evt.OrganizationID = "org-default"
 	evt.ActorUserID = &u.ID
+	evt.TargetType = audit.TargetTypeUser
 	evt.TargetID = string(u.ID)
 	f.txEvents = append(f.txEvents, evt)
 	return u, nil
@@ -351,6 +352,12 @@ func TestAuthRecordsAuditEvents(t *testing.T) {
 	if a := repo.txEvents[2].ActorUserID; a == nil || *a != u.ID {
 		t.Errorf("logout txEvent actor = %v, want %v", a, u.ID)
 	}
+	// Every resolved-target event tags the target type "user" (paired with TargetID).
+	for _, i := range []int{1, 2} {
+		if tt := repo.txEvents[i].TargetType; tt != audit.TargetTypeUser {
+			t.Errorf("txEvent[%d] TargetType = %q, want %q", i, tt, audit.TargetTypeUser)
+		}
+	}
 
 	// Failures change no state, so they go through the best-effort recorder.
 	failures := rec.all()
@@ -371,6 +378,14 @@ func TestAuthRecordsAuditEvents(t *testing.T) {
 	}
 	if failures[1].ActorUserID != nil {
 		t.Errorf("unknown-email failure actor = %v, want nil", *failures[1].ActorUserID)
+	}
+	// TargetType mirrors the actor: "user" once a target resolves, empty for the
+	// actor-less unknown-email failure (no spurious target vocabulary in the trail).
+	if tt := failures[0].TargetType; tt != audit.TargetTypeUser {
+		t.Errorf("wrong-password failure TargetType = %q, want %q", tt, audit.TargetTypeUser)
+	}
+	if tt := failures[1].TargetType; tt != "" {
+		t.Errorf("unknown-email failure TargetType = %q, want empty", tt)
 	}
 }
 

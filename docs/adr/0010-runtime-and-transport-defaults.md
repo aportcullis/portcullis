@@ -39,6 +39,23 @@ minimize-hardcoding: these are fixed operational guards, not domain catalogs).
   the os/signal guidance) so a **second** signal terminates the process with the default
   behavior instead of being swallowed for the whole drain window.
 
+### TLS termination & security headers (added 2026-07-05)
+- **TLS is a deployment prerequisite, terminated upstream.** The server speaks plain HTTP
+  (`ListenAndServe`, no in-process TLS) and is designed to sit behind a TLS-terminating reverse
+  proxy / ingress. This is load-bearing, not incidental: session/CSRF cookies are `__Host-` +
+  `Secure` (ADR-0006), which browsers accept **only over HTTPS** — served over cleartext to the
+  browser, login silently fails because the cookie is never stored. Operators must terminate TLS
+  in front of Portcullis.
+- **HSTS is the proxy's responsibility** — it owns the TLS edge — so the app does not emit
+  `Strict-Transport-Security`.
+- Every response carries hardening headers as defense-in-depth (cheap, valid even behind the
+  proxy): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, and a **minimal** CSP
+  (`frame-ancestors 'none'; base-uri 'self'; form-action 'self'`). The CSP omits
+  `script-src`/`style-src` on purpose: the embedded SPA and the not-built placeholder use inline
+  `style` attributes that a strict `style-src` would break. Tightening to a script/style CSP is a
+  follow-up once the built bundle is verified against it.
+
 ### Request correlation (`internal/platform/logging`)
 - Header `X-Request-Id` is accepted only when **non-empty, ≤ 128 bytes**, and matches the
   charset `[A-Za-z0-9._:/-]` exactly; anything else is **replaced** with a fresh

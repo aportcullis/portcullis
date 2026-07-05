@@ -41,7 +41,7 @@ func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...M
 
 	s.http = &http.Server{
 		Addr:              addr,
-		Handler:           logging.Middleware(logger)(mux),
+		Handler:           securityHeaders(logging.Middleware(logger)(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 		MaxHeaderBytes:    maxHeaderBytes,
 		// Bound the whole request read so a slow-body (slowloris) connection can't
@@ -65,6 +65,28 @@ func (s *Server) Handler() http.Handler { return s.http.Handler }
 
 // ListenAndServe starts serving and blocks until the server stops.
 func (s *Server) ListenAndServe() error { return s.http.ListenAndServe() }
+
+// securityHeaders sets hardening response headers on every response (SPA and RPC
+// alike). Portcullis is designed to run behind a TLS-terminating reverse proxy
+// (ADR-0010): __Host-/Secure cookies require HTTPS, and HSTS is the proxy's
+// responsibility (it owns the TLS edge), so it is deliberately not set here. These
+// headers are cheap defense-in-depth that hold even behind the proxy.
+//
+// The CSP is intentionally minimal — frame-ancestors/base-uri/form-action only,
+// with no script-src/style-src — because the embedded SPA and the not-built
+// placeholder both use inline style attributes that a strict style-src would
+// break. Tightening script-src/style-src is a follow-up once the built bundle is
+// verified against a stricter policy.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		next.ServeHTTP(w, r)
+	})
+}
 
 // Shutdown sheds traffic, then gracefully drains in-flight requests. Readiness
 // flips to draining first so Kubernetes stops routing before connections close.

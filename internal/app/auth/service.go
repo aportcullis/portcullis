@@ -12,8 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/mail"
-	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -70,22 +68,27 @@ func (s *Service) WithLogger(l *slog.Logger) *Service {
 // object, assembled (not injected: DI is for behavioral collaborators, i.e. the
 // ports). It lives in the app layer because extracting RequestID/SourceIP from
 // the context is request handling, not domain logic. The repository completes
-// OrganizationID (and, for bootstrap, the actor); for state-changing ops the
-// event rides the repo call and commits in the same transaction (ADR-0009).
+// OrganizationID (and, for bootstrap, the actor + target); for state-changing ops
+// the event rides the repo call and commits in the same transaction (ADR-0009).
+// TargetType is left empty here and set only when a target user is resolved (see
+// withActor / the store's BootstrapAdmin), so an actor-less event — a failed
+// login for an unknown email — carries no spurious "user" target.
 func newEvent(ctx context.Context, action audit.Action, outcome audit.Outcome) audit.Event {
 	return audit.Event{
-		ActorType:  audit.ActorUser,
-		Action:     action,
-		TargetType: audit.TargetTypeUser,
-		Outcome:    outcome,
-		RequestID:  logging.RequestID(ctx),
-		SourceIP:   reqmeta.ClientIP(ctx),
+		ActorType: audit.ActorUser,
+		Action:    action,
+		Outcome:   outcome,
+		RequestID: logging.RequestID(ctx),
+		SourceIP:  reqmeta.ClientIP(ctx),
 	}
 }
 
-// withActor attributes an event to a resolved user.
+// withActor attributes an event to a resolved user, tagging it as targeting that
+// user (TargetType is set with TargetID so the pair stays consistent — an event
+// has a target type iff it has a target).
 func withActor(e audit.Event, id identity.UserID) audit.Event {
 	e.ActorUserID = &id
+	e.TargetType = audit.TargetTypeUser
 	e.TargetID = string(id)
 	return e
 }
@@ -129,7 +132,7 @@ func (s *Service) Bootstrap(ctx context.Context, email, password, displayName st
 	// Validate before any DB work or hashing so a malformed request is cheap to
 	// reject and can't create an admin with an unusable credential.
 	email = identity.NormalizeEmail(email)
-	if err := validateEmail(email); err != nil {
+	if err := identity.ValidateEmail(email); err != nil {
 		return identity.User{}, err
 	}
 	password = normalizePassword(password)
@@ -328,32 +331,6 @@ func (s *Service) issueSession(ctx context.Context, u identity.User) (Session, e
 		return Session{}, err
 	}
 	return Session{User: u, Session: created, Token: raw, CSRF: csrf}, nil
-}
-
-// validateEmail checks an already-normalized (trimmed, folded) address. It uses
-// the stdlib RFC 5322 parser for structure — which rejects "a@@x", ".a@x",
-// embedded spaces, and empty local/domain — then tightens the domain, which the
-// parser leaves permissive: it must be a bare addr-spec (no display name), carry
-// a dot, and have labels with no leading/trailing hyphen (rejects "a@b", "a@-x.com").
-func validateEmail(email string) error {
-	if email == "" || identity.EmailTooLong(email) {
-		return identity.ErrInvalidEmail
-	}
-	addr, err := mail.ParseAddress(email)
-	if err != nil || addr.Address != email {
-		return identity.ErrInvalidEmail
-	}
-	at := strings.LastIndex(email, "@")
-	domain := email[at+1:]
-	if !strings.Contains(domain, ".") {
-		return identity.ErrInvalidEmail
-	}
-	for _, label := range strings.Split(domain, ".") {
-		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
-			return identity.ErrInvalidEmail
-		}
-	}
-	return nil
 }
 
 // validateDisplayName bounds the stored display name and rejects control (Cc),
