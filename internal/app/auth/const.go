@@ -19,3 +19,13 @@ const (
 // auditWriteTimeout bounds a best-effort audit write after it is detached from
 // the request context (ADR-0009), so a stuck store can't leak goroutines.
 const auditWriteTimeout = 5 * time.Second
+
+// oidcPendingTTL bounds the window between /auth/google/start and the callback.
+// ADR-0007 pins it at exactly 10 minutes; the service enforces it inside the
+// sealed payload in addition to the cookie's Max-Age.
+const oidcPendingTTL = 10 * time.Minute
+
+// oidcMethodMetadata tags login audit events (success and failure) that came
+// through Google, so one AUTH_LOGIN action covers every sign-in method and the
+// method stays queryable (ADR-0009: metadata carries supplemental dimensions).
+const oidcMethodMetadata = "google"

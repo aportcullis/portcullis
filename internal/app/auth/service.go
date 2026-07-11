@@ -229,7 +229,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 			_ = s.repo.SetPassword(ctx, u.ID, nh)
 		}
 	}
-	return s.issueSession(ctx, u)
+	return s.issueSession(ctx, u, nil)
 }
 
 // Logout revokes the session for the given raw token (a no-op if unknown).
@@ -307,7 +307,10 @@ func (s *Service) rejectWithEqualizedTiming(ctx context.Context, password string
 	return identity.ErrInvalidCredentials
 }
 
-func (s *Service) issueSession(ctx context.Context, u identity.User) (Session, error) {
+// issueSession mints and persists a session for a verified user. meta tags the
+// success audit event (e.g. method=google); nil leaves it untagged, as password
+// logins are.
+func (s *Service) issueSession(ctx context.Context, u identity.User, meta map[string]any) (Session, error) {
 	raw, err := newToken()
 	if err != nil {
 		return Session{}, err
@@ -321,12 +324,13 @@ func (s *Service) issueSession(ctx context.Context, u identity.User) (Session, e
 	}
 	sum := sha256.Sum256([]byte(raw))
 	sess := identity.NewSession("", u.ID, s.now(), s.idle, s.absolute)
+	evt := withActor(newEvent(ctx, audit.ActionAuthLogin, audit.OutcomeSucceeded), u.ID)
+	evt.Metadata = meta
 	// One transaction: revoke the user's prior sessions, insert the new one, and
 	// commit the login audit event with them — so concurrent logins still leave
 	// exactly one active session (ADR-0006) and a successful login can never
 	// commit without its trail (ADR-0009).
-	created, err := s.repo.RotateSession(ctx, u.ID, sess, sum[:],
-		withActor(newEvent(ctx, audit.ActionAuthLogin, audit.OutcomeSucceeded), u.ID))
+	created, err := s.repo.RotateSession(ctx, u.ID, sess, sum[:], evt)
 	if err != nil {
 		return Session{}, err
 	}

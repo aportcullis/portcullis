@@ -12,6 +12,9 @@ import (
 
 type Querier interface {
 	BootstrapRoleID(ctx context.Context, organizationID pgtype.UUID) (pgtype.UUID, error)
+	// Total matching rows for the page controls. O(n) on a large table — PRD §7.1
+	// accepts this for the audit list and defers keyset pagination to "later".
+	CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (OrganizationMembership, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
@@ -39,6 +42,14 @@ type Querier interface {
 	// different user matches the conflict but fails the WHERE, so no row is
 	// returned and the caller detects the collision (vs. silently succeeding).
 	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
+	// Oldest first; (occurred_at asc, id asc) is the same index scanned backward, so it
+	// stays index-served and tie-breaker-stable.
+	ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAscParams) ([]ListAuditEventsAscRow, error)
+	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the
+	// audit_events_org_time_idx covering index (forward scan) and give OFFSET
+	// pagination a stable tie-breaker (PRD §7.1). Extended columns
+	// (state/execution/digest) are omitted until the features that populate them ship.
+	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// A user's effective permissions within one organization. Scoped by org (ADR-0004
 	// repository contract) and joined to roles so a soft-deleted role stops granting

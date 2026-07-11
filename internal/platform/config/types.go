@@ -1,7 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -49,9 +52,41 @@ type Config struct {
 	// means the direct peer IP is trusted — the correct setting for direct exposure.
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
 
+	// Google login (OIDC, ADR-0007). All three unset ⇒ the feature is disabled
+	// and password login is unaffected; a partial setup fails startup.
+	// GoogleClientID is the OAuth client id from the Google Cloud console.
+	GoogleClientID string `mapstructure:"google_client_id"`
+	// GoogleClientSecret is the client secret, inline.
+	GoogleClientSecret string `mapstructure:"google_client_secret"`
+	// GoogleClientSecretFile points to a file whose contents are the client
+	// secret (preferred in production via a mounted secret, as the master key is).
+	GoogleClientSecretFile string `mapstructure:"google_client_secret_file"`
+	// GoogleRedirectURL is the absolute callback URL registered with Google —
+	// https://<host>/auth/google/callback (http allowed for localhost dev).
+	GoogleRedirectURL string `mapstructure:"google_redirect_url"`
+
 	// trustedProxyNets is TrustedProxies parsed to networks, populated by Load.
 	trustedProxyNets []*net.IPNet
 }
 
 // TrustedProxyNets returns the parsed trusted-proxy networks (see TrustedProxies).
 func (c Config) TrustedProxyNets() []*net.IPNet { return c.trustedProxyNets }
+
+// GoogleEnabled reports whether Google login is configured. Load has already
+// validated all-or-nothing, so the client id alone is decisive.
+func (c Config) GoogleEnabled() bool { return c.GoogleClientID != "" }
+
+// ResolveGoogleClientSecret returns the client secret from whichever source is
+// configured, trimming trailing whitespace from a mounted file (as the master
+// key file is handled). Load guarantees exactly one source when Google is
+// enabled.
+func (c Config) ResolveGoogleClientSecret() (string, error) {
+	if c.GoogleClientSecretFile == "" {
+		return c.GoogleClientSecret, nil
+	}
+	b, err := os.ReadFile(c.GoogleClientSecretFile)
+	if err != nil {
+		return "", fmt.Errorf("read google_client_secret_file: %w", err)
+	}
+	return strings.TrimSpace(string(b)), nil
+}

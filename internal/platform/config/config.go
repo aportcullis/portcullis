@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -88,6 +89,12 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("shutdown_timeout must be positive, got %s", cfg.ShutdownTimeout)
 	}
 
+	// Google login is all-or-nothing (ADR-0007): everything unset ⇒ disabled
+	// (valid); a partial setup fails startup rather than surfacing on first use.
+	if err := validateGoogleConfig(cfg); err != nil {
+		return Config{}, err
+	}
+
 	// Parse trusted-proxy CIDRs once at startup so a typo fails fast rather than
 	// silently disabling proxy-aware rate limiting.
 	for _, c := range cfg.TrustedProxies {
@@ -107,4 +114,28 @@ func Load() (Config, error) {
 		cfg.trustedProxyNets = append(cfg.trustedProxyNets, network)
 	}
 	return cfg, nil
+}
+
+// validateGoogleConfig enforces the all-or-nothing Google login setup: the
+// client id, exactly one secret source, and a well-formed absolute redirect
+// URL must all be present, or all absent (ADR-0007).
+func validateGoogleConfig(cfg Config) error {
+	hasSecret := cfg.GoogleClientSecret != "" || cfg.GoogleClientSecretFile != ""
+	if cfg.GoogleClientID == "" && !hasSecret && cfg.GoogleRedirectURL == "" {
+		return nil // feature disabled
+	}
+	if cfg.GoogleClientSecret != "" && cfg.GoogleClientSecretFile != "" {
+		return fmt.Errorf("set either google_client_secret or google_client_secret_file, not both")
+	}
+	if cfg.GoogleClientID == "" || !hasSecret || cfg.GoogleRedirectURL == "" {
+		return fmt.Errorf("google login is partially configured: google_client_id, a client secret (google_client_secret or google_client_secret_file), and google_redirect_url must all be set to enable it, or all unset to disable it")
+	}
+	// The redirect URL is registered verbatim with Google; validate its shape so
+	// a typo fails here, not at the consent screen. http stays allowed for
+	// localhost development (the __Host- cookies already require TLS in prod).
+	u, err := url.Parse(cfg.GoogleRedirectURL)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("invalid google_redirect_url %q: must be an absolute http(s) URL", cfg.GoogleRedirectURL)
+	}
+	return nil
 }

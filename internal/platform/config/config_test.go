@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -172,5 +173,94 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.LogLevel != "debug" {
 		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
+	}
+}
+
+func TestGoogleLoginConfig(t *testing.T) {
+	// All unset (default): the feature is simply disabled — a valid state.
+	if cfg, err := config.Load(); err != nil || cfg.GoogleEnabled() {
+		t.Errorf("default GoogleEnabled = %t, %v; want false, nil", cfg.GoogleEnabled(), err)
+	}
+
+	// Fully configured: enabled, and the secret resolves.
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
+	t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "https://portcullis.example/auth/google/callback")
+	cfg, err := config.Load()
+	if err != nil || !cfg.GoogleEnabled() {
+		t.Fatalf("configured GoogleEnabled = %t, %v; want true, nil", cfg.GoogleEnabled(), err)
+	}
+	if secret, err := cfg.ResolveGoogleClientSecret(); err != nil || secret != "s3cret" {
+		t.Errorf("ResolveGoogleClientSecret = %q, %v", secret, err)
+	}
+}
+
+func TestGoogleLoginConfigRejectsPartialSetup(t *testing.T) {
+	// Any subset without the rest is a misconfig that must fail startup — a
+	// half-configured Google login would otherwise surface only on first use.
+	cases := []struct {
+		name string
+		env  map[string]string
+	}{
+		{"id only", map[string]string{"PORTCULLIS_GOOGLE_CLIENT_ID": "client-1"}},
+		{"secret only", map[string]string{"PORTCULLIS_GOOGLE_CLIENT_SECRET": "s3cret"}},
+		{"redirect only", map[string]string{"PORTCULLIS_GOOGLE_REDIRECT_URL": "https://x.example/cb"}},
+		{"missing redirect", map[string]string{
+			"PORTCULLIS_GOOGLE_CLIENT_ID":     "client-1",
+			"PORTCULLIS_GOOGLE_CLIENT_SECRET": "s3cret",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			if _, err := config.Load(); err == nil {
+				t.Error("partial Google config must fail Load")
+			}
+		})
+	}
+}
+
+func TestGoogleClientSecretFile(t *testing.T) {
+	dir := t.TempDir()
+	file := dir + "/google-secret"
+	if err := os.WriteFile(file, []byte("file-s3cret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET_FILE", file)
+	t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "https://portcullis.example/auth/google/callback")
+
+	cfg, err := config.Load()
+	if err != nil || !cfg.GoogleEnabled() {
+		t.Fatalf("file-secret GoogleEnabled = %t, %v; want true, nil", cfg.GoogleEnabled(), err)
+	}
+	// Trailing whitespace from the mounted file is trimmed (as the key file is).
+	if secret, err := cfg.ResolveGoogleClientSecret(); err != nil || secret != "file-s3cret" {
+		t.Errorf("ResolveGoogleClientSecret = %q, %v", secret, err)
+	}
+
+	// Both secret sources set: ambiguous, must fail (mirrors the master key).
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "inline-too")
+	if _, err := config.Load(); err == nil {
+		t.Error("both google_client_secret and google_client_secret_file must fail Load")
+	}
+}
+
+func TestGoogleRedirectURLValidation(t *testing.T) {
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
+
+	for _, bad := range []string{"not a url", "/auth/google/callback", "ftp://x.example/cb"} {
+		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", bad)
+		if _, err := config.Load(); err == nil {
+			t.Errorf("redirect URL %q must fail Load", bad)
+		}
+	}
+	// http is allowed (localhost development); https is the production shape.
+	t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "http://localhost:8080/auth/google/callback")
+	if _, err := config.Load(); err != nil {
+		t.Errorf("http localhost redirect URL should load: %v", err)
 	}
 }

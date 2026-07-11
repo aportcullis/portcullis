@@ -17,3 +17,15 @@ const (
 	infoPayloadIntegrity = "portcullis/payload-integrity/v1"
 	infoDEKWrap          = "portcullis/dek-wrap/v1"
 )
+
+// aadPrefix versions the canonical associated-data layout (ADR-0003): one
+// layout for every envelope, so record identity is bound the same way
+// everywhere.
+const aadPrefix = "portcullis/aad/v1"
+
+// AAD record types — fixed lowercase tokens, one per sealed record kind
+// (ADR-0003 enumerates them alongside the tables they protect).
+const (
+	// RecordTypeOIDCPending is the OIDC pending-auth cookie (ADR-0007).
+	RecordTypeOIDCPending = "oidc_pending"
+)

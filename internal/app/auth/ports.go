@@ -45,6 +45,22 @@ type Repository interface {
 	// External identities (OIDC login).
 	FindUserBySubject(ctx context.Context, issuer, subject string) (identity.User, error)
 	LinkIdentity(ctx context.Context, id identity.OIDCIdentity) error
+	// GetUserByEmail resolves a user by normalized email — the OIDC link-on-first-
+	// login lookup (ADR-0007: a verified provider email may attach to an existing
+	// admin-created account, never create one).
+	GetUserByEmail(ctx context.Context, email string) (identity.User, error)
+}
+
+// OIDCProvider is the use case's view of an external OIDC provider (Google —
+// ADR-0007). The adapter owns the OAuth2/OIDC protocol detail: AuthCodeURL
+// derives the S256 challenge from the verifier and requests exactly the
+// openid/email/profile scopes; Exchange redeems the code with the PKCE verifier
+// and verifies the ID token's signature, issuer, audience, and expiry. The
+// returned claims carry the token's nonce UNVERIFIED — the service compares it
+// against the pending value, so that check stays scenario-testable.
+type OIDCProvider interface {
+	AuthCodeURL(state, nonce, verifier string) string
+	Exchange(ctx context.Context, code, verifier string) (identity.OIDCClaims, error)
 }
 
 // PasswordHasher hashes and verifies passwords. The application depends on this

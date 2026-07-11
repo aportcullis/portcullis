@@ -14,8 +14,11 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
+	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	"github.com/aportcullis/portcullis/internal/app/auth"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
+	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
 	"github.com/aportcullis/portcullis/internal/platform/config"
 	"github.com/aportcullis/portcullis/internal/platform/logging"
@@ -134,24 +137,84 @@ func run() error {
 		return err
 	}
 	authSvc.WithLogger(logger)
-	authPath, authHandler := portcullisv1connect.NewAuthHandler(
-		connectapi.NewAuthService(authSvc),
-		// Recover first so it wraps the whole interceptor chain and the handler.
+
+	// Authorization: load the seeded permission catalog once (ADR-0008) and refuse
+	// to boot if it is missing — an unseeded catalog means every has(permission)
+	// check would be undecidable, the same fail-fast stance as the keyring and the
+	// runtime-connection checks above.
+	catalog, err := authz.LoadCatalog(startupCtx, store)
+	if err != nil {
+		logger.Error("permission catalog unavailable", "err", err, "hint", "apply migrations — 0002 seeds the permission catalog")
+		return err
+	}
+	authzSvc, err := authz.New(store, catalog)
+	if err != nil {
+		logger.Error("authz init failed", "err", err)
+		return err
+	}
+	logger.Info("authorization ready", "permissions", len(catalog))
+
+	auditReader, err := auditapp.New(postgres.NewAuditStore(pool))
+	if err != nil {
+		logger.Error("audit read init failed", "err", err)
+		return err
+	}
+
+	// One interceptor chain shared by every authenticated RPC surface: recover wraps
+	// the whole chain; the error logger is outermost of the interceptors so it records
+	// any server-fault error from the inner interceptors or the handler (returned
+	// errors are otherwise invisible — recover only catches panics); client IP
+	// resolves next (rate limiting and audit consume it), rate-limit sheds floods
+	// before auth, then auth injects the user (ADR-0006/0010).
+	recoverAndChain := []connect.HandlerOption{
 		recoverOpt,
-		// Client IP first (one resolution shared by rate limiting and audit), then
-		// rate-limit before auth so a login flood is shed before any password hashing.
 		connect.WithInterceptors(
+			connectapi.NewErrorLogInterceptor(logger),
 			connectapi.NewClientIPInterceptor(cfg.TrustedProxyNets()),
 			connectapi.NewRateLimitInterceptor(),
 			connectapi.NewAuthInterceptor(authSvc),
 		),
 		readLimit,
-	)
+	}
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc), recoverAndChain...)
+	// Audit.List is gated by the audit.list permission inside the handler (ADR-0008).
+	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), recoverAndChain...)
 
-	srv := server.New(cfg.Addr, logger, cfg.DrainDelay,
-		server.Mount{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
-		server.Mount{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
-	)
+	mounts := []server.Mount{
+		{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
+		{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
+		{Pattern: auditPath, Handler: http.MaxBytesHandler(auditHandler, server.MaxRequestBytes)},
+	}
+
+	// Google login (ADR-0007) mounts only when configured: provider discovery must
+	// succeed at boot (fail-fast, like the keyring), and when disabled the routes
+	// simply don't exist. The redirect flow is plain HTTP, not Connect.
+	if cfg.GoogleEnabled() {
+		secret, err := cfg.ResolveGoogleClientSecret()
+		if err != nil {
+			logger.Error("google login config invalid", "err", err)
+			return err
+		}
+		provider, err := googleoidc.New(startupCtx, googleoidc.GoogleIssuer, cfg.GoogleClientID, secret, cfg.GoogleRedirectURL)
+		if err != nil {
+			logger.Error("google provider discovery failed", "err", err, "hint", "google login requires reachability to accounts.google.com at startup")
+			return err
+		}
+		authSvc.WithOIDCProvider(provider)
+		orgID, err := store.DefaultOrganizationID(startupCtx)
+		if err != nil {
+			logger.Error("default organization unavailable", "err", err)
+			return err
+		}
+		oidcHandler := connectapi.NewOIDCHandler(authSvc, crypto.NewOIDCPendingCodec(keyring, string(orgID)), cfg.TrustedProxyNets(), logger)
+		mounts = append(mounts,
+			server.Mount{Pattern: connectapi.OIDCStartPattern, Handler: oidcHandler.Start()},
+			server.Mount{Pattern: connectapi.OIDCCallbackPattern, Handler: oidcHandler.Callback()},
+		)
+		logger.Info("google login enabled")
+	}
+
+	srv := server.New(cfg.Addr, logger, cfg.DrainDelay, mounts...)
 	srv.Health().Register("metadata-db", func(ctx context.Context) error { return pool.Ping(ctx) })
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

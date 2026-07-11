@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAuditEvents = `-- name: CountAuditEvents :one
+select count(*) from public.audit_events
+where organization_id = $1
+`
+
+// Total matching rows for the page controls. O(n) on a large table — PRD §7.1
+// accepts this for the audit list and defers keyset pagination to "later".
+func (q *Queries) CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuditEvents, organizationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
 insert into public.audit_events (
     organization_id, actor_type, actor_user_id, actor_service,
@@ -45,4 +59,134 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.Metadata,
 	)
 	return err
+}
+
+const listAuditEventsAsc = `-- name: ListAuditEventsAsc :many
+select
+    id, occurred_at, actor_type, actor_user_id, actor_service,
+    action, target_type, target_id, outcome, request_id, metadata
+from public.audit_events
+where organization_id = $1
+order by occurred_at asc, id asc
+limit $3::bigint offset $2::bigint
+`
+
+type ListAuditEventsAscParams struct {
+	OrganizationID pgtype.UUID
+	RowOffset      int64
+	PageLimit      int64
+}
+
+type ListAuditEventsAscRow struct {
+	ID           pgtype.UUID
+	OccurredAt   pgtype.Timestamptz
+	ActorType    string
+	ActorUserID  pgtype.UUID
+	ActorService *string
+	Action       string
+	TargetType   string
+	TargetID     *string
+	Outcome      string
+	RequestID    *string
+	Metadata     []byte
+}
+
+// Oldest first; (occurred_at asc, id asc) is the same index scanned backward, so it
+// stays index-served and tie-breaker-stable.
+func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAscParams) ([]ListAuditEventsAscRow, error) {
+	rows, err := q.db.Query(ctx, listAuditEventsAsc, arg.OrganizationID, arg.RowOffset, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuditEventsAscRow{}
+	for rows.Next() {
+		var i ListAuditEventsAscRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OccurredAt,
+			&i.ActorType,
+			&i.ActorUserID,
+			&i.ActorService,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Outcome,
+			&i.RequestID,
+			&i.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditEventsDesc = `-- name: ListAuditEventsDesc :many
+select
+    id, occurred_at, actor_type, actor_user_id, actor_service,
+    action, target_type, target_id, outcome, request_id, metadata
+from public.audit_events
+where organization_id = $1
+order by occurred_at desc, id desc
+limit $3::bigint offset $2::bigint
+`
+
+type ListAuditEventsDescParams struct {
+	OrganizationID pgtype.UUID
+	RowOffset      int64
+	PageLimit      int64
+}
+
+type ListAuditEventsDescRow struct {
+	ID           pgtype.UUID
+	OccurredAt   pgtype.Timestamptz
+	ActorType    string
+	ActorUserID  pgtype.UUID
+	ActorService *string
+	Action       string
+	TargetType   string
+	TargetID     *string
+	Outcome      string
+	RequestID    *string
+	Metadata     []byte
+}
+
+// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the
+// audit_events_org_time_idx covering index (forward scan) and give OFFSET
+// pagination a stable tie-breaker (PRD §7.1). Extended columns
+// (state/execution/digest) are omitted until the features that populate them ship.
+func (q *Queries) ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error) {
+	rows, err := q.db.Query(ctx, listAuditEventsDesc, arg.OrganizationID, arg.RowOffset, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuditEventsDescRow{}
+	for rows.Next() {
+		var i ListAuditEventsDescRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OccurredAt,
+			&i.ActorType,
+			&i.ActorUserID,
+			&i.ActorService,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Outcome,
+			&i.RequestID,
+			&i.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

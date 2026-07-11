@@ -15,6 +15,7 @@ type Service struct {
 	hasher    PasswordHasher
 	csrf      CSRFProtector
 	auditor   AuditRecorder
+	oidc      OIDCProvider // nil unless Google login is configured (ADR-0007)
 	logger    *slog.Logger
 	now       func() time.Time
 	idle      time.Duration
@@ -41,4 +42,15 @@ type Session struct {
 	Session identity.Session
 	Token   string
 	CSRF    string
+}
+
+// OIDCPending is the state minted at the start of a Google login and carried
+// across the provider redirect (in an AEAD-sealed cookie the transport owns —
+// ADR-0007). ExpiresAt is enforced by the service against its own clock, so the
+// client-controlled cookie Max-Age is never the only expiry check.
+type OIDCPending struct {
+	State     string
+	Nonce     string
+	Verifier  string
+	ExpiresAt time.Time
 }

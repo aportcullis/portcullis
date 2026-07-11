@@ -34,6 +34,24 @@ const (
 	csrfHeader    = "X-CSRF-Token"
 )
 
+// Google OIDC redirect flow (ADR-0007). The route patterns are exported for the
+// composition root's mounts; the handler itself lives in oidc.go.
+const (
+	// OIDCStartPattern begins the flow: mint pending state, redirect to Google.
+	OIDCStartPattern = "GET /auth/google/start"
+	// OIDCCallbackPattern is Google's redirect target.
+	OIDCCallbackPattern = "GET /auth/google/callback"
+	// oidcPendingCookie carries the sealed state/nonce/verifier across the
+	// provider redirect.
+	oidcPendingCookie = "__Host-portcullis_oidc"
+	// oidcSuccessRedirect is fixed (never a client-supplied return URL — no open
+	// redirect); the SPA routes from its own state after calling Me.
+	oidcSuccessRedirect = "/"
+	// oidcFailureRedirect carries no failure detail; specifics go to the server
+	// log only (types, never values).
+	oidcFailureRedirect = "/login?error=oidc"
+)
+
 // Context keys for the values the auth interceptor injects.
 const (
 	ctxUser ctxKey = iota
