@@ -25,10 +25,19 @@ methods that package calls), and the concrete implementation is **injected** via
   compile-time) only if that wiring outgrows one screen; avoid runtime/reflection DI containers.
 - Benefit beyond layering: tests inject trivial fakes (no real Argon2/DB), so unit tests stay fast.
 
-## File organization — split by kind
-Within a package, separate declarations: interfaces → `port.go`/`repository.go`; custom types →
-`types.go`; constants → `const.go`; sentinel errors → `errors.go`; the primary type's constructor and
-methods in the main file. Prefer separation.
+## File organization — two axes, chosen by package shape
+Plan the split BEFORE creating files; prefer separation.
+
+- **Multi-concept package** (typically a domain context: users + sessions + roles + …): one file
+  per **concept**, holding that concept's types, enums/constants, constructor, and methods together
+  (`user.go`, `session.go`, `role.go`, `email.go`, `backoff.go`). Kind files hold only what no
+  single concept owns: sentinel errors → `errors.go` (shared vocabulary), cross-concept typed IDs →
+  `types.go`, interfaces → `port.go`/`ports.go`. A `const.go` in such a package is a smell — a
+  constant almost always belongs to one concept's file (e.g. `MaxEmailLength` lives in `email.go`
+  beside `EmailTooLong`, not in `const.go`).
+- **Single-concept package** (typically an app service or adapter, e.g. `app/auth`): split by
+  **kind** — interfaces → `ports.go`; custom types → `types.go`; constants → `const.go`; sentinel
+  errors → `errors.go`; the primary type's constructor and methods in the main file.
 
 ## Tests — TDD, black-box
 - Default to external `package X_test` (black-box) — test through the exported surface.

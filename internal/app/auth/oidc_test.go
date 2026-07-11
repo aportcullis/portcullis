@@ -186,6 +186,41 @@ func TestGoogleLoginLinkedSubjectSignsIn(t *testing.T) {
 	}
 }
 
+// A password lockout neither blocks nor is extended by Google login: the
+// backoff protects the LOCAL credential (ADR-0006); Google authenticates the
+// user itself, and blocking it would only hand an attacker a griefing lever.
+// The password counter also survives the Google success — it tracks
+// consecutive PASSWORD failures only.
+func TestGoogleLoginIgnoresLockout(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := newFake()
+	p := &fakeProvider{}
+	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
+	u := bootstrapUser(t, svc)
+	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
+		t.Fatal(err)
+	}
+	lockedUntil := time.Now().Add(10 * time.Minute)
+	repo.backoff[u.ID] = identity.LoginBackoff{FailureCount: 7, LockedUntil: &lockedUntil}
+
+	p.claims = verifiedClaims("admin@example.com")
+	pending := startFlow(t, svc, p)
+	sess, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending)
+	if err != nil {
+		t.Fatalf("LoginWithGoogle while password-locked = %v, want success", err)
+	}
+	if sess.Token == "" {
+		t.Error("no session issued")
+	}
+	if repo.failureWrites != 0 {
+		t.Errorf("Google login touched the password failure counter (%d writes)", repo.failureWrites)
+	}
+	if b := repo.backoff[u.ID]; b.FailureCount != 7 || b.LockedUntil == nil {
+		t.Errorf("Google login mutated the password backoff state: %+v", b)
+	}
+}
+
 func TestGoogleLoginLinksVerifiedEmailOnFirstLogin(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

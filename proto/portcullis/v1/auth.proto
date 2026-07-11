@@ -18,6 +18,12 @@ service Auth {
   rpc Logout(LogoutRequest) returns (LogoutResponse) {}
   // Me returns the currently authenticated user.
   rpc Me(MeRequest) returns (MeResponse) {}
+  // GetConfig returns the public login configuration the SPA needs before any
+  // session exists: whether Google login is available and whether the instance
+  // still needs its first-run bootstrap. Public read-only metadata — bootstrap
+  // state is install-level, not per-account, so this is not an enumeration
+  // oracle (ADR-0007/ADR-0013).
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse) {}
 }
 
 message User {
@@ -51,4 +57,14 @@ message LogoutResponse {}
 message MeRequest {}
 message MeResponse {
   User user = 1;
+}
+
+message GetConfigRequest {}
+message GetConfigResponse {
+  // google_enabled reports whether "Sign in with Google" is configured on this
+  // server; the SPA hides the button otherwise.
+  bool google_enabled = 1;
+  // needs_bootstrap reports whether no user exists yet, so the SPA can route
+  // straight to the first-run admin form.
+  bool needs_bootstrap = 2;
 }

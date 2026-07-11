@@ -41,6 +41,8 @@ const (
 	AuthLogoutProcedure = "/portcullis.v1.Auth/Logout"
 	// AuthMeProcedure is the fully-qualified name of the Auth's Me RPC.
 	AuthMeProcedure = "/portcullis.v1.Auth/Me"
+	// AuthGetConfigProcedure is the fully-qualified name of the Auth's GetConfig RPC.
+	AuthGetConfigProcedure = "/portcullis.v1.Auth/GetConfig"
 )
 
 // AuthClient is a client for the portcullis.v1.Auth service.
@@ -54,6 +56,12 @@ type AuthClient interface {
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// Me returns the currently authenticated user.
 	Me(context.Context, *connect.Request[v1.MeRequest]) (*connect.Response[v1.MeResponse], error)
+	// GetConfig returns the public login configuration the SPA needs before any
+	// session exists: whether Google login is available and whether the instance
+	// still needs its first-run bootstrap. Public read-only metadata — bootstrap
+	// state is install-level, not per-account, so this is not an enumeration
+	// oracle (ADR-0007/ADR-0013).
+	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
 }
 
 // NewAuthClient constructs a client for the portcullis.v1.Auth service. By default, it uses the
@@ -91,6 +99,12 @@ func NewAuthClient(httpClient connect.HTTPClient, baseURL string, opts ...connec
 			connect.WithSchema(authMethods.ByName("Me")),
 			connect.WithClientOptions(opts...),
 		),
+		getConfig: connect.NewClient[v1.GetConfigRequest, v1.GetConfigResponse](
+			httpClient,
+			baseURL+AuthGetConfigProcedure,
+			connect.WithSchema(authMethods.ByName("GetConfig")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -100,6 +114,7 @@ type authClient struct {
 	login     *connect.Client[v1.LoginRequest, v1.LoginResponse]
 	logout    *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
 	me        *connect.Client[v1.MeRequest, v1.MeResponse]
+	getConfig *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
 }
 
 // Bootstrap calls portcullis.v1.Auth.Bootstrap.
@@ -122,6 +137,11 @@ func (c *authClient) Me(ctx context.Context, req *connect.Request[v1.MeRequest])
 	return c.me.CallUnary(ctx, req)
 }
 
+// GetConfig calls portcullis.v1.Auth.GetConfig.
+func (c *authClient) GetConfig(ctx context.Context, req *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error) {
+	return c.getConfig.CallUnary(ctx, req)
+}
+
 // AuthHandler is an implementation of the portcullis.v1.Auth service.
 type AuthHandler interface {
 	// Bootstrap creates the first admin; refused once any user exists. It does not
@@ -133,6 +153,12 @@ type AuthHandler interface {
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// Me returns the currently authenticated user.
 	Me(context.Context, *connect.Request[v1.MeRequest]) (*connect.Response[v1.MeResponse], error)
+	// GetConfig returns the public login configuration the SPA needs before any
+	// session exists: whether Google login is available and whether the instance
+	// still needs its first-run bootstrap. Public read-only metadata — bootstrap
+	// state is install-level, not per-account, so this is not an enumeration
+	// oracle (ADR-0007/ADR-0013).
+	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
 }
 
 // NewAuthHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -166,6 +192,12 @@ func NewAuthHandler(svc AuthHandler, opts ...connect.HandlerOption) (string, htt
 		connect.WithSchema(authMethods.ByName("Me")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authGetConfigHandler := connect.NewUnaryHandler(
+		AuthGetConfigProcedure,
+		svc.GetConfig,
+		connect.WithSchema(authMethods.ByName("GetConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/portcullis.v1.Auth/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthBootstrapProcedure:
@@ -176,6 +208,8 @@ func NewAuthHandler(svc AuthHandler, opts ...connect.HandlerOption) (string, htt
 			authLogoutHandler.ServeHTTP(w, r)
 		case AuthMeProcedure:
 			authMeHandler.ServeHTTP(w, r)
+		case AuthGetConfigProcedure:
+			authGetConfigHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -199,4 +233,8 @@ func (UnimplementedAuthHandler) Logout(context.Context, *connect.Request[v1.Logo
 
 func (UnimplementedAuthHandler) Me(context.Context, *connect.Request[v1.MeRequest]) (*connect.Response[v1.MeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portcullis.v1.Auth.Me is not implemented"))
+}
+
+func (UnimplementedAuthHandler) GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portcullis.v1.Auth.GetConfig is not implemented"))
 }

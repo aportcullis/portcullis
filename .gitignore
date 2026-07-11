@@ -36,6 +36,9 @@ go.work.sum
 # ─────────────────────────────────────────────
 node_modules/
 web/dist/
+# Playwright run artifacts (traces, screenshots, reports)
+web/test-results/
+web/playwright-report/
 .pnpm-store/
 .pnpm-debug.log*
 npm-debug.log*

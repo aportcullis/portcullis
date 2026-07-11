@@ -37,6 +37,9 @@ func Load() (Config, error) {
 	v.SetDefault("log_format", "json")
 	v.SetDefault("argon2_max_concurrent", 2)
 	v.SetDefault("runtime_role", "portcullis_runtime")
+	v.SetDefault("login_backoff_threshold", 5)
+	v.SetDefault("login_backoff_base", time.Minute)
+	v.SetDefault("login_backoff_cap", 15*time.Minute)
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -78,6 +81,15 @@ func Load() (Config, error) {
 	// expiry).
 	if cfg.Argon2MaxConcurrent < 1 || cfg.Argon2MaxConcurrent > maxArgon2Concurrent {
 		return Config{}, fmt.Errorf("argon2_max_concurrent %d out of range [1, %d]", cfg.Argon2MaxConcurrent, maxArgon2Concurrent)
+	}
+	if cfg.LoginBackoffThreshold < 1 || cfg.LoginBackoffThreshold > maxLoginBackoffThreshold {
+		return Config{}, fmt.Errorf("login_backoff_threshold %d out of range [1, %d]", cfg.LoginBackoffThreshold, maxLoginBackoffThreshold)
+	}
+	if cfg.LoginBackoffBase <= 0 {
+		return Config{}, fmt.Errorf("login_backoff_base must be positive, got %s", cfg.LoginBackoffBase)
+	}
+	if cfg.LoginBackoffCap < cfg.LoginBackoffBase || cfg.LoginBackoffCap > maxLoginBackoffCap {
+		return Config{}, fmt.Errorf("login_backoff_cap %s out of range [login_backoff_base %s, %s]", cfg.LoginBackoffCap, cfg.LoginBackoffBase, maxLoginBackoffCap)
 	}
 	if cfg.DrainDelay < 0 {
 		return Config{}, fmt.Errorf("drain_delay must not be negative, got %s", cfg.DrainDelay)

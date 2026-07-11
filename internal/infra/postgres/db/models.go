@@ -41,6 +41,13 @@ type AuthMethod struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type LoginBackoff struct {
+	UserID        pgtype.UUID
+	FailureCount  int32
+	LockedUntil   pgtype.Timestamptz
+	LastFailureAt pgtype.Timestamptz
+}
+
 type OidcIdentity struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID

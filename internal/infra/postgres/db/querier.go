@@ -32,9 +32,12 @@ type Querier interface {
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
-	// User + password hash in one round-trip, so a password login costs the same
-	// number of queries whether or not the account exists (anti-enumeration). The
-	// hash is empty for OIDC-only users (no password row).
+	// User + password hash + progressive-backoff state in one round-trip, so a
+	// password login costs the same number of queries whether or not the account
+	// exists (anti-enumeration). The hash is empty for OIDC-only users (no password
+	// row); the backoff columns are zero/null for accounts that never failed. The
+	// locked flag is evaluated HERE on the database clock — the same clock the
+	// failure upsert uses — so app/DB clock skew can't split the expiry decision.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
 	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an
@@ -55,6 +58,22 @@ type Querier interface {
 	// repository contract) and joined to roles so a soft-deleted role stops granting
 	// its permissions even while a membership still references it (FKs are RESTRICT).
 	PermissionsForUser(ctx context.Context, arg PermissionsForUserParams) ([]string, error)
+	// ONE atomic statement per failed attempt (ADR-0006): bump the counter and,
+	// at/after the threshold, impose or extend the jittered lockout — so a
+	// concurrent success reset or lazy expiry-reset can never interleave between
+	// counting and locking, and every failure costs exactly one write. All time
+	// arithmetic runs on the database clock. The counter restarts at 1 when the
+	// previous lockout has expired ("resets on expiry", applied lazily) or when
+	// the last failure is older than the staleness window (months-old typos must
+	// not count toward a fresh lockout). The window is
+	// min(base·2^(n-threshold), cap)·jitter_factor with the exponent clamped to
+	// [0,30], so no operand can overflow; greatest() keeps a concurrent shorter
+	// jittered window from moving an existing lockout backward.
+	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error)
+	// A successful login clears the slate. The WHERE leaves an already-clean row
+	// unwritten, so calling this on every success keeps the hot path write-free
+	// while still clearing failures committed by concurrent attempts mid-verify.
+	ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error
 	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must
 	// not overwrite the original revoked_at — forensic evidence of WHEN the session
 	// actually died — and the caller skips the audit event when no row changed, so

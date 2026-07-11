@@ -71,6 +71,20 @@ func (a *AuthService) Me(
 	return connect.NewResponse(&portcullisv1.MeResponse{User: toProtoUser(u)}), nil
 }
 
+func (a *AuthService) GetConfig(
+	ctx context.Context,
+	_ *connect.Request[portcullisv1.GetConfigRequest],
+) (*connect.Response[portcullisv1.GetConfigResponse], error) {
+	cfg, err := a.svc.PublicConfig(ctx)
+	if err != nil {
+		return nil, authError(err)
+	}
+	return connect.NewResponse(&portcullisv1.GetConfigResponse{
+		GoogleEnabled:  cfg.GoogleEnabled,
+		NeedsBootstrap: cfg.NeedsBootstrap,
+	}), nil
+}
+
 func toProtoUser(u identity.User) *portcullisv1.User {
 	return &portcullisv1.User{
 		Id:          string(u.ID),

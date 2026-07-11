@@ -25,6 +25,10 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogLevel != "info" || cfg.LogFormat != "json" {
 		t.Errorf("LogLevel/Format = %q/%q, want info/json", cfg.LogLevel, cfg.LogFormat)
 	}
+	// Progressive-backoff defaults are the ADR-0006 pinned parameters.
+	if cfg.LoginBackoffThreshold != 5 || cfg.LoginBackoffBase != time.Minute || cfg.LoginBackoffCap != 15*time.Minute {
+		t.Errorf("login backoff = (%d, %s, %s), want (5, 1m, 15m)", cfg.LoginBackoffThreshold, cfg.LoginBackoffBase, cfg.LoginBackoffCap)
+	}
 }
 
 func TestAllowPrivilegedRuntimeFlag(t *testing.T) {
@@ -71,6 +75,13 @@ func TestRejectsInvalidEnvValues(t *testing.T) {
 		{"argon2 zero", "PORTCULLIS_ARGON2_MAX_CONCURRENT", "0"},
 		{"argon2 negative", "PORTCULLIS_ARGON2_MAX_CONCURRENT", "-1"},
 		{"argon2 absurd", "PORTCULLIS_ARGON2_MAX_CONCURRENT", "100000"},
+		{"backoff threshold zero", "PORTCULLIS_LOGIN_BACKOFF_THRESHOLD", "0"},
+		{"backoff threshold negative", "PORTCULLIS_LOGIN_BACKOFF_THRESHOLD", "-3"},
+		{"backoff base zero", "PORTCULLIS_LOGIN_BACKOFF_BASE", "0s"},
+		{"backoff base negative", "PORTCULLIS_LOGIN_BACKOFF_BASE", "-1m"},
+		{"backoff cap below base", "PORTCULLIS_LOGIN_BACKOFF_CAP", "30s"},
+		{"backoff cap absurd", "PORTCULLIS_LOGIN_BACKOFF_CAP", "25h"},
+		{"backoff threshold absurd", "PORTCULLIS_LOGIN_BACKOFF_THRESHOLD", "1001"},
 		{"negative drain delay", "PORTCULLIS_DRAIN_DELAY", "-5s"},
 		{"zero shutdown timeout", "PORTCULLIS_SHUTDOWN_TIMEOUT", "0s"},
 		{"negative shutdown timeout", "PORTCULLIS_SHUTDOWN_TIMEOUT", "-1s"},

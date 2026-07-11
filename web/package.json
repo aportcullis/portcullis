@@ -6,15 +6,24 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.node.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.app.json && tsgo --noEmit -p tsconfig.node.json && tsgo --noEmit -p e2e/tsconfig.json",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@bufbuild/protobuf": "2.12.1",
     "@connectrpc/connect": "2.1.2",
     "@connectrpc/connect-web": "2.1.2",
-    "solid-js": "1.9.13"
+    "@kobalte/core": "0.13.12",
+    "@solidjs/router": "0.16.1",
+    "@tailwindcss/vite": "4.3.2",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "solid-js": "1.9.13",
+    "tailwind-merge": "3.6.0",
+    "tailwindcss": "4.3.2"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@types/node": "24.13.2",
     "@typescript/native-preview": "7.0.0-dev.20260627.2",
     "typescript": "6.0.3",

@@ -14,14 +14,24 @@ permissions:
 
 jobs:
   verify:
-    name: backend (make verify)
-    runs-on: ubuntu-latest # ships a running Docker daemon for testcontainers
+    name: gate (make verify)
+    runs-on: ubuntu-latest # ships a running Docker daemon for testcontainers + e2e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      # verify includes the browser e2e (make e2e), which builds the SPA and
+      # runs Playwright — so the frontend toolchain is needed here too.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
       - run: make verify
 
   web:

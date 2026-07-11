@@ -144,12 +144,13 @@ func (s *IdentityStore) GetUserByEmail(ctx context.Context, email string) (ident
 	return toUser(u), nil
 }
 
-// GetUserForLogin returns the user and password hash in one query; the hash is
-// "" for an OIDC-only user with no password row.
-func (s *IdentityStore) GetUserForLogin(ctx context.Context, email string) (identity.User, string, error) {
+// GetUserForLogin returns the user, password hash, and progressive-backoff
+// state in one query; the hash is "" for an OIDC-only user with no password
+// row, and the backoff is zero-valued for an account that never failed.
+func (s *IdentityStore) GetUserForLogin(ctx context.Context, email string) (identity.User, string, identity.LoginBackoff, error) {
 	row, err := s.q.GetUserForLogin(ctx, email)
 	if err != nil {
-		return identity.User{}, "", notFound(err, identity.ErrUserNotFound)
+		return identity.User{}, "", identity.LoginBackoff{}, notFound(err, identity.ErrUserNotFound)
 	}
 	u := identity.User{
 		ID:          identity.UserID(uuidToString(row.ID)),
@@ -158,7 +159,47 @@ func (s *IdentityStore) GetUserForLogin(ctx context.Context, email string) (iden
 		Status:      identity.UserStatus(row.Status),
 		CreatedAt:   tsToTime(row.CreatedAt),
 	}
-	return u, row.PasswordHash, nil
+	backoff := identity.LoginBackoff{
+		FailureCount: int(row.FailureCount),
+		LockedUntil:  tsToTimePtr(row.LockedUntil),
+		Locked:       row.Locked,
+	}
+	return u, row.PasswordHash, backoff, nil
+}
+
+// RecordLoginFailure counts one failed attempt and imposes/extends the lockout
+// in a single atomic statement on the database clock (ADR-0006); the policy
+// values travel per call, so the store stays policy-free.
+func (s *IdentityStore) RecordLoginFailure(ctx context.Context, id identity.UserID, p identity.FailureParams) (identity.LoginBackoff, error) {
+	uid, err := stringToUUID(string(id))
+	if err != nil {
+		return identity.LoginBackoff{}, identity.ErrUserNotFound
+	}
+	row, err := s.q.RecordLoginFailure(ctx, db.RecordLoginFailureParams{
+		UserID:        uid,
+		Threshold:     int32(p.Threshold),
+		BaseSecs:      p.Base.Seconds(),
+		CapSecs:       p.Cap.Seconds(),
+		StalenessSecs: p.Staleness.Seconds(),
+		JitterFactor:  p.JitterFactor,
+	})
+	if err != nil {
+		return identity.LoginBackoff{}, err
+	}
+	return identity.LoginBackoff{
+		FailureCount: int(row.FailureCount),
+		LockedUntil:  tsToTimePtr(row.LockedUntil),
+		Locked:       row.Locked,
+	}, nil
+}
+
+// ResetLoginBackoff clears the counter and lockout after a successful login.
+func (s *IdentityStore) ResetLoginBackoff(ctx context.Context, id identity.UserID) error {
+	uid, err := stringToUUID(string(id))
+	if err != nil {
+		return identity.ErrUserNotFound
+	}
+	return s.q.ResetLoginBackoff(ctx, uid)
 }
 
 func (s *IdentityStore) GetUserByID(ctx context.Context, id identity.UserID) (identity.User, error) {

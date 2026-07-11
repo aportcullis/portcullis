@@ -23,26 +23,40 @@ type fakeRepo struct {
 	sessions  map[identity.SessionID]identity.Session
 	byHash    map[string]identity.SessionID
 	oidc      map[string]identity.UserID
+	backoff   map[identity.UserID]identity.LoginBackoff
 	seq       int
+	// clock is the repo's now() — the real store's lazy expiry-reset runs on the
+	// database clock, so tests that advance the service clock set this too.
+	clock func() time.Time
 	// txEvents captures the audit events passed to the transactional ops
 	// (BootstrapAdmin, RotateSession, RevokeSession) in call order, mimicking the
 	// real store's same-transaction write (ADR-0009). The fake completes the
 	// actor for bootstrap the way the store does.
 	txEvents []audit.Event
+	// lastFailure mirrors the row's last_failure_at (the staleness input).
+	lastFailure map[identity.UserID]time.Time
 	// call counters, so tests can pin that a write did NOT happen (throttles,
-	// best-effort rehash).
+	// best-effort rehash, clean-row resets).
 	extendCalls      int
 	setPasswordCalls int
+	failureWrites    int
+	resetWrites      int
+	// failBackoffWrites makes the backoff writes fail, to prove they are
+	// best-effort (a counter outage must never change the login response).
+	failBackoffWrites bool
 }
 
 func newFake() *fakeRepo {
 	return &fakeRepo{
-		users:     map[identity.UserID]identity.User{},
-		emails:    map[string]identity.UserID{},
-		passwords: map[identity.UserID]string{},
-		sessions:  map[identity.SessionID]identity.Session{},
-		byHash:    map[string]identity.SessionID{},
-		oidc:      map[string]identity.UserID{},
+		users:       map[identity.UserID]identity.User{},
+		emails:      map[string]identity.UserID{},
+		passwords:   map[identity.UserID]string{},
+		sessions:    map[identity.SessionID]identity.Session{},
+		byHash:      map[string]identity.SessionID{},
+		oidc:        map[string]identity.UserID{},
+		backoff:     map[identity.UserID]identity.LoginBackoff{},
+		lastFailure: map[identity.UserID]time.Time{},
+		clock:       time.Now,
 	}
 }
 
@@ -84,12 +98,65 @@ func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (identity.Use
 	}
 	return f.users[id], nil
 }
-func (f *fakeRepo) GetUserForLogin(_ context.Context, email string) (identity.User, string, error) {
+func (f *fakeRepo) GetUserForLogin(_ context.Context, email string) (identity.User, string, identity.LoginBackoff, error) {
 	id, ok := f.emails[email]
 	if !ok {
-		return identity.User{}, "", identity.ErrUserNotFound
+		return identity.User{}, "", identity.LoginBackoff{}, identity.ErrUserNotFound
 	}
-	return f.users[id], f.passwords[id], nil
+	b := f.backoff[id]
+	// Like the real query, the locked flag is evaluated at read time on the
+	// repo's clock (the stand-in for the database clock).
+	b.Locked = b.LockedUntil != nil && b.LockedUntil.After(f.clock())
+	return f.users[id], f.passwords[id], b, nil
+}
+
+// --- progressive backoff (mirrors the store's atomic upsert semantics) ---
+
+func (f *fakeRepo) RecordLoginFailure(_ context.Context, id identity.UserID, p identity.FailureParams) (identity.LoginBackoff, error) {
+	f.failureWrites++
+	if f.failBackoffWrites {
+		return identity.LoginBackoff{}, errors.New("backoff store down")
+	}
+	now := f.clock()
+	b := f.backoff[id]
+	// Lazy resets, exactly like the upsert: an expired lockout — or a stale
+	// sub-threshold counter — restarts at 1.
+	expired := b.LockedUntil != nil && !b.LockedUntil.After(now)
+	stale := b.LockedUntil == nil && b.FailureCount > 0 && !f.lastFailure[id].After(now.Add(-p.Staleness))
+	if expired || stale {
+		b = identity.LoginBackoff{FailureCount: 1}
+	} else {
+		b.FailureCount++
+	}
+	if b.FailureCount >= p.Threshold {
+		exp := min(max(b.FailureCount-p.Threshold, 0), 30)
+		w := p.Base * (1 << exp)
+		if w > p.Cap || w <= 0 {
+			w = p.Cap
+		}
+		until := now.Add(time.Duration(float64(w) * p.JitterFactor))
+		// greatest(): a shorter concurrent jittered window must not shrink it.
+		if b.LockedUntil == nil || until.After(*b.LockedUntil) {
+			b.LockedUntil = &until
+		}
+	}
+	b.Locked = b.LockedUntil != nil && b.LockedUntil.After(now)
+	f.backoff[id] = b
+	f.lastFailure[id] = now
+	return b, nil
+}
+
+func (f *fakeRepo) ResetLoginBackoff(_ context.Context, id identity.UserID) error {
+	if f.failBackoffWrites {
+		return errors.New("backoff store down")
+	}
+	// The real statement's WHERE leaves a clean row unwritten; only dirty rows
+	// count as a write, so tests can pin the hot path stays write-free.
+	if b, ok := f.backoff[id]; ok && (b.FailureCount > 0 || b.LockedUntil != nil) {
+		f.resetWrites++
+		delete(f.backoff, id)
+	}
+	return nil
 }
 func (f *fakeRepo) GetUserByID(_ context.Context, id identity.UserID) (identity.User, error) {
 	u, ok := f.users[id]
@@ -265,9 +332,9 @@ func (errRecorder) Record(context.Context, audit.Event) error { return errors.Ne
 // way the real pgx-backed store does — the plain fake ignores ctx.
 type ctxAwareRepo struct{ *fakeRepo }
 
-func (r ctxAwareRepo) GetUserForLogin(ctx context.Context, email string) (identity.User, string, error) {
+func (r ctxAwareRepo) GetUserForLogin(ctx context.Context, email string) (identity.User, string, identity.LoginBackoff, error) {
 	if err := ctx.Err(); err != nil {
-		return identity.User{}, "", err
+		return identity.User{}, "", identity.LoginBackoff{}, err
 	}
 	return r.fakeRepo.GetUserForLogin(ctx, email)
 }
@@ -628,6 +695,35 @@ func TestLoginUniformErrorOnUnverifiableHash(t *testing.T) {
 	events := rec.all()
 	if len(events) != 1 || events[0].Action != audit.ActionAuthLogin || events[0].Outcome != audit.OutcomeFailed {
 		t.Errorf("events = %+v, want one AUTH_LOGIN/FAILED", events)
+	}
+}
+
+// PublicConfig is the pre-session metadata the SPA routes on: whether Google
+// login is configured and whether the instance still needs its first admin.
+func TestPublicConfig(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := newFake()
+	svc := newService(t, repo)
+
+	cfg, err := svc.PublicConfig(ctx)
+	if err != nil {
+		t.Fatalf("PublicConfig: %v", err)
+	}
+	if cfg.GoogleEnabled || !cfg.NeedsBootstrap {
+		t.Errorf("fresh instance config = %+v, want google off + needs bootstrap", cfg)
+	}
+
+	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+		t.Fatal(err)
+	}
+	svc.WithOIDCProvider(&fakeProvider{})
+	cfg, err = svc.PublicConfig(ctx)
+	if err != nil {
+		t.Fatalf("PublicConfig after bootstrap: %v", err)
+	}
+	if !cfg.GoogleEnabled || cfg.NeedsBootstrap {
+		t.Errorf("configured instance config = %+v, want google on + bootstrapped", cfg)
 	}
 }
 

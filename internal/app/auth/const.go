@@ -16,9 +16,25 @@ const (
 	maxDisplayNameLength = 256
 )
 
-// auditWriteTimeout bounds a best-effort audit write after it is detached from
-// the request context (ADR-0009), so a stuck store can't leak goroutines.
-const auditWriteTimeout = 5 * time.Second
+// detachedWriteTimeout bounds the best-effort writes that detach from the
+// request context — audit events (ADR-0009) and the backoff failure counter
+// (ADR-0006, so an attacker can't skip the counter by disconnecting
+// mid-attempt). Detached writes need their own bound or a stuck store would
+// leak goroutines.
+const detachedWriteTimeout = 5 * time.Second
+
+// Progressive-backoff defaults (ADR-0006 Parameters): 5 consecutive failures
+// lock the account for 1 minute, doubling per further failure to a 15-minute
+// cap. They back the config knobs (Config.Backoff*), so operators can retune
+// without a rebuild; the jitter fraction is a shape parameter of the scheme
+// (±20% so the exact unlock time can't be probed), not an ops knob, so it
+// stays a constant.
+const (
+	defaultBackoffThreshold = 5
+	defaultBackoffBase      = time.Minute
+	defaultBackoffCap       = 15 * time.Minute
+	backoffJitterFraction   = 0.2
+)
 
 // oidcPendingTTL bounds the window between /auth/google/start and the callback.
 // ADR-0007 pins it at exactly 10 minutes; the service enforces it inside the

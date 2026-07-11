@@ -142,6 +142,49 @@ cost on verification. The 15-code-point minimum is a registration-time policy on
   expiry (so unlock times can't be probed exactly); the counter resets on success or expiry.
   Lockout responses are indistinguishable from wrong-credential responses (no oracle).
   *Provisional:* window sizes re-checked against support-load reality after MVP.
+  Interpretation pinned at implementation (amended 2026-07-11; revised same day after
+  review found an increment/lockout race, a two-clock skew hazard, and unbounded
+  sub-threshold state):
+  - **One atomic statement per failure, one clock.** Counting and locking happen in a single
+    upsert (`RecordLoginFailure`) evaluated entirely on the **database clock**: the count is
+    bumped, and at/after the threshold the same statement imposes/extends the lockout —
+    `min(base·2^(n−threshold), cap)·jitter` with the exponent clamped to [0,30] (no overflow)
+    and `greatest()` so a concurrent shorter jittered window never moves an expiry backward.
+    A split increment-then-lock design would let a stale lockout land after a concurrent
+    success reset, and judging expiry on the app clock would let ordinary app/DB skew either
+    disable doubling or re-lock at the first post-expiry mistake. The login query returns the
+    locked flag evaluated by the same database clock.
+  - **Attempts during a lockout count** — each re-derives (and doubles) the window, so
+    hammering a locked account extends it, bounded by the cap. A locked attempt never
+    verifies the real hash — a dummy verify keeps the timing of a wrong password, so even a
+    correct guess is neither confirmed nor evaluated. Attempts aborted by a client disconnect
+    before the (dummy or real) verify completes evaluated nothing and count nothing.
+  - **Resets:** on success (the reset statement's WHERE leaves clean rows unwritten, so the
+    hot path stays write-free while failures landed mid-verify are still cleared), lazily on
+    the next failure after **expiry**, and lazily once a sub-threshold counter has been
+    failure-free for the **staleness window = the cap** (months-old typos must not count
+    toward a fresh lockout). The failure audit tag is taken from the statement's RETURNED
+    state, so the trail records only lockouts that actually exist.
+  - **Google login neither counts toward, is blocked by, nor resets the counter** — the
+    backoff protects the *local* credential; blocking OIDC during a password lockout would
+    only add a griefing lever, and a Google success says nothing about consecutive
+    *password* failures.
+  - The counter write **detaches from the request context** (like audit writes), so an
+    attacker can't skip the counter by disconnecting mid-attempt; it is best-effort — a
+    counter-store failure degrades the backoff, never the login response.
+  - Threshold/base/cap are **config knobs** (`login_backoff_{threshold,base,cap}`, cap
+    bounded at 24 h) with these ADR values as defaults (minimize-hardcoding); the jitter
+    fraction stays a constant (a shape parameter of the scheme, not an ops knob). Lockouts
+    are queryable via `lockout`/`backoff_failures` metadata on the existing
+    `AUTH_LOGIN/FAILED` audit events — no new audit action (ADR-0009).
+  - **Accepted residual channels, documented not fixed:** a failed login for a *known*
+    account performs one counter write that an unknown email does not, a ~ms-scale timing
+    difference buried under Argon2 verification variance and capped by the per-IP/email
+    token buckets — judged not worth trading the counter's write-ordering guarantees for.
+    A **disabled** account's attempts (even with the correct password) count toward the
+    backoff, keeping every rejection path uniform in both response and writes; there is no
+    user-disable API yet, and the future enable flow (M4 user management) MUST reset
+    `login_backoff` so a re-enabled user is not still locked out.
 
 ## Consequences
 - `app/auth.Service` (package `internal/app/auth`) owns Login/Logout/Authenticate/Bootstrap;

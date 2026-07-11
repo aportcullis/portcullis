@@ -62,6 +62,7 @@ func sessionAndCSRFCookies(h http.Header) (session, csrf string) {
 var publicProcedures = map[string]bool{
 	portcullisv1connect.AuthBootstrapProcedure: true,
 	portcullisv1connect.AuthLoginProcedure:     true,
+	portcullisv1connect.AuthGetConfigProcedure: true,
 }
 
 // isAuthFailure reports whether an Authenticate error means the session itself

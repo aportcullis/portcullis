@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/auth.proto.
  */
 export const file_portcullis_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIkkKEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIjIKDUxvZ2luUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlciIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlIgsKCU1lUmVxdWVzdCIvCgpNZVJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIypAIKBEF1dGgSUAoJQm9vdHN0cmFwEh8ucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXF1ZXN0GiAucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXNwb25zZSIAEkQKBUxvZ2luEhsucG9ydGN1bGxpcy52MS5Mb2dpblJlcXVlc3QaHC5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAQkJaQGdpdGh1Yi5jb20vYXBvcnRjdWxsaXMvcG9ydGN1bGxpcy9nZW4vcG9ydGN1bGxpcy92MTtwb3J0Y3VsbGlzdjFiBnByb3RvMw");
+  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIkkKEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIjIKDUxvZ2luUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlciIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlIgsKCU1lUmVxdWVzdCIvCgpNZVJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiEgoQR2V0Q29uZmlnUmVxdWVzdCJEChFHZXRDb25maWdSZXNwb25zZRIWCg5nb29nbGVfZW5hYmxlZBgBIAEoCBIXCg9uZWVkc19ib290c3RyYXAYAiABKAgy9gIKBEF1dGgSUAoJQm9vdHN0cmFwEh8ucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXF1ZXN0GiAucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXNwb25zZSIAEkQKBUxvZ2luEhsucG9ydGN1bGxpcy52MS5Mb2dpblJlcXVlc3QaHC5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAElAKCUdldENvbmZpZxIfLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM");
 
 /**
  * @generated from message portcullis.v1.User
@@ -186,6 +186,47 @@ export const MeResponseSchema: GenMessage<MeResponse> = /*@__PURE__*/
   messageDesc(file_portcullis_v1_auth, 8);
 
 /**
+ * @generated from message portcullis.v1.GetConfigRequest
+ */
+export type GetConfigRequest = Message<"portcullis.v1.GetConfigRequest"> & {
+};
+
+/**
+ * Describes the message portcullis.v1.GetConfigRequest.
+ * Use `create(GetConfigRequestSchema)` to create a new message.
+ */
+export const GetConfigRequestSchema: GenMessage<GetConfigRequest> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_auth, 9);
+
+/**
+ * @generated from message portcullis.v1.GetConfigResponse
+ */
+export type GetConfigResponse = Message<"portcullis.v1.GetConfigResponse"> & {
+  /**
+   * google_enabled reports whether "Sign in with Google" is configured on this
+   * server; the SPA hides the button otherwise.
+   *
+   * @generated from field: bool google_enabled = 1;
+   */
+  googleEnabled: boolean;
+
+  /**
+   * needs_bootstrap reports whether no user exists yet, so the SPA can route
+   * straight to the first-run admin form.
+   *
+   * @generated from field: bool needs_bootstrap = 2;
+   */
+  needsBootstrap: boolean;
+};
+
+/**
+ * Describes the message portcullis.v1.GetConfigResponse.
+ * Use `create(GetConfigResponseSchema)` to create a new message.
+ */
+export const GetConfigResponseSchema: GenMessage<GetConfigResponse> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_auth, 10);
+
+/**
  * Auth is the authentication surface: first-run bootstrap, password login, and
  * the current-session endpoints. The opaque session token and the CSRF token are
  * carried in __Host- cookies (set by Login, cleared by Logout), never in these
@@ -234,6 +275,20 @@ export const Auth: GenService<{
     methodKind: "unary";
     input: typeof MeRequestSchema;
     output: typeof MeResponseSchema;
+  },
+  /**
+   * GetConfig returns the public login configuration the SPA needs before any
+   * session exists: whether Google login is available and whether the instance
+   * still needs its first-run bootstrap. Public read-only metadata — bootstrap
+   * state is install-level, not per-account, so this is not an enumeration
+   * oracle (ADR-0007/ADR-0013).
+   *
+   * @generated from rpc portcullis.v1.Auth.GetConfig
+   */
+  getConfig: {
+    methodKind: "unary";
+    input: typeof GetConfigRequestSchema;
+    output: typeof GetConfigResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_portcullis_v1_auth, 0);

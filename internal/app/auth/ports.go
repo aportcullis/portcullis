@@ -18,12 +18,27 @@ type Repository interface {
 
 	// Users & passwords.
 	CountUsers(ctx context.Context) (int64, error)
-	// GetUserForLogin returns the user and password hash in one query (the hash is
-	// "" for an OIDC-only user), so a password login costs the same number of
-	// round-trips whether or not the account exists.
-	GetUserForLogin(ctx context.Context, email string) (identity.User, string, error)
+	// GetUserForLogin returns the user, password hash, and progressive-backoff
+	// state in one query (the hash is "" for an OIDC-only user, the backoff is
+	// zero-valued when the account has never failed), so a password login costs
+	// the same number of round-trips whether or not the account exists.
+	GetUserForLogin(ctx context.Context, email string) (identity.User, string, identity.LoginBackoff, error)
 	GetUserByID(ctx context.Context, id identity.UserID) (identity.User, error)
 	SetPassword(ctx context.Context, id identity.UserID, phc string) error
+
+	// Progressive backoff (ADR-0006). Both are atomic single-statement writes
+	// evaluated on the DATABASE clock, so concurrent logins across replicas
+	// can't lose updates and app/DB clock skew can't split the expiry decision.
+	//
+	// RecordLoginFailure counts one failed password attempt under the given
+	// policy and imposes/extends the lockout once the threshold is crossed
+	// (never moving an existing expiry backward), returning the resulting
+	// state. A counter whose lockout has expired — or whose last failure is
+	// older than the staleness window — restarts at 1.
+	RecordLoginFailure(ctx context.Context, id identity.UserID, p identity.FailureParams) (identity.LoginBackoff, error)
+	// ResetLoginBackoff clears the counter and lockout after a successful
+	// login; a row that is already clean is left unwritten (hot-path no-op).
+	ResetLoginBackoff(ctx context.Context, id identity.UserID) error
 
 	// BootstrapAdmin atomically creates the first admin (user + password +
 	// bootstrap-role membership) under a lock, returning ErrAlreadyBootstrapped if

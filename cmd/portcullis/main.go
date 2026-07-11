@@ -131,7 +131,11 @@ func run() error {
 	// Identity vertical: inject the crypto and audit adapters into the auth use
 	// cases, then expose them as the Auth RPC behind the interceptor chain.
 	store := postgres.NewIdentityStore(pool)
-	authSvc, err := auth.New(store, crypto.NewArgon2Hasher(crypto.DefaultArgon2Params, cfg.Argon2MaxConcurrent), crypto.NewCSRFProtector(keyring), postgres.NewAuditStore(pool), auth.Config{})
+	authSvc, err := auth.New(store, crypto.NewArgon2Hasher(crypto.DefaultArgon2Params, cfg.Argon2MaxConcurrent), crypto.NewCSRFProtector(keyring), postgres.NewAuditStore(pool), auth.Config{
+		BackoffThreshold: cfg.LoginBackoffThreshold,
+		BackoffBase:      cfg.LoginBackoffBase,
+		BackoffCap:       cfg.LoginBackoffCap,
+	})
 	if err != nil {
 		logger.Error("auth init failed", "err", err)
 		return err

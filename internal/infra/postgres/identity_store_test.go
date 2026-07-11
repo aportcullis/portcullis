@@ -119,6 +119,187 @@ func TestIdentityStore(t *testing.T) {
 	}
 }
 
+// Progressive-backoff state (ADR-0006): zero-valued before any failure,
+// counted and locked in ONE atomic statement (no lost updates under
+// concurrency, no increment/lockout interleave), the lockout never moves
+// backward, expired lockouts and stale sub-threshold counters lazily restart
+// at 1, and a reset clears the slate without touching clean rows. Everything
+// time-related runs on the DATABASE clock inside the statement, which is why
+// it is exercised here and not only against the fake.
+func TestLoginBackoffStore(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	// The ADR parameters with jitter pinned to the midpoint (factor 1.0).
+	params := identity.FailureParams{
+		Threshold: 5, Base: time.Minute, Cap: 15 * time.Minute,
+		Staleness: 15 * time.Minute, JitterFactor: 1.0,
+	}
+	// window asserts a lockout expiry sits within tolerance of now+want.
+	window := func(t *testing.T, lockedUntil *time.Time, want time.Duration) {
+		t.Helper()
+		if lockedUntil == nil {
+			t.Fatal("expected a lockout")
+		}
+		got := time.Until(*lockedUntil)
+		if got < want-10*time.Second || got > want+10*time.Second {
+			t.Errorf("lockout window = %s, want ~%s", got, want)
+		}
+	}
+
+	email := unique("backoff") + "@example.com"
+	u, err := store.CreateUser(ctx, email, "Backoff")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	// No row yet: the login query reports a zero-value, unlocked state.
+	_, _, b, err := store.GetUserForLogin(ctx, email)
+	if err != nil {
+		t.Fatalf("GetUserForLogin: %v", err)
+	}
+	if b.FailureCount != 0 || b.LockedUntil != nil || b.Locked {
+		t.Errorf("fresh account backoff = %+v, want zero value", b)
+	}
+
+	// Concurrent failures must not lose updates (the upsert is atomic), and
+	// crossing the threshold under concurrency imposes a lockout.
+	const n = 8
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := store.RecordLoginFailure(ctx, u.ID, params); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("RecordLoginFailure: %v", err)
+	}
+	_, _, b, err = store.GetUserForLogin(ctx, email)
+	if err != nil || b.FailureCount != n {
+		t.Fatalf("failure count after %d concurrent failures = %d (%v), want %d", n, b.FailureCount, err, n)
+	}
+	if !b.Locked {
+		t.Fatal("crossing the threshold under concurrency did not lock")
+	}
+
+	// Doubling: with the count at 8, the next failure's window is
+	// min(1m·2^(9-5), 15m) = 15m (the cap).
+	res, err := store.RecordLoginFailure(ctx, u.ID, params)
+	if err != nil {
+		t.Fatalf("RecordLoginFailure: %v", err)
+	}
+	if res.FailureCount != n+1 || !res.Locked {
+		t.Fatalf("9th failure = %+v, want count 9 and locked", res)
+	}
+	window(t, res.LockedUntil, 15*time.Minute)
+
+	// greatest(): a shorter concurrent jittered window (factor 0.01 → ~9s from
+	// count 10) must not move the existing 15m expiry backward.
+	shorter := params
+	shorter.JitterFactor = 0.01
+	prev := *res.LockedUntil
+	res, err = store.RecordLoginFailure(ctx, u.ID, shorter)
+	if err != nil {
+		t.Fatalf("RecordLoginFailure(shorter): %v", err)
+	}
+	if res.LockedUntil == nil || res.LockedUntil.Before(prev) {
+		t.Errorf("shorter jittered window moved the lockout backward: %v → %v", prev, res.LockedUntil)
+	}
+
+	// A reset clears both counter and lockout.
+	if err := store.ResetLoginBackoff(ctx, u.ID); err != nil {
+		t.Fatalf("ResetLoginBackoff: %v", err)
+	}
+	if _, _, b, err = store.GetUserForLogin(ctx, email); err != nil || b.FailureCount != 0 || b.LockedUntil != nil || b.Locked {
+		t.Fatalf("backoff after reset = %+v (%v), want cleared", b, err)
+	}
+
+	// An expired lockout lazily restarts the counter at 1 on the next failure
+	// ("resets on expiry"): seed failures to a lockout, expire it in the DB,
+	// then fail once more.
+	for i := 0; i < 5; i++ {
+		if _, err := store.RecordLoginFailure(ctx, u.ID, params); err != nil {
+			t.Fatalf("RecordLoginFailure: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `update login_backoff set locked_until = now() - interval '1 second' where user_id = $1::uuid`, string(u.ID)); err != nil {
+		t.Fatalf("expire lockout: %v", err)
+	}
+	res, err = store.RecordLoginFailure(ctx, u.ID, params)
+	if err != nil {
+		t.Fatalf("RecordLoginFailure after expiry: %v", err)
+	}
+	if res.FailureCount != 1 || res.Locked || res.LockedUntil != nil {
+		t.Errorf("state after expired lockout = %+v, want count 1, unlocked (lazy reset)", res)
+	}
+
+	// A stale sub-threshold counter (last failure older than the staleness
+	// window, no lockout) also restarts at 1.
+	if _, err := store.RecordLoginFailure(ctx, u.ID, params); err != nil {
+		t.Fatalf("RecordLoginFailure: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `update login_backoff set last_failure_at = now() - interval '20 minutes' where user_id = $1::uuid`, string(u.ID)); err != nil {
+		t.Fatalf("age last_failure_at: %v", err)
+	}
+	res, err = store.RecordLoginFailure(ctx, u.ID, params)
+	if err != nil {
+		t.Fatalf("RecordLoginFailure after staleness: %v", err)
+	}
+	if res.FailureCount != 1 || res.Locked {
+		t.Errorf("state after stale counter = %+v, want count 1, unlocked", res)
+	}
+}
+
+// The first lockout windows are exact under a pinned jitter factor: 1m at the
+// threshold, 2m on the next failure (ADR-0006 doubling), evaluated end-to-end
+// through the SQL expression.
+func TestLoginBackoffWindows(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+	params := identity.FailureParams{
+		Threshold: 5, Base: time.Minute, Cap: 15 * time.Minute,
+		Staleness: 15 * time.Minute, JitterFactor: 1.0,
+	}
+
+	u, err := store.CreateUser(ctx, unique("windows")+"@example.com", "W")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	var res identity.LoginBackoff
+	for i := 0; i < 5; i++ {
+		if res, err = store.RecordLoginFailure(ctx, u.ID, params); err != nil {
+			t.Fatalf("RecordLoginFailure %d: %v", i+1, err)
+		}
+	}
+	if res.FailureCount != 5 || !res.Locked || res.LockedUntil == nil {
+		t.Fatalf("5th failure = %+v, want locked", res)
+	}
+	if got := time.Until(*res.LockedUntil); got < 50*time.Second || got > 70*time.Second {
+		t.Errorf("first window = %s, want ~1m", got)
+	}
+	if res, err = store.RecordLoginFailure(ctx, u.ID, params); err != nil {
+		t.Fatalf("6th RecordLoginFailure: %v", err)
+	}
+	if got := time.Until(*res.LockedUntil); got < 110*time.Second || got > 130*time.Second {
+		t.Errorf("second window = %s, want ~2m (doubled)", got)
+	}
+}
+
 // A duplicate email (case-insensitive, per the lower(email) unique index) maps to
 // the domain sentinel ErrEmailTaken, not a raw driver error, so callers can tell a
 // conflict from an infrastructure failure across the port boundary.

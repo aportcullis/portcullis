@@ -15,6 +15,16 @@ var runtimeRolePattern = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
 // deployment and a firm guard against a fat-fingered value causing an OOM.
 const maxArgon2Concurrent = 256
 
+// Progressive-backoff guardrails (ADR-0006). The cap bounds the lockout window
+// arithmetic — a day already far exceeds any sane lockout and firmly rules out
+// a fat-fingered duration (the window math clamps its exponent, but an absurd
+// cap would still be an absurd lockout). The threshold ceiling likewise only
+// catches typos; the ADR default is 5.
+const (
+	maxLoginBackoffCap       = 24 * time.Hour
+	maxLoginBackoffThreshold = 1000
+)
+
 // maxDrainDelay caps the readiness-drain window. It blocks shutdown before
 // in-flight requests are even drained (the delay and the shutdown timeout are
 // sequential, ADR-0010), so a fat-fingered value (e.g. "2h" instead of "2s") would

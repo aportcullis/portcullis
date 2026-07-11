@@ -442,6 +442,98 @@ func (x *MeResponse) GetUser() *User {
 	return nil
 }
 
+type GetConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigRequest) Reset() {
+	*x = GetConfigRequest{}
+	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigRequest) ProtoMessage() {}
+
+func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetConfigRequest) Descriptor() ([]byte, []int) {
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{9}
+}
+
+type GetConfigResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// google_enabled reports whether "Sign in with Google" is configured on this
+	// server; the SPA hides the button otherwise.
+	GoogleEnabled bool `protobuf:"varint,1,opt,name=google_enabled,json=googleEnabled,proto3" json:"google_enabled,omitempty"`
+	// needs_bootstrap reports whether no user exists yet, so the SPA can route
+	// straight to the first-run admin form.
+	NeedsBootstrap bool `protobuf:"varint,2,opt,name=needs_bootstrap,json=needsBootstrap,proto3" json:"needs_bootstrap,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetConfigResponse) Reset() {
+	*x = GetConfigResponse{}
+	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigResponse) ProtoMessage() {}
+
+func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetConfigResponse) Descriptor() ([]byte, []int) {
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetConfigResponse) GetGoogleEnabled() bool {
+	if x != nil {
+		return x.GoogleEnabled
+	}
+	return false
+}
+
+func (x *GetConfigResponse) GetNeedsBootstrap() bool {
+	if x != nil {
+		return x.NeedsBootstrap
+	}
+	return false
+}
+
 var File_portcullis_v1_auth_proto protoreflect.FileDescriptor
 
 const file_portcullis_v1_auth_proto_rawDesc = "" +
@@ -468,12 +560,17 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\tMeRequest\"5\n" +
 	"\n" +
 	"MeResponse\x12'\n" +
-	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user2\xa4\x02\n" +
+	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"\x12\n" +
+	"\x10GetConfigRequest\"c\n" +
+	"\x11GetConfigResponse\x12%\n" +
+	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\x12'\n" +
+	"\x0fneeds_bootstrap\x18\x02 \x01(\bR\x0eneedsBootstrap2\xf6\x02\n" +
 	"\x04Auth\x12P\n" +
 	"\tBootstrap\x12\x1f.portcullis.v1.BootstrapRequest\x1a .portcullis.v1.BootstrapResponse\"\x00\x12D\n" +
 	"\x05Login\x12\x1b.portcullis.v1.LoginRequest\x1a\x1c.portcullis.v1.LoginResponse\"\x00\x12G\n" +
 	"\x06Logout\x12\x1c.portcullis.v1.LogoutRequest\x1a\x1d.portcullis.v1.LogoutResponse\"\x00\x12;\n" +
-	"\x02Me\x12\x18.portcullis.v1.MeRequest\x1a\x19.portcullis.v1.MeResponse\"\x00BBZ@github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1b\x06proto3"
+	"\x02Me\x12\x18.portcullis.v1.MeRequest\x1a\x19.portcullis.v1.MeResponse\"\x00\x12P\n" +
+	"\tGetConfig\x12\x1f.portcullis.v1.GetConfigRequest\x1a .portcullis.v1.GetConfigResponse\"\x00BBZ@github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1b\x06proto3"
 
 var (
 	file_portcullis_v1_auth_proto_rawDescOnce sync.Once
@@ -487,7 +584,7 @@ func file_portcullis_v1_auth_proto_rawDescGZIP() []byte {
 	return file_portcullis_v1_auth_proto_rawDescData
 }
 
-var file_portcullis_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_portcullis_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_portcullis_v1_auth_proto_goTypes = []any{
 	(*User)(nil),              // 0: portcullis.v1.User
 	(*BootstrapRequest)(nil),  // 1: portcullis.v1.BootstrapRequest
@@ -498,24 +595,28 @@ var file_portcullis_v1_auth_proto_goTypes = []any{
 	(*LogoutResponse)(nil),    // 6: portcullis.v1.LogoutResponse
 	(*MeRequest)(nil),         // 7: portcullis.v1.MeRequest
 	(*MeResponse)(nil),        // 8: portcullis.v1.MeResponse
+	(*GetConfigRequest)(nil),  // 9: portcullis.v1.GetConfigRequest
+	(*GetConfigResponse)(nil), // 10: portcullis.v1.GetConfigResponse
 }
 var file_portcullis_v1_auth_proto_depIdxs = []int32{
-	0, // 0: portcullis.v1.BootstrapResponse.user:type_name -> portcullis.v1.User
-	0, // 1: portcullis.v1.LoginResponse.user:type_name -> portcullis.v1.User
-	0, // 2: portcullis.v1.MeResponse.user:type_name -> portcullis.v1.User
-	1, // 3: portcullis.v1.Auth.Bootstrap:input_type -> portcullis.v1.BootstrapRequest
-	3, // 4: portcullis.v1.Auth.Login:input_type -> portcullis.v1.LoginRequest
-	5, // 5: portcullis.v1.Auth.Logout:input_type -> portcullis.v1.LogoutRequest
-	7, // 6: portcullis.v1.Auth.Me:input_type -> portcullis.v1.MeRequest
-	2, // 7: portcullis.v1.Auth.Bootstrap:output_type -> portcullis.v1.BootstrapResponse
-	4, // 8: portcullis.v1.Auth.Login:output_type -> portcullis.v1.LoginResponse
-	6, // 9: portcullis.v1.Auth.Logout:output_type -> portcullis.v1.LogoutResponse
-	8, // 10: portcullis.v1.Auth.Me:output_type -> portcullis.v1.MeResponse
-	7, // [7:11] is the sub-list for method output_type
-	3, // [3:7] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0,  // 0: portcullis.v1.BootstrapResponse.user:type_name -> portcullis.v1.User
+	0,  // 1: portcullis.v1.LoginResponse.user:type_name -> portcullis.v1.User
+	0,  // 2: portcullis.v1.MeResponse.user:type_name -> portcullis.v1.User
+	1,  // 3: portcullis.v1.Auth.Bootstrap:input_type -> portcullis.v1.BootstrapRequest
+	3,  // 4: portcullis.v1.Auth.Login:input_type -> portcullis.v1.LoginRequest
+	5,  // 5: portcullis.v1.Auth.Logout:input_type -> portcullis.v1.LogoutRequest
+	7,  // 6: portcullis.v1.Auth.Me:input_type -> portcullis.v1.MeRequest
+	9,  // 7: portcullis.v1.Auth.GetConfig:input_type -> portcullis.v1.GetConfigRequest
+	2,  // 8: portcullis.v1.Auth.Bootstrap:output_type -> portcullis.v1.BootstrapResponse
+	4,  // 9: portcullis.v1.Auth.Login:output_type -> portcullis.v1.LoginResponse
+	6,  // 10: portcullis.v1.Auth.Logout:output_type -> portcullis.v1.LogoutResponse
+	8,  // 11: portcullis.v1.Auth.Me:output_type -> portcullis.v1.MeResponse
+	10, // 12: portcullis.v1.Auth.GetConfig:output_type -> portcullis.v1.GetConfigResponse
+	8,  // [8:13] is the sub-list for method output_type
+	3,  // [3:8] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_portcullis_v1_auth_proto_init() }
@@ -529,7 +630,7 @@ func file_portcullis_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portcullis_v1_auth_proto_rawDesc), len(file_portcullis_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

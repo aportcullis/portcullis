@@ -47,6 +47,13 @@ type Config struct {
 	// Argon2MaxConcurrent caps concurrent Argon2id hashes. Each hash costs ~64 MiB,
 	// so this bounds hashing memory independently of core count (defaults to 2).
 	Argon2MaxConcurrent int `mapstructure:"argon2_max_concurrent"`
+	// LoginBackoffThreshold is how many consecutive failed password attempts lock
+	// an account (ADR-0006 Parameters; default 5). The lockout window starts at
+	// LoginBackoffBase (default 1m) and doubles per further failure up to
+	// LoginBackoffCap (default 15m), with ±20% jitter on the expiry.
+	LoginBackoffThreshold int           `mapstructure:"login_backoff_threshold"`
+	LoginBackoffBase      time.Duration `mapstructure:"login_backoff_base"`
+	LoginBackoffCap       time.Duration `mapstructure:"login_backoff_cap"`
 	// TrustedProxies is a comma-separated list of CIDRs whose requests carry a real
 	// client IP in X-Forwarded-For (used for rate-limit keying). Empty (default)
 	// means the direct peer IP is trusted — the correct setting for direct exposure.

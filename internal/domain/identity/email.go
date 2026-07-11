@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// MaxEmailLength is the RFC 5321 maximum for a forward path (address), in
+// bytes. Every consumer of an email — syntactic validation, storage, and
+// rate-limit keying — shares this one bound via EmailTooLong.
+const MaxEmailLength = 254
+
 // EmailTooLong reports whether email exceeds MaxEmailLength (RFC 5321 forward-path
 // bound, byte length). It lives beside the constant so the one cap is enforced in a
 // single predicate by every consumer — syntactic validation, the login

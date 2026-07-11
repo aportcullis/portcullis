@@ -136,6 +136,82 @@ func (e *authTestEnv) bootstrapAndLogin(t *testing.T, email, password string) st
 	return csrf
 }
 
+// Progressive backoff end-to-end (ADR-0006): five wrong passwords lock the
+// account; the CORRECT password then gets a byte-identical rejection (no
+// oracle); once the lockout expires the correct password signs in and the
+// slate is cleared; the lockouts are queryable in the audit trail.
+func TestLoginProgressiveBackoffE2E(t *testing.T) {
+	env := newAuthTestEnv(t, authEnvOptions{}) // rate limiting off: the backoff is under test
+	ctx := context.Background()
+
+	const email, password = "admin@example.com", "correct-horse-battery"
+	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+
+	login := func(pw string) error {
+		_, err := env.client.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: pw}))
+		return err
+	}
+
+	var wrongMsg string
+	for i := 0; i < 5; i++ {
+		err := login("wrong-password-xx")
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Fatalf("wrong password %d code = %v, want Unauthenticated", i+1, connect.CodeOf(err))
+		}
+		wrongMsg = err.Error()
+	}
+
+	// Locked: the correct password is refused with the SAME code and message as a
+	// wrong password — the lockout must not be observable.
+	err := login(password)
+	if connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("correct password while locked code = %v, want Unauthenticated", connect.CodeOf(err))
+	}
+	if err.Error() != wrongMsg {
+		t.Errorf("locked rejection %q differs from wrong-password rejection %q (oracle)", err.Error(), wrongMsg)
+	}
+
+	// The lockout is server-side state; expire it directly (the window is
+	// jittered wall-clock time, not something a test should sleep through).
+	if _, err := env.pool.Exec(ctx, `update login_backoff set locked_until = now() - interval '1 second'
+		where user_id = (select id from users where lower(email) = lower($1))`, email); err != nil {
+		t.Fatalf("expire lockout: %v", err)
+	}
+
+	if err := login(password); err != nil {
+		t.Fatalf("correct password after expiry = %v, want success", err)
+	}
+
+	// Success cleared the slate.
+	var count int
+	var lockedUntil *time.Time
+	if err := env.pool.QueryRow(ctx, `select failure_count, locked_until from login_backoff
+		where user_id = (select id from users where lower(email) = lower($1))`, email).Scan(&count, &lockedUntil); err != nil {
+		t.Fatalf("query login_backoff: %v", err)
+	}
+	if count != 0 || lockedUntil != nil {
+		t.Errorf("backoff after success = (%d, %v), want (0, nil)", count, lockedUntil)
+	}
+
+	// The trail: 6 failed logins (5 wrong + the locked correct attempt), of which
+	// the ones at/after the threshold are tagged with lockout metadata.
+	var failures, lockouts int
+	if err := env.pool.QueryRow(ctx, `
+		select count(*),
+		       count(*) filter (where metadata->>'lockout' = 'true')
+		from audit_events where action = 'AUTH_LOGIN' and outcome = 'FAILED'`).Scan(&failures, &lockouts); err != nil {
+		t.Fatalf("query audit_events: %v", err)
+	}
+	if failures != 6 {
+		t.Errorf("failed-login audit events = %d, want 6", failures)
+	}
+	if lockouts != 2 {
+		t.Errorf("lockout-tagged audit events = %d, want 2 (failures 5 and 6)", lockouts)
+	}
+}
+
 func TestLoginRateLimited(t *testing.T) {
 	env := newAuthTestEnv(t, authEnvOptions{rateLimit: true})
 	ctx := context.Background()
@@ -385,8 +461,27 @@ func TestAuthE2E(t *testing.T) {
 
 	const email, password = "admin@example.com", "correct-horse-battery"
 
+	// GetConfig is public (no session, no CSRF) and routes the SPA: a fresh
+	// instance needs bootstrap and (in this env) has no Google login.
+	cfg, err := env.raw.GetConfig(ctx, connect.NewRequest(&portcullisv1.GetConfigRequest{}))
+	if err != nil {
+		t.Fatalf("GetConfig: %v", err)
+	}
+	if !cfg.Msg.GetNeedsBootstrap() || cfg.Msg.GetGoogleEnabled() {
+		t.Errorf("fresh GetConfig = %+v, want needs_bootstrap + no google", cfg.Msg)
+	}
+
 	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
+	}
+
+	// After bootstrap the instance no longer advertises the first-run form.
+	cfg, err = env.raw.GetConfig(ctx, connect.NewRequest(&portcullisv1.GetConfigRequest{}))
+	if err != nil {
+		t.Fatalf("GetConfig after bootstrap: %v", err)
+	}
+	if cfg.Msg.GetNeedsBootstrap() {
+		t.Error("GetConfig still reports needs_bootstrap after bootstrap")
 	}
 	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: "x@y.z", Password: "another-valid-password", DisplayName: "X"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("second Bootstrap code = %v, want FailedPrecondition", connect.CodeOf(err))

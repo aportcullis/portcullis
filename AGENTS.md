@@ -22,13 +22,15 @@ Docker · buf + sqlc codegen.
    adapter in `cmd/portcullis`. See [code.md — Development order](docs/conventions/code.md).
 
 ## Definition of done
-`go build ./...`, `go vet ./...`, `make lint` (0 issues), and `make test` all green.
+`go build ./...`, `go vet ./...`, `make lint` (0 issues), `make test`, and `make e2e` (browser
+e2e — Playwright against the real binary) all green; `make verify` runs the whole gate.
 
 ## Conventions — see `docs/conventions/`
 - [code.md](docs/conventions/code.md) — layered DDD, file-split, tests/TDD, minimize-hardcoding.
 - [data.md](docs/conventions/data.md) — soft-delete + no-cascade, indexes, migrations, RBAC permissions.
 - [security.md](docs/conventions/security.md) — crypto, secrets, audit, redaction.
 - [tooling.md](docs/conventions/tooling.md) — make commands, codegen, dependencies, commit style.
+- [frontend.md](docs/conventions/frontend.md) — light FSD layers (app/pages/features/entities/shared), `@/` imports, vendored UI, pnpm only.
 
 ## Map
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers · [`docs/adr/`](docs/adr/) — decisions.

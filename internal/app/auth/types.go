@@ -22,6 +22,15 @@ type Service struct {
 	absolute  time.Duration
 	idleRenew time.Duration
 	dummyHash string // verified for unknown accounts to equalize login timing
+
+	// Progressive backoff (ADR-0006): after backoffThreshold consecutive
+	// failures the account is locked for backoffBase, doubling per further
+	// failure up to backoffCap. jitter returns a uniform [0,1) sample used to
+	// spread the lockout expiry ±20% (injected so tests can pin it).
+	backoffThreshold int
+	backoffBase      time.Duration
+	backoffCap       time.Duration
+	jitter           func() float64
 }
 
 // Config tunes session lifetimes. The password-hash profile lives in the
@@ -33,6 +42,21 @@ type Config struct {
 	// re-persisted once activity has advanced the window by at least this much,
 	// so high-traffic sessions don't write on every request.
 	IdleRenewInterval time.Duration
+
+	// Progressive backoff for password login (ADR-0006 Parameters). Zero values
+	// take the ADR defaults (5 failures, 1 min base, 15 min cap); negative
+	// values (or a cap below the base) refuse construction.
+	BackoffThreshold int
+	BackoffBase      time.Duration
+	BackoffCap       time.Duration
+}
+
+// PublicConfig is the pre-session metadata the SPA needs to render the login
+// surface: it is public by design (ADR-0013) — Google availability and the
+// install-level bootstrap state leak nothing about individual accounts.
+type PublicConfig struct {
+	GoogleEnabled  bool
+	NeedsBootstrap bool
 }
 
 // Session is the result of a successful login: the persisted session plus the

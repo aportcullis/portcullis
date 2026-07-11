@@ -239,9 +239,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 }
 
 const getUserForLogin = `-- name: GetUserForLogin :one
-select u.id, u.email, u.display_name, u.status, u.created_at, coalesce(am.secret, '') as password_hash
+select u.id, u.email, u.display_name, u.status, u.created_at, coalesce(am.secret, '') as password_hash,
+       coalesce(lb.failure_count, 0) as failure_count,
+       lb.locked_until,
+       (lb.locked_until is not null and lb.locked_until > now())::boolean as locked
 from public.users u
 left join public.auth_methods am on am.user_id = u.id and am.type = 'password'
+left join public.login_backoff lb on lb.user_id = u.id
 where lower(u.email) = lower($1)
 `
 
@@ -252,11 +256,17 @@ type GetUserForLoginRow struct {
 	Status       string
 	CreatedAt    pgtype.Timestamptz
 	PasswordHash string
+	FailureCount int32
+	LockedUntil  pgtype.Timestamptz
+	Locked       bool
 }
 
-// User + password hash in one round-trip, so a password login costs the same
-// number of queries whether or not the account exists (anti-enumeration). The
-// hash is empty for OIDC-only users (no password row).
+// User + password hash + progressive-backoff state in one round-trip, so a
+// password login costs the same number of queries whether or not the account
+// exists (anti-enumeration). The hash is empty for OIDC-only users (no password
+// row); the backoff columns are zero/null for accounts that never failed. The
+// locked flag is evaluated HERE on the database clock — the same clock the
+// failure upsert uses — so app/DB clock skew can't split the expiry decision.
 func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error) {
 	row := q.db.QueryRow(ctx, getUserForLogin, lower)
 	var i GetUserForLoginRow
@@ -267,8 +277,103 @@ func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserFor
 		&i.Status,
 		&i.CreatedAt,
 		&i.PasswordHash,
+		&i.FailureCount,
+		&i.LockedUntil,
+		&i.Locked,
 	)
 	return i, err
+}
+
+const recordLoginFailure = `-- name: RecordLoginFailure :one
+insert into public.login_backoff (user_id, failure_count, locked_until, last_failure_at)
+values (
+    $1, 1,
+    case when 1 >= $2::int then
+        now() + make_interval(secs =>
+            least($3::float8, $4::float8)
+            * $5::float8)
+    end,
+    now()
+)
+on conflict (user_id) do update set
+    failure_count = case
+        when (login_backoff.locked_until is not null and login_backoff.locked_until <= now())
+          or (login_backoff.locked_until is null and login_backoff.last_failure_at <= now() - make_interval(secs => $6::float8))
+        then 1 else login_backoff.failure_count + 1 end,
+    locked_until = case
+        when (case
+                when (login_backoff.locked_until is not null and login_backoff.locked_until <= now())
+                  or (login_backoff.locked_until is null and login_backoff.last_failure_at <= now() - make_interval(secs => $6::float8))
+                then 1 else login_backoff.failure_count + 1 end) >= $2::int
+        then greatest(
+            coalesce(case when login_backoff.locked_until > now() then login_backoff.locked_until end, '-infinity'::timestamptz),
+            now() + make_interval(secs =>
+                least(
+                    $3::float8 * pow(2, least(greatest(
+                        (case
+                            when (login_backoff.locked_until is not null and login_backoff.locked_until <= now())
+                              or (login_backoff.locked_until is null and login_backoff.last_failure_at <= now() - make_interval(secs => $6::float8))
+                            then 1 else login_backoff.failure_count + 1 end) - $2::int, 0), 30)),
+                    $4::float8)
+                * $5::float8))
+        else null end,
+    last_failure_at = now()
+returning failure_count, locked_until,
+    (locked_until is not null and locked_until > now())::boolean as locked
+`
+
+type RecordLoginFailureParams struct {
+	UserID        pgtype.UUID
+	Threshold     int32
+	BaseSecs      float64
+	CapSecs       float64
+	JitterFactor  float64
+	StalenessSecs float64
+}
+
+type RecordLoginFailureRow struct {
+	FailureCount int32
+	LockedUntil  pgtype.Timestamptz
+	Locked       bool
+}
+
+// ONE atomic statement per failed attempt (ADR-0006): bump the counter and,
+// at/after the threshold, impose or extend the jittered lockout — so a
+// concurrent success reset or lazy expiry-reset can never interleave between
+// counting and locking, and every failure costs exactly one write. All time
+// arithmetic runs on the database clock. The counter restarts at 1 when the
+// previous lockout has expired ("resets on expiry", applied lazily) or when
+// the last failure is older than the staleness window (months-old typos must
+// not count toward a fresh lockout). The window is
+// min(base·2^(n-threshold), cap)·jitter_factor with the exponent clamped to
+// [0,30], so no operand can overflow; greatest() keeps a concurrent shorter
+// jittered window from moving an existing lockout backward.
+func (q *Queries) RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error) {
+	row := q.db.QueryRow(ctx, recordLoginFailure,
+		arg.UserID,
+		arg.Threshold,
+		arg.BaseSecs,
+		arg.CapSecs,
+		arg.JitterFactor,
+		arg.StalenessSecs,
+	)
+	var i RecordLoginFailureRow
+	err := row.Scan(&i.FailureCount, &i.LockedUntil, &i.Locked)
+	return i, err
+}
+
+const resetLoginBackoff = `-- name: ResetLoginBackoff :exec
+update public.login_backoff
+set failure_count = 0, locked_until = null
+where user_id = $1 and (failure_count > 0 or locked_until is not null)
+`
+
+// A successful login clears the slate. The WHERE leaves an already-clean row
+// unwritten, so calling this on every success keeps the hot path write-free
+// while still clearing failures committed by concurrent attempts mid-verify.
+func (q *Queries) ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, resetLoginBackoff, userID)
+	return err
 }
 
 const revokeSession = `-- name: RevokeSession :execrows

@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -43,17 +44,56 @@ func New(repo Repository, hasher PasswordHasher, csrf CSRFProtector, auditor Aud
 	if cfg.IdleRenewInterval == 0 {
 		cfg.IdleRenewInterval = time.Minute
 	}
+	if cfg.BackoffThreshold == 0 {
+		cfg.BackoffThreshold = defaultBackoffThreshold
+	}
+	if cfg.BackoffBase == 0 {
+		cfg.BackoffBase = defaultBackoffBase
+	}
+	if cfg.BackoffCap == 0 {
+		cfg.BackoffCap = defaultBackoffCap
+	}
+	if cfg.BackoffThreshold < 0 || cfg.BackoffBase < 0 || cfg.BackoffCap < cfg.BackoffBase {
+		return nil, fmt.Errorf("auth: invalid backoff config (threshold %d, base %s, cap %s)", cfg.BackoffThreshold, cfg.BackoffBase, cfg.BackoffCap)
+	}
 	// Precompute a hash so a login for an unknown account spends the same hashing
 	// time as a real one, closing the account-enumeration timing side channel.
 	dummy, err := hasher.Hash(context.Background(), "portcullis-login-timing-equalizer")
 	if err != nil {
 		return nil, fmt.Errorf("auth: precompute timing-equalizer hash: %w", err)
 	}
-	return &Service{repo: repo, hasher: hasher, csrf: csrf, auditor: auditor, logger: slog.Default(), now: time.Now, idle: cfg.Idle, absolute: cfg.Absolute, idleRenew: cfg.IdleRenewInterval, dummyHash: dummy}, nil
+	return &Service{
+		repo: repo, hasher: hasher, csrf: csrf, auditor: auditor,
+		logger: slog.Default(), now: time.Now,
+		idle: cfg.Idle, absolute: cfg.Absolute, idleRenew: cfg.IdleRenewInterval, dummyHash: dummy,
+		backoffThreshold: cfg.BackoffThreshold, backoffBase: cfg.BackoffBase, backoffCap: cfg.BackoffCap,
+		jitter: cryptoJitter,
+	}, nil
 }
 
 // WithClock overrides the time source (tests).
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
+
+// WithJitter overrides the [0,1) sample source behind the lockout jitter
+// (tests pin it for exact window assertions). Returns the service for chaining.
+func (s *Service) WithJitter(j func() float64) *Service {
+	if j != nil {
+		s.jitter = j
+	}
+	return s
+}
+
+// cryptoJitter draws a uniform [0,1) sample from crypto/rand (53 mantissa
+// bits). The jitter exists so lockout expiries can't be probed exactly
+// (ADR-0006); on the never-expected rand failure it degrades to mid-window
+// rather than a predictable edge.
+func cryptoJitter() float64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0.5
+	}
+	return float64(binary.BigEndian.Uint64(b[:])>>11) / (1 << 53)
+}
 
 // WithLogger overrides the logger that records audit-write failures (defaults to
 // slog.Default()). Returns the service for chaining.
@@ -99,7 +139,7 @@ func withActor(e audit.Event, id identity.UserID) audit.Event {
 // swallowed (ADR-0009). The write detaches from the request context so a client
 // disconnect can't erase the trail, bounded by auditWriteTimeout.
 func (s *Service) recordAudit(ctx context.Context, e audit.Event) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditWriteTimeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
 	defer cancel()
 	org, err := s.repo.DefaultOrganizationID(ctx)
 	if err != nil {
@@ -190,9 +230,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 		return Session{}, identity.ErrInvalidCredentials
 	}
 
-	// One query for the user + password hash, so existing and unknown accounts cost
-	// the same number of round-trips (anti-enumeration, OWASP).
-	u, hash, err := s.repo.GetUserForLogin(ctx, email)
+	// One query for the user + password hash + backoff state, so existing and
+	// unknown accounts cost the same number of round-trips (anti-enumeration, OWASP).
+	u, hash, backoff, err := s.repo.GetUserForLogin(ctx, email)
 	if err != nil {
 		if errors.Is(err, identity.ErrUserNotFound) {
 			return Session{}, s.rejectWithEqualizedTiming(ctx, password)
@@ -200,21 +240,35 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 		return Session{}, err
 	}
 	failed = withActor(failed, u.ID)
-	// No password row = OIDC-only user: can't password-login. Verify the dummy hash
-	// so the timing matches a real attempt.
-	if hash == "" {
-		return Session{}, s.rejectWithEqualizedTiming(ctx, password)
+	// Two rejections share one shape: a locked account (progressive backoff,
+	// ADR-0006 — backoff.Locked is evaluated by the STORE on the database clock,
+	// the same clock the failure upsert uses, so app/DB skew can't split the
+	// decision) and an OIDC-only user (no password row). Both verify the dummy
+	// hash so the timing matches a real attempt — while locked even a correct
+	// guess is neither confirmed nor evaluated — and both count, so hammering a
+	// locked account keeps doubling its window. One branch, so the twins can't
+	// drift apart. An attempt aborted mid-equalizer by the caller counts
+	// nothing, exactly like an aborted real verify below: nothing was evaluated.
+	if backoff.Locked || hash == "" {
+		rejErr := s.rejectWithEqualizedTiming(ctx, password)
+		if ctx.Err() != nil {
+			return Session{}, rejErr
+		}
+		s.noteLoginFailure(ctx, u.ID, &failed)
+		return Session{}, rejErr
 	}
 	ok, needsRehash, err := s.hasher.Verify(ctx, password, hash)
 	if err != nil {
 		// Only caller cancellation propagates (the deferred failure event still
-		// records the aborted attempt). Anything else — e.g. an unparsable stored
-		// hash — gets the same generic rejection as a wrong password, so the
-		// response stays uniform (ADR-0006); the cause is logged, types only.
+		// records the aborted attempt, and an aborted verify evaluated nothing, so
+		// it does not count). Anything else — e.g. an unparsable stored hash —
+		// gets the same generic rejection as a wrong password, so the response
+		// stays uniform (ADR-0006); the cause is logged, types only.
 		if ctx.Err() != nil {
 			return Session{}, err
 		}
 		s.logger.WarnContext(ctx, "stored password hash unverifiable", "error_type", fmt.Sprintf("%T", err))
+		s.noteLoginFailure(ctx, u.ID, &failed)
 		return Session{}, identity.ErrInvalidCredentials
 	}
 	// Uniform result for wrong-password and disabled-account (OWASP: a generic error
@@ -222,6 +276,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 	// equal timing). The disabled check is after the hash so it can't be probed
 	// without the password, and returns the same error so it can't be probed with it.
 	if !ok || !u.Active() {
+		s.noteLoginFailure(ctx, u.ID, &failed)
 		return Session{}, identity.ErrInvalidCredentials
 	}
 	if needsRehash {
@@ -229,7 +284,60 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 			_ = s.repo.SetPassword(ctx, u.ID, nh)
 		}
 	}
+	// Success clears the backoff slate — best-effort (a missed reset self-heals
+	// on the next success). Always issued so failures committed by concurrent
+	// attempts DURING this verify are cleared too (a login-time snapshot check
+	// would miss them); the statement's WHERE leaves an already-clean row
+	// unwritten, so the hot path stays write-free.
+	if rerr := s.repo.ResetLoginBackoff(ctx, u.ID); rerr != nil {
+		s.logger.WarnContext(ctx, "login backoff reset failed", "error_type", fmt.Sprintf("%T", rerr))
+	}
 	return s.issueSession(ctx, u, nil)
+}
+
+// noteLoginFailure counts a failed password attempt against a known account in
+// ONE atomic statement that also imposes/extends the lockout once the
+// threshold is crossed — window = min(base·2^(n-threshold), cap) spread by the
+// jitter factor so the exact unlock time can't be probed (ADR-0006). One
+// statement, one clock (the database's), so a concurrent success reset or lazy
+// expiry-reset can never interleave between counting and locking. The write
+// detaches from the request context — an attacker must not skip the counter by
+// disconnecting mid-attempt — and is best-effort: a counter-store failure
+// degrades the backoff, never the (already failing) login response. The
+// failure audit event is tagged from the RETURNED state, so the trail only
+// records lockouts that actually exist (ADR-0009) — no client-visible signal.
+func (s *Service) noteLoginFailure(ctx context.Context, id identity.UserID, failed *audit.Event) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
+	defer cancel()
+	b, err := s.repo.RecordLoginFailure(ctx, id, identity.FailureParams{
+		Threshold: s.backoffThreshold,
+		Base:      s.backoffBase,
+		Cap:       s.backoffCap,
+		// A counter idle past the cap is stale: whoever it belonged to has long
+		// since been locked out or walked away, so it restarts rather than letting
+		// months-old typos count toward a fresh lockout. Reusing the cap keeps the
+		// scheme one-knob (pinned in ADR-0006).
+		Staleness:    s.backoffCap,
+		JitterFactor: 1 - backoffJitterFraction + 2*backoffJitterFraction*s.jitter(),
+	})
+	if err != nil {
+		s.logger.WarnContext(ctx, "login backoff write failed", "error_type", fmt.Sprintf("%T", err))
+		return
+	}
+	if b.Locked {
+		failed.Metadata = map[string]any{"lockout": true, "backoff_failures": b.FailureCount}
+	}
+}
+
+// PublicConfig reports the pre-session login surface: whether Google login is
+// wired (WithOIDCProvider) and whether the instance still has zero users. The
+// count is authoritative enough for routing — Bootstrap re-checks under a lock.
+func (s *Service) PublicConfig(ctx context.Context) (PublicConfig, error) {
+	n, err := s.repo.CountUsers(ctx)
+	if err != nil {
+		return PublicConfig{}, err
+	}
+	return PublicConfig{GoogleEnabled: s.oidc != nil, NeedsBootstrap: n == 0}, nil
 }
 
 // Logout revokes the session for the given raw token (a no-op if unknown).

@@ -1,4 +1,4 @@
-.PHONY: generate web web-install web-dev web-typecheck web-audit build release run devkey test test-race lint vuln audit verify hooks tidy clean
+.PHONY: generate web web-install web-dev web-typecheck web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 
 # Bootstrap: install the git hooks on the first make invocation in a clone, so
 # any make command sets them up (git runs nothing on clone itself). Only the
@@ -51,6 +51,13 @@ web-typecheck: web-install
 web-audit: web-install
 	pnpm -C web audit
 
+# Browser e2e (Playwright) against the real binary and a throwaway PostgreSQL
+# (web/e2e/server.sh, booted by Playwright's webServer hook). The SPA is served
+# from the Go embed, so it is built first. Needs Docker.
+e2e: web
+	pnpm -C web exec playwright install --with-deps chromium
+	pnpm -C web e2e
+
 # Build the optimized, static single binary.
 # -s -w strip the symbol table and DWARF; -trimpath removes local paths;
 # CGO_ENABLED=0 yields a fully static, portable binary.
@@ -81,14 +88,16 @@ vuln:
 # Full dependency security audit: frontend deps + Go vulnerabilities.
 audit: web-audit vuln
 
-# Definition-of-Done gate in one target: build, vet, lint, and the full test
-# suite. CI, the pre-push git hook, and contributors all call this, so "green"
-# means the same thing everywhere. (Integration tests need Docker.)
+# Definition-of-Done gate in one target: build, vet, lint, the full test
+# suite, and the browser e2e. CI, the pre-push git hook, and contributors all
+# call this, so "green" means the same thing everywhere. (Integration tests
+# and e2e need Docker.)
 verify:
 	go build ./...
 	go vet ./...
 	$(MAKE) lint
 	$(MAKE) test
+	$(MAKE) e2e
 
 # Install the git hooks (pre-commit gofmt, pre-push verify). lefthook is pinned
 # as a go tool dependency in go.mod, so the installed hooks resolve it through

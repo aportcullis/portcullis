@@ -8,7 +8,7 @@ COPY web/ web/
 RUN cd web && pnpm install --frozen-lockfile && pnpm build
 
 # 2) Build the static Go binary with the frontend embedded.
-FROM golang:1.26.4-alpine3.24 AS build
+FROM golang:1.26.5-alpine3.24 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
