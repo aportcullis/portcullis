@@ -54,6 +54,10 @@ type Config struct {
 	LoginBackoffThreshold int           `mapstructure:"login_backoff_threshold"`
 	LoginBackoffBase      time.Duration `mapstructure:"login_backoff_base"`
 	LoginBackoffCap       time.Duration `mapstructure:"login_backoff_cap"`
+	// ConnectionTestTimeout bounds one target-database connection test — the
+	// dial, TLS handshake, authentication, and ping (ADR-0014; default 10s,
+	// range [1s, 60s]).
+	ConnectionTestTimeout time.Duration `mapstructure:"connection_test_timeout"`
 	// TrustedProxies is a comma-separated list of CIDRs whose requests carry a real
 	// client IP in X-Forwarded-For (used for rate-limit keying). Empty (default)
 	// means the direct peer IP is trusted — the correct setting for direct exposure.
@@ -81,17 +85,18 @@ func (c Config) TrustedProxyNets() []*net.IPNet { return c.trustedProxyNets }
 
 // GoogleEnabled reports whether Google login is configured. Load has already
 // validated all-or-nothing, so the client id alone is decisive.
-func (c Config) GoogleEnabled() bool { return c.GoogleClientID != "" }
+func (c Config) GoogleEnabled() bool { return strings.TrimSpace(c.GoogleClientID) != "" }
 
 // ResolveGoogleClientSecret returns the client secret from whichever source is
 // configured, trimming trailing whitespace from a mounted file (as the master
 // key file is handled). Load guarantees exactly one source when Google is
 // enabled.
 func (c Config) ResolveGoogleClientSecret() (string, error) {
-	if c.GoogleClientSecretFile == "" {
-		return c.GoogleClientSecret, nil
+	secretFile := strings.TrimSpace(c.GoogleClientSecretFile)
+	if secretFile == "" {
+		return strings.TrimSpace(c.GoogleClientSecret), nil
 	}
-	b, err := os.ReadFile(c.GoogleClientSecretFile)
+	b, err := os.ReadFile(secretFile)
 	if err != nil {
 		return "", fmt.Errorf("read google_client_secret_file: %w", err)
 	}

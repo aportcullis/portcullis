@@ -1,4 +1,4 @@
-.PHONY: generate web web-install web-dev web-typecheck web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
+.PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 
 # Bootstrap: install the git hooks on the first make invocation in a clone, so
 # any make command sets them up (git runs nothing on clone itself). Only the
@@ -20,6 +20,8 @@ endif
 # with an older Go fails with "no go files to analyze").
 GOLANGCI_LINT_VERSION := v2.12.2
 lint:
+	@drift="$$(gofmt -l internal cmd)"; \
+		if [ -n "$$drift" ]; then echo "gofmt needed (run 'gofmt -w'):"; echo "$$drift"; exit 1; fi
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --timeout=10m --enable=unparam --enable=misspell --enable=prealloc
 
 # Print a fresh base64 master key for local development.
@@ -46,6 +48,17 @@ web-dev: web-install
 # Type-check the frontend (tsgo: app + node config).
 web-typecheck: web-install
 	pnpm -C web typecheck
+
+# Lint the frontend: ESLint enforces the @/-alias rule and the FSD import
+# boundaries (docs/conventions/frontend.md), plus prefer-const / no comma
+# operator. Part of the verify gate.
+web-lint: web-install
+	pnpm -C web lint
+
+# Frontend unit tests (vitest): deterministic store/state interleavings that
+# Playwright cannot schedule. Part of the verify gate.
+web-test: web-install
+	pnpm -C web test
 
 # Audit frontend dependencies for known vulnerabilities.
 web-audit: web-install
@@ -88,14 +101,17 @@ vuln:
 # Full dependency security audit: frontend deps + Go vulnerabilities.
 audit: web-audit vuln
 
-# Definition-of-Done gate in one target: build, vet, lint, the full test
-# suite, and the browser e2e. CI, the pre-push git hook, and contributors all
-# call this, so "green" means the same thing everywhere. (Integration tests
-# and e2e need Docker.)
+# Definition-of-Done gate in one target: build, vet, lint (Go + frontend),
+# the full test suite, and the browser e2e. CI, the pre-push git hook, and
+# contributors all call this, so "green" means the same thing everywhere.
+# (Integration tests and e2e need Docker.)
 verify:
 	go build ./...
 	go vet ./...
 	$(MAKE) lint
+	$(MAKE) web-typecheck
+	$(MAKE) web-lint
+	$(MAKE) web-test
 	$(MAKE) test
 	$(MAKE) e2e
 

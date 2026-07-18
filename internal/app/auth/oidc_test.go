@@ -48,8 +48,8 @@ func (p *fakeProvider) Exchange(_ context.Context, code, verifier string) (ident
 // misses, but by the time we link, another user has claimed the identity.
 type linkRaceRepo struct{ *fakeRepo }
 
-func (r linkRaceRepo) LinkIdentity(context.Context, identity.OIDCIdentity) error {
-	return identity.ErrIdentityLinkedToAnotherUser
+func (r linkRaceRepo) LinkIdentityAndRotateSession(context.Context, identity.OIDCIdentity, identity.Session, []byte, audit.Event) (identity.Session, error) {
+	return identity.Session{}, identity.ErrIdentityLinkedToAnotherUser
 }
 
 // --- helpers ---
@@ -152,7 +152,7 @@ func TestGoogleLoginLinkedSubjectSignsIn(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	u := bootstrapUser(t, svc)
-	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
+	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 		t.Fatal(err)
 	}
 	p.claims = verifiedClaims("admin@example.com")
@@ -186,6 +186,29 @@ func TestGoogleLoginLinkedSubjectSignsIn(t *testing.T) {
 	}
 }
 
+func TestGoogleFirstLoginRollsBackIdentityLinkWhenSessionCommitFails(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := newFake()
+	repo.failOIDCComplete = true
+	p := &fakeProvider{claims: verifiedClaims("admin@example.com")}
+	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
+	u := bootstrapUser(t, svc)
+	pending := startFlow(t, svc, p)
+
+	if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); err == nil {
+		t.Fatal("LoginWithGoogle succeeded despite the atomic OIDC completion failure")
+	}
+	if _, err := repo.FindUserBySubject(ctx, googleIssuer, "sub-1"); !errors.Is(err, identity.ErrNoLinkedAccount) {
+		t.Errorf("first-login identity link survived failed session commit: %v", err)
+	}
+	for _, e := range repo.txEvents {
+		if e.Action == audit.ActionAuthLogin && e.Outcome == audit.OutcomeSucceeded && e.ActorUserID != nil && *e.ActorUserID == u.ID {
+			t.Fatal("successful AUTH_LOGIN audit event survived failed atomic completion")
+		}
+	}
+}
+
 // A password lockout neither blocks nor is extended by Google login: the
 // backoff protects the LOCAL credential (ADR-0006); Google authenticates the
 // user itself, and blocking it would only hand an attacker a griefing lever.
@@ -198,7 +221,7 @@ func TestGoogleLoginIgnoresLockout(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	u := bootstrapUser(t, svc)
-	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
+	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 		t.Fatal(err)
 	}
 	lockedUntil := time.Now().Add(10 * time.Minute)
@@ -315,7 +338,7 @@ func TestGoogleLoginRejectsDisabledUser(t *testing.T) {
 		p := &fakeProvider{}
 		svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 		u := bootstrapUser(t, svc)
-		if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
+		if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 			t.Fatal(err)
 		}
 		disable(repo, "admin@example.com")
@@ -374,7 +397,7 @@ func TestGoogleLoginRejectsBadPendingBeforeExchange(t *testing.T) {
 			clock := time.Now()
 			svc := newOIDCService(t, repo, &capturingRecorder{}, p).WithClock(func() time.Time { return clock })
 			u := bootstrapUser(t, svc)
-			if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
+			if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 				t.Fatal(err)
 			}
 			p.claims = verifiedClaims("admin@example.com")
@@ -401,7 +424,7 @@ func TestGoogleLoginRejectsNonceMismatch(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	u := bootstrapUser(t, svc)
-	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
+	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 		t.Fatal(err)
 	}
 	p.claims = verifiedClaims("admin@example.com")

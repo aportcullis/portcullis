@@ -11,6 +11,10 @@ import (
 )
 
 type Querier interface {
+	// Archive and credential discard are ONE statement (PRD §4.3 "한 작업으로 처리").
+	// The executions slice adds the in-flight-execution guard predicate here
+	// (ADR-0014).
+	ArchiveConnection(ctx context.Context, arg ArchiveConnectionParams) (Connection, error)
 	BootstrapRoleID(ctx context.Context, organizationID pgtype.UUID) (pgtype.UUID, error)
 	// Total matching rows for the page controls. O(n) on a large table — PRD §7.1
 	// accepts this for the audit list and defers keyset pagination to "later".
@@ -24,8 +28,11 @@ type Querier interface {
 	// Re-check both expiries in the write: a session can expire after Authenticate
 	// reads it but before the post-CSRF slide, and an expired session must never be
 	// resurrected by that race.
-	ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) error
+	ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) (int64, error)
 	FindUserBySubject(ctx context.Context, arg FindUserBySubjectParams) (User, error)
+	// Detail remains organization-scoped; audit.get must never become an IDOR path.
+	GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error)
+	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error)
@@ -40,6 +47,7 @@ type Querier interface {
 	// failure upsert uses — so app/DB clock skew can't split the expiry decision.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
 	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
+	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an
 	// existing one owned by the same user refreshes the email; one owned by a
 	// different user matches the conflict but fails the WHERE, so no row is
@@ -53,6 +61,7 @@ type Querier interface {
 	// pagination a stable tie-breaker (PRD §7.1). Extended columns
 	// (state/execution/digest) are omitted until the features that populate them ship.
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
+	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// A user's effective permissions within one organization. Scoped by org (ADR-0004
 	// repository contract) and joined to roles so a soft-deleted role stops granting
@@ -70,6 +79,12 @@ type Querier interface {
 	// [0,30], so no operand can overflow; greatest() keeps a concurrent shorter
 	// jittered window from moving an existing lockout backward.
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error)
+	// Archived rows stay renameable: the name labels history, not the live target.
+	RenameConnection(ctx context.Context, arg RenameConnectionParams) (Connection, error)
+	// Full config replacement (ADR-0014: no partial credential edit). Archived
+	// rows are excluded — restore is a separate future flow; the store
+	// disambiguates "missing" from "archived" on a zero rowcount.
+	ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnectionConfigParams) (Connection, error)
 	// A successful login clears the slate. The WHERE leaves an already-clean row
 	// unwritten, so calling this on every success keeps the hot path write-free
 	// while still clearing failures committed by concurrent attempts mid-verify.
@@ -82,6 +97,10 @@ type Querier interface {
 	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
 	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error
+	// Final post-CSRF validity check for a request whose idle slide is throttled.
+	// It deliberately does not write, but its predicates use the database clock so
+	// a concurrently revoked or expired session cannot reach a handler.
+	ValidateSession(ctx context.Context, id pgtype.UUID) (bool, error)
 }
 
 var _ Querier = (*Queries)(nil)

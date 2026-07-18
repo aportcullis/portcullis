@@ -3,6 +3,7 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
 import { Auth } from "@/gen/portcullis/v1/auth_pb";
+import { Connections } from "@/gen/portcullis/v1/connections_pb";
 import { csrfToken } from "@/shared/lib/csrf";
 
 // Every call echoes the CSRF cookie in the X-CSRF-Token header (double submit,
@@ -21,3 +22,4 @@ const csrf: Interceptor = (next) => (req) => {
 const transport = createConnectTransport({ baseUrl: "/", interceptors: [csrf] });
 
 export const authClient = createClient(Auth, transport);
+export const connectionsClient = createClient(Connections, transport);

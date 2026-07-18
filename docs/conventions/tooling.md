@@ -3,8 +3,10 @@
 ## Make
 - `make build` — optimized static binary · `make run` — dev server · `make web` — build the SPA into
   the embed dir (`internal/platform/assets/dist`).
-- `make test` — all tests (parallel + shuffle) · `make test-race` · `make lint` — golangci-lint via a
-  pinned `go run` (built with the project Go) · `make vuln` / `make audit` — govulncheck + pnpm audit.
+- `make test` — all tests (parallel + shuffle) · `make test-race` · `make lint` — a `gofmt -l` drift
+  gate then golangci-lint via a pinned `go run` (built with the project Go) · `make web-lint` /
+  `make web-typecheck` / `make web-test` — ESLint + tsgo + vitest on the SPA · `make vuln` /
+  `make audit` — govulncheck + pnpm audit.
 - `make generate` — `buf generate` (Connect Go + TS) and `sqlc generate`.
 
 ## Codegen

@@ -99,6 +99,11 @@ Standards verified on 2026-06-28 (OWASP):
 
 ### Session lifecycle
 - Idle expiry **12h**, absolute **7d** (both from issuance; idle capped at absolute).
+- The session/CSRF cookies carry an **`Expires`** matching the absolute expiry, so the session
+  is deliberately **persistent** — it survives a browser restart up to 7d. This is an
+  intentional choice over OWASP's non-persistent default: the 7d absolute cap, 12h idle
+  expiry, and rotation-on-login bound the exposure, and server-side revocation (logout, new
+  login) invalidates the row regardless of the cookie's lifetime.
 - Idle slide is throttled: the `idle_expires_at` UPDATE runs at most once per **1 min**
   (`IdleRenewInterval`) per session, and the store uses `greatest()` so a late-arriving older
   request can never move expiry backward.

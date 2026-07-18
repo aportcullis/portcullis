@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -78,6 +80,27 @@ func (s *AuditStore) List(ctx context.Context, p audit.ListParams) ([]audit.Even
 		events = append(events, e)
 	}
 	return events, nil
+}
+
+// Get returns one full audit event, scoped to the default organization. The
+// detail endpoint is separately guarded by audit.get in the transport layer.
+func (s *AuditStore) Get(ctx context.Context, id string) (audit.Event, error) {
+	eventID, err := stringToUUID(id)
+	if err != nil {
+		return audit.Event{}, err
+	}
+	org, err := s.q.GetDefaultOrganization(ctx)
+	if err != nil {
+		return audit.Event{}, err
+	}
+	row, err := s.q.GetAuditEvent(ctx, db.GetAuditEventParams{ID: eventID, OrganizationID: org.ID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return audit.Event{}, audit.ErrEventNotFound
+		}
+		return audit.Event{}, err
+	}
+	return auditEventFromRow(auditListRow(row), identity.OrganizationID(uuidToString(org.ID)))
 }
 
 // Count returns the total number of audit events for the single organization —

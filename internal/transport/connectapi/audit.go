@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -14,9 +15,12 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// permAuditList is the permission required to read the audit trail. Per ADR-0008
-// the key is named here, at the exact enforcement site, and nowhere else.
-const permAuditList identity.Permission = "audit.list"
+// Per ADR-0008 each key is named at its exact enforcement site: list sees only
+// collection summaries, while get unlocks one event's correlation/detail data.
+const (
+	permAuditList identity.Permission = "audit.list"
+	permAuditGet  identity.Permission = "audit.get"
+)
 
 // AuditService implements the Audit RPC: reading the append-only trail behind an
 // audit.list permission check (ADR-0008), with OFFSET pagination (PRD §7.1). The
@@ -44,12 +48,14 @@ func (a *AuditService) List(
 		Page:     int(req.Msg.GetPage()),
 		PageSize: int(req.Msg.GetPageSize()),
 	}
-	// Sort unset ⇒ newest-first (the service default); when set, honor its column
-	// and direction. descending=true is the natural log order, so ascending is the
-	// explicit opt-in.
+	// Sort unset ⇒ newest-first (the service default); when set, honor its
+	// column, and its direction only when the optional descending was actually
+	// sent: a field-only sort keeps the documented descending default, and only
+	// an explicit descending=false opts into ascending (a plain proto3 bool
+	// could not tell those apart — external review).
 	if sort := req.Msg.GetSort(); sort != nil {
 		q.SortField = sort.GetField()
-		q.SortAscending = !sort.GetDescending()
+		q.SortAscending = sort.Descending != nil && !sort.GetDescending()
 	}
 
 	page, err := a.reader.List(ctx, q)
@@ -60,9 +66,9 @@ func (a *AuditService) List(
 		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
 
-	events := make([]*portcullisv1.AuditEvent, 0, len(page.Events))
+	events := make([]*portcullisv1.AuditEventSummary, 0, len(page.Events))
 	for _, e := range page.Events {
-		events = append(events, toProtoAuditEvent(e))
+		events = append(events, toProtoAuditEventSummary(e))
 	}
 	return connect.NewResponse(&portcullisv1.AuditListResponse{
 		Events:     events,
@@ -71,6 +77,41 @@ func (a *AuditService) List(
 		TotalCount: uint64(page.TotalCount),
 		TotalPages: uint32(page.TotalPages),
 	}), nil
+}
+
+func (a *AuditService) Get(
+	ctx context.Context,
+	req *connect.Request[portcullisv1.GetAuditEventRequest],
+) (*connect.Response[portcullisv1.GetAuditEventResponse], error) {
+	if err := requirePermission(ctx, a.authz, permAuditGet); err != nil {
+		return nil, err
+	}
+	if _, err := uuid.Parse(req.Msg.GetId()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid audit event id"))
+	}
+	event, err := a.reader.Get(ctx, req.Msg.GetId())
+	if err != nil {
+		if errors.Is(err, domainaudit.ErrEventNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("audit event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
+	return connect.NewResponse(&portcullisv1.GetAuditEventResponse{Event: toProtoAuditEvent(event)}), nil
+}
+
+func toProtoAuditEventSummary(e domainaudit.Event) *portcullisv1.AuditEventSummary {
+	pe := &portcullisv1.AuditEventSummary{
+		Id:         e.ID,
+		ActorType:  string(e.ActorType),
+		Action:     string(e.Action),
+		TargetType: e.TargetType,
+		TargetId:   e.TargetID,
+		Outcome:    string(e.Outcome),
+	}
+	if !e.OccurredAt.IsZero() {
+		pe.OccurredAt = timestamppb.New(e.OccurredAt)
+	}
+	return pe
 }
 
 func toProtoAuditEvent(e domainaudit.Event) *portcullisv1.AuditEvent {

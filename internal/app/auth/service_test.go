@@ -44,6 +44,9 @@ type fakeRepo struct {
 	// failBackoffWrites makes the backoff writes fail, to prove they are
 	// best-effort (a counter outage must never change the login response).
 	failBackoffWrites bool
+	// failOIDCComplete simulates a failure in the transaction that persists a
+	// first OIDC link plus its session/audit record.
+	failOIDCComplete bool
 }
 
 func newFake() *fakeRepo {
@@ -218,6 +221,13 @@ func (f *fakeRepo) RevokeUserSessions(_ context.Context, user identity.UserID) e
 	}
 	return nil
 }
+func (f *fakeRepo) ValidateSession(_ context.Context, id identity.SessionID) error {
+	s, ok := f.sessions[id]
+	if !ok || !s.Valid(time.Now()) {
+		return identity.ErrSessionNotFound
+	}
+	return nil
+}
 func (f *fakeRepo) ExtendSessionIdle(_ context.Context, id identity.SessionID, idle time.Time) error {
 	f.extendCalls++
 	s := f.sessions[id]
@@ -231,6 +241,19 @@ func (f *fakeRepo) RotateSession(ctx context.Context, user identity.UserID, s id
 	f.txEvents = append(f.txEvents, evt)
 	return f.CreateSession(ctx, s, tokenHash)
 }
+func (f *fakeRepo) LinkIdentityAndRotateSession(ctx context.Context, id identity.OIDCIdentity, s identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error) {
+	// Mirror the production transaction: a conflicting subject or a failed
+	// session/audit operation leaves no newly linked identity behind.
+	key := id.Issuer + "|" + id.Subject
+	if existing, ok := f.oidc[key]; ok && existing != id.UserID {
+		return identity.Session{}, identity.ErrIdentityLinkedToAnotherUser
+	}
+	if f.failOIDCComplete {
+		return identity.Session{}, errors.New("oidc transaction failed")
+	}
+	f.oidc[key] = id.UserID
+	return f.RotateSession(ctx, id.UserID, s, tokenHash, evt)
+}
 func (f *fakeRepo) FindUserBySubject(_ context.Context, issuer, subject string) (identity.User, error) {
 	id, ok := f.oidc[issuer+"|"+subject]
 	if !ok {
@@ -238,7 +261,10 @@ func (f *fakeRepo) FindUserBySubject(_ context.Context, issuer, subject string) 
 	}
 	return f.users[id], nil
 }
-func (f *fakeRepo) LinkIdentity(_ context.Context, id identity.OIDCIdentity) error {
+
+// linkIdentity is test-fixture setup only. Production linking is exposed only
+// through LinkIdentityAndRotateSession so it cannot bypass its transaction.
+func (f *fakeRepo) linkIdentity(id identity.OIDCIdentity) error {
 	key := id.Issuer + "|" + id.Subject
 	if existing, ok := f.oidc[key]; ok && existing != id.UserID {
 		return identity.ErrIdentityLinkedToAnotherUser
@@ -634,6 +660,34 @@ func TestSlideIdleThrottlesFrequentWrites(t *testing.T) {
 	}
 	if repo.extendCalls != 1 {
 		t.Errorf("SlideIdle past the renew interval wrote %d times, want 1", repo.extendCalls)
+	}
+}
+
+// A throttled idle slide must still consult server-side state: a logout or a
+// rotation between Authenticate and the post-CSRF check cannot authorize one
+// more handler invocation merely because no renewal write was due.
+func TestSlideIdleRejectsRevokedSessionWithinRenewInterval(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := newFake()
+	clock := time.Now()
+	svc := newServiceWithRecorder(t, repo, &capturingRecorder{}).WithClock(func() time.Time { return clock })
+	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(10 * time.Second) // below IdleRenewInterval
+	if err := repo.RevokeSession(ctx, res.Session.ID, audit.Event{Action: audit.ActionAuthLogout}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SlideIdle(ctx, res.Session); !errors.Is(err, identity.ErrSessionNotFound) {
+		t.Fatalf("SlideIdle after revocation = %v, want ErrSessionNotFound", err)
+	}
+	if repo.extendCalls != 0 {
+		t.Errorf("throttled revocation check wrote %d times, want 0", repo.extendCalls)
 	}
 }
 
@@ -1047,7 +1101,7 @@ func TestLoginRevokesPriorSession(t *testing.T) {
 	}
 }
 
-func TestLinkIdentityConflict(t *testing.T) {
+func TestLinkIdentityFixtureRejectsConflict(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := newFake()
@@ -1055,15 +1109,15 @@ func TestLinkIdentityConflict(t *testing.T) {
 	b, _ := repo.CreateUser(ctx, "b@example.com", "B")
 
 	const iss, sub = "https://accounts.google.com", "sub-1"
-	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
+	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
 		t.Fatalf("first link: %v", err)
 	}
 	// Same identity, same user — idempotent.
-	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
+	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
 		t.Errorf("re-link to same user should succeed: %v", err)
 	}
 	// Same identity, different user — must be rejected, not silently accepted.
-	if err := repo.LinkIdentity(ctx, identity.OIDCIdentity{UserID: b.ID, Issuer: iss, Subject: sub}); !errors.Is(err, identity.ErrIdentityLinkedToAnotherUser) {
+	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: b.ID, Issuer: iss, Subject: sub}); !errors.Is(err, identity.ErrIdentityLinkedToAnotherUser) {
 		t.Errorf("re-pointing to another user = %v, want ErrIdentityLinkedToAnotherUser", err)
 	}
 }

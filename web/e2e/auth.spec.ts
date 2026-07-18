@@ -10,7 +10,7 @@ test.describe.serial("auth vertical", () => {
   const wrong = "wrong-password-xx";
 
   // One uniform message for every login rejection — the assertion target.
-  const genericError = "Invalid email or password.";
+  const genericError = "We couldn't sign you in. Please check your email and password and try again.";
 
   const signIn = async (page: import("@playwright/test").Page, pw: string) => {
     await page.getByLabel("Email").fill(email);
@@ -43,6 +43,22 @@ test.describe.serial("auth vertical", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test("a stale CSRF cookie routes to login, not a stuck state", async ({ page }) => {
+    // Sign in, then drop only the CSRF cookie — the shape left by a key rotation
+    // (ADR-0003) or a partial cookie loss. Me then fails the CSRF check with
+    // PermissionDenied; the SPA must treat that as "re-authenticate" and route
+    // to /login, NOT trap the user on an unreachable/retry screen (both Me and
+    // Logout are CSRF-gated only, never permission-gated).
+    await page.goto("/login");
+    await signIn(page, password);
+    await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
+
+    await page.context().clearCookies({ name: "__Host-portcullis_csrf" });
+    await page.reload();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByText("temporarily unreachable")).toHaveCount(0);
+  });
+
   test("wrong password and unknown email get the same message; no Google SDK", async ({
     page,
   }) => {
@@ -63,25 +79,15 @@ test.describe.serial("auth vertical", () => {
       const src = await script.getAttribute("src");
       expect(src, "external SDK script").not.toMatch(/^https?:/);
     }
-  });
 
-  test("progressive backoff lockout is invisible", async ({ page }) => {
-    test.slow(); // deliberate pacing: stay under the login rate limit (ADR-0010)
-    await page.goto("/login");
-
-    // 5 wrong passwords lock the account (ADR-0006). Pace the attempts so the
-    // per-IP/email token bucket refills — this test targets the backoff, and a
-    // rate-limited attempt would never reach the failure counter.
-    for (let i = 0; i < 5; i++) {
-      await signIn(page, wrong);
-      await expect(page.getByText(genericError)).toBeVisible();
-      await page.waitForTimeout(3200);
-    }
-
-    // The CORRECT password now fails with the SAME message — the lockout must
-    // be indistinguishable from a wrong password (no oracle).
-    await signIn(page, password);
-    await expect(page.getByText(genericError)).toBeVisible();
+    // Once bootstrapped, nothing hints that a first-run flow exists: the login
+    // page carries no bootstrap link, and /bootstrap itself bounces to login.
+    await expect(page.getByText(/First run/)).toHaveCount(0);
+    await page.goto("/bootstrap");
     await expect(page).toHaveURL(/\/login$/);
   });
+
+  // The progressive-backoff lockout scenario lives in zz-auth-lockout.spec.ts:
+  // it locks the admin account for over a minute, so it must run LAST — files
+  // run alphabetically, and connections.spec.ts needs a working admin login.
 });

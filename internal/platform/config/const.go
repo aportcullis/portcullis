@@ -25,6 +25,22 @@ const (
 	maxLoginBackoffThreshold = 1000
 )
 
+// GoogleCallbackPath is the only OAuth callback route the server mounts, so a
+// google_redirect_url with any other path can never complete a login. The
+// route pattern lives in transport (connectapi.OIDCCallbackPattern); a
+// transport test asserts the two literals match — config is a leaf package and
+// must not import transport (ADR-0007).
+const GoogleCallbackPath = "/auth/google/callback"
+
+// Connection-test timeout bounds (ADR-0014). The floor keeps a mistyped
+// sub-second value from failing every test against a healthy-but-remote
+// target; the ceiling keeps an admin request from parking a minute-plus on a
+// black-holed host (the per-IP rate limit is sized for interactive calls).
+const (
+	minConnectionTestTimeout = time.Second
+	maxConnectionTestTimeout = time.Minute
+)
+
 // maxDrainDelay caps the readiness-drain window. It blocks shutdown before
 // in-flight requests are even drained (the delay and the shutdown timeout are
 // sequential, ADR-0010), so a fat-fingered value (e.g. "2h" instead of "2s") would

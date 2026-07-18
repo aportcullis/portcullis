@@ -55,9 +55,17 @@ begin
     -- name only, so a custom-name (shared-cluster) install never grants the runtime
     -- role to a foreign install's login user — and the direct-login shape
     -- (PORTCULLIS_RUNTIME_ROLE=portcullis_app) is skipped, avoiding a self-grant.
+    -- Best-effort: a non-superuser schema owner migrating on a cluster where the
+    -- runtime role pre-exists (created by another install/principal) holds no
+    -- ADMIN on it and cannot grant it — that must not fail the migration; such
+    -- deployments wire their login user's membership themselves (ADR-0009).
     if rr = 'portcullis_runtime'
        and exists (select 1 from pg_roles where rolname = 'portcullis_app') then
-        grant portcullis_runtime to portcullis_app;
+        begin
+            grant portcullis_runtime to portcullis_app;
+        exception when insufficient_privilege then
+            null;
+        end;
     end if;
 end
 $$;

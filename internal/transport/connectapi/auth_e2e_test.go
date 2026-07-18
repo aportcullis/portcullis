@@ -126,8 +126,12 @@ func (e *authTestEnv) bootstrapAndLogin(t *testing.T, email, password string) st
 	if _, err := e.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
-	if _, err := e.client.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
+	login, err := e.client.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password}))
+	if err != nil {
 		t.Fatalf("Login: %v", err)
+	}
+	if got := login.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Login Cache-Control = %q, want no-store", got)
 	}
 	csrf := csrfFromJar(e.jar, e.serverURL)
 	if csrf == "" {

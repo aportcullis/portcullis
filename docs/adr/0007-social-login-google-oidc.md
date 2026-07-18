@@ -44,6 +44,8 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
   and the email matches an **existing admin-created user**, link `(issuer, sub)` to it on first
   login; (3) else **reject** — no public signup (PRD §8.3). Disabled users are rejected.
 - On success, create a session via ADR-0006 (same cookie/CSRF machinery) and redirect to the app.
+  For a first link, the identity insert, session rotation, and successful login audit event commit atomically
+  (ADR-0009); `identity_linked=true` in that event is the self-contained link trail.
 
 ### Frontend integration — no client SDK
 - The flow is **entirely server-side**. The SPA does **not** load the Google Identity Services JS
@@ -59,6 +61,14 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 ### Config (Google login is optional)
 - `PORTCULLIS_GOOGLE_CLIENT_ID`, `PORTCULLIS_GOOGLE_CLIENT_SECRET`, `PORTCULLIS_GOOGLE_REDIRECT_URL`.
   When unset, Google login is disabled and password login still works.
+- **Redirect URL validation (amended 2026-07-13):** boot refuses a `google_redirect_url` that
+  Google would reject at registration or that this server could never answer — the rules mirror
+  Google's redirect-URI validation: **HTTPS required** (plain HTTP only for
+  localhost/loopback), **no query, fragment, or userinfo**, **no raw non-loopback IP host**,
+  and the **path must be exactly `/auth/google/callback`** (the only mounted callback route;
+  `config.GoogleCallbackPath`, pinned to `connectapi.OIDCCallbackPattern` by a transport test).
+  Previously only "absolute http(s) URL" was checked, so a URL that could never complete a
+  login still booted.
 
 ## Consequences
 - New deps: `golang.org/x/oauth2`, `github.com/coreos/go-oidc/v3`. New table `oidc_identities`

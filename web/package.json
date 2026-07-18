@@ -2,11 +2,14 @@
   "name": "portcullis-web",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.34.3",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit -p tsconfig.app.json && tsgo --noEmit -p tsconfig.node.json && tsgo --noEmit -p e2e/tsconfig.json",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" eslint.config.js",
+    "test": "vitest run",
     "e2e": "playwright test"
   },
   "dependencies": {
@@ -23,11 +26,16 @@
     "tailwindcss": "4.3.2"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",
     "@types/node": "24.13.2",
     "@typescript/native-preview": "7.0.0-dev.20260627.2",
+    "eslint": "10.7.0",
+    "globals": "17.7.0",
     "typescript": "6.0.3",
+    "typescript-eslint": "8.64.0",
     "vite": "8.1.0",
-    "vite-plugin-solid": "2.11.12"
+    "vite-plugin-solid": "2.11.12",
+    "vitest": "4.1.10"
   }
 }

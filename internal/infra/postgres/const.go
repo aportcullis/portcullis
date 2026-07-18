@@ -21,7 +21,8 @@ const uniqueViolationCode = "23505"
 // Unique-constraint / index names the store maps to domain sentinels (a unique
 // index violation reports the index name in ConstraintName).
 const (
-	usersEmailLowerIndex = "users_email_lower_idx"
+	usersEmailLowerIndex    = "users_email_lower_idx"
+	connectionsOrgNameIndex = "connections_org_name"
 )
 
 // The dangerous cluster-attribute policy (ADR-0009): attributes a

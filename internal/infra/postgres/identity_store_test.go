@@ -104,12 +104,15 @@ func TestIdentityStore(t *testing.T) {
 		t.Fatalf("RevokeSession: %v", err)
 	}
 
-	// OIDC link + lookup. ((issuer, subject) is unique — per-run subject.)
+	// OIDC link + session rotation is the only production linking operation;
+	// lookup verifies the committed link. ((issuer, subject) is unique per run.)
 	subject := unique("sub")
-	if err := store.LinkIdentity(ctx, identity.OIDCIdentity{
+	oidcToken := sha256.Sum256([]byte(unique("oidc-token")))
+	oidcSession := identity.NewSession("", u.ID, time.Now(), 12*time.Hour, 7*24*time.Hour)
+	if _, err := store.LinkIdentityAndRotateSession(ctx, identity.OIDCIdentity{
 		UserID: u.ID, Issuer: "https://accounts.google.com", Subject: subject, Email: email,
-	}); err != nil {
-		t.Fatalf("LinkIdentity: %v", err)
+	}, oidcSession, oidcToken[:], testEvent(audit.ActionAuthLogin)); err != nil {
+		t.Fatalf("LinkIdentityAndRotateSession: %v", err)
 	}
 	if got, err := store.FindUserBySubject(ctx, "https://accounts.google.com", subject); err != nil || got.ID != u.ID {
 		t.Errorf("FindUserBySubject mismatch: %v", err)
@@ -403,8 +406,8 @@ func TestExtendSessionIdleDoesNotResurrectExpiredSession(t *testing.T) {
 		t.Fatalf("expire session: %v", err)
 	}
 
-	if err := store.ExtendSessionIdle(ctx, created.ID, time.Now().Add(time.Hour)); err != nil {
-		t.Fatalf("ExtendSessionIdle: %v", err)
+	if err := store.ExtendSessionIdle(ctx, created.ID, time.Now().Add(time.Hour)); !errors.Is(err, identity.ErrSessionNotFound) {
+		t.Fatalf("ExtendSessionIdle = %v, want ErrSessionNotFound", err)
 	}
 	var resurrected bool
 	if err := pool.QueryRow(ctx,

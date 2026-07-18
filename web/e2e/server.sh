@@ -9,9 +9,14 @@ cd "$(dirname "$0")/../.." # repo root: the Go module lives above web/
 
 PG_IMAGE="postgres:18.4-alpine3.24" # same pin as compose.yaml / dbtest
 
+# Fixed host port: connections.spec.ts dials this database as its TARGET
+# (E2E_PG_PORT there must match), and a fixed port needs no coordinate
+# handoff between this child process and the Playwright test process.
+PG_PORT=15432
+
 CID=$(docker run -d --rm \
     -e POSTGRES_USER=portcullis -e POSTGRES_PASSWORD=portcullis -e POSTGRES_DB=portcullis \
-    -p 127.0.0.1:0:5432 "$PG_IMAGE")
+    -p 127.0.0.1:${PG_PORT}:5432 "$PG_IMAGE")
 
 # The container is stopped by the EXIT trap (--rm then removes it). The server
 # must therefore run as a CHILD below — never via exec, which would replace
@@ -24,8 +29,6 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-PORT=$(docker port "$CID" 5432/tcp | head -n1 | awk -F: '{print $NF}')
-
 i=0
 until docker exec "$CID" pg_isready -U portcullis >/dev/null 2>&1; do
     i=$((i + 1))
@@ -33,7 +36,7 @@ until docker exec "$CID" pg_isready -U portcullis >/dev/null 2>&1; do
     sleep 1
 done
 
-PORTCULLIS_DATABASE_URL="postgres://portcullis:portcullis@127.0.0.1:${PORT}/portcullis?sslmode=disable"
+PORTCULLIS_DATABASE_URL="postgres://portcullis:portcullis@127.0.0.1:${PG_PORT}/portcullis?sslmode=disable"
 export PORTCULLIS_DATABASE_URL
 # Single-role dev shape: the owner DSN doubles as the runtime DSN (ADR-0009),
 # so the privileged-runtime check must be explicitly waived — e2e only.

@@ -11,5 +11,6 @@ import (
 // postgres AuditStore satisfies it; tests substitute a fake. Consumer-defined (ISP).
 type EventReader interface {
 	List(ctx context.Context, p domainaudit.ListParams) ([]domainaudit.Event, error)
+	Get(ctx context.Context, id string) (domainaudit.Event, error)
 	Count(ctx context.Context) (int64, error)
 }

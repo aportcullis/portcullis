@@ -29,6 +29,9 @@ is only needed for external sinks.
   inserts it via the transaction-bound queries. A created admin, an issued session, or a revoked
   session can therefore never exist without its trail (and vice versa: if the event can't be
   written, the state change rolls back).
+- A first OIDC login extends that invariant: inserting `oidc_identities`, rotating the session, and its
+  `AUTH_LOGIN` event (metadata `identity_linked=true`) are one transaction. A failed session/audit commit
+  therefore cannot leave a newly usable external authenticator behind without evidence.
 - The store completes `OrganizationID` (single-org MVP) and, for bootstrap, the actor — the created
   user's id exists only inside the transaction.
 - **No-state-change events (failed logins) stay best-effort**: a login must not fail because the
@@ -60,6 +63,17 @@ is only needed for external sinks.
   `ALTER DEFAULT PRIVILEGES`, future) — a table with a serial/identity column needs it for the
   runtime `INSERT`, and without it the server boots fine but fails at first insert (amended
   2026-07-05). A sensitive future table must still `REVOKE` in its own migration (data.md).
+- *Amended 2026-07-18 (external review):* **the runtime role holds hard `DELETE` on NO table.**
+  Every entity is soft-delete-only (data.md), not a single runtime query issues `DELETE`, and
+  history removal is a separate retention concern (PRD §4.3) — so 0003's blanket `DELETE` grant
+  violated least privilege: an application SQL defect or a compromised process could permanently
+  destroy `users`/`roles`/`sessions`. Migration **`0010` revokes `DELETE`** on all current tables
+  and from the owner's per-schema default privileges (a per-schema ADP `REVOKE` exactly reverses
+  the previous per-schema ADP `GRANT` for the same defining role — web-verified), and the boot
+  matrix's **default table policy now forbids `DELETE`** alongside the schema-shaping verbs. A
+  table that genuinely needs runtime `DELETE` (e.g. a result-cache TTL eviction, ADR-0011) grants
+  it in its own migration and registers an explicit per-table policy exception — the same gate
+  sensitive tables already pass through.
 - **Roles are cluster-wide**, so the role name is configurable (`PORTCULLIS_RUNTIME_ROLE`, default
   `portcullis_runtime`; validated as a plain identifier). Migrate publishes it as the
   `portcullis.runtime_role` session GUC on the migration connection; `0003` reads it via
@@ -128,26 +142,68 @@ is only needed for external sinks.
   revoke temporary on database <db> from public;
   grant connect on database <db> to <new>;
   grant usage on schema public to <new>;
-  grant select, insert, update, delete on all tables in schema public to <new>;
-  revoke update, delete on public.audit_events from <new>;
+  -- No DELETE anywhere: hard delete is revoked for the runtime (0010, amendment
+  -- below) — a rotation must not resurrect it, or boot verification fails on
+  -- every start with no migration left to self-repair.
+  grant select, insert, update on all tables in schema public to <new>;
+  grant usage on all sequences in schema public to <new>;
+  revoke update on public.audit_events from <new>;
   revoke all on public.schema_migrations from <new>;
-  alter default privileges in schema public grant select, insert, update, delete on tables to <new>;
+  alter default privileges in schema public grant select, insert, update on tables to <new>;
+  alter default privileges in schema public grant usage on sequences to <new>;
   grant <new> to <login user>;
   -- decommission the old role COMPLETELY — default privileges would otherwise
-  -- keep granting it DML on every FUTURE table, and the login user would keep
-  -- inheriting whatever the old role still holds:
+  -- keep granting it DML on every FUTURE table and USAGE on every future
+  -- sequence (and any leftover default-privilege entry makes DROP ROLE fail
+  -- with a dependency error), and the login user would keep inheriting
+  -- whatever the old role still holds:
   alter default privileges in schema public
       revoke select, insert, update, delete on tables from <old>;
+  alter default privileges in schema public
+      revoke usage on sequences from <old>;
   revoke all on all tables in schema public from <old>;
+  revoke usage on all sequences in schema public from <old>;
   revoke usage on schema public from <old>;
   revoke connect on database <db> from <old>;
   revoke <old> from <login user>;
   drop role <old>;  -- preferred once nothing else depends on it
   ```
-  then update the env var and restart.
+  then update the env var and restart. `TestRuntimeRoleRotationRunbook` executes this
+  runbook verbatim against a database with a real sequence — keep the two statement
+  lists in sync by hand.
 - Future tables get DML via default privileges; a migration adding a **sensitive** table must
   `REVOKE` in that same migration (rule recorded in `docs/conventions/data.md`).
 - Empty `PORTCULLIS_MIGRATE_DATABASE_URL` falls back to the runtime DSN (single-role dev).
+
+### Migrator identity (amended 2026-07-13 — external review)
+- `ALTER DEFAULT PRIVILEGES` binds to the **creating role** and is never inherited through
+  membership (PostgreSQL docs). A member-of-owner migrating without `SET ROLE` therefore
+  creates tables the runtime role has **no grants on** — boot used to pass (the old postflight
+  checked only audit/history) and the first RPC failed. Fixed on three fronts:
+  1. **`Migrate` runs AS the schema owner**: it resolves the owner (PG15+: schema `public`
+     belongs to the `pg_database_owner` pseudo-role, so the real target is `datdba`; a
+     reassigned schema resolves to its owner and must also cover the database-level revokes)
+     and `SET ROLE`s into it (`set_config('role', …)`, `RESET ROLE` on exit; a failed reset
+     destroys the pooled connection). The migrator must **be** the owner or hold **SET-capable
+     membership** (`GRANT <owner> TO <migrator> WITH SET TRUE`) — inherit-only membership is
+     refused, since it can run REVOKEs but can never fix the default-privilege binding. A
+     superuser that is not `datdba` also SET ROLEs; its objects now belong to `datdba`
+     (behavior change). A legacy `schema_migrations` owned by a previous member migrator is
+     re-owned before the switch.
+  2. **Migration `0008_owner_grant_repair`** re-grants runtime DML on everything that exists,
+     re-binds the default privileges to the owner, and re-applies the sensitive revokes — so
+     databases whose grants were bound to a previous migrator self-repair. Residual limit:
+     ownership of tables created by an old member migrator is not normalized (manual
+     `REASSIGN OWNED` if a future migration must ALTER them); grants, the failure class, are.
+  3. **Boot verification covers every table and sequence**: `verifyTablePrivileges` checks a
+     per-table policy (default: SELECT/INSERT/UPDATE required, DELETE/TRUNCATE/TRIGGER/
+     REFERENCES/MAINTAIN forbidden — no-hard-delete is the baseline since 0010; exceptions:
+     `audit_events` S+I only, `schema_migrations` nothing — the code form of data.md's
+     sensitive-table rule) plus sequence USAGE (UPDATE forbidden). Unknown new tables get the default policy, so a
+     migration that forgets grants fails its very first boot in CI; a new sensitive table
+     fails until its policy entry lands — the review gate, enforced. In the runtime-connection
+     check a missing required verb is always fatal; a forbidden one is the dev-downgradable
+     over-privilege class.
 
 ### Audit table shape (normative — mirrors migration 0001)
 - Columns: `id uuid pk`, `organization_id` (FK, restrict), `occurred_at timestamptz default

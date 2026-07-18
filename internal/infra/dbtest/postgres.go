@@ -15,12 +15,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/aportcullis/portcullis/internal/platform/logging"
 )
@@ -57,8 +55,12 @@ func startPostgres() {
 			tcpostgres.WithUsername("portcullis"),
 			tcpostgres.WithPassword("portcullis"),
 			testcontainers.WithLogger(tcLogger),
-			testcontainers.WithWaitStrategy(
-				wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second)),
+			// Port-only readiness races both the postgres entrypoint (it starts a
+			// temporary server during initdb, then restarts) and docker-proxy
+			// (which listens before the container-side process does), yielding
+			// "connection reset by peer" on slow CI. The module's canonical
+			// strategy waits for the readiness log line twice, then the port.
+			tcpostgres.BasicWaitStrategies(),
 		)
 		if err != nil {
 			pgErr = err

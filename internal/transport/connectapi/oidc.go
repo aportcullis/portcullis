@@ -107,6 +107,7 @@ func (h *OIDCHandler) start(w http.ResponseWriter, r *http.Request) {
 		h.failLogin(w, r, "start", err)
 		return
 	}
+	noStore(w.Header())
 	http.SetCookie(w, &http.Cookie{
 		Name:     oidcPendingCookie,
 		Value:    sealed,
@@ -122,6 +123,7 @@ func (h *OIDCHandler) start(w http.ResponseWriter, r *http.Request) {
 
 func (h *OIDCHandler) callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	noStore(w.Header())
 	// The pending cookie is single-use: clear it whatever happens next, so a
 	// replayed callback can't reuse the flow.
 	clearCookie(w.Header(), oidcPendingCookie, true)

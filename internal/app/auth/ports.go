@@ -55,11 +55,19 @@ type Repository interface {
 	// RevokeSession revokes one session and commits the audit event with it
 	// (ADR-0009).
 	RevokeSession(ctx context.Context, id identity.SessionID, evt audit.Event) error
+	// ValidateSession confirms the session is still active against the server
+	// clock without extending its idle expiry. It closes the Authenticate→handler
+	// revocation/expiry race on requests that do not need an idle-slide write.
+	ValidateSession(ctx context.Context, id identity.SessionID) error
 	ExtendSessionIdle(ctx context.Context, id identity.SessionID, idle time.Time) error
 
 	// External identities (OIDC login).
 	FindUserBySubject(ctx context.Context, issuer, subject string) (identity.User, error)
-	LinkIdentity(ctx context.Context, id identity.OIDCIdentity) error
+	// LinkIdentityAndRotateSession atomically persists a first OIDC identity link,
+	// rotates the user's sessions, and commits the successful AUTH_LOGIN event.
+	// A linked authenticator must never survive without the session/audit outcome
+	// that authorized it (ADR-0007/0009).
+	LinkIdentityAndRotateSession(ctx context.Context, id identity.OIDCIdentity, s identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error)
 	// GetUserByEmail resolves a user by normalized email — the OIDC link-on-first-
 	// login lookup (ADR-0007: a verified provider email may attach to an existing
 	// admin-created account, never create one).

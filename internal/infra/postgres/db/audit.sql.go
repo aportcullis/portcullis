@@ -25,6 +25,53 @@ func (q *Queries) CountAuditEvents(ctx context.Context, organizationID pgtype.UU
 	return count, err
 }
 
+const getAuditEvent = `-- name: GetAuditEvent :one
+select
+    id, occurred_at, actor_type, actor_user_id, actor_service,
+    action, target_type, target_id, outcome, request_id, metadata
+from public.audit_events
+where id = $1 and organization_id = $2
+`
+
+type GetAuditEventParams struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+}
+
+type GetAuditEventRow struct {
+	ID           pgtype.UUID
+	OccurredAt   pgtype.Timestamptz
+	ActorType    string
+	ActorUserID  pgtype.UUID
+	ActorService *string
+	Action       string
+	TargetType   string
+	TargetID     *string
+	Outcome      string
+	RequestID    *string
+	Metadata     []byte
+}
+
+// Detail remains organization-scoped; audit.get must never become an IDOR path.
+func (q *Queries) GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error) {
+	row := q.db.QueryRow(ctx, getAuditEvent, arg.ID, arg.OrganizationID)
+	var i GetAuditEventRow
+	err := row.Scan(
+		&i.ID,
+		&i.OccurredAt,
+		&i.ActorType,
+		&i.ActorUserID,
+		&i.ActorService,
+		&i.Action,
+		&i.TargetType,
+		&i.TargetID,
+		&i.Outcome,
+		&i.RequestID,
+		&i.Metadata,
+	)
+	return i, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
 insert into public.audit_events (
     organization_id, actor_type, actor_user_id, actor_service,

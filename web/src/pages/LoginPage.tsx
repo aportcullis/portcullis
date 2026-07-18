@@ -3,6 +3,7 @@ import { Show } from "solid-js";
 
 import { Navigate, useNavigate, useSearchParams } from "@solidjs/router";
 
+import { ConfigErrorCard } from "@/entities/instance/ConfigErrorCard";
 import { loginConfig } from "@/entities/instance/config";
 import { session } from "@/entities/session/store";
 import { GoogleLoginButton } from "@/features/auth/GoogleLoginButton";
@@ -12,7 +13,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
@@ -22,8 +22,11 @@ const LoginPage: Component = () => {
   const [params] = useSearchParams();
 
   return (
-    <Show when={session().status !== "authenticated"} fallback={<Navigate href="/" />}>
-      <Show when={!loginConfig()?.needsBootstrap} fallback={<Navigate href="/bootstrap" />}>
+    // Check the resource's error BEFORE reading loginConfig() — reading an
+    // errored resource throws, which would break the page with no recovery.
+    <Show when={!loginConfig.error} fallback={<ConfigErrorCard />}>
+      <Show when={session().status !== "authenticated"} fallback={<Navigate href="/" />}>
+        <Show when={!loginConfig()?.needsBootstrap} fallback={<Navigate href="/bootstrap" />}>
         <main class="flex min-h-screen items-center justify-center p-4">
           <Card class="w-full max-w-sm">
             <CardHeader>
@@ -37,17 +40,13 @@ const LoginPage: Component = () => {
                 </Alert>
               </Show>
               <LoginForm onSuccess={() => navigate("/", { replace: true })} />
-              <Show when={loginConfig()?.googleEnabled}>
-                <GoogleLoginButton />
-              </Show>
-            </CardContent>
-            <CardFooter class="text-sm text-muted-foreground">
-              <a class="underline underline-offset-4" href="/bootstrap">
-                First run? Create the admin account
-              </a>
-            </CardFooter>
-          </Card>
-        </main>
+                <Show when={loginConfig()?.googleEnabled}>
+                  <GoogleLoginButton />
+                </Show>
+              </CardContent>
+            </Card>
+          </main>
+        </Show>
       </Show>
     </Show>
   );

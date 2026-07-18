@@ -7,12 +7,15 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
 
-// Audit exposes the append-only audit trail for reading. Reading requires the
-// audit.list permission (ADR-0008), enforced inline in the handler.
+// Audit exposes the append-only audit trail for reading. Listing and a single
+// event's detail have distinct permissions (ADR-0008), enforced inline in the
+// handler.
 service Audit {
   // List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
   // audit.list.
   rpc List(AuditListRequest) returns (AuditListResponse) {}
+  // Get returns one audit event's detail. Requires audit.get.
+  rpc Get(GetAuditEventRequest) returns (GetAuditEventResponse) {}
 }
 
 message AuditListRequest {
@@ -21,17 +24,20 @@ message AuditListRequest {
   // Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the
   // default (20). Capped at 100 (PRD §7.1).
   uint32 page_size = 2;
-  // Optional sort; unset or an off-whitelist field falls back to occurred_at desc.
+  // Optional sort; unset selects occurred_at descending. An off-whitelist field
+  // is rejected with InvalidArgument.
   AuditSort sort = 3;
 }
 
 // AuditSort names a sortable column (whitelisted server-side) and a direction.
 message AuditSort {
-  // Whitelisted column, e.g. "occurred_at". An unknown value falls back to the
-  // default column.
+  // Whitelisted column, e.g. "occurred_at". An unknown value is rejected.
   string field = 1;
-  // true = descending (newest/largest first). Defaults to true for occurred_at.
-  bool descending = 2;
+  // true = descending (newest/largest first). Optional so that UNSET is
+  // distinguishable from an explicit false: unset keeps the server default
+  // (descending), and only an explicit false selects ascending. A plain proto3
+  // bool cannot express that distinction (implicit field presence).
+  optional bool descending = 2;
 }
 
 // AuditEvent is one record of the trail. It carries the populated core fields;
@@ -60,9 +66,22 @@ message AuditEvent {
   google.protobuf.Struct metadata = 12;
 }
 
+// AuditEventSummary is deliberately safe for audit.list. Correlation data,
+// network addresses, and supplemental metadata are available only through
+// audit.get, preserving ADR-0008's collection/detail permission boundary.
+message AuditEventSummary {
+  string id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string actor_type = 3;
+  string action = 4;
+  string target_type = 5;
+  string target_id = 6;
+  string outcome = 7;
+}
+
 message AuditListResponse {
   // The page of events (newest first by default).
-  repeated AuditEvent events = 1;
+  repeated AuditEventSummary events = 1;
   // Echoes the effective (clamped) page and page size the server applied.
   uint32 page = 2;
   uint32 page_size = 3;
@@ -70,4 +89,12 @@ message AuditListResponse {
   // ("1–20 of 1,340", page jump) (PRD §7.1).
   uint64 total_count = 4;
   uint32 total_pages = 5;
+}
+
+message GetAuditEventRequest {
+  string id = 1;
+}
+
+message GetAuditEventResponse {
+  AuditEvent event = 1;
 }

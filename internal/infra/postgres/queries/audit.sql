@@ -4,6 +4,14 @@ insert into public.audit_events (
     action, target_type, target_id, outcome, request_id, metadata
 ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
+-- name: GetAuditEvent :one
+-- Detail remains organization-scoped; audit.get must never become an IDOR path.
+select
+    id, occurred_at, actor_type, actor_user_id, actor_service,
+    action, target_type, target_id, outcome, request_id, metadata
+from public.audit_events
+where id = @id and organization_id = @organization_id;
+
 -- name: ListAuditEventsDesc :many
 -- Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the
 -- audit_events_org_time_idx covering index (forward scan) and give OFFSET

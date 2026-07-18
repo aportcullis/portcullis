@@ -24,6 +24,10 @@ get roles via membership; and **authorization is checked against permissions, no
   `users.{list,get,create,update,disable}`, `roles.{list,get,create,update,delete}`,
   `savedqueries.{list,get,create,update,delete,share}`, `policies.{get,update}`,
   `audit.{list,get}`.
+- The transport reflects that boundary: a `list` response carries only a collection-safe summary, while target
+  coordinates, TLS settings, audit correlation/network fields, and metadata appear only in a `get` response.
+  Mutation responses use the same summary shape, so `create`/`update`/`delete` never accidentally become a
+  detail-read grant.
 - The **catalog lives in SQL**: a seeded `permissions(key, description)` table is the source of truth
   (FK integrity for `role_permissions`; the role UI lists available permissions from it). The app
   **loads the catalog from the database at startup** rather than hardcoding it.

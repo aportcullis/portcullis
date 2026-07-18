@@ -17,7 +17,7 @@ function bootstrapError(err: unknown): string {
       case Code.FailedPrecondition:
         return "This instance is already set up.";
       case Code.InvalidArgument:
-        return "Check the email, display name, and password (15+ characters).";
+        return "Please double-check the email and display name — and note the password needs at least 15 characters.";
       case Code.ResourceExhausted:
         return "Too many attempts — wait a moment and retry.";
     }

@@ -10,6 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/proto"
 
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
@@ -153,10 +154,16 @@ func TestAuditListAuthorization(t *testing.T) {
 	if newest.GetAction() == "" || newest.GetOutcome() == "" {
 		t.Errorf("audit event missing action/outcome: %+v", newest)
 	}
-	// The newest event is the viewer's successful login (emitted last), carrying a
-	// resolved source IP surfaced in its own field.
-	if newest.GetSourceIp() == "" {
-		t.Errorf("newest event has no source_ip: %+v", newest)
+	// List is deliberately summary-only. The same event's correlation/network
+	// details require audit.get (ADR-0008's collection/detail boundary).
+	detailReq := connect.NewRequest(&portcullisv1.GetAuditEventRequest{Id: newest.GetId()})
+	detailReq.Header().Set("X-CSRF-Token", adminCSRF)
+	detail, err := adminAudit.Get(ctx, detailReq)
+	if err != nil {
+		t.Fatalf("admin Audit.Get: %v", err)
+	}
+	if detail.Msg.GetEvent().GetSourceIp() == "" {
+		t.Errorf("Audit.Get event has no source_ip: %+v", detail.Msg.GetEvent())
 	}
 
 	// An off-whitelist sort column is rejected (PRD §7.1 column whitelist).
@@ -164,6 +171,38 @@ func TestAuditListAuthorization(t *testing.T) {
 	badSort.Header().Set("X-CSRF-Token", adminCSRF)
 	if _, err := adminAudit.List(ctx, badSort); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("off-whitelist sort code = %v, want InvalidArgument", connect.CodeOf(err))
+	}
+
+	// A sort that names the column without a direction keeps the documented
+	// default: descending, newest first. Plain proto3 bool could not express
+	// "unset", silently flipping this request to oldest-first (external review) —
+	// descending is optional so absence is distinguishable from explicit false.
+	fieldOnly := connect.NewRequest(&portcullisv1.AuditListRequest{Page: 1, PageSize: 50, Sort: &portcullisv1.AuditSort{Field: "occurred_at"}})
+	fieldOnly.Header().Set("X-CSRF-Token", adminCSRF)
+	byField, err := adminAudit.List(ctx, fieldOnly)
+	if err != nil {
+		t.Fatalf("field-only sort Audit.List: %v", err)
+	}
+	events := byField.Msg.GetEvents()
+	if len(events) < 2 {
+		t.Fatalf("want ≥2 events (bootstrap + logins), got %d", len(events))
+	}
+	first, last := events[0].GetOccurredAt().AsTime(), events[len(events)-1].GetOccurredAt().AsTime()
+	if first.Before(last) {
+		t.Errorf("field-only sort returned oldest-first (%v … %v), want the documented descending default", first, last)
+	}
+
+	// Explicit descending=false is the ascending opt-in.
+	asc := connect.NewRequest(&portcullisv1.AuditListRequest{Page: 1, PageSize: 50, Sort: &portcullisv1.AuditSort{Field: "occurred_at", Descending: proto.Bool(false)}})
+	asc.Header().Set("X-CSRF-Token", adminCSRF)
+	byAsc, err := adminAudit.List(ctx, asc)
+	if err != nil {
+		t.Fatalf("ascending sort Audit.List: %v", err)
+	}
+	events = byAsc.Msg.GetEvents()
+	first, last = events[0].GetOccurredAt().AsTime(), events[len(events)-1].GetOccurredAt().AsTime()
+	if first.After(last) {
+		t.Errorf("descending=false returned newest-first (%v … %v), want ascending", first, last)
 	}
 }
 

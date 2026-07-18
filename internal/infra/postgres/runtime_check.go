@@ -111,5 +111,21 @@ func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRol
 	if err := m.excessErr(fmt.Sprintf("runtime user %q", user)); err != nil {
 		return safeErrorf("%w: %s", ErrRuntimeInsecure, err)
 	}
+	// Per-table policy matrix, AFTER the membership check (a non-member is
+	// configuration drift and must never surface as a downgradable violation):
+	// a missing required privilege means the server cannot function — always
+	// fatal, like the floor; a forbidden one is the over-privilege class the
+	// dev flag may downgrade. The intentional single-role dev shape never gets
+	// here (ownerReach returns above).
+	missing, forbidden, err := verifyTablePrivileges(ctx, pool, user, fmt.Sprintf("runtime user %q", user))
+	if err != nil {
+		return fmt.Errorf("verify runtime user %q table privileges: %w", user, err)
+	}
+	if missing != nil {
+		return missing
+	}
+	if forbidden != nil {
+		return safeErrorf("%w: %s", ErrRuntimeInsecure, forbidden)
+	}
 	return nil
 }

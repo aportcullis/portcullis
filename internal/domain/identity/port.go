@@ -33,10 +33,11 @@ type PermissionCatalog interface {
 	ListPermissions(ctx context.Context) ([]Permission, error)
 }
 
-// OIDCRepository resolves and links external OIDC identities to local users.
+// OIDCRepository resolves external OIDC identities to local users. Linking is
+// deliberately absent: it must be combined atomically with session rotation and
+// audit evidence by the auth application's consumer-defined port.
 type OIDCRepository interface {
 	FindUserBySubject(ctx context.Context, issuer, subject string) (User, error)
-	LinkIdentity(ctx context.Context, id OIDCIdentity) error
 }
 
 // SessionRepository persists server-side sessions keyed by token hash.

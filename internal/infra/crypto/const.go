@@ -28,4 +28,12 @@ const aadPrefix = "portcullis/aad/v1"
 const (
 	// RecordTypeOIDCPending is the OIDC pending-auth cookie (ADR-0007).
 	RecordTypeOIDCPending = "oidc_pending"
+	// RecordTypeConnectionCredential is a registered connection's database
+	// login pair (ADR-0003 names this token; ADR-0014 uses it).
+	RecordTypeConnectionCredential = "connection_credential"
 )
+
+// connectionCredentialVersion versions the JSON layout inside a sealed
+// connection credential, so fields (e.g. a custom root CA) can be added
+// compatibly (ADR-0014).
+const connectionCredentialVersion = 1

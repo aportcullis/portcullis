@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,10 @@ func TestLoadDefaults(t *testing.T) {
 	// Progressive-backoff defaults are the ADR-0006 pinned parameters.
 	if cfg.LoginBackoffThreshold != 5 || cfg.LoginBackoffBase != time.Minute || cfg.LoginBackoffCap != 15*time.Minute {
 		t.Errorf("login backoff = (%d, %s, %s), want (5, 1m, 15m)", cfg.LoginBackoffThreshold, cfg.LoginBackoffBase, cfg.LoginBackoffCap)
+	}
+	// Connection-test timeout default is the ADR-0014 pinned value.
+	if cfg.ConnectionTestTimeout != 10*time.Second {
+		t.Errorf("ConnectionTestTimeout = %v, want 10s", cfg.ConnectionTestTimeout)
 	}
 }
 
@@ -82,6 +87,9 @@ func TestRejectsInvalidEnvValues(t *testing.T) {
 		{"backoff cap below base", "PORTCULLIS_LOGIN_BACKOFF_CAP", "30s"},
 		{"backoff cap absurd", "PORTCULLIS_LOGIN_BACKOFF_CAP", "25h"},
 		{"backoff threshold absurd", "PORTCULLIS_LOGIN_BACKOFF_THRESHOLD", "1001"},
+		{"connection test timeout zero", "PORTCULLIS_CONNECTION_TEST_TIMEOUT", "0s"},
+		{"connection test timeout below floor", "PORTCULLIS_CONNECTION_TEST_TIMEOUT", "500ms"},
+		{"connection test timeout absurd", "PORTCULLIS_CONNECTION_TEST_TIMEOUT", "2m"},
 		{"negative drain delay", "PORTCULLIS_DRAIN_DELAY", "-5s"},
 		{"zero shutdown timeout", "PORTCULLIS_SHUTDOWN_TIMEOUT", "0s"},
 		{"negative shutdown timeout", "PORTCULLIS_SHUTDOWN_TIMEOUT", "-1s"},
@@ -259,19 +267,118 @@ func TestGoogleClientSecretFile(t *testing.T) {
 	}
 }
 
+func TestGoogleLoginConfigRejectsBlankSecret(t *testing.T) {
+	t.Run("inline", func(t *testing.T) {
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", " \t ")
+		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "https://portcullis.example/auth/google/callback")
+		if _, err := config.Load(); err == nil {
+			t.Fatal("Load accepted a blank inline Google client secret")
+		}
+	})
+
+	t.Run("file", func(t *testing.T) {
+		file := t.TempDir() + "/google-secret"
+		if err := os.WriteFile(file, []byte("\n\t"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET_FILE", file)
+		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "https://portcullis.example/auth/google/callback")
+		if _, err := config.Load(); err == nil {
+			t.Fatal("Load accepted a blank Google client secret file")
+		}
+	})
+}
+
+func TestGoogleLoginConfigNormalizesWhitespace(t *testing.T) {
+	t.Run("blank client id disables the unset feature", func(t *testing.T) {
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", " \t ")
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.GoogleEnabled() || cfg.GoogleClientID != "" {
+			t.Errorf("blank client ID = enabled %t, value %q; want disabled and empty", cfg.GoogleEnabled(), cfg.GoogleClientID)
+		}
+	})
+
+	t.Run("configured values are stored canonically", func(t *testing.T) {
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", " client-1 ")
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", " s3cret\t")
+		t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET_FILE", " \t")
+		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", " https://portcullis.example/auth/google/callback ")
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.GoogleClientID != "client-1" || cfg.GoogleRedirectURL != "https://portcullis.example/auth/google/callback" {
+			t.Errorf("Google config was not normalized: %+v", cfg)
+		}
+		if secret, err := cfg.ResolveGoogleClientSecret(); err != nil || secret != "s3cret" {
+			t.Errorf("ResolveGoogleClientSecret = %q, %v; want s3cret, nil", secret, err)
+		}
+	})
+}
+
 func TestGoogleRedirectURLValidation(t *testing.T) {
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
 
-	for _, bad := range []string{"not a url", "/auth/google/callback", "ftp://x.example/cb"} {
+	// Google's registration rules (web-verified, ADR-0007): HTTPS required with
+	// localhost/loopback as the only HTTP exception; no fragment, userinfo, or
+	// raw public IP. The path must be the one route the server actually mounts.
+	for _, bad := range []string{
+		"not a url",
+		"/auth/google/callback", // relative
+		"ftp://x.example/cb",
+		"http://production.example/auth/google/callback",  // http off-loopback
+		"https://x.example/",                              // wrong path
+		"https://x.example/callback",                      // wrong path
+		"https://x.example/auth/google/callback?next=/x",  // query
+		"https://x.example/auth/google/callback#frag",     // fragment
+		"https://user:pw@x.example/auth/google/callback",  // userinfo
+		"https://203.0.113.7:8443/auth/google/callback",   // raw public IP
+		"http://192.168.1.10:8080/auth/google/callback",   // raw private IP, still not loopback
+		"https://[2001:db8::1]:8443/auth/google/callback", // raw public IPv6
+	} {
 		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", bad)
 		if _, err := config.Load(); err == nil {
 			t.Errorf("redirect URL %q must fail Load", bad)
 		}
 	}
-	// http is allowed (localhost development); https is the production shape.
-	t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "http://localhost:8080/auth/google/callback")
-	if _, err := config.Load(); err != nil {
-		t.Errorf("http localhost redirect URL should load: %v", err)
+	for _, good := range []string{
+		"https://portcullis.example.com/auth/google/callback", // production shape
+		"http://localhost:8080/auth/google/callback",          // loopback dev
+		"http://127.0.0.1:8080/auth/google/callback",
+		"http://[::1]:8080/auth/google/callback",
+	} {
+		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", good)
+		if _, err := config.Load(); err != nil {
+			t.Errorf("redirect URL %q should load: %v", good, err)
+		}
+	}
+}
+
+// A misconfigured redirect URL can carry userinfo credentials, and the
+// validation error goes straight to the startup log — it must name the key and
+// the violated rule, never echo the URL. URL.Redacted() is not enough: it
+// masks only the password, keeping the username (web-verified, external
+// review).
+func TestGoogleRedirectURLErrorsOmitTheURL(t *testing.T) {
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
+	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
+	t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "https://leaked-user:leaked-pw@x.example/auth/google/callback")
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("userinfo redirect URL must fail Load")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "leaked-pw") || strings.Contains(msg, "leaked-user") {
+		t.Errorf("error leaks the URL's userinfo: %q", msg)
+	}
+	if !strings.Contains(msg, "google_redirect_url") {
+		t.Errorf("error should name the offending key: %q", msg)
 	}
 }

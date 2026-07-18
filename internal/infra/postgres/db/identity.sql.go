@@ -104,7 +104,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
-const extendSessionIdle = `-- name: ExtendSessionIdle :exec
+const extendSessionIdle = `-- name: ExtendSessionIdle :execrows
 update public.sessions
 set idle_expires_at = least(greatest(idle_expires_at, $1), absolute_expires_at)
 where id = $2
@@ -123,9 +123,12 @@ type ExtendSessionIdleParams struct {
 // Re-check both expiries in the write: a session can expire after Authenticate
 // reads it but before the post-CSRF slide, and an expired session must never be
 // resurrected by that race.
-func (q *Queries) ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) error {
-	_, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleExpiresAt, arg.ID)
-	return err
+func (q *Queries) ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleExpiresAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getDefaultOrganization = `-- name: GetDefaultOrganization :one
@@ -419,4 +422,22 @@ type UpsertPasswordAuthParams struct {
 func (q *Queries) UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error {
 	_, err := q.db.Exec(ctx, upsertPasswordAuth, arg.UserID, arg.Secret)
 	return err
+}
+
+const validateSession = `-- name: ValidateSession :one
+select true from public.sessions
+where id = $1
+  and revoked_at is null
+  and idle_expires_at > now()
+  and absolute_expires_at > now()
+`
+
+// Final post-CSRF validity check for a request whose idle slide is throttled.
+// It deliberately does not write, but its predicates use the database clock so
+// a concurrently revoked or expired session cannot reach a handler.
+func (q *Queries) ValidateSession(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, validateSession, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }

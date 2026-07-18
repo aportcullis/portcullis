@@ -35,6 +35,8 @@ const (
 const (
 	// AuditListProcedure is the fully-qualified name of the Audit's List RPC.
 	AuditListProcedure = "/portcullis.v1.Audit/List"
+	// AuditGetProcedure is the fully-qualified name of the Audit's Get RPC.
+	AuditGetProcedure = "/portcullis.v1.Audit/Get"
 )
 
 // AuditClient is a client for the portcullis.v1.Audit service.
@@ -42,6 +44,8 @@ type AuditClient interface {
 	// List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
 	// audit.list.
 	List(context.Context, *connect.Request[v1.AuditListRequest]) (*connect.Response[v1.AuditListResponse], error)
+	// Get returns one audit event's detail. Requires audit.get.
+	Get(context.Context, *connect.Request[v1.GetAuditEventRequest]) (*connect.Response[v1.GetAuditEventResponse], error)
 }
 
 // NewAuditClient constructs a client for the portcullis.v1.Audit service. By default, it uses the
@@ -61,12 +65,19 @@ func NewAuditClient(httpClient connect.HTTPClient, baseURL string, opts ...conne
 			connect.WithSchema(auditMethods.ByName("List")),
 			connect.WithClientOptions(opts...),
 		),
+		get: connect.NewClient[v1.GetAuditEventRequest, v1.GetAuditEventResponse](
+			httpClient,
+			baseURL+AuditGetProcedure,
+			connect.WithSchema(auditMethods.ByName("Get")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // auditClient implements AuditClient.
 type auditClient struct {
 	list *connect.Client[v1.AuditListRequest, v1.AuditListResponse]
+	get  *connect.Client[v1.GetAuditEventRequest, v1.GetAuditEventResponse]
 }
 
 // List calls portcullis.v1.Audit.List.
@@ -74,11 +85,18 @@ func (c *auditClient) List(ctx context.Context, req *connect.Request[v1.AuditLis
 	return c.list.CallUnary(ctx, req)
 }
 
+// Get calls portcullis.v1.Audit.Get.
+func (c *auditClient) Get(ctx context.Context, req *connect.Request[v1.GetAuditEventRequest]) (*connect.Response[v1.GetAuditEventResponse], error) {
+	return c.get.CallUnary(ctx, req)
+}
+
 // AuditHandler is an implementation of the portcullis.v1.Audit service.
 type AuditHandler interface {
 	// List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
 	// audit.list.
 	List(context.Context, *connect.Request[v1.AuditListRequest]) (*connect.Response[v1.AuditListResponse], error)
+	// Get returns one audit event's detail. Requires audit.get.
+	Get(context.Context, *connect.Request[v1.GetAuditEventRequest]) (*connect.Response[v1.GetAuditEventResponse], error)
 }
 
 // NewAuditHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -94,10 +112,18 @@ func NewAuditHandler(svc AuditHandler, opts ...connect.HandlerOption) (string, h
 		connect.WithSchema(auditMethods.ByName("List")),
 		connect.WithHandlerOptions(opts...),
 	)
+	auditGetHandler := connect.NewUnaryHandler(
+		AuditGetProcedure,
+		svc.Get,
+		connect.WithSchema(auditMethods.ByName("Get")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/portcullis.v1.Audit/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuditListProcedure:
 			auditListHandler.ServeHTTP(w, r)
+		case AuditGetProcedure:
+			auditGetHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -109,4 +135,8 @@ type UnimplementedAuditHandler struct{}
 
 func (UnimplementedAuditHandler) List(context.Context, *connect.Request[v1.AuditListRequest]) (*connect.Response[v1.AuditListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portcullis.v1.Audit.List is not implemented"))
+}
+
+func (UnimplementedAuditHandler) Get(context.Context, *connect.Request[v1.GetAuditEventRequest]) (*connect.Response[v1.GetAuditEventResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portcullis.v1.Audit.Get is not implemented"))
 }

@@ -42,6 +42,7 @@ func (a *AuthService) Login(
 		return nil, authError(err)
 	}
 	resp := connect.NewResponse(&portcullisv1.LoginResponse{User: toProtoUser(sess.User)})
+	noStore(resp.Header())
 	setCookie(resp.Header(), sessionCookie, sess.Token, true, sess.Session.AbsoluteExpiresAt)
 	setCookie(resp.Header(), csrfCookie, sess.CSRF, false, sess.Session.AbsoluteExpiresAt)
 	return resp, nil
@@ -55,6 +56,7 @@ func (a *AuthService) Logout(
 		return nil, authError(err)
 	}
 	resp := connect.NewResponse(&portcullisv1.LogoutResponse{})
+	noStore(resp.Header())
 	clearCookie(resp.Header(), sessionCookie, true)
 	clearCookie(resp.Header(), csrfCookie, false)
 	return resp, nil
@@ -118,6 +120,14 @@ func clearCookie(h http.Header, name string, httpOnly bool) {
 		HttpOnly: httpOnly,
 		SameSite: http.SameSiteLaxMode,
 	}).String())
+}
+
+// noStore prevents session-bearing responses from being retained by browser or
+// intermediary caches. It is applied only to authentication routes so static
+// SPA assets remain cacheable (OWASP Session Management guidance).
+func noStore(h http.Header) {
+	h.Set("Cache-Control", "no-store")
+	h.Set("Pragma", "no-cache")
 }
 
 // authError maps domain errors to Connect codes with generic, leak-free messages.

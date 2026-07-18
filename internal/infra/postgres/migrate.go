@@ -75,15 +75,6 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, opts ...MigrateOption) err
 		return fmt.Errorf("set migration search path: %w", err)
 	}
 
-	// Every step runs on the lock-holding connection, so a flood of concurrent
-	// callers can't starve the pool: each caller holds exactly one connection
-	// (blocked on the lock) and the winner does all its work on that same one.
-	if _, err := conn.Exec(ctx, `create table if not exists public.schema_migrations (
-		version text primary key,
-		applied_at timestamptz not null default now())`); err != nil {
-		return fmt.Errorf("ensure schema_migrations: %w", err)
-	}
-
 	// Preflight: a PRE-EXISTING runtime role must be attribute-safe BEFORE any
 	// migration grants it CONNECT + DML — otherwise a role holding e.g. CREATEDB
 	// would end up privileged even though boot then fails.
@@ -91,20 +82,60 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, opts ...MigrateOption) err
 		return err
 	}
 
-	// Preflight: the migration principal must be able to act as the owner of the
-	// database AND schema public. The boundary migrations REVOKE PUBLIC's privileges
-	// as the owner; a non-owner makes those REVOKEs silent no-ops (PostgreSQL warns
-	// but commits), the migration records as applied, and the post-flight
-	// verifyRuntimeRole then fails EVERY boot blaming the runtime role — with no
-	// migration left to self-repair. Fail fast here with an accurate message.
-	if err := checkMigratorOwnership(ctx, conn); err != nil {
+	// Preflight: resolve the schema owner and require the migration principal to
+	// BE it or be able to SET ROLE into it. Migrations then run AS the owner:
+	// the boundary REVOKEs need owner rights (a non-owner's REVOKE silently
+	// no-ops), and — the subtler trap — ALTER DEFAULT PRIVILEGES binds to the
+	// CREATING role and is never inherited through membership, so a member
+	// migrating without SET ROLE would create tables the runtime role has no
+	// grants on (ADR-0009; found by external review).
+	owner, err := resolveMigrationOwner(ctx, conn)
+	if err != nil {
 		return err
+	}
+
+	// A legacy schema_migrations created by a previous member-migrator must be
+	// re-owned BEFORE SET ROLE (the login can: it owns the table and can SET
+	// into the new owner), or the owner-run version reads/inserts below would
+	// be denied on it.
+	if err := normalizeHistoryOwnership(ctx, conn, owner); err != nil {
+		return err
+	}
+
+	if !owner.isCurrentUser {
+		// set_config('role', ...) is SET ROLE with the target as a VALUE (no
+		// identifier splicing for an arbitrary owner name).
+		if _, err := conn.Exec(ctx, `select set_config('role', $1, false)`, owner.name); err != nil {
+			return safeErrorf("assume schema owner role %q for migrations: %v (ADR-0009)", owner.name, err)
+		}
+		defer func() {
+			// pgxpool does not reset session state on Release: a failed RESET ROLE
+			// would leak an owner-privileged session back into the pool, so the
+			// connection is destroyed instead. Registered after the unlock defer,
+			// so it runs first (LIFO) while the session is still usable.
+			rctx := context.WithoutCancel(ctx)
+			if _, err := conn.Exec(rctx, `reset role`); err != nil {
+				_ = conn.Conn().Close(rctx)
+			}
+		}()
+	}
+
+	// Every step runs on the lock-holding connection, so a flood of concurrent
+	// callers can't starve the pool: each caller holds exactly one connection
+	// (blocked on the lock) and the winner does all its work on that same one.
+	// Created after SET ROLE: the owner owns the history table from day one, and
+	// on PG15+ a plain member login has no CREATE on schema public anyway.
+	if _, err := conn.Exec(ctx, `create table if not exists public.schema_migrations (
+		version text primary key,
+		applied_at timestamptz not null default now())`); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
 	}
 
 	// Publish the runtime role name as a session GUC on the migration connection.
 	// Migrations read it via current_setting and splice it with format(%I) — no
 	// blind text substitution (which could rewrite an unrelated substring in a
 	// future migration, or leak the dev-membership grant to a custom-name install).
+	// Session GUCs are untouched by SET ROLE/RESET ROLE.
 	if _, err := conn.Exec(ctx, `select set_config('portcullis.runtime_role', $1, false)`, cfg.runtimeRole); err != nil {
 		return fmt.Errorf("set runtime role setting: %w", err)
 	}
@@ -142,25 +173,81 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, opts ...MigrateOption) err
 	return verifyRuntimeRole(ctx, conn, cfg.runtimeRole)
 }
 
-// checkMigratorOwnership fails unless the migration principal can act as the owner
-// of BOTH the current database and schema public — i.e. it is that owner or a role
-// that inherits/can SET into it (a superuser satisfies this implicitly). Without it,
-// the boundary migrations' `revoke ... from public` statements silently no-op, which
-// later fails verifyRuntimeRole on every boot with a misleading runtime-role error.
-func checkMigratorOwnership(ctx context.Context, q rowQuerier) error {
-	var user string
-	var ownsDB, ownsSchema bool
+// migrationOwner is the resolved role migrations must run as.
+type migrationOwner struct {
+	name string // role name, used as a set_config VALUE
+	// ident is the pre-quoted identifier (quote_ident) for the one statement
+	// that needs it spliced (ALTER TABLE ... OWNER TO).
+	ident         string
+	isCurrentUser bool
+}
+
+// resolveMigrationOwner determines the role migrations run as and fails unless
+// the migration principal can become it. On PG15+ schema public is owned by
+// the pg_database_owner pseudo-role, which cannot be SET ROLE'd into — the
+// database owner (datdba) is the real role that holds its rights; a reassigned
+// schema (ALTER SCHEMA public OWNER TO x) resolves to x instead, and must then
+// also cover the database-level REVOKEs. Membership must carry the SET option
+// (PG16+ GRANT ... WITH SET): INHERIT-only membership can run the REVOKEs but
+// can never fix default-privilege binding, which is the whole point of running
+// as the owner (ADR-0009).
+func resolveMigrationOwner(ctx context.Context, q rowQuerier) (migrationOwner, error) {
+	var (
+		user, name, ident               string
+		isOwner, canSet, dbOK, schemaOK bool
+	)
 	if err := q.QueryRow(ctx, `
 		select current_user,
-		       pg_has_role(current_user, (select datdba from pg_database where datname = current_database()), 'USAGE')
-		         or pg_has_role(current_user, (select datdba from pg_database where datname = current_database()), 'SET'),
-		       coalesce((select pg_has_role(current_user, nspowner, 'USAGE') or pg_has_role(current_user, nspowner, 'SET')
-		                 from pg_namespace where nspname = 'public'), false)`,
-	).Scan(&user, &ownsDB, &ownsSchema); err != nil {
-		return fmt.Errorf("check migration ownership: %w", err)
+		       o.rolname,
+		       quote_ident(o.rolname),
+		       current_user = o.rolname,
+		       pg_has_role(current_user, o.oid, 'SET'),
+		       (o.oid = d.datdba or pg_has_role(o.oid, d.datdba, 'USAGE')),
+		       (n.nspowner = 'pg_database_owner'::regrole
+		        or o.oid = n.nspowner
+		        or pg_has_role(o.oid, n.nspowner, 'USAGE'))
+		from pg_database d
+		cross join pg_namespace n
+		join pg_roles o
+		  on o.oid = case when n.nspowner = 'pg_database_owner'::regrole
+		                  then d.datdba else n.nspowner end
+		where d.datname = current_database() and n.nspname = 'public'`,
+	).Scan(&user, &name, &ident, &isOwner, &canSet, &dbOK, &schemaOK); err != nil {
+		return migrationOwner{}, fmt.Errorf("resolve migration owner: %w", err)
 	}
-	if !ownsDB || !ownsSchema {
-		return safeErrorf("migration user %q cannot act as the owner of the database and schema public (owns database=%t, owns schema public=%t) — the runtime-boundary migrations REVOKE PUBLIC privileges AS the owner, which silently no-op otherwise and then fail boot verification (ADR-0009); run migrations as the schema owner or a member of it", user, ownsDB, ownsSchema)
+	if !isOwner && !canSet {
+		return migrationOwner{}, safeErrorf("migration user %q is not schema owner %q and cannot SET ROLE into it — run migrations as the owner, or GRANT %s TO %s WITH SET TRUE; migrations must run AS the owner so REVOKEs apply and default privileges bind to it (ADR-0009)", user, name, name, user)
+	}
+	if !dbOK || !schemaOK {
+		return migrationOwner{}, safeErrorf("schema owner %q cannot act for the database owner (database=%t, schema=%t) — the boundary migrations REVOKE database- and schema-level privileges, which would silently no-op (ADR-0009); align the database and schema public owners", name, dbOK, schemaOK)
+	}
+	return migrationOwner{name: name, ident: ident, isCurrentUser: isOwner}, nil
+}
+
+// normalizeHistoryOwnership re-owns a legacy schema_migrations created by a
+// previous non-owner migrator. It runs as the LOGIN user (before SET ROLE):
+// that user either owns the table (the legacy scenario, and it can SET into
+// the new owner — just verified) or the table already belongs to the owner.
+func normalizeHistoryOwnership(ctx context.Context, conn *pgxpool.Conn, owner migrationOwner) error {
+	// Pure catalog read (pg_class/pg_namespace) rather than to_regclass: name
+	// resolution would demand schema USAGE, which a non-inheriting member login
+	// does not hold once 0003 revoked PUBLIC's.
+	var needsChown bool
+	if err := conn.QueryRow(ctx, `
+		select coalesce(
+		    (select c.relowner <> $1::regrole
+		     from pg_class c
+		     join pg_namespace n on n.oid = c.relnamespace
+		     where n.nspname = 'public' and c.relname = 'schema_migrations'),
+		    false)`, owner.name,
+	).Scan(&needsChown); err != nil {
+		return fmt.Errorf("inspect schema_migrations ownership: %w", err)
+	}
+	if !needsChown {
+		return nil
+	}
+	if _, err := conn.Exec(ctx, `alter table public.schema_migrations owner to `+owner.ident); err != nil {
+		return safeErrorf("schema_migrations is owned by a previous migrator and could not be re-owned to %q: %v — run ALTER TABLE public.schema_migrations OWNER TO %s as its current owner (ADR-0009)", owner.name, err, owner.ident)
 	}
 	return nil
 }
@@ -188,7 +275,11 @@ func checkRuntimeRoleAttributes(ctx context.Context, q rowQuerier, role string) 
 
 // verifyRuntimeRole asserts the role exists, is attribute-safe, and holds
 // exactly the intended privileges: CONNECT, append-only audit access
-// (SELECT+INSERT, no mutation), and no access at all to the migration history.
+// (SELECT+INSERT, no mutation), no access at all to the migration history, and
+// the policy-table DML on every other table and sequence in public — so a
+// migration that created a table without runtime grants fails THIS boot, not
+// the first RPC (ADR-0009). Every violation is fatal here (this is the
+// migration postflight; the dev flag never applies to it).
 func verifyRuntimeRole(ctx context.Context, conn *pgxpool.Conn, role string) error {
 	if err := checkRuntimeRoleAttributes(ctx, conn, role); err != nil {
 		return err
@@ -200,8 +291,18 @@ func verifyRuntimeRole(ctx context.Context, conn *pgxpool.Conn, role string) err
 	if err != nil {
 		return fmt.Errorf("verify runtime role %q: %w", role, err)
 	}
-	return m.verdict(fmt.Sprintf("runtime role %q", role),
-		" — was PORTCULLIS_RUNTIME_ROLE changed after the first migration? Follow the rotation procedure in ADR-0009")
+	if err := m.verdict(fmt.Sprintf("runtime role %q", role),
+		" — was PORTCULLIS_RUNTIME_ROLE changed after the first migration? Follow the rotation procedure in ADR-0009"); err != nil {
+		return err
+	}
+	missing, forbidden, err := verifyTablePrivileges(ctx, conn, role, fmt.Sprintf("runtime role %q", role))
+	if err != nil {
+		return fmt.Errorf("verify runtime role %q table privileges: %w", role, err)
+	}
+	if missing != nil {
+		return missing
+	}
+	return forbidden
 }
 
 // isUndefinedObject reports whether err is PostgreSQL's undefined_object (42704)

@@ -113,6 +113,16 @@ returning *;
 -- name: GetSessionByTokenHash :one
 select * from public.sessions where token_hash = $1;
 
+-- name: ValidateSession :one
+-- Final post-CSRF validity check for a request whose idle slide is throttled.
+-- It deliberately does not write, but its predicates use the database clock so
+-- a concurrently revoked or expired session cannot reach a handler.
+select true from public.sessions
+where id = $1
+  and revoked_at is null
+  and idle_expires_at > now()
+  and absolute_expires_at > now();
+
 -- name: RevokeSession :execrows
 -- Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must
 -- not overwrite the original revoked_at — forensic evidence of WHEN the session
@@ -126,7 +136,7 @@ where id = $1 and revoked_at is null;
 update public.sessions set revoked_at = now()
 where user_id = $1 and revoked_at is null;
 
--- name: ExtendSessionIdle :exec
+-- name: ExtendSessionIdle :execrows
 -- Slide the idle window forward on activity, never past the absolute expiry and
 -- never backward (greatest() guards against a late, older request regressing it).
 -- Re-check both expiries in the write: a session can expire after Authenticate

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 )
 
@@ -133,5 +134,43 @@ func TestCSRFProtectorIssueVerify(t *testing.T) {
 	}
 	if other := crypto.NewCSRFProtector(loadKeyring(t, 0x02)); other.Verify("sess-1", t1) {
 		t.Error("token must not verify under a different key")
+	}
+}
+
+func TestConnectionCredentialCodecRoundTrip(t *testing.T) {
+	t.Parallel()
+	codec := crypto.NewConnectionCredentialCodec(testKeyring(t))
+	cred := connection.Credential{User: "app_reader", Password: "s3cret-π"}
+
+	sealed, err := codec.Seal("org-1", "conn-1", cred)
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if sealed.KeyVersion == 0 || len(sealed.WrappedDEK) == 0 || len(sealed.Nonce) == 0 || len(sealed.Ciphertext) == 0 {
+		t.Fatalf("sealed envelope incomplete: %+v", sealed)
+	}
+	got, err := codec.Open("org-1", "conn-1", sealed)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if got != cred {
+		t.Errorf("round trip = %+v, want %+v", got, cred)
+	}
+}
+
+// A sealed credential must not open under another connection's or another
+// organization's identity — the AAD binds both (ADR-0003/0014), failing closed.
+func TestConnectionCredentialCodecAADBinding(t *testing.T) {
+	t.Parallel()
+	codec := crypto.NewConnectionCredentialCodec(testKeyring(t))
+	sealed, err := codec.Seal("org-1", "conn-1", connection.Credential{User: "u", Password: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := codec.Open("org-1", "conn-2", sealed); !errors.Is(err, crypto.ErrDecrypt) {
+		t.Errorf("Open with wrong connection id err = %v, want ErrDecrypt", err)
+	}
+	if _, err := codec.Open("org-2", "conn-1", sealed); !errors.Is(err, crypto.ErrDecrypt) {
+		t.Errorf("Open with wrong org err = %v, want ErrDecrypt", err)
 	}
 }

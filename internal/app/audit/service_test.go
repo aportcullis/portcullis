@@ -13,6 +13,8 @@ type fakeReader struct {
 	got     domainaudit.ListParams
 	count   int64
 	events  []domainaudit.Event
+	event   domainaudit.Event
+	getErr  error
 	listErr error
 	cntErr  error
 }
@@ -20,6 +22,10 @@ type fakeReader struct {
 func (f *fakeReader) List(_ context.Context, p domainaudit.ListParams) ([]domainaudit.Event, error) {
 	f.got = p
 	return f.events, f.listErr
+}
+
+func (f *fakeReader) Get(_ context.Context, _ string) (domainaudit.Event, error) {
+	return f.event, f.getErr
 }
 
 func (f *fakeReader) Count(context.Context) (int64, error) {
@@ -128,6 +134,18 @@ func TestListPropagatesReaderErrors(t *testing.T) {
 	}
 	if _, err := newService(t, &fakeReader{listErr: sentinel}).List(context.Background(), auditapp.Query{Page: 1, PageSize: 20}); !errors.Is(err, sentinel) {
 		t.Fatalf("List error not propagated: %v", err)
+	}
+}
+
+func TestGetPreservesReaderResult(t *testing.T) {
+	want := domainaudit.Event{ID: "event-1", Action: domainaudit.ActionAuthLogin}
+	got, err := newService(t, &fakeReader{event: want}).Get(context.Background(), want.ID)
+	if err != nil || got.ID != want.ID || got.Action != want.Action {
+		t.Fatalf("Get = (%+v, %v), want (%+v, nil)", got, err, want)
+	}
+	sentinel := errors.New("db down")
+	if _, err := newService(t, &fakeReader{getErr: sentinel}).Get(context.Background(), "event-1"); !errors.Is(err, sentinel) {
+		t.Fatalf("Get error not propagated: %v", err)
 	}
 }
 

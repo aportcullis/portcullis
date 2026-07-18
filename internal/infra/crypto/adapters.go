@@ -5,13 +5,19 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"strings"
+
+	"github.com/aportcullis/portcullis/internal/domain/connection"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
 // This file adapts the crypto primitives to the small interfaces the application
-// layer depends on (auth.PasswordHasher, auth.CSRFProtector). The adapters satisfy
-// those interfaces structurally, so this package does not import the app layer;
-// the composition root (cmd/portcullis) wires them in.
+// layer depends on (auth.PasswordHasher, auth.CSRFProtector,
+// connection.CredentialCodec). The adapters satisfy those interfaces
+// structurally, so this package does not import the app layer; the composition
+// root (cmd/portcullis) wires them in.
 
 // Argon2Hasher hashes and verifies passwords with a fixed Argon2id profile. A
 // semaphore caps concurrent hashes so a login flood can't exhaust memory: each
@@ -129,4 +135,70 @@ func (c *CSRFProtector) mac(sessionToken string, nonce []byte) ([]byte, error) {
 		return nil, err
 	}
 	return d.Sum, nil
+}
+
+// ConnectionCredentialCodec seals a connection's database login pair into the
+// ADR-0003 envelope under the canonical AAD (record type
+// connection_credential + organization + connection id) and opens it back. It
+// satisfies the connection app service's CredentialCodec port structurally.
+// The plaintext is versioned JSON so fields can be added compatibly
+// (ADR-0014).
+type ConnectionCredentialCodec struct {
+	kr *Keyring
+}
+
+// NewConnectionCredentialCodec builds a codec over the keyring.
+func NewConnectionCredentialCodec(kr *Keyring) *ConnectionCredentialCodec {
+	return &ConnectionCredentialCodec{kr: kr}
+}
+
+// connectionCredentialJSON is the sealed plaintext layout, version 1.
+type connectionCredentialJSON struct {
+	V        int    `json:"v"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
+// Seal envelope-encrypts the credential bound to (org, id) — a sealed value
+// cannot be replayed onto another connection or organization.
+func (c *ConnectionCredentialCodec) Seal(org identity.OrganizationID, id connection.ConnectionID, cred connection.Credential) (connection.SealedCredential, error) {
+	plaintext, err := json.Marshal(connectionCredentialJSON{
+		V: connectionCredentialVersion, User: cred.User, Password: cred.Password,
+	})
+	if err != nil {
+		return connection.SealedCredential{}, fmt.Errorf("encode credential: %w", err)
+	}
+	blob, err := c.kr.Seal(plaintext, AAD(RecordTypeConnectionCredential, string(org), string(id)))
+	if err != nil {
+		return connection.SealedCredential{}, err
+	}
+	return connection.SealedCredential{
+		KeyVersion: uint32(blob.KeyVersion),
+		WrappedDEK: blob.WrappedDEK,
+		Nonce:      blob.Nonce,
+		Ciphertext: blob.Ciphertext,
+	}, nil
+}
+
+// Open decrypts a sealed credential. A mismatched org or connection id fails
+// closed with ErrDecrypt (both envelope layers authenticate the AAD).
+func (c *ConnectionCredentialCodec) Open(org identity.OrganizationID, id connection.ConnectionID, sealed connection.SealedCredential) (connection.Credential, error) {
+	blob := Blob{
+		KeyVersion: KeyVersion(sealed.KeyVersion),
+		WrappedDEK: sealed.WrappedDEK,
+		Nonce:      sealed.Nonce,
+		Ciphertext: sealed.Ciphertext,
+	}
+	plaintext, err := c.kr.Open(blob, AAD(RecordTypeConnectionCredential, string(org), string(id)))
+	if err != nil {
+		return connection.Credential{}, err
+	}
+	var v connectionCredentialJSON
+	if err := json.Unmarshal(plaintext, &v); err != nil {
+		return connection.Credential{}, fmt.Errorf("decode credential: %w", err)
+	}
+	if v.V != connectionCredentialVersion {
+		return connection.Credential{}, fmt.Errorf("unsupported credential version %d", v.V)
+	}
+	return connection.Credential{User: v.User, Password: v.Password}, nil
 }

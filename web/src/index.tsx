@@ -3,4 +3,8 @@ import { render } from "solid-js/web";
 
 import App from "@/app/App";
 
-render(() => <App />, document.getElementById("root")!);
+const root = document.getElementById("root");
+if (!root) {
+  throw new Error("application root is missing");
+}
+render(() => <App />, root);

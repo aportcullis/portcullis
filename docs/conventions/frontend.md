@@ -35,8 +35,9 @@ the SPA's ports-and-adapters: the same inward-only dependency discipline as the 
   pages — don't pre-create it.
 
 ## Imports
-- Always the `@/` alias from `web/src` (`@/shared/ui/button`); **no relative `../` imports across
-  folders** (sibling-file `./` imports inside one slice are fine).
+- **Always the `@/` alias** from `web/src` (`@/shared/ui/button`). Relative import paths — `./`
+  AND `../`, including same-slice sibling files — are **forbidden**: write `@/entities/connection/model`,
+  never `./model`. Enforced by ESLint (`@typescript-eslint/no-restricted-imports`, `make web-lint`).
 
 ## Vendored UI (shared/ui)
 - Components are copy-pasted from solid-ui (ADR-0013), reviewed on copy-in, and OWNED here:
@@ -54,5 +55,8 @@ the SPA's ports-and-adapters: the same inward-only dependency discipline as the 
 ## Testing
 - Browser e2e: Playwright under `web/e2e/`, driving the real Go binary + throwaway PostgreSQL
   (`make e2e`). Serial (`workers: 1`) — bootstrap is once per database.
-- Type safety is enforced by `pnpm -C web typecheck` (tsgo); no separate unit-test runner until a
-  pure-logic module warrants one.
+- Type safety is enforced by `pnpm -C web typecheck` (tsgo).
+- Unit tests: vitest (`make web-test`, part of `make verify`), colocated as `*.test.ts`, node
+  environment (`web/vitest.config.ts` mirrors the `@/` alias). Reserved for pure logic Playwright
+  cannot schedule deterministically — store/state race interleavings are the canonical case
+  (`entities/connection/store.test.ts`); component rendering stays with e2e.

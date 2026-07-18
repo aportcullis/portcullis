@@ -31,12 +31,6 @@ type authorizer interface {
 //   - anything else (an off-catalog key defect, or a resolver/DB failure) ->
 //     CodeInternal, so a bug or a database blip is never reported to the client as
 //     a legitimate "forbidden".
-//
-// want is the general enforcement primitive: every future gated RPC names its own
-// key here (ADR-0008). It has a single caller today (audit.list, the first gated
-// RPC), which unparam reads as a constant argument — hence the suppression.
-//
-//nolint:unparam // want varies per enforcement site; only one exists pre-M1.
 func requirePermission(ctx context.Context, az authorizer, want identity.Permission) error {
 	user, ok := userFromContext(ctx)
 	if !ok {

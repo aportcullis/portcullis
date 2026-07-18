@@ -12,7 +12,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/audit.proto.
  */
 export const file_portcullis_v1_audit: GenFile = /*@__PURE__*/
-  fileDesc("Chlwb3J0Y3VsbGlzL3YxL2F1ZGl0LnByb3RvEg1wb3J0Y3VsbGlzLnYxIlsKEEF1ZGl0TGlzdFJlcXVlc3QSDAoEcGFnZRgBIAEoDRIRCglwYWdlX3NpemUYAiABKA0SJgoEc29ydBgDIAEoCzIYLnBvcnRjdWxsaXMudjEuQXVkaXRTb3J0Ii4KCUF1ZGl0U29ydBINCgVmaWVsZBgBIAEoCRISCgpkZXNjZW5kaW5nGAIgASgIIqYCCgpBdWRpdEV2ZW50EgoKAmlkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBISCgphY3Rvcl90eXBlGAMgASgJEhUKDWFjdG9yX3VzZXJfaWQYBCABKAkSFQoNYWN0b3Jfc2VydmljZRgFIAEoCRIOCgZhY3Rpb24YBiABKAkSEwoLdGFyZ2V0X3R5cGUYByABKAkSEQoJdGFyZ2V0X2lkGAggASgJEg8KB291dGNvbWUYCSABKAkSEQoJc291cmNlX2lwGAogASgJEhIKCnJlcXVlc3RfaWQYCyABKAkSKQoIbWV0YWRhdGEYDCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IokBChFBdWRpdExpc3RSZXNwb25zZRIpCgZldmVudHMYASADKAsyGS5wb3J0Y3VsbGlzLnYxLkF1ZGl0RXZlbnQSDAoEcGFnZRgCIAEoDRIRCglwYWdlX3NpemUYAyABKA0SEwoLdG90YWxfY291bnQYBCABKAQSEwoLdG90YWxfcGFnZXMYBSABKA0yVAoFQXVkaXQSSwoETGlzdBIfLnBvcnRjdWxsaXMudjEuQXVkaXRMaXN0UmVxdWVzdBogLnBvcnRjdWxsaXMudjEuQXVkaXRMaXN0UmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("Chlwb3J0Y3VsbGlzL3YxL2F1ZGl0LnByb3RvEg1wb3J0Y3VsbGlzLnYxIlsKEEF1ZGl0TGlzdFJlcXVlc3QSDAoEcGFnZRgBIAEoDRIRCglwYWdlX3NpemUYAiABKA0SJgoEc29ydBgDIAEoCzIYLnBvcnRjdWxsaXMudjEuQXVkaXRTb3J0IkIKCUF1ZGl0U29ydBINCgVmaWVsZBgBIAEoCRIXCgpkZXNjZW5kaW5nGAIgASgISACIAQFCDQoLX2Rlc2NlbmRpbmcipgIKCkF1ZGl0RXZlbnQSCgoCaWQYASABKAkSLwoLb2NjdXJyZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhIKCmFjdG9yX3R5cGUYAyABKAkSFQoNYWN0b3JfdXNlcl9pZBgEIAEoCRIVCg1hY3Rvcl9zZXJ2aWNlGAUgASgJEg4KBmFjdGlvbhgGIAEoCRITCgt0YXJnZXRfdHlwZRgHIAEoCRIRCgl0YXJnZXRfaWQYCCABKAkSDwoHb3V0Y29tZRgJIAEoCRIRCglzb3VyY2VfaXAYCiABKAkSEgoKcmVxdWVzdF9pZBgLIAEoCRIpCghtZXRhZGF0YRgMIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QirQEKEUF1ZGl0RXZlbnRTdW1tYXJ5EgoKAmlkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBISCgphY3Rvcl90eXBlGAMgASgJEg4KBmFjdGlvbhgEIAEoCRITCgt0YXJnZXRfdHlwZRgFIAEoCRIRCgl0YXJnZXRfaWQYBiABKAkSDwoHb3V0Y29tZRgHIAEoCSKQAQoRQXVkaXRMaXN0UmVzcG9uc2USMAoGZXZlbnRzGAEgAygLMiAucG9ydGN1bGxpcy52MS5BdWRpdEV2ZW50U3VtbWFyeRIMCgRwYWdlGAIgASgNEhEKCXBhZ2Vfc2l6ZRgDIAEoDRITCgt0b3RhbF9jb3VudBgEIAEoBBITCgt0b3RhbF9wYWdlcxgFIAEoDSIiChRHZXRBdWRpdEV2ZW50UmVxdWVzdBIKCgJpZBgBIAEoCSJBChVHZXRBdWRpdEV2ZW50UmVzcG9uc2USKAoFZXZlbnQYASABKAsyGS5wb3J0Y3VsbGlzLnYxLkF1ZGl0RXZlbnQyqAEKBUF1ZGl0EksKBExpc3QSHy5wb3J0Y3VsbGlzLnYxLkF1ZGl0TGlzdFJlcXVlc3QaIC5wb3J0Y3VsbGlzLnYxLkF1ZGl0TGlzdFJlc3BvbnNlIgASUgoDR2V0EiMucG9ydGN1bGxpcy52MS5HZXRBdWRpdEV2ZW50UmVxdWVzdBokLnBvcnRjdWxsaXMudjEuR2V0QXVkaXRFdmVudFJlc3BvbnNlIgBCQlpAZ2l0aHViLmNvbS9hcG9ydGN1bGxpcy9wb3J0Y3VsbGlzL2dlbi9wb3J0Y3VsbGlzL3YxO3BvcnRjdWxsaXN2MWIGcHJvdG8z", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message portcullis.v1.AuditListRequest
@@ -34,7 +34,8 @@ export type AuditListRequest = Message<"portcullis.v1.AuditListRequest"> & {
   pageSize: number;
 
   /**
-   * Optional sort; unset or an off-whitelist field falls back to occurred_at desc.
+   * Optional sort; unset selects occurred_at descending. An off-whitelist field
+   * is rejected with InvalidArgument.
    *
    * @generated from field: portcullis.v1.AuditSort sort = 3;
    */
@@ -55,19 +56,21 @@ export const AuditListRequestSchema: GenMessage<AuditListRequest> = /*@__PURE__*
  */
 export type AuditSort = Message<"portcullis.v1.AuditSort"> & {
   /**
-   * Whitelisted column, e.g. "occurred_at". An unknown value falls back to the
-   * default column.
+   * Whitelisted column, e.g. "occurred_at". An unknown value is rejected.
    *
    * @generated from field: string field = 1;
    */
   field: string;
 
   /**
-   * true = descending (newest/largest first). Defaults to true for occurred_at.
+   * true = descending (newest/largest first). Optional so that UNSET is
+   * distinguishable from an explicit false: unset keeps the server default
+   * (descending), and only an explicit false selects ascending. A plain proto3
+   * bool cannot express that distinction (implicit field presence).
    *
-   * @generated from field: bool descending = 2;
+   * @generated from field: optional bool descending = 2;
    */
-  descending: boolean;
+  descending?: boolean | undefined;
 };
 
 /**
@@ -171,15 +174,66 @@ export const AuditEventSchema: GenMessage<AuditEvent> = /*@__PURE__*/
   messageDesc(file_portcullis_v1_audit, 2);
 
 /**
+ * AuditEventSummary is deliberately safe for audit.list. Correlation data,
+ * network addresses, and supplemental metadata are available only through
+ * audit.get, preserving ADR-0008's collection/detail permission boundary.
+ *
+ * @generated from message portcullis.v1.AuditEventSummary
+ */
+export type AuditEventSummary = Message<"portcullis.v1.AuditEventSummary"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp occurred_at = 2;
+   */
+  occurredAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string actor_type = 3;
+   */
+  actorType: string;
+
+  /**
+   * @generated from field: string action = 4;
+   */
+  action: string;
+
+  /**
+   * @generated from field: string target_type = 5;
+   */
+  targetType: string;
+
+  /**
+   * @generated from field: string target_id = 6;
+   */
+  targetId: string;
+
+  /**
+   * @generated from field: string outcome = 7;
+   */
+  outcome: string;
+};
+
+/**
+ * Describes the message portcullis.v1.AuditEventSummary.
+ * Use `create(AuditEventSummarySchema)` to create a new message.
+ */
+export const AuditEventSummarySchema: GenMessage<AuditEventSummary> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_audit, 3);
+
+/**
  * @generated from message portcullis.v1.AuditListResponse
  */
 export type AuditListResponse = Message<"portcullis.v1.AuditListResponse"> & {
   /**
    * The page of events (newest first by default).
    *
-   * @generated from field: repeated portcullis.v1.AuditEvent events = 1;
+   * @generated from field: repeated portcullis.v1.AuditEventSummary events = 1;
    */
-  events: AuditEvent[];
+  events: AuditEventSummary[];
 
   /**
    * Echoes the effective (clamped) page and page size the server applied.
@@ -212,11 +266,46 @@ export type AuditListResponse = Message<"portcullis.v1.AuditListResponse"> & {
  * Use `create(AuditListResponseSchema)` to create a new message.
  */
 export const AuditListResponseSchema: GenMessage<AuditListResponse> = /*@__PURE__*/
-  messageDesc(file_portcullis_v1_audit, 3);
+  messageDesc(file_portcullis_v1_audit, 4);
 
 /**
- * Audit exposes the append-only audit trail for reading. Reading requires the
- * audit.list permission (ADR-0008), enforced inline in the handler.
+ * @generated from message portcullis.v1.GetAuditEventRequest
+ */
+export type GetAuditEventRequest = Message<"portcullis.v1.GetAuditEventRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message portcullis.v1.GetAuditEventRequest.
+ * Use `create(GetAuditEventRequestSchema)` to create a new message.
+ */
+export const GetAuditEventRequestSchema: GenMessage<GetAuditEventRequest> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_audit, 5);
+
+/**
+ * @generated from message portcullis.v1.GetAuditEventResponse
+ */
+export type GetAuditEventResponse = Message<"portcullis.v1.GetAuditEventResponse"> & {
+  /**
+   * @generated from field: portcullis.v1.AuditEvent event = 1;
+   */
+  event?: AuditEvent | undefined;
+};
+
+/**
+ * Describes the message portcullis.v1.GetAuditEventResponse.
+ * Use `create(GetAuditEventResponseSchema)` to create a new message.
+ */
+export const GetAuditEventResponseSchema: GenMessage<GetAuditEventResponse> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_audit, 6);
+
+/**
+ * Audit exposes the append-only audit trail for reading. Listing and a single
+ * event's detail have distinct permissions (ADR-0008), enforced inline in the
+ * handler.
  *
  * @generated from service portcullis.v1.Audit
  */
@@ -231,6 +320,16 @@ export const Audit: GenService<{
     methodKind: "unary";
     input: typeof AuditListRequestSchema;
     output: typeof AuditListResponseSchema;
+  },
+  /**
+   * Get returns one audit event's detail. Requires audit.get.
+   *
+   * @generated from rpc portcullis.v1.Audit.Get
+   */
+  get: {
+    methodKind: "unary";
+    input: typeof GetAuditEventRequestSchema;
+    output: typeof GetAuditEventResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_portcullis_v1_audit, 0);

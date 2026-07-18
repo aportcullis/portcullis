@@ -17,8 +17,10 @@ import (
 	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/app/authz"
+	connapp "github.com/aportcullis/portcullis/internal/app/connection"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
+	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
 	"github.com/aportcullis/portcullis/internal/platform/config"
 	"github.com/aportcullis/portcullis/internal/platform/logging"
@@ -184,10 +186,27 @@ func run() error {
 	// Audit.List is gated by the audit.list permission inside the handler (ADR-0008).
 	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), recoverAndChain...)
 
+	// Connections vertical (ADR-0014): the postgres store, the keyring-backed
+	// credential codec, and the pgx dial tester behind the connections.* gated
+	// RPCs.
+	connSvc, err := connapp.New(
+		postgres.NewConnectionStore(pool),
+		pgdialect.NewTester(cfg.ConnectionTestTimeout),
+		crypto.NewConnectionCredentialCodec(keyring),
+		postgres.NewAuditStore(pool),
+	)
+	if err != nil {
+		logger.Error("connections init failed", "err", err)
+		return err
+	}
+	connSvc.WithLogger(logger)
+	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), recoverAndChain...)
+
 	mounts := []server.Mount{
 		{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
 		{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
 		{Pattern: auditPath, Handler: http.MaxBytesHandler(auditHandler, server.MaxRequestBytes)},
+		{Pattern: connsPath, Handler: http.MaxBytesHandler(connsHandler, server.MaxRequestBytes)},
 	}
 
 	// Google login (ADR-0007) mounts only when configured: provider discovery must

@@ -12,6 +12,16 @@ const (
 	ActionAuthLogin     Action = "AUTH_LOGIN"
 	ActionAuthLogout    Action = "AUTH_LOGOUT"
 	ActionAuthBootstrap Action = "AUTH_BOOTSTRAP"
+
+	// Connection lifecycle (ADR-0014). Created/Updated/Archived commit in the
+	// same transaction as the mutation (ADR-0009); Test is best-effort like
+	// failed logins; TLSRelaxed accompanies a create/update that chose a mode
+	// with no certificate validation (PRD §8.1).
+	ActionConnectionCreated    Action = "CONNECTION_CREATED"
+	ActionConnectionUpdated    Action = "CONNECTION_UPDATED"
+	ActionConnectionArchived   Action = "CONNECTION_ARCHIVED"
+	ActionConnectionTest       Action = "CONNECTION_TEST"
+	ActionConnectionTLSRelaxed Action = "CONNECTION_TLS_RELAXED"
 )
 
 // outcome values — the terminal result of an action.
@@ -20,5 +30,13 @@ const (
 	OutcomeFailed    Outcome = "FAILED"
 )
 
-// TargetTypeUser is the target_type for events acting on a user account.
-const TargetTypeUser = "user"
+// target_type values — what kind of entity an event acted on.
+const (
+	// TargetTypeUser is the target_type for events acting on a user account.
+	TargetTypeUser = "user"
+	// TargetTypeConnection is the target_type for events acting on a registered
+	// database connection; target_id carries the connection UUID. (The
+	// audit_events.connection_id snapshot column stays reserved for
+	// execution-path events — ADR-0014.)
+	TargetTypeConnection = "connection"
+)

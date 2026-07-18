@@ -83,58 +83,60 @@ func (s *Service) LoginWithGoogle(ctx context.Context, state, code string, pendi
 		return Session{}, ErrOIDCNonceMismatch
 	}
 
-	u, err := s.resolveOIDCUser(ctx, claims, &failed)
+	u, link, err := s.resolveOIDCUser(ctx, claims, &failed)
 	if err != nil {
 		return Session{}, err
 	}
-	return s.issueSession(ctx, u, map[string]any{"method": oidcMethodMetadata})
+	meta := map[string]any{"method": oidcMethodMetadata}
+	if link != nil {
+		meta["identity_linked"] = true
+	}
+	return s.issueSession(ctx, u, meta, link)
 }
 
 // resolveOIDCUser maps verified claims to a local user: the (issuer, subject)
 // link is the stable key; a first login may attach to an existing account by
 // provider-verified email, and nothing is ever auto-created (ADR-0007). The
 // failure event is attributed as soon as a user resolves.
-func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaims, failed *audit.Event) (identity.User, error) {
+func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaims, failed *audit.Event) (identity.User, *identity.OIDCIdentity, error) {
 	u, err := s.repo.FindUserBySubject(ctx, claims.Issuer, claims.Subject)
 	switch {
 	case err == nil:
 		*failed = withActor(*failed, u.ID)
 		if !u.Active() {
-			return identity.User{}, identity.ErrUserDisabled
+			return identity.User{}, nil, identity.ErrUserDisabled
 		}
-		return u, nil
+		return u, nil, nil
 	case !errors.Is(err, identity.ErrNoLinkedAccount):
-		return identity.User{}, err
+		return identity.User{}, nil, err
 	}
 
 	// First login for this subject: only a provider-verified email may attach it
 	// to an existing account.
 	if !claims.EmailVerified {
-		return identity.User{}, ErrOIDCEmailUnverified
+		return identity.User{}, nil, ErrOIDCEmailUnverified
 	}
 	u, err = s.repo.GetUserByEmail(ctx, identity.NormalizeEmail(claims.Email))
 	if err != nil {
 		if errors.Is(err, identity.ErrUserNotFound) {
-			return identity.User{}, identity.ErrNoLinkedAccount
+			return identity.User{}, nil, identity.ErrNoLinkedAccount
 		}
-		return identity.User{}, err
+		return identity.User{}, nil, err
 	}
 	*failed = withActor(*failed, u.ID)
 	// Disabled is checked BEFORE linking: re-enabling the user later must not
 	// silently activate a link that was never approved while active.
 	if !u.Active() {
-		return identity.User{}, identity.ErrUserDisabled
+		return identity.User{}, nil, identity.ErrUserDisabled
 	}
-	// The store refuses to re-point an identity claimed by another user in the
-	// window since our lookup (unique (issuer, subject)); the race is a
-	// rejection, never a retry.
-	if err := s.repo.LinkIdentity(ctx, identity.OIDCIdentity{
+	// The store claims this link inside the session/audit transaction. Its unique
+	// (issuer, subject) constraint still turns a first-login race into a
+	// rejection, never a re-point or retry.
+	link := &identity.OIDCIdentity{
 		UserID:  u.ID,
 		Issuer:  claims.Issuer,
 		Subject: claims.Subject,
 		Email:   identity.NormalizeEmail(claims.Email),
-	}); err != nil {
-		return identity.User{}, err
 	}
-	return u, nil
+	return u, link, nil
 }

@@ -60,6 +60,13 @@ func (s *Service) List(ctx context.Context, q Query) (domainaudit.EventPage, err
 	}, nil
 }
 
+// Get returns one event's full detail. Authorization belongs at the transport
+// boundary; this use case preserves the repository's org-scoped not-found
+// result without exposing storage details.
+func (s *Service) Get(ctx context.Context, id string) (domainaudit.Event, error) {
+	return s.reader.Get(ctx, id)
+}
+
 // totalPages is ceil(total / pageSize), or 0 when there are no rows.
 func totalPages(total int64, pageSize int) int {
 	if total <= 0 {

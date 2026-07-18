@@ -41,6 +41,27 @@ type AuthMethod struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type Connection struct {
+	ID                   pgtype.UUID
+	OrganizationID       pgtype.UUID
+	DbType               string
+	DisplayName          string
+	Host                 string
+	Port                 int32
+	DatabaseName         string
+	TlsMode              string
+	TargetFingerprint    string
+	CredentialKeyVersion *int32
+	CredentialWrappedDek []byte
+	CredentialNonce      []byte
+	CredentialCiphertext []byte
+	CreatedBy            pgtype.UUID
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+	ArchivedAt           pgtype.Timestamptz
+	Version              int64
+}
+
 type LoginBackoff struct {
 	UserID        pgtype.UUID
 	FailureCount  int32

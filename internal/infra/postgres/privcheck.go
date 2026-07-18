@@ -1,6 +1,10 @@
 package postgres
 
-import "context"
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+)
 
 // privMatrix is the effective-privilege snapshot of one role/user against the
 // audit boundary (ADR-0009). has_*_privilege computes EFFECTIVE privileges
@@ -80,4 +84,139 @@ func (m privMatrix) verdict(subject, lacksHint string) error {
 		return err
 	}
 	return m.excessErr(subject)
+}
+
+// tableVerbs is the fixed set of table privileges the per-table matrix
+// inspects, in query column order.
+var tableVerbs = [...]string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"}
+
+// tablePolicy is what the runtime role must and must not hold on one table.
+type tablePolicy struct {
+	required  []string
+	forbidden []string
+}
+
+// defaultTablePolicy applies to every table without an entry in tablePolicies:
+// SELECT/INSERT/UPDATE (what 0003's default privileges grant after 0010's
+// DELETE revoke) and none of DELETE or the schema-shaping verbs — every entity
+// is soft-delete-only (data.md), no runtime query issues DELETE, and TRIGGER
+// anywhere is schema modification. Because unknown tables get this policy, a
+// future migration that creates a table without runtime grants — e.g. run by
+// a principal whose default privileges don't cover it (ADR-0009) — fails the
+// very first boot instead of the first RPC. Conversely, a table that needs
+// looser or tighter verbs (a hard-deleting cache, a SENSITIVE table's extra
+// revokes) fails boot until its tablePolicies entry lands, enforcing data.md's
+// review gate in code. connections needs no entry: archive is an UPDATE and
+// its no-DELETE boundary (ADR-0014) IS this default.
+var defaultTablePolicy = tablePolicy{
+	required:  []string{"SELECT", "INSERT", "UPDATE"},
+	forbidden: []string{"DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+}
+
+// tablePolicies is the single source of the per-table exceptions — the code
+// form of data.md's sensitive-table judgments.
+var tablePolicies = map[string]tablePolicy{
+	// Append-only evidence: read and append, never mutate (ADR-0009).
+	"audit_events": {
+		required:  []string{"SELECT", "INSERT"},
+		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
+	// Migration history is owner-only (ADR-0009).
+	"schema_migrations": {
+		forbidden: []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
+}
+
+// querier is the multi-row query surface verifyTablePrivileges needs; both
+// *pgxpool.Conn (migration postflight) and *pgxpool.Pool (runtime boot check)
+// satisfy it.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// verifyTablePrivileges checks the role's effective privileges on EVERY base
+// table and sequence in schema public against the policy table. It returns the
+// two violation classes separately because callers treat them differently:
+// a missing required privilege is a functional failure (always fatal), while a
+// forbidden privilege is the over-privilege class VerifyRuntimeConnection may
+// downgrade behind the dev flag. Views/matviews/foreign tables are out of
+// scope — the bug class this guards (default privileges binding to the
+// creating role, ADR-0009) is about base relations.
+func verifyTablePrivileges(ctx context.Context, q querier, role, subject string) (missing, forbidden error, _ error) {
+	rows, err := q.Query(ctx, `
+		select c.relname,
+		       has_table_privilege($1, c.oid, 'SELECT'),
+		       has_table_privilege($1, c.oid, 'INSERT'),
+		       has_table_privilege($1, c.oid, 'UPDATE'),
+		       has_table_privilege($1, c.oid, 'DELETE'),
+		       has_table_privilege($1, c.oid, 'TRUNCATE'),
+		       has_table_privilege($1, c.oid, 'TRIGGER'),
+		       has_table_privilege($1, c.oid, 'REFERENCES'),
+		       has_table_privilege($1, c.oid, 'MAINTAIN')
+		from pg_class c
+		join pg_namespace n on n.oid = c.relnamespace
+		where n.nspname = 'public' and c.relkind in ('r', 'p')
+		order by c.relname`, role)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var table string
+		held := make([]bool, len(tableVerbs))
+		if err := rows.Scan(&table, &held[0], &held[1], &held[2], &held[3], &held[4], &held[5], &held[6], &held[7]); err != nil {
+			return nil, nil, err
+		}
+		has := map[string]bool{}
+		for i, verb := range tableVerbs {
+			has[verb] = held[i]
+		}
+		policy, ok := tablePolicies[table]
+		if !ok {
+			policy = defaultTablePolicy
+		}
+		for _, verb := range policy.required {
+			if missing == nil && !has[verb] {
+				missing = safeErrorf("%s lacks required privilege %s on table public.%s — a migration likely created the table without runtime grants (default privileges bind to the creating role; ADR-0009)", subject, verb, table)
+			}
+		}
+		for _, verb := range policy.forbidden {
+			if forbidden == nil && has[verb] {
+				forbidden = safeErrorf("%s holds forbidden privilege %s on table public.%s — sensitive-table boundary (docs/conventions/data.md, ADR-0009)", subject, verb, table)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// Sequences share the bug class (0005 noted the coverage gap): the runtime
+	// needs USAGE for identity/serial columns, and UPDATE (setval — a rewind is
+	// a duplicate-key denial of service) is over-privilege.
+	seqRows, err := q.Query(ctx, `
+		select c.relname,
+		       has_sequence_privilege($1, c.oid, 'USAGE'),
+		       has_sequence_privilege($1, c.oid, 'UPDATE')
+		from pg_class c
+		join pg_namespace n on n.oid = c.relnamespace
+		where n.nspname = 'public' and c.relkind = 'S'
+		order by c.relname`, role)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer seqRows.Close()
+	for seqRows.Next() {
+		var seq string
+		var usage, update bool
+		if err := seqRows.Scan(&seq, &usage, &update); err != nil {
+			return nil, nil, err
+		}
+		if missing == nil && !usage {
+			missing = safeErrorf("%s lacks required privilege USAGE on sequence public.%s (ADR-0009)", subject, seq)
+		}
+		if forbidden == nil && update {
+			forbidden = safeErrorf("%s holds forbidden privilege UPDATE on sequence public.%s — setval can rewind identity allocation (ADR-0009)", subject, seq)
+		}
+	}
+	return missing, forbidden, seqRows.Err()
 }

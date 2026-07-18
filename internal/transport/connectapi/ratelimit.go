@@ -132,8 +132,10 @@ func NewRateLimitInterceptor() connect.UnaryInterceptorFunc {
 			// The context IP is already canonical (NewClientIPInterceptor normalizes
 			// it once for every consumer), so it keys the bucket as-is.
 			ip := reqmeta.ClientIP(ctx)
-			if !publicProcedures[req.Spec().Procedure] {
-				// Authenticated procedures (Me/Logout): per-IP only, generous bucket.
+			if !credentialProcedures[req.Spec().Procedure] {
+				// Everything that costs no password hash — authenticated procedures
+				// (Me/Logout) AND the cheap public GetConfig the SPA calls on every
+				// page load: per-IP only, generous bucket.
 				if ip != "" && !byIPAuth.allow("ip:"+ip) {
 					return nil, exhausted
 				}

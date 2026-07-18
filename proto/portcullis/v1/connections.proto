@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package portcullis.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// Connections manages registered target databases (PRD §4.1/§7.2, ADR-0014).
+// Every RPC is authenticated and gated by a connections.* permission
+// (ADR-0008), enforced inline in the handler. No message in this file ever
+// carries a stored credential or a DSN: the database user and password travel
+// inbound-only inside ConnectionConfigInput and are never returned after
+// creation (PRD §7.2).
+service Connections {
+  // List returns the organization's connections. Requires connections.list.
+  rpc List(ListConnectionsRequest) returns (ListConnectionsResponse) {}
+  // Get returns one connection. Requires connections.get.
+  rpc Get(GetConnectionRequest) returns (GetConnectionResponse) {}
+  // Create registers a connection after a mandatory server-side connection
+  // test; a failing test refuses to save (PRD §7.2). Requires
+  // connections.create.
+  rpc Create(CreateConnectionRequest) returns (CreateConnectionResponse) {}
+  // Update renames a connection (config unset) or replaces the full target +
+  // credential after a fresh successful test (config set — there is no partial
+  // credential edit, ADR-0014). Requires connections.update.
+  rpc Update(UpdateConnectionRequest) returns (UpdateConnectionResponse) {}
+  // Test dials a target: pre-save with an unsaved config, or a saved
+  // connection by id with its stored credential. The outcome is reported
+  // in-band (ok/message) — a failed test is a result, not an RPC error.
+  // Requires connections.test.
+  rpc Test(TestConnectionRequest) returns (TestConnectionResponse) {}
+  // Archive soft-deletes: it blocks new tests/requests, discards the encrypted
+  // credential, and keeps the descriptor as the historical snapshot (PRD
+  // §4.3). There is no hard delete. Requires connections.delete.
+  rpc Archive(ArchiveConnectionRequest) returns (ArchiveConnectionResponse) {}
+}
+
+// Connection is the read model: the plaintext descriptor of a registered
+// connection. It has no credential or DSN fields by design.
+message Connection {
+  string id = 1;
+  string display_name = 2;
+  // "postgresql" (MySQL/SQLite arrive with the M2 adapters).
+  string db_type = 3;
+  string host = 4;
+  uint32 port = 5;
+  string database = 6;
+  // "verify-full" | "verify-ca" | "require" | "disable" (ADR-0014).
+  string tls_mode = 7;
+  // Versioned sha256 identity of the target; survives archive as the
+  // historical snapshot (PRD §4.3).
+  string target_fingerprint = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  // Unset while the connection is active.
+  google.protobuf.Timestamp archived_at = 11;
+}
+
+// ConnectionSummary is deliberately safe for connections.list: it identifies a
+// collection member without exposing target coordinates or TLS configuration.
+// Those inner values require connections.get through Connection.
+message ConnectionSummary {
+  string id = 1;
+  string display_name = 2;
+  string db_type = 3;
+  google.protobuf.Timestamp archived_at = 4;
+  // Monotonically increasing database mutation token. Clients use it to avoid
+  // applying an out-of-order mutation response over newer state.
+  int64 version = 5;
+}
+
+// ConnectionConfigInput is the write model — the only place credentials
+// travel, inbound only.
+message ConnectionConfigInput {
+  string host = 1;
+  uint32 port = 2;
+  string database = 3;
+  string user = 4;
+  string password = 5;
+  // One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects
+  // the certificate-verifying default (verify-full). Choosing require/disable
+  // is an explicit relaxed-TLS decision and is audited (PRD §8.1).
+  string tls_mode = 6;
+}
+
+message ListConnectionsRequest {
+  // Include archived connections (default: active only).
+  bool include_archived = 1;
+}
+
+message ListConnectionsResponse {
+  // Newest first.
+  repeated ConnectionSummary connections = 1;
+}
+
+message GetConnectionRequest {
+  string id = 1;
+}
+
+message GetConnectionResponse {
+  Connection connection = 1;
+}
+
+message CreateConnectionRequest {
+  string display_name = 1;
+  ConnectionConfigInput config = 2;
+}
+
+message CreateConnectionResponse {
+  ConnectionSummary connection = 1;
+}
+
+message UpdateConnectionRequest {
+  string id = 1;
+  // New display name; empty keeps the current name (config-replacing updates
+  // only — a rename-only update requires it).
+  string display_name = 2;
+  // Unset = rename-only (no connection test). Set = full config replacement,
+  // re-tested and re-encrypted.
+  ConnectionConfigInput config = 3;
+}
+
+message UpdateConnectionResponse {
+  ConnectionSummary connection = 1;
+}
+
+message TestConnectionRequest {
+  oneof target {
+    // Pre-save: test an unsaved config.
+    ConnectionConfigInput config = 1;
+    // Saved: test connection `id` with its stored credential.
+    string id = 2;
+  }
+}
+
+message TestConnectionResponse {
+  bool ok = 1;
+  // On failure, the coarse classification only — "unreachable" | "auth-failed"
+  // | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014).
+  // Raw target-DB errors are never returned (PRD §8.1).
+  string message = 2;
+}
+
+message ArchiveConnectionRequest {
+  string id = 1;
+}
+
+message ArchiveConnectionResponse {
+  ConnectionSummary connection = 1;
+}

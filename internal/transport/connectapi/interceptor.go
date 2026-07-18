@@ -65,6 +65,16 @@ var publicProcedures = map[string]bool{
 	portcullisv1connect.AuthGetConfigProcedure: true,
 }
 
+// credentialProcedures carry a password and cost an Argon2 hash to answer, so
+// the rate limiter gives them the tight per-IP/per-email login bucket. The
+// remaining public procedure (GetConfig) is a cheap constant read the SPA
+// calls on every page load — it shares the generous authenticated bucket
+// instead, so page refreshes cannot starve a legitimate login (ADR-0010).
+var credentialProcedures = map[string]bool{
+	portcullisv1connect.AuthBootstrapProcedure: true,
+	portcullisv1connect.AuthLoginProcedure:     true,
+}
+
 // isAuthFailure reports whether an Authenticate error means the session itself
 // is invalid (missing/expired/revoked session, gone or disabled user) — as
 // opposed to an infrastructure failure looking the session up.
@@ -107,11 +117,14 @@ func NewAuthInterceptor(svc *auth.Service) connect.UnaryInterceptorFunc {
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
 			}
 			// Slide the idle window only now that the request is authorized, so a
-			// CSRF-rejected request can't keep the session alive. By here the request
-			// is authenticated and CSRF-valid, so a failed slide write is an infra
-			// hiccup, not an invalid session — surface it as retryable Unavailable,
-			// never Unauthenticated (which clients treat as a logout).
+			// CSRF-rejected request can't keep the session alive. The conditional
+			// write is also the final server-side expiry/revocation check: zero rows
+			// means the session died after Authenticate and must reject this request.
+			// Other write failures remain retryable infrastructure faults.
 			if err := svc.SlideIdle(ctx, sess); err != nil {
+				if isAuthFailure(err) {
+					return nil, unauthenticated
+				}
 				return nil, unavailable
 			}
 			ctx = context.WithValue(ctx, ctxUser, user)

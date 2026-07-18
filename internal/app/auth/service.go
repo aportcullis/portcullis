@@ -292,7 +292,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (_ Session,
 	if rerr := s.repo.ResetLoginBackoff(ctx, u.ID); rerr != nil {
 		s.logger.WarnContext(ctx, "login backoff reset failed", "error_type", fmt.Sprintf("%T", rerr))
 	}
-	return s.issueSession(ctx, u, nil)
+	return s.issueSession(ctx, u, nil, nil)
 }
 
 // noteLoginFailure counts a failed password attempt against a known account in
@@ -381,15 +381,18 @@ func (s *Service) Authenticate(ctx context.Context, token string) (identity.User
 // SlideIdle advances the session's idle expiry on activity, capped at the
 // absolute expiry. The write is throttled to once per IdleRenewInterval so a busy
 // session doesn't UPDATE on every request; the store uses greatest() so a
-// late-arriving older request can't move the expiry backward. Best-effort about
-// ordering, but errors surface so the caller can fail the request.
+// late-arriving older request can't move the expiry backward. Even when the
+// write is throttled, it performs a conditional validity read: logout, session
+// rotation, and expiry must take effect before the handler runs on EVERY
+// request, not merely on the next renewal write. Errors surface so the caller
+// can fail the request.
 func (s *Service) SlideIdle(ctx context.Context, sess identity.Session) error {
 	newIdle := s.now().Add(s.idle)
 	if newIdle.After(sess.AbsoluteExpiresAt) {
 		newIdle = sess.AbsoluteExpiresAt
 	}
 	if newIdle.Sub(sess.IdleExpiresAt) < s.idleRenew {
-		return nil
+		return s.repo.ValidateSession(ctx, sess.ID)
 	}
 	return s.repo.ExtendSessionIdle(ctx, sess.ID, newIdle)
 }
@@ -418,7 +421,7 @@ func (s *Service) rejectWithEqualizedTiming(ctx context.Context, password string
 // issueSession mints and persists a session for a verified user. meta tags the
 // success audit event (e.g. method=google); nil leaves it untagged, as password
 // logins are.
-func (s *Service) issueSession(ctx context.Context, u identity.User, meta map[string]any) (Session, error) {
+func (s *Service) issueSession(ctx context.Context, u identity.User, meta map[string]any, link *identity.OIDCIdentity) (Session, error) {
 	raw, err := newToken()
 	if err != nil {
 		return Session{}, err
@@ -438,7 +441,12 @@ func (s *Service) issueSession(ctx context.Context, u identity.User, meta map[st
 	// commit the login audit event with them — so concurrent logins still leave
 	// exactly one active session (ADR-0006) and a successful login can never
 	// commit without its trail (ADR-0009).
-	created, err := s.repo.RotateSession(ctx, u.ID, sess, sum[:], evt)
+	var created identity.Session
+	if link != nil {
+		created, err = s.repo.LinkIdentityAndRotateSession(ctx, *link, sess, sum[:], evt)
+	} else {
+		created, err = s.repo.RotateSession(ctx, u.ID, sess, sum[:], evt)
+	}
 	if err != nil {
 		return Session{}, err
 	}
