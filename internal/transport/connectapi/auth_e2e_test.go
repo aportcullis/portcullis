@@ -19,6 +19,7 @@ import (
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
 	"github.com/aportcullis/portcullis/internal/app/auth"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
@@ -90,6 +91,15 @@ func newAuthTestEnv(t *testing.T, opts authEnvOptions) *authTestEnv {
 		t.Fatal(err)
 	}
 
+	catalog, err := authz.LoadCatalog(ctx, store)
+	if err != nil {
+		t.Fatalf("LoadCatalog: %v", err)
+	}
+	authzSvc, err := authz.New(store, catalog)
+	if err != nil {
+		t.Fatalf("authz.New: %v", err)
+	}
+
 	interceptors := []connect.Interceptor{connectapi.NewClientIPInterceptor(opts.trustedProxies)}
 	if opts.rateLimit {
 		interceptors = append(interceptors, connectapi.NewRateLimitInterceptor())
@@ -97,7 +107,7 @@ func newAuthTestEnv(t *testing.T, opts authEnvOptions) *authTestEnv {
 	interceptors = append(interceptors, connectapi.NewAuthInterceptor(svc))
 
 	path, handler := portcullisv1connect.NewAuthHandler(
-		connectapi.NewAuthService(svc),
+		connectapi.NewAuthService(svc, authzSvc),
 		connect.WithInterceptors(interceptors...),
 	)
 	mux := http.NewServeMux()

@@ -7,6 +7,7 @@ package connectapi
 // those internals (ADR-0007).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -31,7 +32,7 @@ type PendingCodec interface {
 // audit trail's source_ip) and the tight login-tier per-IP rate limit — the
 // callback in particular triggers an outbound code exchange per hit.
 type OIDCHandler struct {
-	svc     *auth.Service
+	svc     oidcLogin
 	codec   PendingCodec
 	trusted []*net.IPNet
 	limiter *rateLimiter
@@ -48,8 +49,15 @@ type oidcPendingPayload struct {
 	Exp      int64  `json:"exp"` // unix seconds
 }
 
+// oidcLogin is the slice of the auth service the Google login routes consume
+// (DIP/ISP).
+type oidcLogin interface {
+	StartGoogleLogin(ctx context.Context) (string, auth.OIDCPending, error)
+	LoginWithGoogle(ctx context.Context, state, code string, pending auth.OIDCPending) (auth.Session, error)
+}
+
 // NewOIDCHandler builds the Google login routes over the auth service.
-func NewOIDCHandler(svc *auth.Service, codec PendingCodec, trustedProxies []*net.IPNet, logger *slog.Logger) *OIDCHandler {
+func NewOIDCHandler(svc oidcLogin, codec PendingCodec, trustedProxies []*net.IPNet, logger *slog.Logger) *OIDCHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}

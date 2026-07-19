@@ -38,14 +38,24 @@ type ConfigInput struct {
 // CreateParams registers a new connection.
 type CreateParams struct {
 	DisplayName string
+	// Environment is the wire string; empty selects the safe default
+	// (development — ParseEnvironment).
+	Environment string
+	Description string
 	Config      ConfigInput
 }
 
-// UpdateParams edits a connection. A nil Config is a rename-only update (no
-// connection test); a non-nil Config replaces the full target + credential and
-// re-runs the test (ADR-0014 — there is no partial credential edit). An empty
-// DisplayName keeps the current name when Config is set.
+// UpdateParams edits a connection. A nil Config is a descriptor-only update
+// (name/environment/description, no connection test); a non-nil Config
+// replaces the full target + credential and re-runs the test (ADR-0014 —
+// there is no partial credential edit). An empty DisplayName keeps the
+// current name when Config is set.
 type UpdateParams struct {
 	DisplayName string
+	// Environment: empty keeps the current value — an older client that omits
+	// the field must never silently downgrade a production label.
+	Environment string
+	// Description: nil keeps the current value; a pointer to "" clears it.
+	Description *string
 	Config      *ConfigInput
 }

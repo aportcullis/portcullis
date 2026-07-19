@@ -28,12 +28,19 @@ const (
 // authz detail of its own.
 type AuditService struct {
 	authz  authorizer
-	reader *appaudit.Service
+	reader auditReader
+}
+
+// auditReader is the slice of the audit read service this handler consumes
+// (DIP/ISP — depend on the called methods, not the concrete *appaudit.Service).
+type auditReader interface {
+	List(ctx context.Context, q appaudit.Query) (domainaudit.EventPage, error)
+	Get(ctx context.Context, id string) (domainaudit.Event, error)
 }
 
 // NewAuditService builds the Audit RPC handler over the authorizer and the audit
 // read service.
-func NewAuditService(az authorizer, reader *appaudit.Service) *AuditService {
+func NewAuditService(az authorizer, reader auditReader) *AuditService {
 	return &AuditService{authz: az, reader: reader}
 }
 

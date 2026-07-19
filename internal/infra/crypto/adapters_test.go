@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
@@ -56,6 +57,32 @@ func TestArgon2HasherCancelledContextIsRejected(t *testing.T) {
 	}
 	if _, _, err := h.Verify(ctx, "pw", "x"); !errors.Is(err, context.Canceled) {
 		t.Errorf("Verify with a cancelled context = %v, want context.Canceled", err)
+	}
+}
+
+func TestArgon2HasherCancelledWaiterErrorsAndLeaksNoSlot(t *testing.T) {
+	t.Parallel()
+	// A waiter parked on a full semaphore whose ctx is cancelled must return
+	// the ctx error and leave the semaphore balanced once the slot frees. What
+	// this deliberately does NOT claim to cover: the pre-check/select-ENTRY
+	// race acquire's post-acquire re-check guards — a parked select commits to
+	// the first case that becomes ready, so that window cannot be reproduced
+	// from outside the package (mutation-checked; see the comment in acquire).
+	for range 100 {
+		h := crypto.NewArgon2Hasher(weakParams, 1)
+		h.TestFillSlot()
+		ctx, cancel := context.WithCancel(context.Background())
+		got := make(chan error, 1)
+		go func() { got <- h.TestAcquire(ctx) }()
+		time.Sleep(time.Millisecond) // let the waiter park in the select
+		cancel()
+		h.TestReleaseSlot() // both cases become ready while the waiter wakes
+		if err := <-got; !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled waiter acquired the slot: err=%v", err)
+		}
+		if n := h.TestSlotsInUse(); n != 0 {
+			t.Fatalf("slot leaked after a cancelled acquire: in use = %d", n)
+		}
 	}
 }
 

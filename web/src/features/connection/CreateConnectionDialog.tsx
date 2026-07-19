@@ -1,8 +1,10 @@
 import type { Component } from "solid-js";
 import { Show, createSignal } from "solid-js";
 
+import type { EnvironmentValue } from "@/entities/connection/model";
 import { createConnection, errorMessage } from "@/entities/connection/store";
 import { ConnectionConfigForm } from "@/features/connection/ConnectionConfigForm";
+import { DescriptorFields } from "@/features/connection/DescriptorFields";
 import { createDraftController } from "@/features/connection/draft";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
@@ -22,12 +24,16 @@ import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-fiel
 export const CreateConnectionDialog: Component = () => {
   const [open, setOpen] = createSignal(false);
   const [displayName, setDisplayName] = createSignal("");
+  const [environment, setEnvironment] = createSignal<EnvironmentValue>("development");
+  const [description, setDescription] = createSignal("");
   const [error, setError] = createSignal("");
   const [saving, setSaving] = createSignal(false);
   const config = createDraftController();
 
   const reset = () => {
     setDisplayName("");
+    setEnvironment("development");
+    setDescription("");
     setError("");
     config.reset();
   };
@@ -42,7 +48,7 @@ export const CreateConnectionDialog: Component = () => {
     setError("");
     setSaving(true);
     try {
-      await createConnection(displayName(), config.draft());
+      await createConnection(displayName(), environment(), description(), config.draft());
       reset();
       setOpen(false);
     } catch (err) {
@@ -73,6 +79,14 @@ export const CreateConnectionDialog: Component = () => {
               onInput={(e) => setDisplayName(e.currentTarget.value)}
             />
           </TextField>
+          <DescriptorFields
+            idPrefix="conn"
+            environment={environment()}
+            description={description()}
+            onEnvironment={setEnvironment}
+            onDescription={setDescription}
+            disabled={saving()}
+          />
           <ConnectionConfigForm controller={config} disabled={saving()} />
           <Show when={error() !== ""}>
             <Alert variant="destructive">

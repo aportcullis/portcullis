@@ -16,6 +16,12 @@ type Querier interface {
 	// (ADR-0014).
 	ArchiveConnection(ctx context.Context, arg ArchiveConnectionParams) (Connection, error)
 	BootstrapRoleID(ctx context.Context, organizationID pgtype.UUID) (pgtype.UUID, error)
+	// The optimistic pointer bump (ADR-0015): succeeds only when the caller's
+	// expected version is still current and the connection is active. Zero rows
+	// → the store disambiguates missing/archived/conflict. connections.version
+	// (the descriptor token) and updated_at are deliberately untouched — policy
+	// and descriptor concurrency are orthogonal.
+	BumpConnectionPolicyVersion(ctx context.Context, arg BumpConnectionPolicyVersionParams) (Connection, error)
 	// Total matching rows for the page controls. O(n) on a large table — PRD §7.1
 	// accepts this for the audit list and defers keyset pagination to "later".
 	CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error)
@@ -33,6 +39,10 @@ type Querier interface {
 	// Detail remains organization-scoped; audit.get must never become an IDOR path.
 	GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
+	// The connection's current policy snapshot, resolved through the pointer.
+	// Works for archived connections too: the policy is part of the historical
+	// snapshot (ADR-0015).
+	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error)
@@ -47,7 +57,13 @@ type Querier interface {
 	// failure upsert uses — so app/DB clock skew can't split the expiry decision.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
 	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
+	// current_policy_version starts at 1; the deferred FK is satisfied by the v1
+	// default policy row the store inserts in the same transaction (ADR-0015).
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
+	// Append-only: a policy update inserts version N+1 (the (connection_id,
+	// version) PK is the structural guard against duplicates); rows are never
+	// updated (runtime UPDATE is revoked — ADR-0015).
+	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an
 	// existing one owned by the same user refreshes the email; one owned by a
 	// different user matches the conflict but fails the WHERE, so no row is
@@ -79,8 +95,6 @@ type Querier interface {
 	// [0,30], so no operand can overflow; greatest() keeps a concurrent shorter
 	// jittered window from moving an existing lockout backward.
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error)
-	// Archived rows stay renameable: the name labels history, not the live target.
-	RenameConnection(ctx context.Context, arg RenameConnectionParams) (Connection, error)
 	// Full config replacement (ADR-0014: no partial credential edit). Archived
 	// rows are excluded — restore is a separate future flow; the store
 	// disambiguates "missing" from "archived" on a zero rowcount.
@@ -96,6 +110,10 @@ type Querier interface {
 	RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error)
 	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
 	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
+	// Descriptor-only update: name, environment label, and description — no
+	// credential involved. Archived rows stay editable: these fields label
+	// history, not the live target.
+	UpdateConnectionDescriptor(ctx context.Context, arg UpdateConnectionDescriptorParams) (Connection, error)
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error
 	// Final post-CSRF validity check for a request whose idle slide is throttled.
 	// It deliberately does not write, but its predicates use the database clock so

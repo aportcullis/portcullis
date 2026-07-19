@@ -3,11 +3,11 @@ import { createRoot, createSignal } from "solid-js";
 import { ConnectError } from "@connectrpc/connect";
 
 import type { Connection, ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
-import type { ConfigDraft, TestResult } from "@/entities/connection/model";
+import type { ConfigDraft, EnvironmentValue, TestResult } from "@/entities/connection/model";
 import { toInput } from "@/entities/connection/model";
 import { connectionsClient } from "@/shared/api/client";
 
-export type { ConfigDraft, TestResult } from "@/entities/connection/model";
+export type { ConfigDraft, EnvironmentValue, TestResult } from "@/entities/connection/model";
 
 // errorMessage extracts the Connect error's message without the code prefix —
 // server messages are generic/classified by design (ADR-0014), safe to show.
@@ -112,9 +112,19 @@ const store = createRoot(() => {
     }
   }
 
-  async function createConnection(displayName: string, cfg: ConfigDraft): Promise<void> {
+  async function createConnection(
+    displayName: string,
+    environment: EnvironmentValue,
+    description: string,
+    cfg: ConfigDraft,
+  ): Promise<void> {
     const gen = generation;
-    const res = await connectionsClient.create({ displayName, config: toInput(cfg) });
+    const res = await connectionsClient.create({
+      displayName,
+      environment,
+      description,
+      config: toInput(cfg),
+    });
     if (gen !== generation) return;
     listRevision++;
     // The mutation is already committed. Do not turn a later list outage into a
@@ -128,11 +138,26 @@ const store = createRoot(() => {
     setListError("Connection was created, but its updated list entry was unavailable. Refresh the page.");
   }
 
-  // updateConnection renames when cfg is absent, or replaces the full config
-  // (server re-tests before persisting — ADR-0014's two update flows).
-  async function updateConnection(id: string, displayName: string, cfg?: ConfigDraft): Promise<void> {
+  // updateConnection edits the descriptor (name/environment/description) when
+  // cfg is absent, or additionally replaces the full config (server re-tests
+  // before persisting — ADR-0014's two update flows). The dialog prefills
+  // environment/description from the fetched connection, so both are always
+  // sent as the full replacement values.
+  async function updateConnection(
+    id: string,
+    displayName: string,
+    environment: EnvironmentValue,
+    description: string,
+    cfg?: ConfigDraft,
+  ): Promise<void> {
     const gen = generation;
-    const res = await connectionsClient.update({ id, displayName, config: cfg ? toInput(cfg) : undefined });
+    const res = await connectionsClient.update({
+      id,
+      displayName,
+      environment,
+      description,
+      config: cfg ? toInput(cfg) : undefined,
+    });
     if (gen !== generation) return;
     listRevision++;
     const summary = res.connection;

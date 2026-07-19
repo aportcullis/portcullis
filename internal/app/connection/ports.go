@@ -20,7 +20,10 @@ type Repository interface {
 	Create(ctx context.Context, c connection.Connection, cred connection.SealedCredential, events ...audit.Event) error
 	GetByID(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (connection.Connection, error)
 	List(ctx context.Context, org identity.OrganizationID, includeArchived bool) ([]connection.Connection, error)
-	Rename(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, events ...audit.Event) (connection.Connection, error)
+	// UpdateDescriptor changes the credential-free descriptor fields (name,
+	// environment label, description) — archived rows included: they label
+	// history, not the live target.
+	UpdateDescriptor(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, env connection.Environment, description string, events ...audit.Event) (connection.Connection, error)
 	// ReplaceConfig swaps display name, target, TLS mode, fingerprint, and the
 	// sealed credential in one statement; archived rows fail with ErrArchived.
 	// ReplaceConfig persists c only if the row still has expectedVersion. This

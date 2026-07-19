@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/auth.proto.
  */
 export const file_portcullis_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIkkKEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIjIKDUxvZ2luUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlciIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlIgsKCU1lUmVxdWVzdCIvCgpNZVJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiEgoQR2V0Q29uZmlnUmVxdWVzdCJEChFHZXRDb25maWdSZXNwb25zZRIWCg5nb29nbGVfZW5hYmxlZBgBIAEoCBIXCg9uZWVkc19ib290c3RyYXAYAiABKAgy9gIKBEF1dGgSUAoJQm9vdHN0cmFwEh8ucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXF1ZXN0GiAucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXNwb25zZSIAEkQKBUxvZ2luEhsucG9ydGN1bGxpcy52MS5Mb2dpblJlcXVlc3QaHC5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAElAKCUdldENvbmZpZxIfLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM");
+  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIkkKEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIkcKDUxvZ2luUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlchITCgtwZXJtaXNzaW9ucxgCIAMoCSIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlIgsKCU1lUmVxdWVzdCJECgpNZVJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXISEwoLcGVybWlzc2lvbnMYAiADKAkiEgoQR2V0Q29uZmlnUmVxdWVzdCJEChFHZXRDb25maWdSZXNwb25zZRIWCg5nb29nbGVfZW5hYmxlZBgBIAEoCBIXCg9uZWVkc19ib290c3RyYXAYAiABKAgy9gIKBEF1dGgSUAoJQm9vdHN0cmFwEh8ucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXF1ZXN0GiAucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXNwb25zZSIAEkQKBUxvZ2luEhsucG9ydGN1bGxpcy52MS5Mb2dpblJlcXVlc3QaHC5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAElAKCUdldENvbmZpZxIfLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM");
 
 /**
  * @generated from message portcullis.v1.User
@@ -120,6 +120,15 @@ export type LoginResponse = Message<"portcullis.v1.LoginResponse"> & {
    * @generated from field: portcullis.v1.User user = 1;
    */
   user?: User | undefined;
+
+  /**
+   * The caller's permission keys (ADR-0008 catalog), for UI affordance gating
+   * only — the server stays the authority on every RPC. Role changes revoke
+   * sessions immediately (§8.3), so a login/Me-time snapshot is current.
+   *
+   * @generated from field: repeated string permissions = 2;
+   */
+  permissions: string[];
 };
 
 /**
@@ -176,6 +185,13 @@ export type MeResponse = Message<"portcullis.v1.MeResponse"> & {
    * @generated from field: portcullis.v1.User user = 1;
    */
   user?: User | undefined;
+
+  /**
+   * See LoginResponse.permissions.
+   *
+   * @generated from field: repeated string permissions = 2;
+   */
+  permissions: string[];
 };
 
 /**

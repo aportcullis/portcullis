@@ -7,7 +7,8 @@ set -eu
 
 cd "$(dirname "$0")/../.." # repo root: the Go module lives above web/
 
-PG_IMAGE="postgres:18.4-alpine3.24" # same pin as compose.yaml / dbtest
+# tag@digest pin, same digest as compose.yaml / dbtest (Renovate bumps together).
+PG_IMAGE="postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
 
 # Fixed host port: connections.spec.ts dials this database as its TARGET
 # (E2E_PG_PORT there must match), and a fixed port needs no coordinate
@@ -39,8 +40,11 @@ done
 PORTCULLIS_DATABASE_URL="postgres://portcullis:portcullis@127.0.0.1:${PG_PORT}/portcullis?sslmode=disable"
 export PORTCULLIS_DATABASE_URL
 # Single-role dev shape: the owner DSN doubles as the runtime DSN (ADR-0009),
-# so the privileged-runtime check must be explicitly waived — e2e only.
+# so the privileged-runtime check must be explicitly waived — e2e only — and
+# startup migration is opted into EXPLICITLY (it is decoupled from the
+# privileged-runtime flag; the fresh database has no schema yet).
 export PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true
+export PORTCULLIS_STARTUP_MIGRATE=true
 PORTCULLIS_MASTER_KEY=$(head -c 32 /dev/urandom | base64)
 export PORTCULLIS_MASTER_KEY
 export PORTCULLIS_ADDR=127.0.0.1:18080

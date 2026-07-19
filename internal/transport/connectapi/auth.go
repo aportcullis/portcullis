@@ -3,6 +3,7 @@ package connectapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -13,14 +14,63 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// AuthService implements the Auth RPC over the application auth.Service. Session
-// and CSRF tokens are delivered as __Host- cookies, never in the response body.
-type AuthService struct {
-	svc *auth.Service
+// authApp is the slice of the auth application service this handler consumes
+// (DIP/ISP — the handler depends on the methods it calls, not the concrete
+// *auth.Service; tests substitute fakes without a database).
+type authApp interface {
+	Bootstrap(ctx context.Context, email, password, displayName string) (identity.User, error)
+	Login(ctx context.Context, email, password string) (auth.Session, error)
+	Logout(ctx context.Context, token string) error
+	PublicConfig(ctx context.Context) (auth.PublicConfig, error)
 }
 
-// NewAuthService builds the Auth RPC handler.
-func NewAuthService(svc *auth.Service) *AuthService { return &AuthService{svc: svc} }
+// AuthService implements the Auth RPC over the auth application service.
+// Session and CSRF tokens are delivered as __Host- cookies, never in the
+// response body.
+type AuthService struct {
+	svc    authApp
+	perms  permissionLister
+	logger *slog.Logger
+}
+
+// permissionLister enumerates the caller's own permission keys for the SPA's
+// affordance gating (Me/Login). Consumer-defined (ISP): the app authz service
+// satisfies it.
+type permissionLister interface {
+	PermissionsFor(ctx context.Context, user identity.User) ([]identity.Permission, error)
+}
+
+// NewAuthService builds the Auth RPC handler. The permission lister is a
+// REQUIRED collaborator: an optional builder was a silent footgun — forgotten
+// wiring rendered an authenticated UI with every affordance hidden and no
+// signal (self-review F6).
+func NewAuthService(svc authApp, perms permissionLister) *AuthService {
+	return &AuthService{svc: svc, perms: perms, logger: slog.Default()}
+}
+
+// WithLogger routes the service's own warnings (degraded permission listing).
+func (a *AuthService) WithLogger(l *slog.Logger) *AuthService { a.logger = l; return a }
+
+// listPermissions resolves the caller's permission keys as wire strings. The
+// keys are ADVISORY UI data (the server still authorizes every RPC), so a
+// resolution failure fails OPEN: the response proceeds with an empty list and
+// a warning, because failing the RPC would gate login availability and
+// authenticated-session usability on the authz store — Login would error
+// after the session row was committed but before the cookies were delivered,
+// and the SPA maps an Internal from Me to the unreachable retry card
+// (self-review F1). The UI recovers on the next successful Me.
+func (a *AuthService) listPermissions(ctx context.Context, u identity.User) []string {
+	perms, err := a.perms.PermissionsFor(ctx, u)
+	if err != nil {
+		a.logger.Warn("permission enumeration failed — responding with none (UI affordances only; server-side authorization is unaffected)", "err", err)
+		return nil
+	}
+	keys := make([]string, len(perms))
+	for i, p := range perms {
+		keys[i] = string(p)
+	}
+	return keys
+}
 
 func (a *AuthService) Bootstrap(
 	ctx context.Context,
@@ -41,7 +91,7 @@ func (a *AuthService) Login(
 	if err != nil {
 		return nil, authError(err)
 	}
-	resp := connect.NewResponse(&portcullisv1.LoginResponse{User: toProtoUser(sess.User)})
+	resp := connect.NewResponse(&portcullisv1.LoginResponse{User: toProtoUser(sess.User), Permissions: a.listPermissions(ctx, sess.User)})
 	noStore(resp.Header())
 	setCookie(resp.Header(), sessionCookie, sess.Token, true, sess.Session.AbsoluteExpiresAt)
 	setCookie(resp.Header(), csrfCookie, sess.CSRF, false, sess.Session.AbsoluteExpiresAt)
@@ -70,7 +120,7 @@ func (a *AuthService) Me(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
-	return connect.NewResponse(&portcullisv1.MeResponse{User: toProtoUser(u)}), nil
+	return connect.NewResponse(&portcullisv1.MeResponse{User: toProtoUser(u), Permissions: a.listPermissions(ctx, u)}), nil
 }
 
 func (a *AuthService) GetConfig(

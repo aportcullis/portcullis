@@ -18,6 +18,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
+	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
@@ -56,11 +57,47 @@ func migrate(ctx context.Context, logger *slog.Logger, ownerURL, runtimeRole str
 }
 
 func main() {
-	// run returns an error on any startup or runtime failure; main maps that to a
-	// non-zero exit. Cleanup lives in deferred calls inside run, which still run.
-	if err := run(); err != nil {
+	// run/runMigrate return an error on any failure; main maps that to a non-zero
+	// exit. Cleanup lives in deferred calls inside them, which still run.
+	var err error
+	switch args := os.Args[1:]; {
+	case len(args) == 0 || args[0] == "serve":
+		err = run()
+	case args[0] == "migrate":
+		err = runMigrate()
+	default:
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("unknown command",
+			"command", args[0], "hint", "usage: portcullis [serve|migrate]")
+		os.Exit(2)
+	}
+	if err != nil {
 		os.Exit(1)
 	}
+}
+
+// runMigrate is the one-shot `portcullis migrate` command: apply the migrations
+// on the owner DSN and exit. Running it as a separate short-lived process or
+// container keeps owner credentials out of the serving process entirely — the
+// application account must not own the schema (ADR-0009, OWASP Database
+// Security Cheat Sheet).
+func runMigrate() error {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("config load failed", "err", err)
+		return err
+	}
+	logger := logging.New(cfg.LogLevel, cfg.LogFormat)
+	if cfg.OwnerDSN() == "" {
+		logger.Error("database required", "hint", "set PORTCULLIS_MIGRATE_DATABASE_URL (owner DSN); PORTCULLIS_DATABASE_URL is used when it is the same single-role login")
+		return errors.New("database url required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := migrate(ctx, logger, cfg.OwnerDSN(), cfg.RuntimeRole); err != nil {
+		return err
+	}
+	logger.Info("metadata schema ready")
+	return nil
 }
 
 func run() error {
@@ -93,10 +130,18 @@ func run() error {
 	// Migrations run as the schema OWNER on a short-lived pool; the server then
 	// runs on the (least-privilege) runtime DSN — the permission boundary that
 	// keeps audit_events append-only even against the application (ADR-0009).
-	if err := migrate(startupCtx, logger, cfg.MigrateDatabaseURL, cfg.RuntimeRole); err != nil {
-		return err
+	// The recommended production shape runs them as a one-shot `portcullis
+	// migrate` instead, so the serving process never holds owner credentials;
+	// startup migration stays for a server-held owner DSN (compatibility) and
+	// the single-role dev posture.
+	if cfg.StartupMigrationEnabled() {
+		if err := migrate(startupCtx, logger, cfg.OwnerDSN(), cfg.RuntimeRole); err != nil {
+			return err
+		}
+		logger.Info("metadata schema ready")
+	} else {
+		logger.Info("startup migration skipped — schema is managed by the one-shot `portcullis migrate` command")
 	}
-	logger.Info("metadata schema ready")
 
 	pool, err := postgres.Open(startupCtx, cfg.DatabaseURL)
 	if err != nil {
@@ -117,7 +162,8 @@ func run() error {
 		if cfg.AllowPrivilegedRuntime && errors.Is(err, postgres.ErrRuntimeInsecure) {
 			logger.Warn("runtime connection is over-privileged — allowed by PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME (dev only, never production)", "reason", err.Error())
 		} else {
-			logger.Error("runtime connection failed verification", postgres.ErrorLogFields(err)...)
+			logger.Error("runtime connection failed verification",
+				append(postgres.ErrorLogFields(err), "hint", "an unmigrated database fails this check — run `portcullis migrate` (owner DSN) first")...)
 			return err
 		}
 	}
@@ -150,7 +196,7 @@ func run() error {
 	// runtime-connection checks above.
 	catalog, err := authz.LoadCatalog(startupCtx, store)
 	if err != nil {
-		logger.Error("permission catalog unavailable", "err", err, "hint", "apply migrations — 0002 seeds the permission catalog")
+		logger.Error("permission catalog unavailable", "err", err, "hint", "apply migrations (`portcullis migrate`) — 0002 seeds the permission catalog")
 		return err
 	}
 	authzSvc, err := authz.New(store, catalog)
@@ -182,7 +228,7 @@ func run() error {
 		),
 		readLimit,
 	}
-	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc), recoverAndChain...)
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc, authzSvc).WithLogger(logger), recoverAndChain...)
 	// Audit.List is gated by the audit.list permission inside the handler (ADR-0008).
 	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), recoverAndChain...)
 
@@ -202,11 +248,21 @@ func run() error {
 	connSvc.WithLogger(logger)
 	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), recoverAndChain...)
 
+	// Connection policies (ADR-0015): per-connection execution policy as
+	// immutable versions behind the policies.* gated RPCs.
+	policySvc, err := connpolicy.New(postgres.NewConnectionPolicyStore(pool))
+	if err != nil {
+		logger.Error("connection policies init failed", "err", err)
+		return err
+	}
+	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), recoverAndChain...)
+
 	mounts := []server.Mount{
 		{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
 		{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
 		{Pattern: auditPath, Handler: http.MaxBytesHandler(auditHandler, server.MaxRequestBytes)},
 		{Pattern: connsPath, Handler: http.MaxBytesHandler(connsHandler, server.MaxRequestBytes)},
+		{Pattern: policiesPath, Handler: http.MaxBytesHandler(policiesHandler, server.MaxRequestBytes)},
 	}
 
 	// Google login (ADR-0007) mounts only when configured: provider discovery must

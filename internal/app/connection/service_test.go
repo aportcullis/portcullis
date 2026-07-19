@@ -69,13 +69,15 @@ func (r *fakeRepo) List(_ context.Context, org identity.OrganizationID, includeA
 	return out, nil
 }
 
-func (r *fakeRepo) Rename(_ context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, events ...audit.Event) (connection.Connection, error) {
+func (r *fakeRepo) UpdateDescriptor(_ context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, env connection.Environment, description string, events ...audit.Event) (connection.Connection, error) {
 	r.renameCalls++
 	c, ok := r.conns[id]
 	if !ok || org != r.org {
 		return connection.Connection{}, connection.ErrNotFound
 	}
 	c.DisplayName = displayName
+	c.Environment = env
+	c.Description = description
 	c.Version++
 	r.txEvents = append(r.txEvents, events)
 	return *c, nil
@@ -369,6 +371,32 @@ func TestCreateValidationFailuresSkipTester(t *testing.T) {
 				t.Error("nothing may persist for invalid input")
 			}
 		})
+	}
+}
+
+// A descriptor-only update with an EMPTY display name keeps the current name —
+// the same keep-current contract environment ("") and description (nil)
+// already have, and the config-replace branch applies to the name too
+// (self-review F9).
+func TestUpdateDescriptorOnlyEmptyNameKeepsCurrent(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	p := validCreate()
+	p.DisplayName = "Keep me"
+	created, err := f.svc.Create(t.Context(), "admin1", p)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Environment: "production"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got.DisplayName != "Keep me" {
+		t.Errorf("DisplayName = %q, want the current name kept", got.DisplayName)
+	}
+	if got.Environment != connection.EnvironmentProduction {
+		t.Errorf("Environment = %q, want production applied", got.Environment)
 	}
 }
 

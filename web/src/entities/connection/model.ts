@@ -20,6 +20,21 @@ export type ConfigDraft = {
 
 export type TestResult = { ok: boolean; message: string };
 
+// EnvironmentValue mirrors the server enum (connections.environment). A union,
+// like TlsMode, so a typo'd literal fails to compile.
+export type EnvironmentValue = "development" | "production";
+
+// Environments with their form labels; development is the safe default.
+export const ENVIRONMENTS: readonly { value: EnvironmentValue; label: string }[] = [
+  { value: "development", label: "development" },
+  { value: "production", label: "production" },
+];
+
+// parseEnvironment converts the string-valued DOM select boundary into the
+// union (same rationale as parseTlsMode).
+export const parseEnvironment = (value: string): EnvironmentValue | undefined =>
+  ENVIRONMENTS.find((env) => env.value === value)?.value;
+
 // TLS modes with their form labels; verify-full is the certificate-verifying
 // default (PRD §8.1), require/disable are relaxed.
 export const TLS_MODES: readonly { value: TlsMode; label: string }[] = [

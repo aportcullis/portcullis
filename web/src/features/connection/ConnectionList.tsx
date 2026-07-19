@@ -2,9 +2,11 @@ import type { Component } from "solid-js";
 import { For, Show, onMount } from "solid-js";
 
 import { connections, listError, listState, loadConnections } from "@/entities/connection/store";
+import { can } from "@/entities/session/store";
 import { ArchiveConnectionDialog } from "@/features/connection/ArchiveConnectionDialog";
 import { ConnectionDetailsDialog } from "@/features/connection/ConnectionDetailsDialog";
 import { EditConnectionDialog } from "@/features/connection/EditConnectionDialog";
+import { EditPolicyDialog } from "@/features/connection/EditPolicyDialog";
 import { TestConnectionButton } from "@/features/connection/TestConnectionButton";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
@@ -20,6 +22,9 @@ import {
 // ConnectionList owns "viewing the connections" end to end: it fetches on mount
 // and renders the table plus the per-row actions. Fetching lives here (a
 // feature), not in the page — the page is assembly only (frontend.md).
+// Per-row actions are hidden by can() (Me.permissions) — affordance UX only,
+// the server still authorizes every RPC (ADR-0008). Production rows carry a
+// destructive-variant badge so the label is unmissable before any risky edit.
 export const ConnectionList: Component = () => {
   onMount(() => void loadConnections());
   return (
@@ -56,6 +61,7 @@ export const ConnectionList: Component = () => {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Database type</TableHead>
+              <TableHead>Environment</TableHead>
               <TableHead>Status</TableHead>
               <TableHead class="text-right">Actions</TableHead>
             </TableRow>
@@ -67,27 +73,47 @@ export const ConnectionList: Component = () => {
                   <TableCell class="font-medium">{conn.displayName}</TableCell>
                   <TableCell class="text-muted-foreground">{conn.dbType}</TableCell>
                   <TableCell>
+                    <Badge variant={conn.environment === "production" ? "destructive" : "outline"}>
+                      {conn.environment === "production" ? "production" : "development"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
                     <Badge variant={conn.archivedAt ? "outline" : "default"}>
                       {conn.archivedAt ? "archived" : "active"}
                     </Badge>
                   </TableCell>
                   <TableCell class="text-right">
-					<span class="inline-flex items-center gap-2">
-						<ConnectionDetailsDialog id={conn.id} displayName={conn.displayName} />
-                    <Show
-                      when={!conn.archivedAt}
-                      // An archived row stays renameable — the name labels its
-                      // history (RenameConnection allows it by design); test,
-                      // config edit, and re-archive stay hidden.
-                      fallback={<EditConnectionDialog id={conn.id} displayName={conn.displayName} archived />}
-                    >
-                      <span class="inline-flex items-center gap-2">
-                        <TestConnectionButton id={conn.id} />
-                        <EditConnectionDialog id={conn.id} displayName={conn.displayName} />
-                        <ArchiveConnectionDialog id={conn.id} displayName={conn.displayName} />
-                      </span>
-                    </Show>
-					</span>
+                    <span class="inline-flex items-center gap-2">
+                      <Show when={can("connections.get")}>
+                        <ConnectionDetailsDialog id={conn.id} displayName={conn.displayName} />
+                      </Show>
+                      <Show
+                        when={!conn.archivedAt}
+                        // An archived row keeps its descriptor editable — name,
+                        // environment, and description label its history; test,
+                        // config edit, and re-archive stay hidden.
+                        fallback={
+                          <Show when={can("connections.update")}>
+                            <EditConnectionDialog id={conn.id} displayName={conn.displayName} environment={conn.environment} description={conn.description} archived />
+                          </Show>
+                        }
+                      >
+                        <span class="inline-flex items-center gap-2">
+                          <Show when={can("policies.get")}>
+                            <EditPolicyDialog id={conn.id} displayName={conn.displayName} />
+                          </Show>
+                          <Show when={can("connections.test")}>
+                            <TestConnectionButton id={conn.id} />
+                          </Show>
+                          <Show when={can("connections.update")}>
+                            <EditConnectionDialog id={conn.id} displayName={conn.displayName} environment={conn.environment} description={conn.description} />
+                          </Show>
+                          <Show when={can("connections.delete")}>
+                            <ArchiveConnectionDialog id={conn.id} displayName={conn.displayName} />
+                          </Show>
+                        </span>
+                      </Show>
+                    </span>
                   </TableCell>
                 </TableRow>
               )}

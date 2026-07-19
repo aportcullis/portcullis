@@ -69,6 +69,24 @@ func (s *Service) Authorize(ctx context.Context, user identity.User, want identi
 	return ErrPermissionDenied
 }
 
+// PermissionsFor returns the user's effective permission keys, sorted. It
+// feeds the SPA's affordance gating (Me/Login responses — ADR-0014's deferred
+// Me.permissions): hiding is UX only, every RPC still calls Authorize. Role
+// changes revoke sessions immediately (§8.3), so a login/Me-time snapshot
+// cannot go stale within a session.
+func (s *Service) PermissionsFor(ctx context.Context, user identity.User) ([]identity.Permission, error) {
+	org, err := s.resolver.DefaultOrganizationID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authz: resolve organization: %w", err)
+	}
+	perms, err := s.resolver.PermissionsForUser(ctx, org, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("authz: resolve permissions: %w", err)
+	}
+	slices.Sort(perms)
+	return perms, nil
+}
+
 // LoadCatalog reads the seeded permission catalog from src. It is called once at
 // startup and its result is passed to New. An empty catalog is returned as an error
 // (the database is unseeded), so the process refuses to start rather than run with

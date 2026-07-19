@@ -144,15 +144,73 @@ func TestLogConfigIsCaseInsensitive(t *testing.T) {
 	}
 }
 
-// With no explicit owner DSN, migrations reuse the runtime DSN (single-role dev).
-func TestMigrateDatabaseURLFallsBackToRuntime(t *testing.T) {
+// Startup migration is opt-in: the explicit STARTUP_MIGRATE tri-state wins;
+// unset defaults to "a server-held owner DSN is configured" (compatibility).
+// It is deliberately DECOUPLED from ALLOW_PRIVILEGED_RUNTIME — a security
+// debug flag must not silently change who migrates the schema (self-review
+// F6). The recommended production shape leaves everything unset and runs
+// `portcullis migrate` one-shot.
+func TestStartupMigrationSemantics(t *testing.T) {
 	t.Setenv("PORTCULLIS_DATABASE_URL", "postgres://app@localhost/db")
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.MigrateDatabaseURL != cfg.DatabaseURL {
-		t.Errorf("MigrateDatabaseURL = %q, want fallback to DatabaseURL %q", cfg.MigrateDatabaseURL, cfg.DatabaseURL)
+	if cfg.StartupMigrationEnabled() {
+		t.Error("nothing set: the server must not migrate at startup")
+	}
+	if got := cfg.OwnerDSN(); got != cfg.DatabaseURL {
+		t.Errorf("OwnerDSN = %q, want fallback to DatabaseURL %q (migrate command, single-role)", got, cfg.DatabaseURL)
+	}
+
+	// The insecure-dev flag alone must NOT flip migration on (decoupled).
+	t.Setenv("PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME", "true")
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StartupMigrationEnabled() {
+		t.Error("ALLOW_PRIVILEGED_RUNTIME must not imply startup migration")
+	}
+
+	// Explicit opt-in (single-role dev, e2e).
+	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "true")
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.StartupMigrationEnabled() {
+		t.Error("STARTUP_MIGRATE=true must enable startup migration")
+	}
+
+	// A server-held owner DSN keeps migrating by default (compatibility)…
+	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "")
+	t.Setenv("PORTCULLIS_MIGRATE_DATABASE_URL", "postgres://owner@localhost/db")
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.StartupMigrationEnabled() {
+		t.Error("a server-held owner DSN should keep startup migration (compatibility)")
+	}
+	if got := cfg.OwnerDSN(); got != "postgres://owner@localhost/db" {
+		t.Errorf("OwnerDSN = %q, want the explicit owner DSN", got)
+	}
+
+	// …but the explicit tri-state can turn it off even then.
+	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "false")
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StartupMigrationEnabled() {
+		t.Error("STARTUP_MIGRATE=false must win over a configured owner DSN")
+	}
+
+	// A typo is a boot error, not a silent unset.
+	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "ture")
+	if _, err := config.Load(); err == nil {
+		t.Error("invalid STARTUP_MIGRATE value must fail Load")
 	}
 }
 

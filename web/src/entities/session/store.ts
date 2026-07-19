@@ -11,11 +11,29 @@ import { authClient } from "@/shared/api/client";
 // means the server could not answer (network/5xx) — deliberately distinct from
 // "anonymous": an infra blip must not read as a logout (ADR-0006), so guarded
 // pages show a retry surface instead of bouncing to the login form.
+// permissions carries the caller's permission keys (Me/Login responses) for
+// affordance gating only — the server authorizes every RPC regardless.
 export type SessionState =
   | { status: "loading" }
   | { status: "anonymous" }
   | { status: "unreachable" }
-  | { status: "authenticated"; user: User };
+  | { status: "authenticated"; user: User; permissions: readonly string[] };
+
+// PermissionKey is the UI-known subset of the server's seeded permission
+// catalog (migration 0002, ADR-0008). A union — like TlsMode and
+// EnvironmentValue in the connection entity — so a typo'd key at a can() call
+// site fails to compile instead of silently hiding an affordance forever.
+// Extend as new sections (requests, audit, …) reach the UI.
+export type PermissionKey =
+  | "connections.list"
+  | "connections.get"
+  | "connections.create"
+  | "connections.update"
+  | "connections.test"
+  | "connections.delete"
+  | "policies.get"
+  | "policies.update"
+  | "audit.list";
 
 // isAuthRejection distinguishes "the server rejected the session/CSRF" from
 // "the server could not answer". The store only ever calls Me and Logout, and
@@ -53,7 +71,11 @@ const store = createRoot(() => {
       const res = await authClient.me({});
       const user = res.user;
       if (seq !== latest) return;
-      setSession(user ? { status: "authenticated", user } : { status: "anonymous" });
+      setSession(
+        user
+          ? { status: "authenticated", user, permissions: res.permissions }
+          : { status: "anonymous" },
+      );
     } catch (err) {
       if (seq !== latest) return;
       setSession(isAuthRejection(err) ? { status: "anonymous" } : { status: "unreachable" });
@@ -70,7 +92,7 @@ const store = createRoot(() => {
     if (seq !== latest) return;
     const user = res.user;
     if (user) {
-      setSession({ status: "authenticated", user });
+      setSession({ status: "authenticated", user, permissions: res.permissions });
       return;
     }
     // A login that succeeds without a user payload should not happen; fall
@@ -96,7 +118,15 @@ const store = createRoot(() => {
     setSession({ status: "anonymous" });
   }
 
-  return { session, load, login, logout };
+  // can reports whether the signed-in user holds a permission key. UI
+  // affordance gating only: hiding a button is UX, the server still returns
+  // the uniform permission-denied when an RPC is attempted (ADR-0008).
+  function can(permission: PermissionKey): boolean {
+    const s = session();
+    return s.status === "authenticated" && s.permissions.includes(permission);
+  }
+
+  return { session, load, login, logout, can };
 });
 
-export const { session, load, login, logout } = store;
+export const { session, load, login, logout, can } = store;

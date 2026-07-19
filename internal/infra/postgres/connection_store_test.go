@@ -53,7 +53,8 @@ func (f connFixture) newConn(t *testing.T, name string) connection.Connection {
 	}
 	c, err := connection.New(
 		connection.ConnectionID(uuid.NewString()), f.org, connection.DBTypePostgreSQL,
-		name, target, connection.TLSModeVerifyFull, f.user,
+		name, connection.EnvironmentDevelopment, "fixture connection",
+		target, connection.TLSModeVerifyFull, f.user,
 		time.Now().UTC().Truncate(time.Microsecond), // timestamptz stores microseconds
 	)
 	if err != nil {
@@ -326,11 +327,15 @@ func TestConnectionsTableCredentialConstraints(t *testing.T) {
 	}
 
 	// An archived row holding a credential is unrepresentable.
+	// current_policy_version is set so its NOT NULL cannot mask the intended
+	// failure: the archived-with-credential CHECK fires immediately at INSERT,
+	// before the deferred policy FK would at commit.
 	_, err = pool.Exec(ctx, `insert into connections
 		(id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint,
-		 credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, archived_at)
+		 credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, archived_at,
+		 current_policy_version)
 		values (gen_random_uuid(), $1, 'postgresql', $2, 'h', 5432, 'd', 'verify-full', 'fp',
-		 1, 'x'::bytea, 'y'::bytea, 'z'::bytea, $3, now())`,
+		 1, 'x'::bytea, 'y'::bytea, 'z'::bytea, $3, now(), 1)`,
 		orgID, unique("zombie"), userID)
 	if err == nil {
 		t.Error("archived row with credential should violate connections_archived_has_no_credential")
@@ -347,15 +352,18 @@ func TestConnectionStoreRenameAndReplace(t *testing.T) {
 	}
 
 	newName := unique("Renamed")
-	renamed, err := f.store.Rename(ctx, f.org, c.ID, newName, connEvent(audit.ActionConnectionUpdated, c.ID))
+	renamed, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, newName, connection.EnvironmentProduction, "promoted to prod", connEvent(audit.ActionConnectionUpdated, c.ID))
 	if err != nil {
-		t.Fatalf("Rename: %v", err)
+		t.Fatalf("UpdateDescriptor: %v", err)
 	}
 	if renamed.DisplayName != newName {
 		t.Errorf("DisplayName = %q, want %q", renamed.DisplayName, newName)
 	}
+	if renamed.Environment != connection.EnvironmentProduction || renamed.Description != "promoted to prod" {
+		t.Errorf("descriptor = %q/%q, want production/promoted to prod", renamed.Environment, renamed.Description)
+	}
 	if renamed.Version != c.Version+1 {
-		t.Errorf("rename version = %d, want %d", renamed.Version, c.Version+1)
+		t.Errorf("descriptor-update version = %d, want %d", renamed.Version, c.Version+1)
 	}
 
 	target, err := connection.NewTarget("replica.example.com", 5433, "otherdb")
@@ -391,8 +399,8 @@ func TestConnectionStoreRenameAndReplace(t *testing.T) {
 		t.Errorf("TestMaterial target = %+v, want the replaced target %+v (descriptor and credential must be one snapshot)", testConn.Target, target)
 	}
 
-	if _, err := f.store.Rename(ctx, f.org, connection.ConnectionID(uuid.NewString()), "x", connEvent(audit.ActionConnectionUpdated, "missing")); !errors.Is(err, connection.ErrNotFound) {
-		t.Errorf("Rename(missing) = %v, want ErrNotFound", err)
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, connection.ConnectionID(uuid.NewString()), "x", connection.EnvironmentDevelopment, "", connEvent(audit.ActionConnectionUpdated, "missing")); !errors.Is(err, connection.ErrNotFound) {
+		t.Errorf("UpdateDescriptor(missing) = %v, want ErrNotFound", err)
 	}
 }
 
@@ -405,8 +413,8 @@ func TestConnectionStoreReplaceRejectsStaleDescriptor(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if _, err := f.store.Rename(ctx, f.org, c.ID, unique("Renamed"), connEvent(audit.ActionConnectionUpdated, c.ID)); err != nil {
-		t.Fatalf("Rename: %v", err)
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, unique("Renamed"), c.Environment, c.Description, connEvent(audit.ActionConnectionUpdated, c.ID)); err != nil {
+		t.Fatalf("UpdateDescriptor: %v", err)
 	}
 	target, err := connection.NewTarget("replica.example.com", 5433, "otherdb")
 	if err != nil {

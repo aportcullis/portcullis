@@ -38,6 +38,19 @@ var (
 	// ErrInvalidConnection means a required identity field (id, organization,
 	// creator) was missing at construction.
 	ErrInvalidConnection = errors.New("connection: invalid connection")
+	// ErrInvalidEnvironment means the environment is not in the accepted set
+	// (development, production).
+	ErrInvalidEnvironment = errors.New("connection: invalid environment")
+	// ErrInvalidDescription means the description is over the length limit or
+	// contains control/format/separator characters (newlines are allowed).
+	ErrInvalidDescription = errors.New("connection: invalid description")
+	// ErrInvalidPolicy means a policy field is out of bounds: approvals outside
+	// 0..100, limits outside the ADR-0015 ranges, or a missing identity field.
+	ErrInvalidPolicy = errors.New("connection: invalid policy")
+	// ErrPolicyConflict means the policy changed after the caller read it —
+	// expected_version no longer matches current_policy_version. Distinct from
+	// ErrConflict so the surface can say "policy changed; refresh and retry".
+	ErrPolicyConflict = errors.New("connection: policy changed concurrently")
 )
 
 // TestBucket is the coarse, caller-safe classification of a failed connection

@@ -6,11 +6,17 @@ alter table public.connections
 
 -- The mutation token is a positive bigint (ADR-0014); enforce it in the schema,
 -- not just the application. Idempotent so a re-run (or an install that already
--- ran an earlier form of 0009) adds it exactly once.
+-- ran an earlier form of 0009) adds it exactly once. Constraint names are NOT
+-- globally unique (pg_constraint: "not necessarily unique!"), so the existence
+-- check must pin the relation and constraint type or a same-named constraint on
+-- another table would silently skip this one.
 do $$
 begin
     if not exists (
-        select 1 from pg_constraint where conname = 'connections_version_positive'
+        select 1 from pg_constraint
+        where conname = 'connections_version_positive'
+          and conrelid = 'public.connections'::regclass
+          and contype = 'c'
     ) then
         alter table public.connections
             add constraint connections_version_positive check (version > 0);

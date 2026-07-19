@@ -213,13 +213,13 @@ matrix over **every** table in `public` (not just `audit_events`/`schema_migrati
 ### Deferred (recorded so they are decisions, not omissions)
 | deferral | lands with |
 |---|---|
-| `connection_policy_versions` + `connections.current_policy_version` (+ default policy backfill: read=true/write=false/ddl=false, required_approvals=1) | next slice (policies, the next free migration — 0008 was taken by the owner-grant repair) |
+| `connection_policy_versions` + `connections.current_policy_version` (+ default policy backfill: read=true/write=false/ddl=false, required_approvals=1) | **landed 2026-07-18** — migration 0011, ADR-0015 |
 | multi-version keyring + `key rotate` CLI | own Core-1 slice (ADR-0003) |
 | restore/unarchive flow | follow-up (rule fixed above) |
 | in-flight-execution archive guard predicate | executions slice |
 | list pagination (`include_archived` flag instead) | when connections outgrow one page |
 | custom root CA upload (`sslrootcert` PEM) | when a private-CA target needs it |
-| `Me.permissions` for nav-level hiding | follow-up; until then the UI surfaces the generic permission-denied |
+| `Me.permissions` for nav-level hiding | **landed 2026-07-18** — Login/Me carry the caller's permission keys; the SPA's can() hides affordances (server authorization unchanged) |
 
 ## Consequences
 - The credential is unrecoverable after archive (by design, §4.3) and after master-key loss

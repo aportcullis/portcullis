@@ -19,8 +19,12 @@ type Config struct {
 	// production this should be a login user holding only the portcullis_runtime
 	// role (ADR-0009), not the schema owner.
 	DatabaseURL string `mapstructure:"database_url"`
-	// MigrateDatabaseURL is the owner DSN used only to run migrations at startup.
-	// Empty means DatabaseURL is used for both (single-role dev setup).
+	// MigrateDatabaseURL is the owner DSN migrations run with. The recommended
+	// production shape is a one-shot `portcullis migrate` process/container that
+	// is the ONLY place this is set — the serving process then never holds owner
+	// credentials (ADR-0009). When set on the server, migrations still run at
+	// startup (compatibility); when empty, OwnerDSN falls back to DatabaseURL
+	// for the migrate command and single-role dev.
 	MigrateDatabaseURL string `mapstructure:"migrate_database_url"`
 	// RuntimeRole names the least-privilege DB role the migrations create and
 	// grant (ADR-0009). Roles are cluster-wide: give each install on a SHARED
@@ -28,8 +32,18 @@ type Config struct {
 	RuntimeRole string `mapstructure:"runtime_role"`
 	// AllowPrivilegedRuntime downgrades the runtime-connection verification
 	// failure to a warning, so a single-role dev setup (DATABASE_URL = the schema
-	// owner) can still boot. INSECURE — never set in production (ADR-0009).
+	// owner) can still boot. INSECURE — never set in production (ADR-0009). It
+	// has NO effect on startup migration — that is StartupMigrate's job.
 	AllowPrivilegedRuntime bool `mapstructure:"allow_privileged_runtime"`
+	// StartupMigrate makes `portcullis serve` apply migrations itself before
+	// serving: "true", "false", or empty (= unset: defaults to "a dedicated
+	// owner DSN is configured on this process", the pre-one-shot deployment
+	// shape). A tri-state string because "explicitly disabled" and "unset"
+	// must stay distinguishable. Deliberately decoupled from
+	// AllowPrivilegedRuntime — a security-debug flag must not silently change
+	// who migrates the schema (self-review F6). Single-role dev sets it
+	// explicitly (see .env.example and web/e2e/server.sh).
+	StartupMigrate string `mapstructure:"startup_migrate"`
 	// DrainDelay is how long readiness reports "draining" on shutdown before
 	// connections close, giving Kubernetes time to deregister the pod.
 	DrainDelay time.Duration `mapstructure:"drain_delay"`
@@ -86,6 +100,31 @@ func (c Config) TrustedProxyNets() []*net.IPNet { return c.trustedProxyNets }
 // GoogleEnabled reports whether Google login is configured. Load has already
 // validated all-or-nothing, so the client id alone is decisive.
 func (c Config) GoogleEnabled() bool { return strings.TrimSpace(c.GoogleClientID) != "" }
+
+// OwnerDSN is the DSN migrations run with: the dedicated owner DSN when set,
+// else the runtime DSN (single-role dev — the two are the same login).
+func (c Config) OwnerDSN() string {
+	if c.MigrateDatabaseURL != "" {
+		return c.MigrateDatabaseURL
+	}
+	return c.DatabaseURL
+}
+
+// StartupMigrationEnabled reports whether `portcullis serve` should apply
+// migrations itself before serving: the explicit STARTUP_MIGRATE setting wins;
+// unset defaults to "a dedicated owner DSN is configured on this process"
+// (compatibility with the pre-one-shot deployment shape). The recommended
+// production shape leaves both unset and runs `portcullis migrate` as a
+// one-shot step, so the serving process never holds owner credentials.
+func (c Config) StartupMigrationEnabled() bool {
+	switch c.StartupMigrate {
+	case "true":
+		return true
+	case "false":
+		return false
+	}
+	return c.MigrateDatabaseURL != ""
+}
 
 // ResolveGoogleClientSecret returns the client secret from whichever source is
 // configured, trimming trailing whitespace from a mounted file (as the master

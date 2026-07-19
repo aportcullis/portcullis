@@ -210,6 +210,7 @@ func TestRuntimeRoleRotationRunbook(t *testing.T) {
 		`grant select, insert, update on all tables in schema public to pc_rot_new`,
 		`grant usage on all sequences in schema public to pc_rot_new`,
 		`revoke update on public.audit_events from pc_rot_new`,
+		`revoke update on public.connection_policy_versions from pc_rot_new`,
 		`revoke all on public.schema_migrations from pc_rot_new`,
 		`alter default privileges in schema public grant select, insert, update on tables to pc_rot_new`,
 		`alter default privileges in schema public grant usage on sequences to pc_rot_new`,

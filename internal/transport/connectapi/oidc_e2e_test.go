@@ -16,6 +16,7 @@ import (
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
 	"github.com/aportcullis/portcullis/internal/app/auth"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
@@ -75,8 +76,16 @@ func newOIDCTestEnv(t *testing.T) *oidcTestEnv {
 	mux := http.NewServeMux()
 	mux.Handle(connectapi.OIDCStartPattern, oidcHandler.Start())
 	mux.Handle(connectapi.OIDCCallbackPattern, oidcHandler.Callback())
+	catalog, err := authz.LoadCatalog(ctx, store)
+	if err != nil {
+		t.Fatalf("LoadCatalog: %v", err)
+	}
+	authzSvc, err := authz.New(store, catalog)
+	if err != nil {
+		t.Fatalf("authz.New: %v", err)
+	}
 	path, handler := portcullisv1connect.NewAuthHandler(
-		connectapi.NewAuthService(svc),
+		connectapi.NewAuthService(svc, authzSvc),
 		connect.WithInterceptors(connectapi.NewClientIPInterceptor(nil), connectapi.NewAuthInterceptor(svc)),
 	)
 	mux.Handle(path, handler)

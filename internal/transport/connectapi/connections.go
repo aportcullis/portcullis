@@ -44,6 +44,19 @@ const (
 	permConnectionsDelete identity.Permission = "connections.delete"
 )
 
+// connectionApp is the slice of the connection application service this
+// handler consumes (DIP/ISP — depend on the called methods, not the concrete
+// *appconn.Service).
+type connectionApp interface {
+	List(ctx context.Context, includeArchived bool) ([]connection.Connection, error)
+	Get(ctx context.Context, id connection.ConnectionID) (connection.Connection, error)
+	Create(ctx context.Context, actor identity.UserID, p appconn.CreateParams) (connection.Connection, error)
+	Update(ctx context.Context, actor identity.UserID, id connection.ConnectionID, p appconn.UpdateParams) (connection.Connection, error)
+	Archive(ctx context.Context, actor identity.UserID, id connection.ConnectionID) (connection.Connection, error)
+	TestByConfig(ctx context.Context, actor identity.UserID, cfg appconn.ConfigInput) error
+	TestByID(ctx context.Context, actor identity.UserID, id connection.ConnectionID) error
+}
+
 // ConnectionsService implements the Connections RPCs (PRD §4.1/§7.2,
 // ADR-0014): admin-gated registration with a mandatory server-side
 // test-before-save, rename/config updates, in-band connection tests, and
@@ -51,12 +64,12 @@ const (
 // such fields.
 type ConnectionsService struct {
 	authz authorizer
-	svc   *appconn.Service
+	svc   connectionApp
 }
 
 // NewConnectionsService builds the Connections RPC handler over the authorizer
 // and the connection app service.
-func NewConnectionsService(az authorizer, svc *appconn.Service) *ConnectionsService {
+func NewConnectionsService(az authorizer, svc connectionApp) *ConnectionsService {
 	return &ConnectionsService{authz: az, svc: svc}
 }
 
@@ -109,6 +122,8 @@ func (c *ConnectionsService) Create(
 	}
 	conn, err := c.svc.Create(ctx, user.ID, appconn.CreateParams{
 		DisplayName: req.Msg.GetDisplayName(),
+		Environment: req.Msg.GetEnvironment(),
+		Description: req.Msg.GetDescription(),
 		Config:      toConfigInput(req.Msg.GetConfig()),
 	})
 	if err != nil {
@@ -132,7 +147,14 @@ func (c *ConnectionsService) Update(
 	if err != nil {
 		return nil, err
 	}
-	params := appconn.UpdateParams{DisplayName: req.Msg.GetDisplayName()}
+	params := appconn.UpdateParams{
+		DisplayName: req.Msg.GetDisplayName(),
+		Environment: req.Msg.GetEnvironment(),
+	}
+	if req.Msg.Description != nil { // presence-tracked: absent keeps the stored text
+		desc := req.Msg.GetDescription()
+		params.Description = &desc
+	}
 	if cfg := req.Msg.GetConfig(); cfg != nil {
 		in := toConfigInput(cfg)
 		params.Config = &in
@@ -226,6 +248,8 @@ func connectionError(err error) error {
 	case errors.Is(err, connection.ErrInvalidTLSMode),
 		errors.Is(err, connection.ErrInvalidTarget),
 		errors.Is(err, connection.ErrInvalidDisplayName),
+		errors.Is(err, connection.ErrInvalidEnvironment),
+		errors.Is(err, connection.ErrInvalidDescription),
 		errors.Is(err, connection.ErrInvalidCredential),
 		errors.Is(err, connection.ErrUnsupportedDBType),
 		errors.Is(err, connection.ErrInvalidConnection):
@@ -251,6 +275,8 @@ func toProtoConnection(c connection.Connection) *portcullisv1.Connection {
 		Id:                string(c.ID),
 		DisplayName:       c.DisplayName,
 		DbType:            string(c.DBType),
+		Environment:       string(c.Environment),
+		Description:       c.Description,
 		Host:              c.Target.Host,
 		Port:              uint32(c.Target.Port),
 		Database:          c.Target.DatabaseName,
@@ -274,6 +300,8 @@ func toProtoConnectionSummary(c connection.Connection) *portcullisv1.ConnectionS
 		Id:          string(c.ID),
 		DisplayName: c.DisplayName,
 		DbType:      string(c.DBType),
+		Environment: string(c.Environment),
+		Description: c.Description,
 		Version:     c.Version,
 	}
 	if c.ArchivedAt != nil {

@@ -55,6 +55,10 @@ message Connection {
   google.protobuf.Timestamp updated_at = 10;
   // Unset while the connection is active.
   google.protobuf.Timestamp archived_at = 11;
+  // "development" | "production" — the UI makes production unmistakable.
+  string environment = 12;
+  // Free-text operator context (≤ 500 chars, may be multi-line).
+  string description = 13;
 }
 
 // ConnectionSummary is deliberately safe for connections.list: it identifies a
@@ -68,6 +72,12 @@ message ConnectionSummary {
   // Monotonically increasing database mutation token. Clients use it to avoid
   // applying an out-of-order mutation response over newer state.
   int64 version = 5;
+  // "development" | "production" — drives the list's production badge.
+  string environment = 6;
+  // Free-text operator context (≤ 500 chars). Carried in the summary so the
+  // edit dialog can prefill WITHOUT a connections.get round-trip — editing
+  // must stay possible for a principal holding only connections.update.
+  string description = 7;
 }
 
 // ConnectionConfigInput is the write model — the only place credentials
@@ -105,6 +115,10 @@ message GetConnectionResponse {
 message CreateConnectionRequest {
   string display_name = 1;
   ConnectionConfigInput config = 2;
+  // "development" | "production"; empty selects development.
+  string environment = 3;
+  // Optional free text (≤ 500 chars).
+  string description = 4;
 }
 
 message CreateConnectionResponse {
@@ -113,12 +127,18 @@ message CreateConnectionResponse {
 
 message UpdateConnectionRequest {
   string id = 1;
-  // New display name; empty keeps the current name (config-replacing updates
-  // only — a rename-only update requires it).
+  // New display name; empty keeps the current name (both update flows).
   string display_name = 2;
-  // Unset = rename-only (no connection test). Set = full config replacement,
-  // re-tested and re-encrypted.
+  // Unset = descriptor-only update (name/environment/description, no
+  // connection test). Set = full config replacement, re-tested and
+  // re-encrypted.
   ConnectionConfigInput config = 3;
+  // Empty keeps the current environment — an older client that omits the
+  // field must never silently downgrade a production label.
+  string environment = 4;
+  // Presence-tracked: absent keeps the current description, present (even
+  // empty) replaces it.
+  optional string description = 5;
 }
 
 message UpdateConnectionResponse {

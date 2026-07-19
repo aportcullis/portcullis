@@ -10,7 +10,6 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
-	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
@@ -84,11 +83,19 @@ func isAuthFailure(err error) bool {
 		errors.Is(err, identity.ErrUserDisabled)
 }
 
+// sessionAuthenticator is the slice of the auth service the interceptor
+// consumes (DIP/ISP).
+type sessionAuthenticator interface {
+	Authenticate(ctx context.Context, token string) (identity.User, identity.Session, error)
+	VerifyCSRF(sessionToken, csrfToken string) bool
+	SlideIdle(ctx context.Context, sess identity.Session) error
+}
+
 // NewAuthInterceptor authenticates the session cookie and enforces HMAC
 // double-submit CSRF on every non-public unary RPC, injecting the user and raw
 // session token into the context (ADR-0006). Errors are generic so they reveal
 // nothing about why authentication failed.
-func NewAuthInterceptor(svc *auth.Service) connect.UnaryInterceptorFunc {
+func NewAuthInterceptor(svc sessionAuthenticator) connect.UnaryInterceptorFunc {
 	unauthenticated := connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	unavailable := connect.NewError(connect.CodeUnavailable, errors.New("temporarily unavailable"))
 	return func(next connect.UnaryFunc) connect.UnaryFunc {

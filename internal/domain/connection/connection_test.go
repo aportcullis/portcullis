@@ -51,7 +51,7 @@ func TestNewConnection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := connection.New(tt.id, tt.org, tt.dbType, tt.displayName, target, connection.TLSModeVerifyFull, tt.createdBy, now)
+			got, err := connection.New(tt.id, tt.org, tt.dbType, tt.displayName, connection.EnvironmentDevelopment, "", target, connection.TLSModeVerifyFull, tt.createdBy, now)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("New err = %v, want %v", err, tt.wantErr)
 			}
@@ -74,7 +74,7 @@ func TestNewConnection(t *testing.T) {
 func TestArchive(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
-	conn, err := connection.New("c1", "org1", connection.DBTypePostgreSQL, "prod", validTarget(t), connection.TLSModeVerifyFull, "u1", now)
+	conn, err := connection.New("c1", "org1", connection.DBTypePostgreSQL, "prod", connection.EnvironmentProduction, "primary cluster", validTarget(t), connection.TLSModeVerifyFull, "u1", now)
 	if err != nil {
 		t.Fatal(err)
 	}

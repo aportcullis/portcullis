@@ -19,10 +19,9 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/aportcullis/portcullis/internal/app/auditevent"
 	"github.com/aportcullis/portcullis/internal/domain/audit"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
-	"github.com/aportcullis/portcullis/internal/platform/logging"
-	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 )
 
 // New builds the service with sensible defaults (12h idle, 7d absolute, idle
@@ -114,13 +113,7 @@ func (s *Service) WithLogger(l *slog.Logger) *Service {
 // withActor / the store's BootstrapAdmin), so an actor-less event — a failed
 // login for an unknown email — carries no spurious "user" target.
 func newEvent(ctx context.Context, action audit.Action, outcome audit.Outcome) audit.Event {
-	return audit.Event{
-		ActorType: audit.ActorUser,
-		Action:    action,
-		Outcome:   outcome,
-		RequestID: logging.RequestID(ctx),
-		SourceIP:  reqmeta.ClientIP(ctx),
-	}
+	return auditevent.New(ctx, action, outcome)
 }
 
 // withActor attributes an event to a resolved user, tagging it as targeting that

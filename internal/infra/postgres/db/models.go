@@ -60,6 +60,26 @@ type Connection struct {
 	UpdatedAt            pgtype.Timestamptz
 	ArchivedAt           pgtype.Timestamptz
 	Version              int64
+	Environment          string
+	Description          string
+	CurrentPolicyVersion int64
+}
+
+type ConnectionPolicyVersion struct {
+	ConnectionID           pgtype.UUID
+	OrganizationID         pgtype.UUID
+	Version                int64
+	ReadAllowed            bool
+	WriteAllowed           bool
+	DdlAllowed             bool
+	ReadRequiredApprovals  int32
+	WriteRequiredApprovals int32
+	DdlRequiredApprovals   int32
+	QueryTimeoutSeconds    int32
+	MaxRows                int32
+	MaxResultBytes         int64
+	CreatedBy              pgtype.UUID
+	CreatedAt              pgtype.Timestamptz
 }
 
 type LoginBackoff struct {

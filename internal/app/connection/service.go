@@ -13,11 +13,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/aportcullis/portcullis/internal/app/auditevent"
 	"github.com/aportcullis/portcullis/internal/domain/audit"
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
-	"github.com/aportcullis/portcullis/internal/platform/logging"
-	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 )
 
 // New wires the service. Every dependency is required so a half-built service
@@ -50,6 +49,13 @@ func (s *Service) Create(ctx context.Context, actor identity.UserID, p CreatePar
 	if err := connection.ValidateDisplayName(p.DisplayName); err != nil {
 		return connection.Connection{}, err
 	}
+	env, err := connection.ParseEnvironment(p.Environment)
+	if err != nil {
+		return connection.Connection{}, err
+	}
+	if err := connection.ValidateDescription(p.Description); err != nil {
+		return connection.Connection{}, err
+	}
 	target, mode, cred, err := parseConfig(p.Config)
 	if err != nil {
 		return connection.Connection{}, err
@@ -67,7 +73,7 @@ func (s *Service) Create(ctx context.Context, actor identity.UserID, p CreatePar
 	// the access in the trail — the transactional CONNECTION_CREATED that would
 	// normally imply it rolls back with the failure (ADR-0014).
 
-	conn, err := connection.New(id, org, connection.DBTypePostgreSQL, p.DisplayName, target, mode, actor, s.now())
+	conn, err := connection.New(id, org, connection.DBTypePostgreSQL, p.DisplayName, env, p.Description, target, mode, actor, s.now())
 	if err != nil {
 		s.recordUnsavedDial(ctx, actor, id, target, mode)
 		return connection.Connection{}, err
@@ -81,6 +87,7 @@ func (s *Service) Create(ctx context.Context, actor identity.UserID, p CreatePar
 	events := []audit.Event{s.mutationEvent(ctx, actor, org, conn, audit.ActionConnectionCreated, map[string]any{
 		"display_name": conn.DisplayName,
 		"db_type":      string(conn.DBType),
+		"environment":  string(conn.Environment),
 		"tls_mode":     string(conn.TLSMode),
 		"fingerprint":  conn.Fingerprint,
 	})}
@@ -104,18 +111,31 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	}
 
 	if p.Config == nil {
-		if err := connection.ValidateDisplayName(p.DisplayName); err != nil {
-			return connection.Connection{}, err
-		}
 		existing, err := s.repo.GetByID(ctx, org, id)
 		if err != nil {
 			return connection.Connection{}, err
 		}
+		// The same keep-current contract as environment/description: an empty
+		// name keeps the stored one — all three descriptor fields behave alike
+		// in both update flows (self-review F9).
+		name := p.DisplayName
+		if name == "" {
+			name = existing.DisplayName
+		}
+		if err := connection.ValidateDisplayName(name); err != nil {
+			return connection.Connection{}, err
+		}
+		env, desc, err := resolveDescriptor(existing, p)
+		if err != nil {
+			return connection.Connection{}, err
+		}
+		fields := descriptorFields(existing, name, env, desc)
 		evt := s.mutationEvent(ctx, actor, org, existing, audit.ActionConnectionUpdated, map[string]any{
-			"fields":       []string{"display_name"},
-			"display_name": p.DisplayName,
+			"fields":       fields,
+			"display_name": name,
+			"environment":  string(env),
 		})
-		return s.repo.Rename(ctx, org, id, p.DisplayName, evt)
+		return s.repo.UpdateDescriptor(ctx, org, id, name, env, desc, evt)
 	}
 
 	existing, err := s.repo.GetByID(ctx, org, id)
@@ -132,6 +152,10 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 		name = existing.DisplayName
 	}
 	if err := connection.ValidateDisplayName(name); err != nil {
+		return connection.Connection{}, err
+	}
+	env, desc, err := resolveDescriptor(existing, p)
+	if err != nil {
 		return connection.Connection{}, err
 	}
 	target, mode, cred, err := parseConfig(*p.Config)
@@ -156,6 +180,8 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	expectedVersion := existing.Version
 	updated := existing
 	updated.DisplayName = name
+	updated.Environment = env
+	updated.Description = desc
 	updated.Target = target
 	updated.TLSMode = mode
 	updated.Fingerprint = target.Fingerprint(existing.DBType)
@@ -163,13 +189,11 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	// "fields" names what actually changed: an empty or unchanged DisplayName
 	// keeps the current name (UpdateParams contract), so it is not a rename.
 	// display_name itself stays recorded as the final-name snapshot either way.
-	fields := []string{"config"}
-	if name != existing.DisplayName {
-		fields = append(fields, "display_name")
-	}
+	fields := append([]string{"config"}, descriptorFields(existing, name, env, desc)...)
 	events := []audit.Event{s.mutationEvent(ctx, actor, org, updated, audit.ActionConnectionUpdated, map[string]any{
 		"fields":       fields,
 		"display_name": updated.DisplayName,
+		"environment":  string(updated.Environment),
 		"tls_mode":     string(updated.TLSMode),
 		"fingerprint":  updated.Fingerprint,
 	})}
@@ -182,6 +206,45 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 		return connection.Connection{}, err
 	}
 	return replaced, nil
+}
+
+// resolveDescriptor applies UpdateParams' keep-current semantics: an empty
+// Environment keeps the stored label (an older client that omits the field
+// must never silently downgrade production) and a nil Description keeps the
+// stored text.
+func resolveDescriptor(existing connection.Connection, p UpdateParams) (connection.Environment, string, error) {
+	env := existing.Environment
+	if p.Environment != "" {
+		var err error
+		if env, err = connection.ParseEnvironment(p.Environment); err != nil {
+			return "", "", err
+		}
+	}
+	desc := existing.Description
+	if p.Description != nil {
+		desc = *p.Description
+		if err := connection.ValidateDescription(desc); err != nil {
+			return "", "", err
+		}
+	}
+	return env, desc, nil
+}
+
+// descriptorFields names which descriptor fields actually changed — the audit
+// "fields" list reflects the real change set (8th-review rule), while the
+// metadata keeps the final snapshot values either way.
+func descriptorFields(existing connection.Connection, name string, env connection.Environment, desc string) []string {
+	var fields []string
+	if name != "" && name != existing.DisplayName {
+		fields = append(fields, "display_name")
+	}
+	if env != existing.Environment {
+		fields = append(fields, "environment")
+	}
+	if desc != existing.Description {
+		fields = append(fields, "description")
+	}
+	return fields
 }
 
 // Archive soft-deletes the connection and discards its credential in one
@@ -340,15 +403,7 @@ func (s *Service) tlsRelaxedEvent(ctx context.Context, actor identity.UserID, or
 }
 
 func (s *Service) newEvent(ctx context.Context, actor identity.UserID, action audit.Action, outcome audit.Outcome) audit.Event {
-	return audit.Event{
-		ActorType:   audit.ActorUser,
-		ActorUserID: &actor,
-		Action:      action,
-		TargetType:  audit.TargetTypeConnection,
-		Outcome:     outcome,
-		RequestID:   logging.RequestID(ctx),
-		SourceIP:    reqmeta.ClientIP(ctx),
-	}
+	return auditevent.NewUser(ctx, actor, action, audit.TargetTypeConnection, outcome)
 }
 
 // parseConfig validates the wire input into domain value objects.

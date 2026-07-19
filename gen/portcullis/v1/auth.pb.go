@@ -247,8 +247,12 @@ func (x *LoginRequest) GetPassword() string {
 }
 
 type LoginResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	User  *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	// The caller's permission keys (ADR-0008 catalog), for UI affordance gating
+	// only — the server stays the authority on every RPC. Role changes revoke
+	// sessions immediately (§8.3), so a login/Me-time snapshot is current.
+	Permissions   []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -286,6 +290,13 @@ func (*LoginResponse) Descriptor() ([]byte, []int) {
 func (x *LoginResponse) GetUser() *User {
 	if x != nil {
 		return x.User
+	}
+	return nil
+}
+
+func (x *LoginResponse) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
 	}
 	return nil
 }
@@ -399,8 +410,10 @@ func (*MeRequest) Descriptor() ([]byte, []int) {
 }
 
 type MeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	User  *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	// See LoginResponse.permissions.
+	Permissions   []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -438,6 +451,13 @@ func (*MeResponse) Descriptor() ([]byte, []int) {
 func (x *MeResponse) GetUser() *User {
 	if x != nil {
 		return x.User
+	}
+	return nil
+}
+
+func (x *MeResponse) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
 	}
 	return nil
 }
@@ -552,15 +572,17 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"8\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"Z\n" +
 	"\rLoginResponse\x12'\n" +
-	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"\x0f\n" +
+	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"\x0f\n" +
 	"\rLogoutRequest\"\x10\n" +
 	"\x0eLogoutResponse\"\v\n" +
-	"\tMeRequest\"5\n" +
+	"\tMeRequest\"W\n" +
 	"\n" +
 	"MeResponse\x12'\n" +
-	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"\x12\n" +
+	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"\x12\n" +
 	"\x10GetConfigRequest\"c\n" +
 	"\x11GetConfigResponse\x12%\n" +
 	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\x12'\n" +

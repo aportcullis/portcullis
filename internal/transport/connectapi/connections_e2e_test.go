@@ -19,6 +19,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
+	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
@@ -75,18 +76,24 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatalf("connapp.New: %v", err)
 	}
+	policySvc, err := connpolicy.New(postgres.NewConnectionPolicyStore(pool))
+	if err != nil {
+		t.Fatalf("connpolicy.New: %v", err)
+	}
 
 	chain := connect.WithInterceptors(
 		connectapi.NewClientIPInterceptor(nil),
 		connectapi.NewAuthInterceptor(authSvc),
 	)
 	mux := http.NewServeMux()
-	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc), chain)
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc, authzSvc), chain)
 	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), chain)
 	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), chain)
+	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), chain)
 	mux.Handle(authPath, authHandler)
 	mux.Handle(auditPath, auditHandler)
 	mux.Handle(connsPath, connsHandler)
+	mux.Handle(policiesPath, policiesHandler)
 	ts := httptest.NewTLSServer(mux)
 	t.Cleanup(ts.Close)
 
@@ -100,6 +107,12 @@ func (e *connsTestEnv) clients() (http.CookieJar, portcullisv1connect.AuthClient
 	return jar, portcullisv1connect.NewAuthClient(hc, e.tsURL),
 		portcullisv1connect.NewConnectionsClient(hc, e.tsURL),
 		portcullisv1connect.NewAuditClient(hc, e.tsURL)
+}
+
+// policyClient shares the caller's cookie jar so it rides the same session.
+func (e *connsTestEnv) policyClient(jar http.CookieJar) portcullisv1connect.ConnectionPoliciesClient {
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	return portcullisv1connect.NewConnectionPoliciesClient(hc, e.tsURL)
 }
 
 // targetConfig returns the fresh test database's own coordinates as the

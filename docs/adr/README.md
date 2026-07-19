@@ -28,6 +28,9 @@ These must be `Accepted` before Core 1 coding begins.
 | [0010](0010-runtime-and-transport-defaults.md) | Runtime & transport defaults (timeouts, caps, rate limits, boot) | Accepted |
 | [0011](0011-result-store-quota-and-eviction.md) | Result store quota & eviction (gates Core 2) | Accepted |
 | [0012](0012-schema-governance-ops.md) | Schema governance ops — Atlas pin, artifacts, apply safety (gates M5) | Accepted |
+| [0013](0013-spa-ui-foundation.md) | SPA UI foundation — light FSD, vendored solid-ui | Accepted |
+| [0014](0014-connection-registration-and-tls.md) | Connection registration, credential envelope & TLS validation | Accepted |
+| [0015](0015-connection-policies.md) | Connection policies — per-class approvals, limits, immutable versions | Accepted |
 
 ## Template
 ```markdown

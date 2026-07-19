@@ -41,7 +41,11 @@ type Connection struct {
 	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// Unset while the connection is active.
-	ArchivedAt    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
+	ArchivedAt *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
+	// "development" | "production" — the UI makes production unmistakable.
+	Environment string `protobuf:"bytes,12,opt,name=environment,proto3" json:"environment,omitempty"`
+	// Free-text operator context (≤ 500 chars, may be multi-line).
+	Description   string `protobuf:"bytes,13,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,6 +157,20 @@ func (x *Connection) GetArchivedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Connection) GetEnvironment() string {
+	if x != nil {
+		return x.Environment
+	}
+	return ""
+}
+
+func (x *Connection) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
 // ConnectionSummary is deliberately safe for connections.list: it identifies a
 // collection member without exposing target coordinates or TLS configuration.
 // Those inner values require connections.get through Connection.
@@ -164,7 +182,13 @@ type ConnectionSummary struct {
 	ArchivedAt  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
 	// Monotonically increasing database mutation token. Clients use it to avoid
 	// applying an out-of-order mutation response over newer state.
-	Version       int64 `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
+	Version int64 `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
+	// "development" | "production" — drives the list's production badge.
+	Environment string `protobuf:"bytes,6,opt,name=environment,proto3" json:"environment,omitempty"`
+	// Free-text operator context (≤ 500 chars). Carried in the summary so the
+	// edit dialog can prefill WITHOUT a connections.get round-trip — editing
+	// must stay possible for a principal holding only connections.update.
+	Description   string `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -232,6 +256,20 @@ func (x *ConnectionSummary) GetVersion() int64 {
 		return x.Version
 	}
 	return 0
+}
+
+func (x *ConnectionSummary) GetEnvironment() string {
+	if x != nil {
+		return x.Environment
+	}
+	return ""
+}
+
+func (x *ConnectionSummary) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
 }
 
 // ConnectionConfigInput is the write model — the only place credentials
@@ -502,9 +540,13 @@ func (x *GetConnectionResponse) GetConnection() *Connection {
 }
 
 type CreateConnectionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DisplayName   string                 `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	Config        *ConnectionConfigInput `protobuf:"bytes,2,opt,name=config,proto3" json:"config,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	DisplayName string                 `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Config      *ConnectionConfigInput `protobuf:"bytes,2,opt,name=config,proto3" json:"config,omitempty"`
+	// "development" | "production"; empty selects development.
+	Environment string `protobuf:"bytes,3,opt,name=environment,proto3" json:"environment,omitempty"`
+	// Optional free text (≤ 500 chars).
+	Description   string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -551,6 +593,20 @@ func (x *CreateConnectionRequest) GetConfig() *ConnectionConfigInput {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *CreateConnectionRequest) GetEnvironment() string {
+	if x != nil {
+		return x.Environment
+	}
+	return ""
+}
+
+func (x *CreateConnectionRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
 }
 
 type CreateConnectionResponse struct {
@@ -600,12 +656,18 @@ func (x *CreateConnectionResponse) GetConnection() *ConnectionSummary {
 type UpdateConnectionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// New display name; empty keeps the current name (config-replacing updates
-	// only — a rename-only update requires it).
+	// New display name; empty keeps the current name (both update flows).
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	// Unset = rename-only (no connection test). Set = full config replacement,
-	// re-tested and re-encrypted.
-	Config        *ConnectionConfigInput `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
+	// Unset = descriptor-only update (name/environment/description, no
+	// connection test). Set = full config replacement, re-tested and
+	// re-encrypted.
+	Config *ConnectionConfigInput `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
+	// Empty keeps the current environment — an older client that omits the
+	// field must never silently downgrade a production label.
+	Environment string `protobuf:"bytes,4,opt,name=environment,proto3" json:"environment,omitempty"`
+	// Presence-tracked: absent keeps the current description, present (even
+	// empty) replaces it.
+	Description   *string `protobuf:"bytes,5,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -659,6 +721,20 @@ func (x *UpdateConnectionRequest) GetConfig() *ConnectionConfigInput {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *UpdateConnectionRequest) GetEnvironment() string {
+	if x != nil {
+		return x.Environment
+	}
+	return ""
+}
+
+func (x *UpdateConnectionRequest) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
 }
 
 type UpdateConnectionResponse struct {
@@ -936,7 +1012,7 @@ var File_portcullis_v1_connections_proto protoreflect.FileDescriptor
 
 const file_portcullis_v1_connections_proto_rawDesc = "" +
 	"\n" +
-	"\x1fportcullis/v1/connections.proto\x12\rportcullis.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x99\x03\n" +
+	"\x1fportcullis/v1/connections.proto\x12\rportcullis.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdd\x03\n" +
 	"\n" +
 	"Connection\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
@@ -953,14 +1029,18 @@ const file_portcullis_v1_connections_proto_rawDesc = "" +
 	"updated_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12;\n" +
 	"\varchived_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"archivedAt\"\xb6\x01\n" +
+	"archivedAt\x12 \n" +
+	"\venvironment\x18\f \x01(\tR\venvironment\x12 \n" +
+	"\vdescription\x18\r \x01(\tR\vdescription\"\xfa\x01\n" +
 	"\x11ConnectionSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x17\n" +
 	"\adb_type\x18\x03 \x01(\tR\x06dbType\x12;\n" +
 	"\varchived_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAt\x12\x18\n" +
-	"\aversion\x18\x05 \x01(\x03R\aversion\"\xa6\x01\n" +
+	"\aversion\x18\x05 \x01(\x03R\aversion\x12 \n" +
+	"\venvironment\x18\x06 \x01(\tR\venvironment\x12 \n" +
+	"\vdescription\x18\a \x01(\tR\vdescription\"\xa6\x01\n" +
 	"\x15ConnectionConfigInput\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
@@ -977,18 +1057,23 @@ const file_portcullis_v1_connections_proto_rawDesc = "" +
 	"\x15GetConnectionResponse\x129\n" +
 	"\n" +
 	"connection\x18\x01 \x01(\v2\x19.portcullis.v1.ConnectionR\n" +
-	"connection\"z\n" +
+	"connection\"\xbe\x01\n" +
 	"\x17CreateConnectionRequest\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12<\n" +
-	"\x06config\x18\x02 \x01(\v2$.portcullis.v1.ConnectionConfigInputR\x06config\"\\\n" +
+	"\x06config\x18\x02 \x01(\v2$.portcullis.v1.ConnectionConfigInputR\x06config\x12 \n" +
+	"\venvironment\x18\x03 \x01(\tR\venvironment\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\\\n" +
 	"\x18CreateConnectionResponse\x12@\n" +
 	"\n" +
 	"connection\x18\x01 \x01(\v2 .portcullis.v1.ConnectionSummaryR\n" +
-	"connection\"\x8a\x01\n" +
+	"connection\"\xe3\x01\n" +
 	"\x17UpdateConnectionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12<\n" +
-	"\x06config\x18\x03 \x01(\v2$.portcullis.v1.ConnectionConfigInputR\x06config\"\\\n" +
+	"\x06config\x18\x03 \x01(\v2$.portcullis.v1.ConnectionConfigInputR\x06config\x12 \n" +
+	"\venvironment\x18\x04 \x01(\tR\venvironment\x12%\n" +
+	"\vdescription\x18\x05 \x01(\tH\x00R\vdescription\x88\x01\x01B\x0e\n" +
+	"\f_description\"\\\n" +
 	"\x18UpdateConnectionResponse\x12@\n" +
 	"\n" +
 	"connection\x18\x01 \x01(\v2 .portcullis.v1.ConnectionSummaryR\n" +
@@ -1082,6 +1167,7 @@ func file_portcullis_v1_connections_proto_init() {
 	if File_portcullis_v1_connections_proto != nil {
 		return
 	}
+	file_portcullis_v1_connections_proto_msgTypes[9].OneofWrappers = []any{}
 	file_portcullis_v1_connections_proto_msgTypes[11].OneofWrappers = []any{
 		(*TestConnectionRequest_Config)(nil),
 		(*TestConnectionRequest_Id)(nil),

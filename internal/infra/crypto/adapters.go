@@ -69,6 +69,18 @@ func (h *Argon2Hasher) acquire(ctx context.Context) error {
 	}
 	select {
 	case h.sem <- struct{}{}:
+		// Re-check after winning the slot: if the cancellation and a slot release
+		// both land between the pre-check above and select ENTRY, both cases are
+		// ready at entry and Go picks one uniformly pseudo-randomly (spec) — the
+		// send can win for an already-cancelled request. (A goroutine that had
+		// already parked instead commits to whichever case became ready first,
+		// so that path never needs this.) The window is a few instructions wide
+		// and cannot be forced from outside the package — no test can kill this
+		// branch (verified by mutation check); it stands on the spec semantics.
+		if err := ctx.Err(); err != nil {
+			<-h.sem
+			return err
+		}
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

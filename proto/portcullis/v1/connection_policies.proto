@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package portcullis.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// ConnectionPolicies manages the per-connection execution policy (PRD §4.3,
+// ADR-0015): per-class allow + required approvals and one execution-limit set,
+// stored as immutable versioned snapshots. Every RPC is authenticated and
+// gated by a policies.* permission (ADR-0008), enforced inline in the handler.
+service ConnectionPolicies {
+  // Get returns the connection's current policy — archived connections
+  // included (the policy is part of the historical snapshot). Requires
+  // policies.get.
+  rpc Get(GetConnectionPolicyRequest) returns (GetConnectionPolicyResponse) {}
+  // Update replaces the policy with a NEW immutable version (full snapshot
+  // semantics — no partial patch). expected_version is the version the caller
+  // read; a mismatch fails with Aborted ("policy changed — refresh and
+  // retry"). Enabling write/ddl leaves an additional admin audit event (PRD
+  // §4.3). Requires policies.update.
+  rpc Update(UpdateConnectionPolicyRequest) returns (UpdateConnectionPolicyResponse) {}
+}
+
+// ClassPolicy is one statement class's gate.
+message ClassPolicy {
+  // Whether the class may run on this connection at all.
+  bool allowed = 1;
+  // Distinct active approvers a request needs (0 = system auto-approval,
+  // audited the same; max 100).
+  uint32 required_approvals = 2;
+}
+
+// ConnectionPolicy is one immutable policy version.
+message ConnectionPolicy {
+  string connection_id = 1;
+  // Snapshot identity and the optimistic token for Update.
+  int64 version = 2;
+  ClassPolicy read = 3;
+  ClassPolicy write = 4;
+  ClassPolicy ddl = 5;
+  // Execution limits — one set per version (ADR-0015): timeout 1..300 s,
+  // rows 1..10000, bytes 4 KiB..64 MiB.
+  uint32 query_timeout_seconds = 6;
+  uint32 max_rows = 7;
+  uint64 max_result_bytes = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message GetConnectionPolicyRequest {
+  string connection_id = 1;
+}
+
+message GetConnectionPolicyResponse {
+  ConnectionPolicy policy = 1;
+}
+
+message UpdateConnectionPolicyRequest {
+  string connection_id = 1;
+  // The version the caller read; mismatch → Aborted.
+  int64 expected_version = 2;
+  // read/write/ddl are ALL required: the update is a full replacement, and an
+  // omitted class must not silently reset its kept quorum (InvalidArgument).
+  ClassPolicy read = 3;
+  ClassPolicy write = 4;
+  ClassPolicy ddl = 5;
+  uint32 query_timeout_seconds = 6;
+  uint32 max_rows = 7;
+  uint64 max_result_bytes = 8;
+}
+
+message UpdateConnectionPolicyResponse {
+  ConnectionPolicy policy = 1;
+}

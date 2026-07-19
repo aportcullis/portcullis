@@ -45,11 +45,22 @@ is only needed for external sinks.
   stronger guarantees with none of the outbox's relay machinery.
 
 ### Runtime permission boundary
-- Migrations run on `PORTCULLIS_MIGRATE_DATABASE_URL` (a short-lived pool at startup) as the schema
-  owner **with `CREATEROLE`** — plain table ownership is not enough to `CREATE ROLE`. Alternatively,
-  provision the runtime role beforehand (the migration skips creation when it exists), in which
-  case the migrate user needs no `CREATEROLE`. The server then runs on the **runtime DSN**
-  (`PORTCULLIS_DATABASE_URL`).
+- Migrations run on `PORTCULLIS_MIGRATE_DATABASE_URL` as the schema owner **with `CREATEROLE`** —
+  plain table ownership is not enough to `CREATE ROLE`. Alternatively, provision the runtime role
+  beforehand (the migration skips creation when it exists), in which case the migrate user needs
+  no `CREATEROLE`. The server runs on the **runtime DSN** (`PORTCULLIS_DATABASE_URL`).
+- *Amended 2026-07-18 (external review):* the owner DSN must not live in the serving process.
+  A server that carries `PORTCULLIS_MIGRATE_DATABASE_URL` in its environment defeats this ADR's
+  compromised-process threat model — the attacker reads the env and escalates to the owner, who
+  can disable the audit triggers. The **one-shot `portcullis migrate` command** is the recommended
+  deployment shape: a separate short-lived process/container (compose: the `migrate` service) is
+  the only holder of the owner DSN, and `serve` gets the runtime DSN only, skipping startup
+  migration (ADR-0010 startup step 6 has the exact gating). Startup migration remains supported
+  when the operator explicitly keeps the owner DSN on the server, or opts in with
+  `PORTCULLIS_STARTUP_MIGRATE=true` (single-role dev/e2e — deliberately a dedicated flag,
+  never a side effect of the privileged-runtime debug flag). Note the boundary this buys: it removes the
+  standing owner credential from the server's env/memory; it does not defend the migrate
+  container itself — that is a deliberately smaller, shorter-lived surface.
 - **The migration principal must be able to act as the owner of the database AND schema `public`**
   (amended 2026-07-05). The boundary migrations `REVOKE ... FROM PUBLIC` *as the owner*; a non-owner
   makes those revokes silent no-ops (PostgreSQL warns but commits), the migration records as
@@ -148,6 +159,8 @@ is only needed for external sinks.
   grant select, insert, update on all tables in schema public to <new>;
   grant usage on all sequences in schema public to <new>;
   revoke update on public.audit_events from <new>;
+  -- append-only policy snapshots (0011, ADR-0015) — same boundary as audit_events
+  revoke update on public.connection_policy_versions from <new>;
   revoke all on public.schema_migrations from <new>;
   alter default privileges in schema public grant select, insert, update on tables to <new>;
   alter default privileges in schema public grant usage on sequences to <new>;
@@ -173,7 +186,8 @@ is only needed for external sinks.
   lists in sync by hand.
 - Future tables get DML via default privileges; a migration adding a **sensitive** table must
   `REVOKE` in that same migration (rule recorded in `docs/conventions/data.md`).
-- Empty `PORTCULLIS_MIGRATE_DATABASE_URL` falls back to the runtime DSN (single-role dev).
+- With `PORTCULLIS_MIGRATE_DATABASE_URL` unset, `portcullis migrate` (and single-role dev's
+  startup migration) falls back to `PORTCULLIS_DATABASE_URL` — see the one-shot amendment above.
 
 ### Migrator identity (amended 2026-07-13 — external review)
 - `ALTER DEFAULT PRIVILEGES` binds to the **creating role** and is never inherited through

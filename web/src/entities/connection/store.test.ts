@@ -69,7 +69,7 @@ describe("connection list store", () => {
     const load = loadConnections();
 
     client.create.mockResolvedValueOnce({ connection: summary("created", 1n) });
-    await createConnection("created", emptyDraft());
+    await createConnection("created", "development", "", emptyDraft());
     expect(listState()).toBe("loading");
 
     // The stale snapshot (started before the create) resolves last; the store

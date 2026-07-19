@@ -71,6 +71,8 @@ func (s *ConnectionStore) Create(ctx context.Context, c connection.Connection, c
 		OrganizationID:       org,
 		DbType:               string(c.DBType),
 		DisplayName:          c.DisplayName,
+		Environment:          string(c.Environment),
+		Description:          c.Description,
 		Host:                 c.Target.Host,
 		Port:                 int32(c.Target.Port),
 		DatabaseName:         c.Target.DatabaseName,
@@ -84,8 +86,24 @@ func (s *ConnectionStore) Create(ctx context.Context, c connection.Connection, c
 		CreatedAt:            timeToTS(c.CreatedAt),
 		UpdatedAt:            timeToTS(c.UpdatedAt),
 	}
+	// The v1 default policy is a storage-level companion of the insert
+	// (ADR-0015): InsertConnection points current_policy_version at 1 and the
+	// deferred FK checks the pair at commit, so a connection cannot exist
+	// without its policy row.
+	policy := connection.DefaultPolicy()
+	policy.ConnectionID = c.ID
+	policy.OrganizationID = c.OrganizationID
+	policy.CreatedBy = c.CreatedBy
+	policy.CreatedAt = c.CreatedAt
+	policyParams, err := policyInsertParams(policy)
+	if err != nil {
+		return err
+	}
 	err = s.withTx(ctx, func(q *db.Queries) error {
 		if err := q.InsertConnection(ctx, params); err != nil {
+			return err
+		}
+		if err := q.InsertConnectionPolicyVersion(ctx, policyParams); err != nil {
 			return err
 		}
 		return insertEvents(ctx, q, events)
@@ -123,9 +141,10 @@ func (s *ConnectionStore) List(ctx context.Context, org identity.OrganizationID,
 	return out, nil
 }
 
-// Rename changes only the display name (archived rows included — the name
-// labels history) and commits the audit events with it.
-func (s *ConnectionStore) Rename(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, events ...audit.Event) (connection.Connection, error) {
+// UpdateDescriptor changes the credential-free descriptor fields — display
+// name, environment label, description — archived rows included (they label
+// history), committing the audit events with it.
+func (s *ConnectionStore) UpdateDescriptor(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, env connection.Environment, description string, events ...audit.Event) (connection.Connection, error) {
 	cid, oid, err := connIDs(id, org)
 	if err != nil {
 		return connection.Connection{}, err
@@ -133,7 +152,13 @@ func (s *ConnectionStore) Rename(ctx context.Context, org identity.OrganizationI
 	var row db.Connection
 	err = s.withTx(ctx, func(q *db.Queries) error {
 		var err error
-		row, err = q.RenameConnection(ctx, db.RenameConnectionParams{ID: cid, OrganizationID: oid, DisplayName: displayName})
+		row, err = q.UpdateConnectionDescriptor(ctx, db.UpdateConnectionDescriptorParams{
+			ID:             cid,
+			OrganizationID: oid,
+			DisplayName:    displayName,
+			Environment:    string(env),
+			Description:    description,
+		})
 		if err != nil {
 			return notFound(err, connection.ErrNotFound)
 		}
@@ -157,6 +182,8 @@ func (s *ConnectionStore) ReplaceConfig(ctx context.Context, c connection.Connec
 		ID:                   cid,
 		OrganizationID:       oid,
 		DisplayName:          c.DisplayName,
+		Environment:          string(c.Environment),
+		Description:          c.Description,
 		Host:                 c.Target.Host,
 		Port:                 int32(c.Target.Port),
 		DatabaseName:         c.Target.DatabaseName,
@@ -315,6 +342,8 @@ func toConnection(row db.Connection) connection.Connection {
 		OrganizationID: identity.OrganizationID(uuidToString(row.OrganizationID)),
 		DBType:         connection.DBType(row.DbType),
 		DisplayName:    row.DisplayName,
+		Environment:    connection.Environment(row.Environment),
+		Description:    row.Description,
 		Target: connection.Target{
 			Host:         row.Host,
 			Port:         uint16(row.Port), //nolint:gosec // checked 1..65535 by the table constraint

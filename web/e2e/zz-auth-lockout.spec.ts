@@ -12,6 +12,13 @@ test.describe.serial("auth lockout", () => {
   // One uniform message for every login rejection — the assertion target.
   const genericError = "We couldn't sign you in. Please check your email and password and try again.";
 
+  // test.slow() only triples the TEST timeout; expect() keeps its independent 5s
+  // default ("Assertion timeout is unrelated to the test timeout" — Playwright
+  // docs). A login roundtrip includes an Argon2 hash (queued behind a small
+  // concurrency cap) and can exceed 5s on slow machines, so every response
+  // assertion gets an explicit budget.
+  const slowExpect = { timeout: 15_000 };
+
   const signIn = async (page: import("@playwright/test").Page, pw: string) => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(pw);
@@ -27,14 +34,14 @@ test.describe.serial("auth lockout", () => {
     // rate-limited attempt would never reach the failure counter.
     for (let i = 0; i < 5; i++) {
       await signIn(page, wrong);
-      await expect(page.getByText(genericError)).toBeVisible();
+      await expect(page.getByText(genericError)).toBeVisible(slowExpect);
       await page.waitForTimeout(3200);
     }
 
     // The CORRECT password now fails with the SAME message — the lockout must
     // be indistinguishable from a wrong password (no oracle).
     await signIn(page, password);
-    await expect(page.getByText(genericError)).toBeVisible();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByText(genericError)).toBeVisible(slowExpect);
+    await expect(page).toHaveURL(/\/login$/, slowExpect);
   });
 });

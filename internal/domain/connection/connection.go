@@ -30,8 +30,13 @@ type Connection struct {
 	OrganizationID identity.OrganizationID
 	DBType         DBType
 	DisplayName    string
-	Target         Target
-	TLSMode        TLSMode
+	// Environment labels dev vs production so the UI can make production
+	// unmistakable; Description is free-text operator context. Both are
+	// plaintext descriptor fields, never part of the credential envelope.
+	Environment Environment
+	Description string
+	Target      Target
+	TLSMode     TLSMode
 	// Fingerprint is the versioned target identity that survives archive as the
 	// historical snapshot (PRD §4.3); derived, never set by callers.
 	Fingerprint string
@@ -53,6 +58,8 @@ func New(
 	org identity.OrganizationID,
 	dbType DBType,
 	displayName string,
+	environment Environment,
+	description string,
 	target Target,
 	tlsMode TLSMode,
 	createdBy identity.UserID,
@@ -67,11 +74,19 @@ func New(
 	if err := ValidateDisplayName(displayName); err != nil {
 		return Connection{}, err
 	}
+	if environment != EnvironmentDevelopment && environment != EnvironmentProduction {
+		return Connection{}, ErrInvalidEnvironment
+	}
+	if err := ValidateDescription(description); err != nil {
+		return Connection{}, err
+	}
 	return Connection{
 		ID:             id,
 		OrganizationID: org,
 		DBType:         dbType,
 		DisplayName:    displayName,
+		Environment:    environment,
+		Description:    description,
 		Target:         target,
 		TLSMode:        tlsMode,
 		Fingerprint:    target.Fingerprint(dbType),

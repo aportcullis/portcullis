@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/connections.proto.
  */
 export const file_portcullis_v1_connections: GenFile = /*@__PURE__*/
-  fileDesc("Ch9wb3J0Y3VsbGlzL3YxL2Nvbm5lY3Rpb25zLnByb3RvEg1wb3J0Y3VsbGlzLnYxIqwCCgpDb25uZWN0aW9uEgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdkYl90eXBlGAMgASgJEgwKBGhvc3QYBCABKAkSDAoEcG9ydBgFIAEoDRIQCghkYXRhYmFzZRgGIAEoCRIQCgh0bHNfbW9kZRgHIAEoCRIaChJ0YXJnZXRfZmluZ2VycHJpbnQYCCABKAkSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLYXJjaGl2ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIogBChFDb25uZWN0aW9uU3VtbWFyeRIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSDwoHZGJfdHlwZRgDIAEoCRIvCgthcmNoaXZlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHdmVyc2lvbhgFIAEoAyJ3ChVDb25uZWN0aW9uQ29uZmlnSW5wdXQSDAoEaG9zdBgBIAEoCRIMCgRwb3J0GAIgASgNEhAKCGRhdGFiYXNlGAMgASgJEgwKBHVzZXIYBCABKAkSEAoIcGFzc3dvcmQYBSABKAkSEAoIdGxzX21vZGUYBiABKAkiMgoWTGlzdENvbm5lY3Rpb25zUmVxdWVzdBIYChBpbmNsdWRlX2FyY2hpdmVkGAEgASgIIlAKF0xpc3RDb25uZWN0aW9uc1Jlc3BvbnNlEjUKC2Nvbm5lY3Rpb25zGAEgAygLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSIiChRHZXRDb25uZWN0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSJGChVHZXRDb25uZWN0aW9uUmVzcG9uc2USLQoKY29ubmVjdGlvbhgBIAEoCzIZLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbiJlChdDcmVhdGVDb25uZWN0aW9uUmVxdWVzdBIUCgxkaXNwbGF5X25hbWUYASABKAkSNAoGY29uZmlnGAIgASgLMiQucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uQ29uZmlnSW5wdXQiUAoYQ3JlYXRlQ29ubmVjdGlvblJlc3BvbnNlEjQKCmNvbm5lY3Rpb24YASABKAsyIC5wb3J0Y3VsbGlzLnYxLkNvbm5lY3Rpb25TdW1tYXJ5InEKF1VwZGF0ZUNvbm5lY3Rpb25SZXF1ZXN0EgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRI0CgZjb25maWcYAyABKAsyJC5wb3J0Y3VsbGlzLnYxLkNvbm5lY3Rpb25Db25maWdJbnB1dCJQChhVcGRhdGVDb25uZWN0aW9uUmVzcG9uc2USNAoKY29ubmVjdGlvbhgBIAEoCzIgLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvblN1bW1hcnkiZwoVVGVzdENvbm5lY3Rpb25SZXF1ZXN0EjYKBmNvbmZpZxgBIAEoCzIkLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbkNvbmZpZ0lucHV0SAASDAoCaWQYAiABKAlIAEIICgZ0YXJnZXQiNQoWVGVzdENvbm5lY3Rpb25SZXNwb25zZRIKCgJvaxgBIAEoCBIPCgdtZXNzYWdlGAIgASgJIiYKGEFyY2hpdmVDb25uZWN0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSJRChlBcmNoaXZlQ29ubmVjdGlvblJlc3BvbnNlEjQKCmNvbm5lY3Rpb24YASABKAsyIC5wb3J0Y3VsbGlzLnYxLkNvbm5lY3Rpb25TdW1tYXJ5MqsECgtDb25uZWN0aW9ucxJXCgRMaXN0EiUucG9ydGN1bGxpcy52MS5MaXN0Q29ubmVjdGlvbnNSZXF1ZXN0GiYucG9ydGN1bGxpcy52MS5MaXN0Q29ubmVjdGlvbnNSZXNwb25zZSIAElIKA0dldBIjLnBvcnRjdWxsaXMudjEuR2V0Q29ubmVjdGlvblJlcXVlc3QaJC5wb3J0Y3VsbGlzLnYxLkdldENvbm5lY3Rpb25SZXNwb25zZSIAElsKBkNyZWF0ZRImLnBvcnRjdWxsaXMudjEuQ3JlYXRlQ29ubmVjdGlvblJlcXVlc3QaJy5wb3J0Y3VsbGlzLnYxLkNyZWF0ZUNvbm5lY3Rpb25SZXNwb25zZSIAElsKBlVwZGF0ZRImLnBvcnRjdWxsaXMudjEuVXBkYXRlQ29ubmVjdGlvblJlcXVlc3QaJy5wb3J0Y3VsbGlzLnYxLlVwZGF0ZUNvbm5lY3Rpb25SZXNwb25zZSIAElUKBFRlc3QSJC5wb3J0Y3VsbGlzLnYxLlRlc3RDb25uZWN0aW9uUmVxdWVzdBolLnBvcnRjdWxsaXMudjEuVGVzdENvbm5lY3Rpb25SZXNwb25zZSIAEl4KB0FyY2hpdmUSJy5wb3J0Y3VsbGlzLnYxLkFyY2hpdmVDb25uZWN0aW9uUmVxdWVzdBooLnBvcnRjdWxsaXMudjEuQXJjaGl2ZUNvbm5lY3Rpb25SZXNwb25zZSIAQkJaQGdpdGh1Yi5jb20vYXBvcnRjdWxsaXMvcG9ydGN1bGxpcy9nZW4vcG9ydGN1bGxpcy92MTtwb3J0Y3VsbGlzdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("Ch9wb3J0Y3VsbGlzL3YxL2Nvbm5lY3Rpb25zLnByb3RvEg1wb3J0Y3VsbGlzLnYxItYCCgpDb25uZWN0aW9uEgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdkYl90eXBlGAMgASgJEgwKBGhvc3QYBCABKAkSDAoEcG9ydBgFIAEoDRIQCghkYXRhYmFzZRgGIAEoCRIQCgh0bHNfbW9kZRgHIAEoCRIaChJ0YXJnZXRfZmluZ2VycHJpbnQYCCABKAkSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLYXJjaGl2ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhMKC2Vudmlyb25tZW50GAwgASgJEhMKC2Rlc2NyaXB0aW9uGA0gASgJIrIBChFDb25uZWN0aW9uU3VtbWFyeRIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSDwoHZGJfdHlwZRgDIAEoCRIvCgthcmNoaXZlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHdmVyc2lvbhgFIAEoAxITCgtlbnZpcm9ubWVudBgGIAEoCRITCgtkZXNjcmlwdGlvbhgHIAEoCSJ3ChVDb25uZWN0aW9uQ29uZmlnSW5wdXQSDAoEaG9zdBgBIAEoCRIMCgRwb3J0GAIgASgNEhAKCGRhdGFiYXNlGAMgASgJEgwKBHVzZXIYBCABKAkSEAoIcGFzc3dvcmQYBSABKAkSEAoIdGxzX21vZGUYBiABKAkiMgoWTGlzdENvbm5lY3Rpb25zUmVxdWVzdBIYChBpbmNsdWRlX2FyY2hpdmVkGAEgASgIIlAKF0xpc3RDb25uZWN0aW9uc1Jlc3BvbnNlEjUKC2Nvbm5lY3Rpb25zGAEgAygLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSIiChRHZXRDb25uZWN0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSJGChVHZXRDb25uZWN0aW9uUmVzcG9uc2USLQoKY29ubmVjdGlvbhgBIAEoCzIZLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbiKPAQoXQ3JlYXRlQ29ubmVjdGlvblJlcXVlc3QSFAoMZGlzcGxheV9uYW1lGAEgASgJEjQKBmNvbmZpZxgCIAEoCzIkLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbkNvbmZpZ0lucHV0EhMKC2Vudmlyb25tZW50GAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJIlAKGENyZWF0ZUNvbm5lY3Rpb25SZXNwb25zZRI0Cgpjb25uZWN0aW9uGAEgASgLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSKwAQoXVXBkYXRlQ29ubmVjdGlvblJlcXVlc3QSCgoCaWQYASABKAkSFAoMZGlzcGxheV9uYW1lGAIgASgJEjQKBmNvbmZpZxgDIAEoCzIkLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbkNvbmZpZ0lucHV0EhMKC2Vudmlyb25tZW50GAQgASgJEhgKC2Rlc2NyaXB0aW9uGAUgASgJSACIAQFCDgoMX2Rlc2NyaXB0aW9uIlAKGFVwZGF0ZUNvbm5lY3Rpb25SZXNwb25zZRI0Cgpjb25uZWN0aW9uGAEgASgLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSJnChVUZXN0Q29ubmVjdGlvblJlcXVlc3QSNgoGY29uZmlnGAEgASgLMiQucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uQ29uZmlnSW5wdXRIABIMCgJpZBgCIAEoCUgAQggKBnRhcmdldCI1ChZUZXN0Q29ubmVjdGlvblJlc3BvbnNlEgoKAm9rGAEgASgIEg8KB21lc3NhZ2UYAiABKAkiJgoYQXJjaGl2ZUNvbm5lY3Rpb25SZXF1ZXN0EgoKAmlkGAEgASgJIlEKGUFyY2hpdmVDb25uZWN0aW9uUmVzcG9uc2USNAoKY29ubmVjdGlvbhgBIAEoCzIgLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvblN1bW1hcnkyqwQKC0Nvbm5lY3Rpb25zElcKBExpc3QSJS5wb3J0Y3VsbGlzLnYxLkxpc3RDb25uZWN0aW9uc1JlcXVlc3QaJi5wb3J0Y3VsbGlzLnYxLkxpc3RDb25uZWN0aW9uc1Jlc3BvbnNlIgASUgoDR2V0EiMucG9ydGN1bGxpcy52MS5HZXRDb25uZWN0aW9uUmVxdWVzdBokLnBvcnRjdWxsaXMudjEuR2V0Q29ubmVjdGlvblJlc3BvbnNlIgASWwoGQ3JlYXRlEiYucG9ydGN1bGxpcy52MS5DcmVhdGVDb25uZWN0aW9uUmVxdWVzdBonLnBvcnRjdWxsaXMudjEuQ3JlYXRlQ29ubmVjdGlvblJlc3BvbnNlIgASWwoGVXBkYXRlEiYucG9ydGN1bGxpcy52MS5VcGRhdGVDb25uZWN0aW9uUmVxdWVzdBonLnBvcnRjdWxsaXMudjEuVXBkYXRlQ29ubmVjdGlvblJlc3BvbnNlIgASVQoEVGVzdBIkLnBvcnRjdWxsaXMudjEuVGVzdENvbm5lY3Rpb25SZXF1ZXN0GiUucG9ydGN1bGxpcy52MS5UZXN0Q29ubmVjdGlvblJlc3BvbnNlIgASXgoHQXJjaGl2ZRInLnBvcnRjdWxsaXMudjEuQXJjaGl2ZUNvbm5lY3Rpb25SZXF1ZXN0GigucG9ydGN1bGxpcy52MS5BcmNoaXZlQ29ubmVjdGlvblJlc3BvbnNlIgBCQlpAZ2l0aHViLmNvbS9hcG9ydGN1bGxpcy9wb3J0Y3VsbGlzL2dlbi9wb3J0Y3VsbGlzL3YxO3BvcnRjdWxsaXN2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * Connection is the read model: the plaintext descriptor of a registered
@@ -84,6 +84,20 @@ export type Connection = Message<"portcullis.v1.Connection"> & {
    * @generated from field: google.protobuf.Timestamp archived_at = 11;
    */
   archivedAt?: Timestamp | undefined;
+
+  /**
+   * "development" | "production" — the UI makes production unmistakable.
+   *
+   * @generated from field: string environment = 12;
+   */
+  environment: string;
+
+  /**
+   * Free-text operator context (≤ 500 chars, may be multi-line).
+   *
+   * @generated from field: string description = 13;
+   */
+  description: string;
 };
 
 /**
@@ -128,6 +142,22 @@ export type ConnectionSummary = Message<"portcullis.v1.ConnectionSummary"> & {
    * @generated from field: int64 version = 5;
    */
   version: bigint;
+
+  /**
+   * "development" | "production" — drives the list's production badge.
+   *
+   * @generated from field: string environment = 6;
+   */
+  environment: string;
+
+  /**
+   * Free-text operator context (≤ 500 chars). Carried in the summary so the
+   * edit dialog can prefill WITHOUT a connections.get round-trip — editing
+   * must stay possible for a principal holding only connections.update.
+   *
+   * @generated from field: string description = 7;
+   */
+  description: string;
 };
 
 /**
@@ -271,6 +301,20 @@ export type CreateConnectionRequest = Message<"portcullis.v1.CreateConnectionReq
    * @generated from field: portcullis.v1.ConnectionConfigInput config = 2;
    */
   config?: ConnectionConfigInput | undefined;
+
+  /**
+   * "development" | "production"; empty selects development.
+   *
+   * @generated from field: string environment = 3;
+   */
+  environment: string;
+
+  /**
+   * Optional free text (≤ 500 chars).
+   *
+   * @generated from field: string description = 4;
+   */
+  description: string;
 };
 
 /**
@@ -307,20 +351,36 @@ export type UpdateConnectionRequest = Message<"portcullis.v1.UpdateConnectionReq
   id: string;
 
   /**
-   * New display name; empty keeps the current name (config-replacing updates
-   * only — a rename-only update requires it).
+   * New display name; empty keeps the current name (both update flows).
    *
    * @generated from field: string display_name = 2;
    */
   displayName: string;
 
   /**
-   * Unset = rename-only (no connection test). Set = full config replacement,
-   * re-tested and re-encrypted.
+   * Unset = descriptor-only update (name/environment/description, no
+   * connection test). Set = full config replacement, re-tested and
+   * re-encrypted.
    *
    * @generated from field: portcullis.v1.ConnectionConfigInput config = 3;
    */
   config?: ConnectionConfigInput | undefined;
+
+  /**
+   * Empty keeps the current environment — an older client that omits the
+   * field must never silently downgrade a production label.
+   *
+   * @generated from field: string environment = 4;
+   */
+  environment: string;
+
+  /**
+   * Presence-tracked: absent keeps the current description, present (even
+   * empty) replaces it.
+   *
+   * @generated from field: optional string description = 5;
+   */
+  description?: string | undefined;
 };
 
 /**

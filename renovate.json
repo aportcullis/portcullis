@@ -2,7 +2,22 @@
   "extends": [
     "config:recommended",
     ":dependencyDashboard",
-    "docker:pinDigests"
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Postgres image strings in the Go/shell test harnesses (same digest as compose.yaml)",
+      "managerFilePatterns": [
+        "/^internal/infra/dbtest/postgres\\.go$/",
+        "/^web/e2e/server\\.sh$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>postgres):(?<currentValue>[0-9][^\"@]*)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    }
   ],
   "packageRules": [
     {
@@ -16,8 +31,8 @@
       "groupName": "frontend deps"
     },
     {
-      "description": "Group base image updates (Dockerfile + compose)",
-      "matchManagers": ["dockerfile", "docker-compose"],
+      "description": "Group base image updates (Dockerfile + compose + test harness strings)",
+      "matchManagers": ["dockerfile", "docker-compose", "custom.regex"],
       "groupName": "docker images"
     },
     {

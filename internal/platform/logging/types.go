@@ -12,4 +12,8 @@ type recorder struct {
 	http.ResponseWriter
 	status int
 	bytes  int64
+	// wroteHeader pins status to the FIRST WriteHeader call: net/http sends only
+	// the first status to the client and ignores the rest, so recording later
+	// calls would log a status the client never received.
+	wroteHeader bool
 }

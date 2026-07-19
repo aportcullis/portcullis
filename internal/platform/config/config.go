@@ -57,9 +57,11 @@ func Load() (Config, error) {
 		cfg.Addr = ":" + cfg.Addr
 	}
 
-	// No dedicated owner DSN ⇒ migrate with the runtime DSN (dev single-role).
-	if cfg.MigrateDatabaseURL == "" {
-		cfg.MigrateDatabaseURL = cfg.DatabaseURL
+	// Tri-state enum: reject anything but true/false/unset instead of silently
+	// treating a typo ("ture") as unset (same fail-fast stance as log_level).
+	cfg.StartupMigrate = strings.ToLower(strings.TrimSpace(cfg.StartupMigrate))
+	if cfg.StartupMigrate != "" && cfg.StartupMigrate != "true" && cfg.StartupMigrate != "false" {
+		return Config{}, fmt.Errorf("invalid startup_migrate %q: want true, false, or unset", cfg.StartupMigrate)
 	}
 
 	// The runtime role name is spliced into migration SQL as an identifier —

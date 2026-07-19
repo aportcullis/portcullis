@@ -1,14 +1,14 @@
 import type { Component } from "solid-js";
 import { createEffect, onMount } from "solid-js";
 
-import { Route, Router } from "@solidjs/router";
+import { Navigate, Route, Router } from "@solidjs/router";
 
 import "@/app/index.css";
+import AppShell from "@/app/AppShell";
 import { resetConnections } from "@/entities/connection/store";
 import { session } from "@/entities/session/store";
 import BootstrapPage from "@/pages/BootstrapPage";
 import ConnectionsPage from "@/pages/ConnectionsPage";
-import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
 import { load } from "@/entities/session/store";
 
@@ -33,12 +33,17 @@ const App: Component = () => {
     }
   });
 
+  // Authenticated pages live under AppShell (one route guard + the header);
+  // login/bootstrap render bare. "/" lands straight on the connections table —
+  // the Google OIDC callback redirects to "/" (ADR-0007) and arrives there too.
   return (
     <Router>
-      <Route path="/" component={HomePage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/bootstrap" component={BootstrapPage} />
-      <Route path="/connections" component={ConnectionsPage} />
+      <Route component={AppShell}>
+        <Route path="/" component={() => <Navigate href="/connections" />} />
+        <Route path="/connections" component={ConnectionsPage} />
+      </Route>
     </Router>
   );
 };

@@ -142,11 +142,20 @@ func validRequestID(id string) bool {
 func isHealthPath(p string) bool { return p == "/livez" || p == "/readyz" }
 
 func (r *recorder) WriteHeader(code int) {
-	r.status = code
+	if !r.wroteHeader {
+		r.status = code
+		r.wroteHeader = true
+	}
+	// Always forward: net/http itself ignores superfluous calls and logs its own
+	// warning, and swallowing them here would hide that handler bug.
 	r.ResponseWriter.WriteHeader(code)
 }
 
 func (r *recorder) Write(b []byte) (int, error) {
+	// A Write without a prior WriteHeader implicitly commits the 200 the recorder
+	// starts with — a WriteHeader arriving after is superfluous and must not be
+	// recorded either.
+	r.wroteHeader = true
 	n, err := r.ResponseWriter.Write(b)
 	r.bytes += int64(n)
 	return n, err

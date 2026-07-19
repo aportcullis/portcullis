@@ -125,6 +125,13 @@ var tablePolicies = map[string]tablePolicy{
 	"schema_migrations": {
 		forbidden: []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
+	// Append-only policy snapshots: approval payloads pin a version, so the
+	// runtime may read and append versions but never rewrite one (ADR-0015;
+	// 0011 revokes UPDATE).
+	"connection_policy_versions": {
+		required:  []string{"SELECT", "INSERT"},
+		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
 }
 
 // querier is the multi-row query surface verifyTablePrivileges needs; both

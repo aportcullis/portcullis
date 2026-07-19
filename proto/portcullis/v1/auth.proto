@@ -49,6 +49,10 @@ message LoginRequest {
 }
 message LoginResponse {
   User user = 1;
+  // The caller's permission keys (ADR-0008 catalog), for UI affordance gating
+  // only — the server stays the authority on every RPC. Role changes revoke
+  // sessions immediately (§8.3), so a login/Me-time snapshot is current.
+  repeated string permissions = 2;
 }
 
 message LogoutRequest {}
@@ -57,6 +61,8 @@ message LogoutResponse {}
 message MeRequest {}
 message MeResponse {
   User user = 1;
+  // See LoginResponse.permissions.
+  repeated string permissions = 2;
 }
 
 message GetConfigRequest {}

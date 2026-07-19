@@ -1,21 +1,13 @@
 import { expect, test } from "@playwright/test";
 
+import type { Target } from "./target";
+import { loadTarget } from "./target";
+
 // The connections vertical in a real browser (ADR-0014): register a connection
 // against the e2e stack's own PostgreSQL, with the pre-save test, the
 // relaxed-TLS warning, the uniform redacted failure, and archive. Runs AFTER
 // auth.spec.ts (alphabetical), which bootstrapped admin@example.com, and
 // BEFORE zz-auth-lockout.spec.ts, which locks that account.
-type Target = { host: string; port: number; database: string; user: string; password: string };
-
-// The throwaway container's coordinates — pinned in server.sh (PG_PORT and the
-// POSTGRES_* envs there must match).
-const loadTarget = (): Target => ({
-  host: "127.0.0.1",
-  port: 15432,
-  database: "portcullis",
-  user: "portcullis",
-  password: "portcullis",
-});
 
 test.describe.serial("connections vertical", () => {
   const email = "admin@example.com";
@@ -42,16 +34,17 @@ test.describe.serial("connections vertical", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
-
-    // Navigate via the home link — the page is reachable, not just routable.
-    await page.getByRole("link", { name: /Connections/ }).click();
+    // Login lands straight on the connections table (AppShell layout).
     await expect(page).toHaveURL(/\/connections$/);
+    await expect(page.getByText(email, { exact: true })).toBeVisible();
     await expect(page.getByText("No connections yet")).toBeVisible();
 
-    // Open the form; choosing a relaxed TLS mode surfaces the explicit warning.
+    // Open the form; mark it production with a description, and choosing a
+    // relaxed TLS mode surfaces the explicit warning.
     await page.getByRole("button", { name: "New connection" }).click();
     await page.getByLabel("Display name").fill("Primary");
+    await page.getByLabel("Environment").selectOption("production");
+    await page.getByLabel("Description").fill("primary OLTP — e2e");
     await fillConfig(page, target, target.password);
     await expect(page.getByText(/skips certificate validation/)).toBeVisible();
 
@@ -66,6 +59,8 @@ test.describe.serial("connections vertical", () => {
     await expect(row).toBeVisible();
     await expect(row.getByText("postgresql")).toBeVisible();
     await expect(row.getByText("active")).toBeVisible();
+    // The production label is unmissable in the list (D8-0c).
+    await expect(row.getByText("production")).toBeVisible();
 
     // Details crosses the deliberate list/get permission boundary and restores
     // visibility of the safe descriptor without ever exposing the credential.
@@ -74,14 +69,18 @@ test.describe.serial("connections vertical", () => {
     await expect(page.getByText(target.host, { exact: true })).toBeVisible();
     await expect(page.getByText(`TLS mode`)).toBeVisible();
     await expect(page.getByText(`disable`, { exact: true })).toBeVisible();
+    await expect(page.getByText("primary OLTP — e2e")).toBeVisible();
     await page.getByRole("button", { name: "Dismiss" }).click();
 
     // Row-level test dials with the STORED credential.
     await row.getByRole("button", { name: "Test" }).click();
     await expect(row.getByText("OK")).toBeVisible();
 
-    // Edit, flow 1: rename-only (no config fields, no re-test — ADR-0014).
+    // Edit, flow 1: descriptor-only (no config fields, no re-test — ADR-0014).
+    // The dialog prefills from the LIST SUMMARY — no connections.get round-trip
+    // (self-review F3), so the stored description must already be in the form.
     await row.getByRole("button", { name: "Edit" }).click();
+    await expect(page.getByLabel("Description")).toHaveValue("primary OLTP — e2e");
     await page.getByLabel("Display name").fill("Primary (renamed)");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("row", { name: /Primary \(renamed\)/ })).toBeVisible();

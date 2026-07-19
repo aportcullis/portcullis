@@ -17,7 +17,7 @@ set archived_at = now(), updated_at = now(), version = version + 1,
     credential_key_version = null, credential_wrapped_dek = null,
     credential_nonce = null, credential_ciphertext = null
 where id = $1 and organization_id = $2 and archived_at is null
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
 `
 
 type ArchiveConnectionParams struct {
@@ -50,12 +50,15 @@ func (q *Queries) ArchiveConnection(ctx context.Context, arg ArchiveConnectionPa
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.Version,
+		&i.Environment,
+		&i.Description,
+		&i.CurrentPolicyVersion,
 	)
 	return i, err
 }
 
 const getConnection = `-- name: GetConnection :one
-select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version from public.connections
+select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version from public.connections
 where id = $1 and organization_id = $2
 `
 
@@ -86,21 +89,26 @@ func (q *Queries) GetConnection(ctx context.Context, arg GetConnectionParams) (C
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.Version,
+		&i.Environment,
+		&i.Description,
+		&i.CurrentPolicyVersion,
 	)
 	return i, err
 }
 
 const insertConnection = `-- name: InsertConnection :exec
 insert into public.connections (
-    id, organization_id, db_type, display_name, host, port, database_name,
+    id, organization_id, db_type, display_name, environment, description,
+    host, port, database_name,
     tls_mode, target_fingerprint,
     credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext,
-    created_by, created_at, updated_at
+    created_by, created_at, updated_at, current_policy_version
 ) values (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9,
-    $10, $11, $12, $13,
-    $14, $15, $16
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9,
+    $10, $11,
+    $12, $13, $14, $15,
+    $16, $17, $18, 1
 )
 `
 
@@ -109,6 +117,8 @@ type InsertConnectionParams struct {
 	OrganizationID       pgtype.UUID
 	DbType               string
 	DisplayName          string
+	Environment          string
+	Description          string
 	Host                 string
 	Port                 int32
 	DatabaseName         string
@@ -123,12 +133,16 @@ type InsertConnectionParams struct {
 	UpdatedAt            pgtype.Timestamptz
 }
 
+// current_policy_version starts at 1; the deferred FK is satisfied by the v1
+// default policy row the store inserts in the same transaction (ADR-0015).
 func (q *Queries) InsertConnection(ctx context.Context, arg InsertConnectionParams) error {
 	_, err := q.db.Exec(ctx, insertConnection,
 		arg.ID,
 		arg.OrganizationID,
 		arg.DbType,
 		arg.DisplayName,
+		arg.Environment,
+		arg.Description,
 		arg.Host,
 		arg.Port,
 		arg.DatabaseName,
@@ -146,7 +160,7 @@ func (q *Queries) InsertConnection(ctx context.Context, arg InsertConnectionPara
 }
 
 const listConnections = `-- name: ListConnections :many
-select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version from public.connections
+select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version from public.connections
 where organization_id = $1
   and ($2::boolean or archived_at is null)
 order by created_at desc, id desc
@@ -185,6 +199,9 @@ func (q *Queries) ListConnections(ctx context.Context, arg ListConnectionsParams
 			&i.UpdatedAt,
 			&i.ArchivedAt,
 			&i.Version,
+			&i.Environment,
+			&i.Description,
+			&i.CurrentPolicyVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -196,62 +213,25 @@ func (q *Queries) ListConnections(ctx context.Context, arg ListConnectionsParams
 	return items, nil
 }
 
-const renameConnection = `-- name: RenameConnection :one
-update public.connections
-set display_name = $3, updated_at = now(), version = version + 1
-where id = $1 and organization_id = $2
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version
-`
-
-type RenameConnectionParams struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	DisplayName    string
-}
-
-// Archived rows stay renameable: the name labels history, not the live target.
-func (q *Queries) RenameConnection(ctx context.Context, arg RenameConnectionParams) (Connection, error) {
-	row := q.db.QueryRow(ctx, renameConnection, arg.ID, arg.OrganizationID, arg.DisplayName)
-	var i Connection
-	err := row.Scan(
-		&i.ID,
-		&i.OrganizationID,
-		&i.DbType,
-		&i.DisplayName,
-		&i.Host,
-		&i.Port,
-		&i.DatabaseName,
-		&i.TlsMode,
-		&i.TargetFingerprint,
-		&i.CredentialKeyVersion,
-		&i.CredentialWrappedDek,
-		&i.CredentialNonce,
-		&i.CredentialCiphertext,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ArchivedAt,
-		&i.Version,
-	)
-	return i, err
-}
-
 const replaceConnectionConfig = `-- name: ReplaceConnectionConfig :one
 update public.connections
-set display_name = $3, host = $4, port = $5, database_name = $6, tls_mode = $7,
-    target_fingerprint = $8,
-    credential_key_version = $9, credential_wrapped_dek = $10,
-    credential_nonce = $11, credential_ciphertext = $12,
+set display_name = $3, environment = $4, description = $5,
+    host = $6, port = $7, database_name = $8, tls_mode = $9,
+    target_fingerprint = $10,
+    credential_key_version = $11, credential_wrapped_dek = $12,
+    credential_nonce = $13, credential_ciphertext = $14,
     updated_at = now(), version = version + 1
 where id = $1 and organization_id = $2 and archived_at is null
-  and version = $13
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version
+  and version = $15
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
 `
 
 type ReplaceConnectionConfigParams struct {
 	ID                   pgtype.UUID
 	OrganizationID       pgtype.UUID
 	DisplayName          string
+	Environment          string
+	Description          string
 	Host                 string
 	Port                 int32
 	DatabaseName         string
@@ -272,6 +252,8 @@ func (q *Queries) ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnec
 		arg.ID,
 		arg.OrganizationID,
 		arg.DisplayName,
+		arg.Environment,
+		arg.Description,
 		arg.Host,
 		arg.Port,
 		arg.DatabaseName,
@@ -303,6 +285,63 @@ func (q *Queries) ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnec
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.Version,
+		&i.Environment,
+		&i.Description,
+		&i.CurrentPolicyVersion,
+	)
+	return i, err
+}
+
+const updateConnectionDescriptor = `-- name: UpdateConnectionDescriptor :one
+update public.connections
+set display_name = $3, environment = $4, description = $5,
+    updated_at = now(), version = version + 1
+where id = $1 and organization_id = $2
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
+`
+
+type UpdateConnectionDescriptorParams struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	DisplayName    string
+	Environment    string
+	Description    string
+}
+
+// Descriptor-only update: name, environment label, and description — no
+// credential involved. Archived rows stay editable: these fields label
+// history, not the live target.
+func (q *Queries) UpdateConnectionDescriptor(ctx context.Context, arg UpdateConnectionDescriptorParams) (Connection, error) {
+	row := q.db.QueryRow(ctx, updateConnectionDescriptor,
+		arg.ID,
+		arg.OrganizationID,
+		arg.DisplayName,
+		arg.Environment,
+		arg.Description,
+	)
+	var i Connection
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.DbType,
+		&i.DisplayName,
+		&i.Host,
+		&i.Port,
+		&i.DatabaseName,
+		&i.TlsMode,
+		&i.TargetFingerprint,
+		&i.CredentialKeyVersion,
+		&i.CredentialWrappedDek,
+		&i.CredentialNonce,
+		&i.CredentialCiphertext,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
+		&i.Version,
+		&i.Environment,
+		&i.Description,
+		&i.CurrentPolicyVersion,
 	)
 	return i, err
 }

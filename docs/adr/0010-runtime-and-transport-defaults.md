@@ -123,10 +123,21 @@ runs via deferred calls inside `run()`):
 3. Load keyring — **refuse to start** without a valid master key (ADR-0003).
 4. Require `PORTCULLIS_DATABASE_URL`.
 5. Open a **30s startup context** covering everything up to serving.
-6. Migrate on the owner DSN (`PORTCULLIS_MIGRATE_DATABASE_URL`, empty ⇒ runtime DSN) on a
-   short-lived pool: ping first (so connect errors get a generic, DSN-safe message), apply,
-   close — the owner credential lives only for this window. Migration/DB errors are logged
-   with classified fields only; raw errors can echo the DSN (password).
+6. Migrate — *conditionally* (amended 2026-07-18, external review): the recommended
+   production shape runs migrations as the **one-shot `portcullis migrate` command** in a
+   separate process/container that is the only holder of the owner DSN, so the serving
+   process never carries owner credentials in env or memory (OWASP Database Security: the
+   application account must not own the schema). `serve` migrates at startup only when the
+   explicit tri-state `PORTCULLIS_STARTUP_MIGRATE` says so, or — when it is unset — when
+   `PORTCULLIS_MIGRATE_DATABASE_URL` is set on this process (compatibility with the
+   previous deployment shape). Deliberately DECOUPLED from
+   `PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME` (self-review 2026-07-18): a security-debug flag
+   must not silently change who migrates the schema; single-role dev/e2e opts in
+   explicitly with `STARTUP_MIGRATE=true`. When it does migrate, it uses a short-lived
+   pool: ping first (so connect errors get a generic, DSN-safe message), apply, close.
+   Migration/DB errors are logged with classified fields only; raw errors can echo the
+   DSN (password). Otherwise startup migration is skipped and an unmigrated database
+   fails step 7 with a `portcullis migrate` hint.
 7. Open the runtime pool, ping, then `VerifyRuntimeConnection` (ADR-0009);
    `PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true` downgrades *only* over-privilege violations.
 8. Wire adapters (composition root), mount handlers, register the metadata-DB readiness check,

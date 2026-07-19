@@ -22,6 +22,14 @@ const (
 	ActionConnectionArchived   Action = "CONNECTION_ARCHIVED"
 	ActionConnectionTest       Action = "CONNECTION_TEST"
 	ActionConnectionTLSRelaxed Action = "CONNECTION_TLS_RELAXED"
+
+	// Connection policy (ADR-0015). PolicyUpdated commits in the same
+	// transaction as the version insert; PolicyClassEnabled accompanies an
+	// update that newly enabled write or ddl — §4.3's "enabling write/DDL
+	// leaves an admin audit event" as a first-class queryable action (the
+	// TLSRelaxed companion-event pattern).
+	ActionConnectionPolicyUpdated      Action = "CONNECTION_POLICY_UPDATED"
+	ActionConnectionPolicyClassEnabled Action = "CONNECTION_POLICY_CLASS_ENABLED"
 )
 
 // outcome values — the terminal result of an action.

@@ -28,14 +28,17 @@ test.describe.serial("auth vertical", () => {
     await page.getByLabel(/^Password/).fill(password);
     await page.getByRole("button", { name: "Create admin account" }).click();
 
-    // Bootstrap does not start a session — the login form follows.
+    // Bootstrap does not start a session — the login form follows. A login
+    // lands straight on the connections table (no interstitial home card);
+    // the header carries the signed-in email in its user area.
     await expect(page).toHaveURL(/\/login$/);
     await signIn(page, password);
-    await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
+    await expect(page).toHaveURL(/\/connections$/);
+    await expect(page.getByText(email, { exact: true })).toBeVisible();
 
     // The session rides the __Host- cookies: a full reload stays signed in.
     await page.reload();
-    await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
+    await expect(page.getByText(email, { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login$/);
@@ -51,7 +54,7 @@ test.describe.serial("auth vertical", () => {
     // Logout are CSRF-gated only, never permission-gated).
     await page.goto("/login");
     await signIn(page, password);
-    await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
+    await expect(page.getByText(email, { exact: true })).toBeVisible();
 
     await page.context().clearCookies({ name: "__Host-portcullis_csrf" });
     await page.reload();

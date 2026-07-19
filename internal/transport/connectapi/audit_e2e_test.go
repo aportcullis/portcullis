@@ -69,7 +69,7 @@ func newAuditTestEnv(t *testing.T) *auditTestEnv {
 		connectapi.NewAuthInterceptor(authSvc),
 	)
 	mux := http.NewServeMux()
-	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc), chain)
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc, authzSvc), chain)
 	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), chain)
 	mux.Handle(authPath, authHandler)
 	mux.Handle(auditPath, auditHandler)
