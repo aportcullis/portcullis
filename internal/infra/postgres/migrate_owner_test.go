@@ -119,14 +119,17 @@ func TestMigrateRevokesRuntimeDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rows.Close()
+	// settings is the single sanctioned exception: reset-to-default removes
+	// the override row (0012, ADR-0017), mirrored by its tablePolicies entry.
+	deleteAllowed := map[string]bool{"settings": true}
 	for rows.Next() {
 		var table string
 		var canDelete bool
 		if err := rows.Scan(&table, &canDelete); err != nil {
 			t.Fatal(err)
 		}
-		if canDelete {
-			t.Errorf("runtime role holds DELETE on %s — hard delete is soft-delete-only territory (data.md)", table)
+		if canDelete != deleteAllowed[table] {
+			t.Errorf("runtime role DELETE on %s = %t, want %t (data.md: soft-delete-only, settings excepted per ADR-0017)", table, canDelete, deleteAllowed[table])
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -209,6 +212,7 @@ func TestRuntimeRoleRotationRunbook(t *testing.T) {
 		`grant usage on schema public to pc_rot_new`,
 		`grant select, insert, update on all tables in schema public to pc_rot_new`,
 		`grant usage on all sequences in schema public to pc_rot_new`,
+		`grant delete on public.settings to pc_rot_new`,
 		`revoke update on public.audit_events from pc_rot_new`,
 		`revoke update on public.connection_policy_versions from pc_rot_new`,
 		`revoke all on public.schema_migrations from pc_rot_new`,

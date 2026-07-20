@@ -1,7 +1,3 @@
-// Package pgdialect is the PostgreSQL dialect adapter (ADR-0001). This slice
-// ships only the connection tester (ADR-0014); the full QueryDialect —
-// ParseSingle/Classify/BindNamed/Execute (PRD §5.3) — lands with the M1
-// execution slice and absorbs the tester as its ValidateConnection.
 package pgdialect
 
 import (
@@ -24,32 +20,20 @@ import (
 // the real default and bounds live in platform/config (ADR-0014: 10s, [1s,60s]).
 const defaultTestTimeout = 10 * time.Second
 
-// Tester dials a PostgreSQL target and authenticates, satisfying the
-// connection app service's Tester port. Every failure is classified into a
-// caller-safe bucket (redact.go) — raw driver errors never leave this package
-// (PRD §8.1).
-type Tester struct {
-	timeout time.Duration
-}
-
-// NewTester builds a tester with the configured per-test timeout.
-func NewTester(timeout time.Duration) *Tester {
-	if timeout <= 0 {
-		timeout = defaultTestTimeout
-	}
-	return &Tester{timeout: timeout}
-}
-
-// Test connects and runs one ping round-trip, then disconnects. A nil return
-// means the target accepted the credential and the database exists.
-func (t *Tester) Test(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error {
-	cfg, err := buildConfig(target, mode, cred, t.timeout)
+// ValidateConnection dials the target, authenticates, and runs one ping
+// round-trip, then disconnects — the connection app service's
+// ConnectionValidator port (PRD §5.3, ADR-0014). Every failure is classified
+// into a caller-safe bucket (connerrors.go) — raw driver errors never leave
+// this package (PRD §8.1). A nil return means the target accepted the
+// credential and the database exists.
+func (d *Dialect) ValidateConnection(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error {
+	cfg, err := buildConfig(target, mode, cred, d.validateTimeout)
 	if err != nil {
 		// Config assembly failed before any dial; nothing target-specific to
 		// classify, and the raw error must not leak.
 		return &connection.TestError{Bucket: connection.TestBucketFailed}
 	}
-	ctx, cancel := context.WithTimeout(ctx, t.timeout)
+	ctx, cancel := context.WithTimeout(ctx, d.validateTimeout)
 	defer cancel()
 	conn, err := pgconn.ConnectConfig(ctx, cfg)
 	if err != nil {

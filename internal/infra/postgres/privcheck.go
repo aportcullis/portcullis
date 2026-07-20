@@ -132,6 +132,14 @@ var tablePolicies = map[string]tablePolicy{
 		required:  []string{"SELECT", "INSERT"},
 		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
+	// Mutable operational overrides (ADR-0017): reset-to-default removes the
+	// row (absent row = default), so this is the one table the runtime hard-
+	// DELETEs — 0012 grants it and documents the not-sensitive judgment; the
+	// change trail lives in append-only audit_events.
+	"settings": {
+		required:  []string{"SELECT", "INSERT", "UPDATE", "DELETE"},
+		forbidden: []string{"TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
 }
 
 // querier is the multi-row query surface verifyTablePrivileges needs; both

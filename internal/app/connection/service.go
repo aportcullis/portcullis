@@ -21,12 +21,12 @@ import (
 
 // New wires the service. Every dependency is required so a half-built service
 // never starts.
-func New(repo Repository, tester Tester, codec CredentialCodec, auditor AuditRecorder) (*Service, error) {
-	if repo == nil || tester == nil || codec == nil || auditor == nil {
-		return nil, errors.New("connection: nil dependency (repo, tester, codec, and auditor are required)")
+func New(repo Repository, validator ConnectionValidator, codec CredentialCodec, auditor AuditRecorder) (*Service, error) {
+	if repo == nil || validator == nil || codec == nil || auditor == nil {
+		return nil, errors.New("connection: nil dependency (repo, validator, codec, and auditor are required)")
 	}
 	return &Service{
-		repo: repo, tester: tester, codec: codec, auditor: auditor,
+		repo: repo, validator: validator, codec: codec, auditor: auditor,
 		logger: slog.Default(), now: time.Now, newID: uuid.NewString,
 	}, nil
 }
@@ -322,7 +322,7 @@ func (s *Service) TestByID(ctx context.Context, actor identity.UserID, id connec
 // recorded only for explicit test actions (the Test RPC); inside Create/Update
 // it is implied by the transactional CONNECTION_CREATED/UPDATED event.
 func (s *Service) test(ctx context.Context, actor identity.UserID, id connection.ConnectionID, target connection.Target, mode connection.TLSMode, cred connection.Credential, explicit bool) error {
-	err := s.tester.Test(ctx, target, mode, cred)
+	err := s.validator.ValidateConnection(ctx, target, mode, cred)
 	if err == nil {
 		if explicit {
 			s.recordTest(ctx, actor, id, target, mode, audit.OutcomeSucceeded, "")

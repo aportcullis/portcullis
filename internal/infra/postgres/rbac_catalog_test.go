@@ -23,9 +23,9 @@ func TestPermissionCatalogSeededSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCatalog: %v", err)
 	}
-	// ADR-0008 appendix: 32 keys across users/roles/connections/policies/requests/
-	// savedqueries/audit.
-	if len(catalog) != 32 {
-		t.Fatalf("seeded catalog has %d keys, want 32", len(catalog))
+	// ADR-0008 appendix: 35 keys across users/roles/connections/policies/requests/
+	// savedqueries/audit/settings (settings.* added by 0012, ADR-0017).
+	if len(catalog) != 35 {
+		t.Fatalf("seeded catalog has %d keys, want 35", len(catalog))
 	}
 }

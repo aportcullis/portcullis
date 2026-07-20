@@ -30,6 +30,12 @@ const (
 	// TLSRelaxed companion-event pattern).
 	ActionConnectionPolicyUpdated      Action = "CONNECTION_POLICY_UPDATED"
 	ActionConnectionPolicyClassEnabled Action = "CONNECTION_POLICY_CLASS_ENABLED"
+
+	// Runtime settings (ADR-0017). SettingUpdated commits in the same
+	// transaction as the settings row change (set AND reset), recording key
+	// and old→new value verbatim — setting values are operational numbers,
+	// never secrets (PRD §8.4: every admin settings change is audited).
+	ActionSettingUpdated Action = "SETTING_UPDATED"
 )
 
 // outcome values — the terminal result of an action.
@@ -47,4 +53,8 @@ const (
 	// audit_events.connection_id snapshot column stays reserved for
 	// execution-path events — ADR-0014.)
 	TargetTypeConnection = "connection"
+	// TargetTypeSetting is the target_type for SETTING_UPDATED events; the
+	// setting key travels in the event metadata (settings rows have no UUID —
+	// the key is the identity, ADR-0017).
+	TargetTypeSetting = "setting"
 )

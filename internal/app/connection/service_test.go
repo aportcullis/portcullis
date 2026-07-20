@@ -129,22 +129,22 @@ func (r *fakeRepo) TestMaterial(_ context.Context, org identity.OrganizationID, 
 	return *c, r.sealed[id], nil
 }
 
-// fakeTester scripts the connection test outcome and records what it dialed.
-type fakeTester struct {
-	err       error
-	calls     int
-	afterTest func()
+// fakeValidator scripts the connection test outcome and records what it dialed.
+type fakeValidator struct {
+	err           error
+	calls         int
+	afterValidate func()
 
 	lastTarget connection.Target
 	lastMode   connection.TLSMode
 	lastCred   connection.Credential
 }
 
-func (t *fakeTester) Test(_ context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error {
+func (t *fakeValidator) ValidateConnection(_ context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error {
 	t.calls++
 	t.lastTarget, t.lastMode, t.lastCred = target, mode, cred
-	if t.afterTest != nil {
-		t.afterTest()
+	if t.afterValidate != nil {
+		t.afterValidate()
 	}
 	return t.err
 }
@@ -188,27 +188,27 @@ func (a *fakeAuditor) Record(_ context.Context, e audit.Event) error {
 }
 
 type fixture struct {
-	svc     *appconn.Service
-	repo    *fakeRepo
-	tester  *fakeTester
-	codec   *fakeCodec
-	auditor *fakeAuditor
+	svc       *appconn.Service
+	repo      *fakeRepo
+	validator *fakeValidator
+	codec     *fakeCodec
+	auditor   *fakeAuditor
 }
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	repo := newFakeRepo()
-	tester := &fakeTester{}
+	validator := &fakeValidator{}
 	codec := newFakeCodec()
 	auditor := &fakeAuditor{}
-	svc, err := appconn.New(repo, tester, codec, auditor)
+	svc, err := appconn.New(repo, validator, codec, auditor)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ids := 0
 	svc.WithIDGenerator(func() string { ids++; return "conn-" + string(rune('0'+ids)) }).
 		WithClock(func() time.Time { return time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC) })
-	return fixture{svc: svc, repo: repo, tester: tester, codec: codec, auditor: auditor}
+	return fixture{svc: svc, repo: repo, validator: validator, codec: codec, auditor: auditor}
 }
 
 func validCreate() appconn.CreateParams {
@@ -223,16 +223,16 @@ func validCreate() appconn.CreateParams {
 
 func TestNewRejectsNilDependencies(t *testing.T) {
 	t.Parallel()
-	if _, err := appconn.New(nil, &fakeTester{}, newFakeCodec(), &fakeAuditor{}); err == nil {
+	if _, err := appconn.New(nil, &fakeValidator{}, newFakeCodec(), &fakeAuditor{}); err == nil {
 		t.Error("New with nil repo should fail")
 	}
 	if _, err := appconn.New(newFakeRepo(), nil, newFakeCodec(), &fakeAuditor{}); err == nil {
-		t.Error("New with nil tester should fail")
+		t.Error("New with nil validator should fail")
 	}
-	if _, err := appconn.New(newFakeRepo(), &fakeTester{}, nil, &fakeAuditor{}); err == nil {
+	if _, err := appconn.New(newFakeRepo(), &fakeValidator{}, nil, &fakeAuditor{}); err == nil {
 		t.Error("New with nil codec should fail")
 	}
-	if _, err := appconn.New(newFakeRepo(), &fakeTester{}, newFakeCodec(), nil); err == nil {
+	if _, err := appconn.New(newFakeRepo(), &fakeValidator{}, newFakeCodec(), nil); err == nil {
 		t.Error("New with nil auditor should fail")
 	}
 }
@@ -242,7 +242,7 @@ func TestNewRejectsNilDependencies(t *testing.T) {
 func TestCreateWithFailingTestPersistsNothing(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.tester.err = &connection.TestError{Bucket: connection.TestBucketAuthFailed}
+	f.validator.err = &connection.TestError{Bucket: connection.TestBucketAuthFailed}
 
 	_, err := f.svc.Create(t.Context(), "admin1", validCreate())
 
@@ -338,8 +338,8 @@ func TestCreateSealsUnderGeneratedIDAndOrg(t *testing.T) {
 	if f.codec.sealedID != got.ID || f.codec.sealedOrg != "org1" {
 		t.Errorf("sealed under (%s, %s), want (%s, org1)", f.codec.sealedOrg, f.codec.sealedID, got.ID)
 	}
-	if f.tester.calls != 1 || f.tester.lastCred.User != "reader" || f.tester.lastCred.Password != "s3cret" {
-		t.Errorf("tester saw %+v, want the submitted credential", f.tester.lastCred)
+	if f.validator.calls != 1 || f.validator.lastCred.User != "reader" || f.validator.lastCred.Password != "s3cret" {
+		t.Errorf("tester saw %+v, want the submitted credential", f.validator.lastCred)
 	}
 }
 
@@ -364,7 +364,7 @@ func TestCreateValidationFailuresSkipTester(t *testing.T) {
 			if _, err := f.svc.Create(t.Context(), "admin1", p); !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
-			if f.tester.calls != 0 {
+			if f.validator.calls != 0 {
 				t.Error("tester must not be dialed for invalid input")
 			}
 			if f.repo.createCalls != 0 {
@@ -409,7 +409,7 @@ func TestUpdateRenameOnlySkipsTest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.tester.calls = 0
+	f.validator.calls = 0
 
 	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{DisplayName: "Renamed"})
 	if err != nil {
@@ -418,7 +418,7 @@ func TestUpdateRenameOnlySkipsTest(t *testing.T) {
 	if got.DisplayName != "Renamed" {
 		t.Errorf("DisplayName = %q, want Renamed", got.DisplayName)
 	}
-	if f.tester.calls != 0 {
+	if f.validator.calls != 0 {
 		t.Error("rename-only must not dial the target")
 	}
 	if f.repo.renameCalls != 1 || f.repo.replaceCalls != 0 {
@@ -437,7 +437,7 @@ func TestUpdateConfigRetestsAndReseals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.tester.calls = 0
+	f.validator.calls = 0
 
 	cfg := validCreate().Config
 	cfg.Host = "replica.example.com"
@@ -446,7 +446,7 @@ func TestUpdateConfigRetestsAndReseals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.tester.calls != 1 {
+	if f.validator.calls != 1 {
 		t.Error("a config change must re-run the connection test")
 	}
 	if got.Target.Host != "replica.example.com" || got.TLSMode != connection.TLSModeDisable {
@@ -463,7 +463,7 @@ func TestUpdateConfigRetestsAndReseals(t *testing.T) {
 		t.Fatalf("want [CONNECTION_UPDATED, CONNECTION_TLS_RELAXED], got %+v", last)
 	}
 	// A failing test must abort the update.
-	f.tester.err = &connection.TestError{Bucket: connection.TestBucketUnreachable}
+	f.validator.err = &connection.TestError{Bucket: connection.TestBucketUnreachable}
 	if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Config: &cfg}); err == nil {
 		t.Fatal("config update with a failing test must not persist")
 	}
@@ -525,7 +525,7 @@ func TestUpdateConfigRejectsConcurrentRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.tester.afterTest = func() {
+	f.validator.afterValidate = func() {
 		current := f.repo.conns[created.ID]
 		current.DisplayName = "Renamed while testing"
 		current.Version++
@@ -564,11 +564,11 @@ func TestArchiveDiscardsCredentialAndRefusesTwice(t *testing.T) {
 		t.Fatalf("second archive err = %v, want ErrAlreadyArchived", err)
 	}
 	// The credential is gone: test-by-id must refuse rather than dial.
-	f.tester.calls = 0
+	f.validator.calls = 0
 	if err := f.svc.TestByID(t.Context(), "admin1", created.ID); !errors.Is(err, connection.ErrArchived) {
 		t.Fatalf("TestByID on archived err = %v, want ErrArchived", err)
 	}
-	if f.tester.calls != 0 {
+	if f.validator.calls != 0 {
 		t.Error("archived connection must not be dialed")
 	}
 }
@@ -582,13 +582,13 @@ func TestTestByIDOpensSealedCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.tester.calls = 0
+	f.validator.calls = 0
 
 	if err := f.svc.TestByID(t.Context(), "admin1", created.ID); err != nil {
 		t.Fatal(err)
 	}
-	if f.tester.calls != 1 || f.tester.lastCred.User != "reader" {
-		t.Errorf("tester dialed with %+v, want the opened credential", f.tester.lastCred)
+	if f.validator.calls != 1 || f.validator.lastCred.User != "reader" {
+		t.Errorf("tester dialed with %+v, want the opened credential", f.validator.lastCred)
 	}
 	if len(f.auditor.events) != 1 || f.auditor.events[0].Action != audit.ActionConnectionTest ||
 		f.auditor.events[0].Outcome != audit.OutcomeSucceeded ||
@@ -634,12 +634,12 @@ func TestTestByIDOpensUnderStoredID(t *testing.T) {
 	const alias = connection.ConnectionID("CONN-ALIAS")
 	f.repo.conns[alias] = f.repo.conns[created.ID]
 	f.repo.sealed[alias] = f.repo.sealed[created.ID]
-	f.tester.calls = 0
+	f.validator.calls = 0
 
 	if err := f.svc.TestByID(t.Context(), "admin1", alias); err != nil {
 		t.Fatalf("TestByID through an alias spelling must open under the stored id: %v", err)
 	}
-	if f.tester.calls != 1 {
+	if f.validator.calls != 1 {
 		t.Error("the stored credential should have been opened and dialed")
 	}
 	last := f.auditor.events[len(f.auditor.events)-1]
@@ -660,7 +660,7 @@ func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.tester.afterTest = func() {
+	f.validator.afterValidate = func() {
 		// The archive commits while the dial is in flight.
 		now := time.Now()
 		f.repo.conns[created.ID].ArchivedAt = &now
@@ -677,12 +677,12 @@ func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 	}
 
 	// A NEW test after the archive is refused at admission.
-	f.tester.afterTest = nil
-	f.tester.calls = 0
+	f.validator.afterValidate = nil
+	f.validator.calls = 0
 	if err := f.svc.TestByID(t.Context(), "admin1", created.ID); !errors.Is(err, connection.ErrArchived) {
 		t.Fatalf("new test after archive = %v, want ErrArchived", err)
 	}
-	if f.tester.calls != 0 {
+	if f.validator.calls != 0 {
 		t.Error("an archived connection must not be dialed")
 	}
 }
@@ -692,7 +692,7 @@ func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 func TestTestByConfig(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.tester.err = &connection.TestError{Bucket: connection.TestBucketTLSFailed}
+	f.validator.err = &connection.TestError{Bucket: connection.TestBucketTLSFailed}
 
 	err := f.svc.TestByConfig(t.Context(), "admin1", validCreate().Config)
 	var te *connection.TestError
@@ -730,7 +730,7 @@ func TestConnectionTestEventsCarryTLSMode(t *testing.T) {
 	t.Run("explicit test failure", func(t *testing.T) {
 		t.Parallel()
 		f := newFixture(t)
-		f.tester.err = &connection.TestError{Bucket: connection.TestBucketUnreachable}
+		f.validator.err = &connection.TestError{Bucket: connection.TestBucketUnreachable}
 		if err := f.svc.TestByConfig(t.Context(), "admin1", validCreate().Config); err == nil {
 			t.Fatal("want the test failure surfaced")
 		}

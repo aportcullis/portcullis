@@ -15,7 +15,7 @@ import (
 )
 
 // pgCoords extracts the throwaway container's dial coordinates from the shared
-// pool so the tester exercises a real PostgreSQL.
+// pool so the validator exercises a real PostgreSQL.
 func pgCoords(t *testing.T) (target connection.Target, cred connection.Credential) {
 	t.Helper()
 	cc := dbtest.Postgres(t).Config().ConnConfig
@@ -50,13 +50,13 @@ func assertBucket(t *testing.T, err error, want connection.TestBucket, password 
 	}
 }
 
-func TestTesterSucceedsAgainstRealTarget(t *testing.T) {
+func TestValidateConnectionSucceedsAgainstRealTarget(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
-	tester := pgdialect.NewTester(10 * time.Second)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
 	// The throwaway container has no TLS, so this also exercises the relaxed
 	// "disable" path end-to-end.
-	if err := tester.Test(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
+	if err := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
 		t.Fatalf("Test: %v", err)
 	}
 }
@@ -68,7 +68,7 @@ func TestTesterSucceedsAgainstRealTarget(t *testing.T) {
 // dangling path, PGCHANNELBINDING=require) flip a good "disable" test to a
 // failure without the pinning. t.Setenv forbids t.Parallel, so these run as
 // subtests of one serial parent.
-func TestTesterIgnoresProcessEnvironment(t *testing.T) {
+func TestValidateConnectionIgnoresProcessEnvironment(t *testing.T) {
 	cases := []struct{ env, val string }{
 		{"PGSSLROOTCERT", "/nonexistent/portcullis-test-ca.pem"},
 		{"PGSSLCERT", "/nonexistent/portcullis-test-client.pem"},
@@ -95,49 +95,49 @@ func TestTesterIgnoresProcessEnvironment(t *testing.T) {
 		t.Run(tc.env, func(t *testing.T) {
 			target, cred := pgCoords(t)
 			t.Setenv(tc.env, tc.val)
-			tester := pgdialect.NewTester(10 * time.Second)
-			if err := tester.Test(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
+			validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+			if err := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
 				t.Fatalf("Test with %s=%s in the environment: %v", tc.env, tc.val, err)
 			}
 		})
 	}
 }
 
-func TestTesterClassifiesWrongPassword(t *testing.T) {
+func TestValidateConnectionClassifiesWrongPassword(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
 	bad, err := connection.NewCredential(cred.User, "definitely-wrong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tester := pgdialect.NewTester(10 * time.Second)
-	got := tester.Test(context.Background(), target, connection.TLSModeDisable, bad)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, bad)
 	assertBucket(t, got, connection.TestBucketAuthFailed, "definitely-wrong-password")
 }
 
-func TestTesterClassifiesUnknownDatabase(t *testing.T) {
+func TestValidateConnectionClassifiesUnknownDatabase(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
 	missing, err := connection.NewTarget(target.Host, int(target.Port), "portcullis_no_such_db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tester := pgdialect.NewTester(10 * time.Second)
-	got := tester.Test(context.Background(), missing, connection.TLSModeDisable, cred)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	got := validator.ValidateConnection(context.Background(), missing, connection.TLSModeDisable, cred)
 	assertBucket(t, got, connection.TestBucketUnknownDatabase, cred.Password)
 }
 
 // The certificate-verifying default against a server with no TLS at all must
 // classify as a TLS failure (the server answers 'N' to the SSLRequest).
-func TestTesterClassifiesTLSFailure(t *testing.T) {
+func TestValidateConnectionClassifiesTLSFailure(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
-	tester := pgdialect.NewTester(10 * time.Second)
-	got := tester.Test(context.Background(), target, connection.TLSModeVerifyFull, cred)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeVerifyFull, cred)
 	assertBucket(t, got, connection.TestBucketTLSFailed, cred.Password)
 }
 
-func TestTesterClassifiesUnreachable(t *testing.T) {
+func TestValidateConnectionClassifiesUnreachable(t *testing.T) {
 	t.Parallel()
 	// Grab a port that is closed: listen, note the port, close the listener.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -158,14 +158,14 @@ func TestTesterClassifiesUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tester := pgdialect.NewTester(5 * time.Second)
-	got := tester.Test(context.Background(), target, connection.TLSModeDisable, cred)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 5 * time.Second})
+	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred)
 	assertBucket(t, got, connection.TestBucketUnreachable, "pw-unreachable")
 }
 
 // A server that accepts TCP but never answers the startup message must hit the
 // configured timeout, not hang.
-func TestTesterHonorsTimeout(t *testing.T) {
+func TestValidateConnectionHonorsTimeout(t *testing.T) {
 	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -194,9 +194,9 @@ func TestTesterHonorsTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tester := pgdialect.NewTester(time.Second)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: time.Second})
 	start := time.Now()
-	got := tester.Test(context.Background(), target, connection.TLSModeDisable, cred)
+	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred)
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("test took %s, want ~1s timeout", elapsed)
 	}

@@ -10,12 +10,12 @@ import (
 // the package's other types (file-split convention). Collaborators are the
 // consumer-defined ports (ports.go).
 type Service struct {
-	repo    Repository
-	tester  Tester
-	codec   CredentialCodec
-	auditor AuditRecorder
-	logger  *slog.Logger
-	now     func() time.Time
+	repo      Repository
+	validator ConnectionValidator
+	codec     CredentialCodec
+	auditor   AuditRecorder
+	logger    *slog.Logger
+	now       func() time.Time
 	// newID mints the connection UUID before sealing — the envelope's AAD binds
 	// the record id (ADR-0003/0014) — so it is injected for deterministic tests.
 	newID func() string

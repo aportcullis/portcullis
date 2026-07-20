@@ -69,7 +69,7 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	}
 	connSvc, err := connapp.New(
 		postgres.NewConnectionStore(pool),
-		pgdialect.NewTester(10*time.Second),
+		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second}),
 		crypto.NewConnectionCredentialCodec(keyring),
 		postgres.NewAuditStore(pool),
 	)

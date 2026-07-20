@@ -1,75 +1,39 @@
 # ADR-0008: RBAC — permissions in code, roles in the database
 
-- **Status:** Accepted (amended 2026-07-04: the seeded catalog and system-role grants are
-  transcribed as the normative appendix; column/name fixes to match the shipped schema)
+- **Status:** Accepted (amended 2026-07-04: the seeded catalog and system-role grants are transcribed as the normative appendix; column/name fixes to match the shipped schema)
 - **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
-The PRD originally fixed three roles (admin/approver/requester) as an enum. We need **custom
-roles**: an admin must be able to define new roles without a code change. This ADR makes roles
-data and keeps permissions as code, and the PRD §4.3/§6 are amended to match.
+The PRD originally fixed three roles (admin/approver/requester) as an enum. We need **custom roles**: an admin must be able to define new roles without a code change. This ADR makes roles data and keeps permissions as code, and the PRD §4.3/§6 are amended to match.
 
-Standards verified 2026-06-28 (OWASP/oso/WorkOS/Kubernetes RBAC): permissions are **atomic units
-defined by the application**; roles are **bundles of permissions stored in the database**; users
-get roles via membership; and **authorization is checked against permissions, not role names**.
+Standards verified 2026-06-28 (OWASP/oso/WorkOS/Kubernetes RBAC): permissions are **atomic units defined by the application**; roles are **bundles of permissions stored in the database**; users get roles via membership; and **authorization is checked against permissions, not role names**.
 
 ## Decision
 
 ### Permissions — fine-grained catalog in SQL, loaded at startup
-- Permissions follow **Google-IAM-style `resource.verb` keys** (dotted, fine-grained). Verbs:
-  **`list`** (see the collection), **`get`** (see one record's detail/inner values), `create`,
-  `update`, `delete`, plus resource-specific actions. Examples:
-  `connections.{list,get,create,update,delete,test}`,
-  `requests.{list,get,create,execute,approve,reject}`,
-  `users.{list,get,create,update,disable}`, `roles.{list,get,create,update,delete}`,
-  `savedqueries.{list,get,create,update,delete,share}`, `policies.{get,update}`,
-  `audit.{list,get}`.
-- The transport reflects that boundary: a `list` response carries only a collection-safe summary, while target
-  coordinates, TLS settings, audit correlation/network fields, and metadata appear only in a `get` response.
-  Mutation responses use the same summary shape, so `create`/`update`/`delete` never accidentally become a
-  detail-read grant.
-- The **catalog lives in SQL**: a seeded `permissions(key, description)` table is the source of truth
-  (FK integrity for `role_permissions`; the role UI lists available permissions from it). The app
-  **loads the catalog from the database at startup** rather than hardcoding it.
-- Go keeps only the `Permission` type. We do **not** maintain a code-side catalog/enum; a specific
-  key is referenced only at the exact site that enforces it, when that feature ships.
+- Permissions follow **Google-IAM-style `resource.verb` keys** (dotted, fine-grained). Verbs: **`list`** (see the collection), **`get`** (see one record's detail/inner values), `create`, `update`, `delete`, plus resource-specific actions. Examples: `connections.{list,get,create,update,delete,test}`, `requests.{list,get,create,execute,approve,reject}`, `users.{list,get,create,update,disable}`, `roles.{list,get,create,update,delete}`, `savedqueries.{list,get,create,update,delete,share}`, `policies.{get,update}`, `audit.{list,get}`.
+- The transport reflects that boundary: a `list` response carries only a collection-safe summary, while target coordinates, TLS settings, audit correlation/network fields, and metadata appear only in a `get` response. Mutation responses use the same summary shape, so `create`/`update`/`delete` never accidentally become a detail-read grant.
+- The **catalog lives in SQL**: a seeded `permissions(key, description)` table is the source of truth (FK integrity for `role_permissions`; the role UI lists available permissions from it). The app **loads the catalog from the database at startup** rather than hardcoding it.
+- Go keeps only the `Permission` type. We do **not** maintain a code-side catalog/enum; a specific key is referenced only at the exact site that enforces it, when that feature ships.
 
 ### Roles = database rows (custom roles allowed)
-- `roles(id, organization_id, name, is_system, is_bootstrap_default, created_at, deleted_at)` —
-  soft-deleted, never hard-deleted (`docs/conventions/data.md`), plus `unique (id,
-  organization_id)` as the composite-FK target so a membership's role must belong to the
-  membership's own org (ADR-0004).
-- Partial unique indexes (both ignore soft-deleted rows, so a deleted role frees its name):
-  `roles_org_name` on `(organization_id, name)`, and `roles_one_bootstrap_default` on
-  `(organization_id) where is_bootstrap_default` — at most one bootstrap default per org.
-- `role_permissions(role_id, permission_key)` — `permission_key` FKs `permissions(key)`
-  (the catalog is the referential source of truth), primary key `(role_id, permission_key)`,
-  plus a reverse-lookup index on `permission_key`.
-- **Custom roles**: admins (with `roles.create`/`roles.update`/`roles.delete` from the catalog)
-  create roles and assign any catalog permissions.
-- **System roles** (`is_system = true`) are seeded **defaults, not a closed set** — their exact
-  permission sets are in the appendix below. They cannot be deleted/renamed, but the set
-  of roles is open — admins add custom roles, and **the code never enumerates role names** (e.g.
-  `role == "admin"`) for authorization; only permissions are checked.
+- `roles(id, organization_id, name, is_system, is_bootstrap_default, created_at, deleted_at)` — soft-deleted, never hard-deleted (`docs/conventions/data.md`), plus `unique (id, organization_id)` as the composite-FK target so a membership's role must belong to the membership's own org (ADR-0004).
+- Partial unique indexes (both ignore soft-deleted rows, so a deleted role frees its name): `roles_org_name` on `(organization_id, name)`, and `roles_one_bootstrap_default` on `(organization_id) where is_bootstrap_default` — at most one bootstrap default per org.
+- `role_permissions(role_id, permission_key)` — `permission_key` FKs `permissions(key)` (the catalog is the referential source of truth), primary key `(role_id, permission_key)`, plus a reverse-lookup index on `permission_key`.
+- **Custom roles**: admins (with `roles.create`/`roles.update`/`roles.delete` from the catalog) create roles and assign any catalog permissions.
+- **System roles** (`is_system = true`) are seeded **defaults, not a closed set** — their exact permission sets are in the appendix below. They cannot be deleted/renamed, but the set of roles is open — admins add custom roles, and **the code never enumerates role names** (e.g. `role == "admin"`) for authorization; only permissions are checked.
 
 ### Membership references a role
 - `organization_memberships.role_id → roles(id)` (replacing the text enum).
-- Role names live only in SQL (seed data). **Go never hardcodes a role name** — bootstrap assigns
-  the role resolved by the `is_bootstrap_default` flag (seeded on `admin`), so even the
-  bootstrap-role choice is data, not code.
+- Role names live only in SQL (seed data). **Go never hardcodes a role name** — bootstrap assigns the role resolved by the `is_bootstrap_default` flag (seeded on `admin`), so even the bootstrap-role choice is data, not code.
 
 ### Authorization checks permissions, not roles
-- The runtime resolves a user's effective permissions (membership → role → role_permissions) and
-  checks **`has(permission)`**, never `role == "admin"`. The last active admin protection is
-  expressed as "at least one active member with `users.update` **and** `users.disable`" (the
-  catalog keys — there is no aggregate `users.manage` permission).
+- The runtime resolves a user's effective permissions (membership → role → role_permissions) and checks **`has(permission)`**, never `role == "admin"`. The last active admin protection is expressed as "at least one active member with `users.update` **and** `users.disable`" (the catalog keys — there is no aggregate `users.manage` permission).
 
 ## Appendix — seeded catalog & system-role grants (normative, mirrors migration 0002)
-The SQL seed remains the runtime source of truth (loaded at startup); this appendix is its
-documentation-side mirror — a divergence between the two is a defect. Adding a permission =
-a new migration inserting the key **and** an amendment here.
+The SQL seed remains the runtime source of truth (loaded at startup); this appendix is its documentation-side mirror — a divergence between the two is a defect. Adding a permission = a new migration inserting the key **and** an amendment here.
 
-**Catalog (32 keys):**
+**Catalog (35 keys; `settings.*` added by migration 0012, ADR-0017):**
 - `users.{list,get,create,update,disable}`
 - `roles.{list,get,create,update,delete}`
 - `connections.{list,get,create,update,delete,test}`
@@ -77,6 +41,7 @@ a new migration inserting the key **and** an amendment here.
 - `requests.{list,get,create,execute,approve,reject}`
 - `savedqueries.{list,get,create,update,delete,share}`
 - `audit.{list,get}`
+- `settings.{list,get,update}`
 
 **System-role grants (seeded for the default org; `admin` carries `is_bootstrap_default`):**
 | Role | Permissions |
@@ -85,18 +50,11 @@ a new migration inserting the key **and** an amendment here.
 | `approver` | `requests.{list,get,create,execute,approve,reject}`, `savedqueries.{list,get,create,update,delete,share}`, `audit.{list,get}` |
 | `requester` | `requests.{list,get,create,execute}`, `savedqueries.{list,get,create,update,delete}` |
 
-(Prose shorthands like "review requests" or "audit view" in earlier drafts meant
-`requests.approve`/`requests.reject` and `audit.list`/`audit.get` — only the keys above
-exist.)
+(Prose shorthands like "review requests" or "audit view" in earlier drafts meant `requests.approve`/`requests.reject` and `audit.list`/`audit.get` — only the keys above exist.)
 
 ## Consequences
-- New domain types: `Permission` (+catalog), `Role{ID, Name, IsSystem, Permissions}`; ports
-  `RoleRepository` and permission resolution on the user side. Migration 0002 introduces
-  `permissions`/`roles`/`role_permissions`, seeds the catalog and the three system roles, and
-  switches memberships to `role_id` (composite FK `(role_id, organization_id)`).
-- PRD §4.3 amended: roles are DB-stored with a permission set; three system roles are seeded;
-  custom roles are supported; authorization is permission-based. §6 gains `roles`/`role_permissions`
-  and `organization_memberships.role_id`.
+- New domain types: `Permission` (+catalog), `Role{ID, Name, IsSystem, Permissions}`; ports `RoleRepository` and permission resolution on the user side. Migration 0002 introduces `permissions`/`roles`/`role_permissions`, seeds the catalog and the three system roles, and switches memberships to `role_id` (composite FK `(role_id, organization_id)`).
+- PRD §4.3 amended: roles are DB-stored with a permission set; three system roles are seeded; custom roles are supported; authorization is permission-based. §6 gains `roles`/`role_permissions` and `organization_memberships.role_id`.
 - More moving parts than a fixed enum, but required for custom roles and aligned with standard RBAC.
 
 ## Sources (checked 2026-06-28)

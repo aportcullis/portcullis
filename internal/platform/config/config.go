@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 
+	"github.com/aportcullis/portcullis/internal/domain/setting"
 	"github.com/aportcullis/portcullis/internal/platform/logging"
 )
 
@@ -33,14 +35,21 @@ func Load() (Config, error) {
 	v.SetDefault("addr", ":8080")
 	v.SetDefault("drain_delay", time.Duration(0))
 	v.SetDefault("shutdown_timeout", 15*time.Second)
-	v.SetDefault("log_level", "info")
 	v.SetDefault("log_format", "json")
 	v.SetDefault("argon2_max_concurrent", 2)
 	v.SetDefault("runtime_role", "portcullis_runtime")
-	v.SetDefault("login_backoff_threshold", 5)
-	v.SetDefault("login_backoff_base", time.Minute)
-	v.SetDefault("login_backoff_cap", 15*time.Minute)
-	v.SetDefault("connection_test_timeout", 10*time.Second)
+	// Tier-C tunable defaults come from the settings registry (ADR-0017) —
+	// one source for the env seed here and the DB store's fallback.
+	for _, d := range setting.All() {
+		switch d.Kind {
+		case setting.KindDuration:
+			v.SetDefault(string(d.Key), d.DefaultDuration())
+		case setting.KindInt:
+			v.SetDefault(string(d.Key), d.DefaultInt64())
+		default:
+			v.SetDefault(string(d.Key), d.Default)
+		}
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -70,12 +79,14 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid runtime_role %q: must match %s", cfg.RuntimeRole, runtimeRolePattern)
 	}
 
-	// Enumerated logging config: reject unknown values instead of silently
-	// falling back, so an operator's intent isn't quietly overridden. The logging
-	// package owns the valid vocabulary (a second copy here would drift).
-	if _, ok := logging.ParseLevel(cfg.LogLevel); !ok {
-		return Config{}, fmt.Errorf("invalid log_level %q: want one of debug, info, warn, error", cfg.LogLevel)
-	}
+	// Enumerated logging format: reject unknown values instead of silently
+	// falling back, so an operator's intent isn't quietly overridden. The
+	// logging package owns the format vocabulary; log_level validates through
+	// its registry descriptor below (the level vocabularies are pinned
+	// together by a logging white-box test). The env accepts any case
+	// (ParseLevel's contract) — normalize here so the canonical lowercase
+	// form is what the descriptor sees and what flows on.
+	cfg.LogLevel = strings.ToLower(strings.TrimSpace(cfg.LogLevel))
 	if !logging.ValidFormat(cfg.LogFormat) {
 		return Config{}, fmt.Errorf("invalid log_format %q: want json or text", cfg.LogFormat)
 	}
@@ -86,17 +97,29 @@ func Load() (Config, error) {
 	if cfg.Argon2MaxConcurrent < 1 || cfg.Argon2MaxConcurrent > maxArgon2Concurrent {
 		return Config{}, fmt.Errorf("argon2_max_concurrent %d out of range [1, %d]", cfg.Argon2MaxConcurrent, maxArgon2Concurrent)
 	}
-	if cfg.LoginBackoffThreshold < 1 || cfg.LoginBackoffThreshold > maxLoginBackoffThreshold {
-		return Config{}, fmt.Errorf("login_backoff_threshold %d out of range [1, %d]", cfg.LoginBackoffThreshold, maxLoginBackoffThreshold)
+	// Tier-C tunables validate through their registry descriptors (ADR-0017):
+	// the SAME bounds gate the env seed here and every settings-store
+	// write/read, so the two paths cannot drift.
+	for _, tc := range []struct {
+		key  setting.Key
+		text string
+	}{
+		{setting.KeyLogLevel, cfg.LogLevel},
+		{setting.KeyLoginBackoffThreshold, strconv.Itoa(cfg.LoginBackoffThreshold)},
+		{setting.KeyLoginBackoffBase, cfg.LoginBackoffBase.String()},
+		{setting.KeyLoginBackoffCap, cfg.LoginBackoffCap.String()},
+		{setting.KeyConnectionTestTimeout, cfg.ConnectionTestTimeout.String()},
+	} {
+		d, ok := setting.Lookup(tc.key)
+		if !ok {
+			return Config{}, fmt.Errorf("setting %q missing from the registry", tc.key)
+		}
+		if err := d.Validate(tc.text); err != nil {
+			return Config{}, err
+		}
 	}
-	if cfg.LoginBackoffBase <= 0 {
-		return Config{}, fmt.Errorf("login_backoff_base must be positive, got %s", cfg.LoginBackoffBase)
-	}
-	if cfg.LoginBackoffCap < cfg.LoginBackoffBase || cfg.LoginBackoffCap > maxLoginBackoffCap {
-		return Config{}, fmt.Errorf("login_backoff_cap %s out of range [login_backoff_base %s, %s]", cfg.LoginBackoffCap, cfg.LoginBackoffBase, maxLoginBackoffCap)
-	}
-	if cfg.ConnectionTestTimeout < minConnectionTestTimeout || cfg.ConnectionTestTimeout > maxConnectionTestTimeout {
-		return Config{}, fmt.Errorf("connection_test_timeout %s out of range [%s, %s]", cfg.ConnectionTestTimeout, minConnectionTestTimeout, maxConnectionTestTimeout)
+	if !setting.BackoffPairConsistent(cfg.LoginBackoffBase, cfg.LoginBackoffCap) {
+		return Config{}, fmt.Errorf("login_backoff_cap %s below login_backoff_base %s", cfg.LoginBackoffCap, cfg.LoginBackoffBase)
 	}
 	if cfg.DrainDelay < 0 {
 		return Config{}, fmt.Errorf("drain_delay must not be negative, got %s", cfg.DrainDelay)

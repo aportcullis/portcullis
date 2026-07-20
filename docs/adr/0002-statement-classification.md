@@ -1,17 +1,10 @@
 # ADR-0002: Statement classification table & test fixtures
 
-- **Status:** Accepted — classification table and fixtures fixed. (Amended 2026-07-04:
-  parsers are settled in ADR-0001, fixtures are now literal SQL, and the CTE-DML /
-  `SELECT … INTO` structural question is closed.)
-- **Date:** 2026-06-27 (amended 2026-07-04)
+- **Status:** Accepted — classification table and fixtures fixed. (Amended 2026-07-04: parsers are settled in ADR-0001, fixtures are now literal SQL, and the CTE-DML / `SELECT … INTO` structural question is closed. Amended 2026-07-19: PG reject fixtures #28/#29 added with the PG adapter implementation.)
+- **Date:** 2026-06-27 (amended 2026-07-04, 2026-07-19)
 
 ## Context
-Every approved statement is classified as `read`, `write`, or `ddl` before execution, and the
-class is matched against the per-connection policy. The classifier is a **safety gate**: a
-misclassification can let a write reach a read-only connection. ADR-0001 fixes the parsers and
-an **allow-list + fail-closed** model. This ADR pins the concrete classification table and the
-fixtures all three engines must satisfy, so behavior is identical and testable across
-PostgreSQL, MySQL, and SQLite.
+Every approved statement is classified as `read`, `write`, or `ddl` before execution, and the class is matched against the per-connection policy. The classifier is a **safety gate**: a misclassification can let a write reach a read-only connection. ADR-0001 fixes the parsers and an **allow-list + fail-closed** model. This ADR pins the concrete classification table and the fixtures all three engines must satisfy, so behavior is identical and testable across PostgreSQL, MySQL, and SQLite.
 
 Principles:
 - **Exactly one statement.** More than one top-level statement → reject (a single trailing `;` is fine).
@@ -35,11 +28,11 @@ Principles:
 - **File/network/utility** — `COPY … (FROM|TO|PROGRAM)`, `SELECT … INTO OUTFILE/DUMPFILE`, `LOAD DATA`, `ATTACH`/`DETACH`.
 - **Side-effecting introspection** — `EXPLAIN ANALYZE` (executes the statement).
 - **Opaque effect** — `CALL`, `DO`, stored-procedure invocation, and any vendor-specific command not on the allow-list.
+- **Transaction-incompatible DDL** — PG `CREATE INDEX CONCURRENTLY` / `DROP INDEX CONCURRENTLY` (added 2026-07-20): every execution is wrapped in a transaction (PRD §8.2), which PostgreSQL forbids for these forms, so an admitted statement could never succeed — reject at classification, not at runtime.
 - **Unparsed / ambiguous** — anything the parser cannot fully resolve.
 
 ### Pinned edge-case fixtures (literal; must hold on every engine where the syntax exists)
-The suite assumes a table `t(id integer, v text)`. `PG`/`MY`/`SQ` mark engine applicability;
-a fixture without a mark runs on all three.
+The suite assumes a table `t(id integer, v text)`. `PG`/`MY`/`SQ` mark engine applicability; a fixture without a mark runs on all three.
 
 | # | Literal input | Engines | Expected |
 |---|---|---|---|
@@ -70,27 +63,21 @@ a fixture without a mark runs on all three.
 | 25 | `TRUNCATE TABLE t` | PG, MY | `ddl` |
 | 26 | `REPLACE INTO t (id, v) VALUES (1, 'a')` | MY, SQ | `write` |
 | 27 | `MERGE INTO t USING t s ON t.id = s.id WHEN MATCHED THEN DO NOTHING` | PG | `write` |
+| 28 | `SELECT id FROM t FOR UPDATE` | PG | reject (locking — takes row locks; fails in a read-only txn, not allow-listed) |
+| 29 | `EXPLAIN (ANALYZE) SELECT id FROM t` | PG | reject (side-effecting — parenthesized option form of #8) |
+| 30 | `CREATE INDEX CONCURRENTLY idx ON t (v)` | PG | reject (non-transactional — cannot run inside the transaction every execution gets) |
+| 31 | `DROP INDEX CONCURRENTLY idx` | PG | reject (non-transactional — same rule as #30) |
 
-These fixtures live as a shared table-driven test suite; each engine's adapter runs its rows
-of the same matrix. A statement not explicitly expected in the suite defaults to **reject** —
-new allow-listed forms enter only with a new fixture row here.
+These fixtures live as a shared table-driven test suite; each engine's adapter runs its rows of the same matrix. A statement not explicitly expected in the suite defaults to **reject** — new allow-listed forms enter only with a new fixture row here.
+
+A `SELECT` that merely *calls functions* stays `read`: classification is a policy gate, and volatile functions are backstopped at execution time by the server-enforced read-only transaction (PRD §8.2).
 
 ### CTE-DML and `… INTO` detectability (closed 2026-07-04)
-The former open item — "can each parser expose data-modifying CTEs and `INTO` targets?" — is
-resolved by the ADR-0001 picks:
-- **PostgreSQL** (`pgplex/pgparser`): the AST is the PG parse tree, so CTE bodies are
-  `CommonTableExpr` nodes (walk each for DML) and `SELECT … INTO` carries an `IntoClause` —
-  both structurally visible, exactly as PostgreSQL itself classifies them.
-- **MySQL** (tidb parser): `WITH` clauses hang off the DML/SELECT AST nodes and
-  `SELECT … INTO OUTFILE/DUMPFILE` is an explicit AST field; both are walkable.
-- **SQLite** (engine authorizer): classification is not tree-walking at all — the engine
-  reports the *effects* (action codes) of the fully resolved statement, so a write hidden in
-  a CTE surfaces as `SQLITE_INSERT/UPDATE/DELETE` regardless of nesting.
-The fail-closed rule stands regardless: if an adapter cannot prove a form's class from the
-structures above, that form is rejected — never approximated.
+The former open item — "can each parser expose data-modifying CTEs and `INTO` targets?" — is resolved by the ADR-0001 picks:
+- **PostgreSQL** (`pgplex/pgparser`): the AST is the PG parse tree, so CTE bodies are `CommonTableExpr` nodes (walk each for DML) and `SELECT … INTO` carries an `IntoClause` — both structurally visible, exactly as PostgreSQL itself classifies them.
+- **MySQL** (tidb parser): `WITH` clauses hang off the DML/SELECT AST nodes and `SELECT … INTO OUTFILE/DUMPFILE` is an explicit AST field; both are walkable.
+- **SQLite** (engine authorizer): classification is not tree-walking at all — the engine reports the *effects* (action codes) of the fully resolved statement, so a write hidden in a CTE surfaces as `SQLITE_INSERT/UPDATE/DELETE` regardless of nesting. The fail-closed rule stands regardless: if an adapter cannot prove a form's class from the structures above, that form is rejected — never approximated.
 
 ## Consequences
-- The fixture matrix is the contract the three per-dialect parsers (ADR-0001) must pass; it is
-  part of the cross-engine contract test suite and the acceptance gate for any parser bump.
-- `read` PRAGMA / `SHOW`-like introspection that varies per engine is added to the allow-list
-  only with an explicit fixture, never by default.
+- The fixture matrix is the contract the three per-dialect parsers (ADR-0001) must pass; it is part of the cross-engine contract test suite and the acceptance gate for any parser bump.
+- `read` PRAGMA / `SHOW`-like introspection that varies per engine is added to the allow-list only with an explicit fixture, never by default.

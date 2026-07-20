@@ -21,7 +21,7 @@ import (
 // (the password checks only gate whether the result is used — pgx v5 source),
 // and a FIFO with no writer blocks os.Open forever. The passfile pin keeps
 // config assembly off that file entirely (external review).
-func TestTesterConfigAssemblyDoesNotBlockOnPassfile(t *testing.T) {
+func TestValidateConnectionConfigAssemblyDoesNotBlockOnPassfile(t *testing.T) {
 	// Resolve the container coordinates BEFORE polluting the environment —
 	// dbtest's own pool creation also goes through ParseConfig and would block
 	// on the FIFO in the main test goroutine, outside the select guard below.
@@ -33,9 +33,11 @@ func TestTesterConfigAssemblyDoesNotBlockOnPassfile(t *testing.T) {
 	}
 	t.Setenv("PGPASSFILE", fifo)
 
-	tester := pgdialect.NewTester(time.Second)
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: time.Second})
 	done := make(chan error, 1)
-	go func() { done <- tester.Test(context.Background(), target, connection.TLSModeDisable, cred) }()
+	go func() {
+		done <- validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred)
+	}()
 	select {
 	case err := <-done:
 		if err != nil {

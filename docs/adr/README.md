@@ -1,8 +1,6 @@
 # Architecture Decision Records (ADR)
 
-These records capture the *how* of Portcullis's implementation — the binding technical
-choices behind the product requirements. Each ADR states its own context and constraints
-so it can be read on its own.
+These records capture the *how* of Portcullis's implementation — the binding technical choices behind the product requirements. Each ADR states its own context and constraints so it can be read on its own.
 
 ## Status values
 `Proposed` → `Accepted` → (when replaced) `Superseded by ADR-XXXX`
@@ -31,6 +29,8 @@ These must be `Accepted` before Core 1 coding begins.
 | [0013](0013-spa-ui-foundation.md) | SPA UI foundation — light FSD, vendored solid-ui | Accepted |
 | [0014](0014-connection-registration-and-tls.md) | Connection registration, credential envelope & TLS validation | Accepted |
 | [0015](0015-connection-policies.md) | Connection policies — per-class approvals, limits, immutable versions | Accepted |
+| [0016](0016-sql-redaction-and-named-binding.md) | SQL redaction & named-parameter binding (token-rebuild, fail-closed) | Accepted |
+| [0017](0017-runtime-settings-store.md) | Runtime settings store — DB-backed operator-tunable operational config | Accepted |
 
 ## Template
 ```markdown

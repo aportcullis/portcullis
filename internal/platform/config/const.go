@@ -15,15 +15,9 @@ var runtimeRolePattern = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
 // deployment and a firm guard against a fat-fingered value causing an OOM.
 const maxArgon2Concurrent = 256
 
-// Progressive-backoff guardrails (ADR-0006). The cap bounds the lockout window
-// arithmetic — a day already far exceeds any sane lockout and firmly rules out
-// a fat-fingered duration (the window math clamps its exponent, but an absurd
-// cap would still be an absurd lockout). The threshold ceiling likewise only
-// catches typos; the ADR default is 5.
-const (
-	maxLoginBackoffCap       = 24 * time.Hour
-	maxLoginBackoffThreshold = 1000
-)
+// Progressive-backoff guardrails (ADR-0006) live in the domain settings
+// registry (ADR-0017): the same bounds validate the env seed here and every
+// DB-store write/read, so the two paths cannot drift.
 
 // GoogleCallbackPath is the only OAuth callback route the server mounts, so a
 // google_redirect_url with any other path can never complete a login. The
@@ -32,14 +26,8 @@ const (
 // must not import transport (ADR-0007).
 const GoogleCallbackPath = "/auth/google/callback"
 
-// Connection-test timeout bounds (ADR-0014). The floor keeps a mistyped
-// sub-second value from failing every test against a healthy-but-remote
-// target; the ceiling keeps an admin request from parking a minute-plus on a
-// black-holed host (the per-IP rate limit is sized for interactive calls).
-const (
-	minConnectionTestTimeout = time.Second
-	maxConnectionTestTimeout = time.Minute
-)
+// Connection-test timeout bounds (ADR-0014) likewise live in the domain
+// settings registry (setting.MinConnectionTestTimeout / Max…).
 
 // maxDrainDelay caps the readiness-drain window. It blocks shutdown before
 // in-flight requests are even drained (the delay and the shutdown timeout are

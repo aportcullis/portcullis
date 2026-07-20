@@ -41,13 +41,13 @@ type Repository interface {
 	TestMaterial(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (connection.Connection, connection.SealedCredential, error)
 }
 
-// Tester dials a target database and authenticates, within the adapter's
-// configured timeout. It returns nil on success or a *TestError whose bucket
-// is safe to show a caller — never raw driver text (PRD §8.1, ADR-0014). This
-// port is the seam the future PG dialect adapter's ValidateConnection absorbs
+// ConnectionValidator dials a target database and authenticates, within the
+// adapter's configured timeout. It returns nil on success or a *TestError
+// whose bucket is safe to show a caller — never raw driver text (PRD §8.1,
+// ADR-0014). Implemented by the dialect adapter's ValidateConnection
 // (PRD §5.3).
-type Tester interface {
-	Test(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error
+type ConnectionValidator interface {
+	ValidateConnection(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error
 }
 
 // CredentialCodec seals a credential into the ADR-0003 envelope under the

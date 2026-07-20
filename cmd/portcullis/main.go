@@ -233,11 +233,13 @@ func run() error {
 	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), recoverAndChain...)
 
 	// Connections vertical (ADR-0014): the postgres store, the keyring-backed
-	// credential codec, and the pgx dial tester behind the connections.* gated
-	// RPCs.
+	// credential codec, and the PostgreSQL dialect adapter (its
+	// ValidateConnection satisfies the ConnectionValidator port, PRD §5.3)
+	// behind the connections.* gated RPCs.
+	pgDialect := pgdialect.New(pgdialect.Options{ValidateTimeout: cfg.ConnectionTestTimeout})
 	connSvc, err := connapp.New(
 		postgres.NewConnectionStore(pool),
-		pgdialect.NewTester(cfg.ConnectionTestTimeout),
+		pgDialect,
 		crypto.NewConnectionCredentialCodec(keyring),
 		postgres.NewAuditStore(pool),
 	)

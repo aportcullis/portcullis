@@ -1,77 +1,134 @@
 package pgdialect
 
 import (
-	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"net"
+	"strconv"
 	"strings"
+	"sync"
 
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/pgplex/pgparser/parser"
 
-	"github.com/aportcullis/portcullis/internal/domain/connection"
+	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// PostgreSQL SQLSTATE codes surfaced during connection/authentication.
-const (
-	sqlstateInvalidPassword       = "28P01" // wrong password
-	sqlstateInvalidAuthorization  = "28000" // rejected by pg_hba / role cannot log in
-	sqlstateInvalidCatalogName    = "3D000" // database does not exist
-	sqlstateInsufficientPrivilege = "42501" // e.g. CONNECT revoked
-)
-
-// classify maps a dial/auth error onto the caller-safe test buckets
-// (ADR-0014). The raw error — which can embed driver text and, in principle,
-// credential material — never crosses this function (PRD §8.1).
-func classify(err error) *connection.TestError {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return &connection.TestError{Bucket: connection.TestBucketTimeout}
+// Redact rebuilds the bound single statement from its token stream: comments
+// never reach the stream (the lexer skips them), inline literals become
+// typed placeholders, $N stays verbatim, identifiers are re-emitted quoted,
+// keywords lowercase, all joined by single spaces (PRD §8.4, ADR-0016).
+// Whitespace/case normalization is deliberate — redacted SQL is display/AI
+// material, never executed; payload_digest covers the original bytes.
+//
+// The input is this dialect's parse handle (the same shape Classify takes):
+// requiring it keeps the fail-closed gate — the lexer only ever sees text
+// that already parsed as exactly one statement — without re-parsing the SQL
+// a second time in the BindNamed → ParseSingle → Classify → Redact pipeline.
+// A Statement minted by anything else fails closed.
+func (d *Dialect) Redact(st query.Statement) (query.Redaction, error) {
+	codes, err := lexCodes()
+	if err != nil {
+		return query.Redaction{}, err
+	}
+	ps, ok := st.(*statement)
+	if !ok || ps.node == nil {
+		return query.Redaction{}, &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case sqlstateInvalidPassword, sqlstateInvalidAuthorization, sqlstateInsufficientPrivilege:
-			return &connection.TestError{Bucket: connection.TestBucketAuthFailed}
-		case sqlstateInvalidCatalogName:
-			return &connection.TestError{Bucket: connection.TestBucketUnknownDatabase}
-		}
-		return &connection.TestError{Bucket: connection.TestBucketFailed}
-	}
-
-	if isTLSFailure(err) {
-		return &connection.TestError{Bucket: connection.TestBucketTLSFailed}
-	}
-
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		if netErr.Timeout() {
-			return &connection.TestError{Bucket: connection.TestBucketTimeout}
-		}
-		return &connection.TestError{Bucket: connection.TestBucketUnreachable}
-	}
-
-	return &connection.TestError{Bucket: connection.TestBucketFailed}
-}
-
-// isTLSFailure recognizes certificate-validation and TLS-negotiation
-// failures.
-func isTLSFailure(err error) bool {
 	var (
-		certVerify *tls.CertificateVerificationError
-		recordHdr  tls.RecordHeaderError
-		hostname   x509.HostnameError
-		unknownCA  x509.UnknownAuthorityError
-		invalid    x509.CertificateInvalidError
+		parts    []string
+		literals []query.LiteralType
 	)
-	if errors.As(err, &certVerify) || errors.As(err, &recordHdr) ||
-		errors.As(err, &hostname) || errors.As(err, &unknownCA) || errors.As(err, &invalid) {
-		return true
+	lexer := parser.NewLexer(ps.text)
+	for {
+		tok := lexer.NextToken()
+		if tok.Type == 0 { // EOF
+			break
+		}
+		switch {
+		case codes.literal[tok.Type] != "":
+			lit := codes.literal[tok.Type]
+			parts = append(parts, "<"+string(lit)+">")
+			literals = append(literals, lit)
+		case codes.ident[tok.Type]:
+			parts = append(parts, `"`+strings.ReplaceAll(tok.Str, `"`, `""`)+`"`)
+		case tok.Type == codes.param:
+			parts = append(parts, "$"+strconv.FormatInt(tok.Ival, 10))
+		case tok.Str != "":
+			// Keywords carry their lowercase name; operators, punctuation,
+			// and multi-char specials carry their exact text.
+			parts = append(parts, tok.Str)
+		default:
+			return query.Redaction{}, errRedactUnknownToken
+		}
 	}
-	// pgconn reports a server that answers 'N' to the SSLRequest with a plain,
-	// unexported error ("server refused TLS connection" — pgconn v5 source);
-	// message matching is fragile but contained here and pinned by an
-	// integration test against a non-TLS server.
-	return strings.Contains(err.Error(), "refused TLS")
+	if lexer.Err != nil {
+		return query.Redaction{}, errRedactLexFailure
+	}
+	return query.Redaction{SQL: strings.Join(parts, " "), Literals: literals}, nil
 }
+
+var (
+	errRedactUnknownToken = errors.New("pgdialect: redaction met a token it cannot re-emit")
+	errRedactLexFailure   = errors.New("pgdialect: redaction lexing failed")
+	errRedactProbeFailure = errors.New("pgdialect: lexer token probe failed")
+)
+
+// lexTokenCodes classifies the lexer's numeric token types. The values are
+// unexported in pgparser, so they are learned once by lexing canonical
+// single-token snippets — behavior-derived, no magic numbers, and a parser
+// bump that changes them fails closed here instead of mis-redacting.
+type lexTokenCodes struct {
+	literal map[int]query.LiteralType
+	ident   map[int]bool
+	param   int
+}
+
+var lexCodes = sync.OnceValues(func() (*lexTokenCodes, error) {
+	probe := func(src string) (int, error) {
+		lexer := parser.NewLexer(src)
+		tok := lexer.NextToken()
+		if lexer.Err != nil || tok.Type == 0 {
+			return 0, errRedactProbeFailure
+		}
+		return tok.Type, nil
+	}
+
+	codes := &lexTokenCodes{
+		literal: make(map[int]query.LiteralType),
+		ident:   make(map[int]bool),
+	}
+	for _, p := range []struct {
+		src string
+		lit query.LiteralType
+	}{
+		{"1", query.LiteralInteger},
+		{"1.5", query.LiteralDecimal},
+		{"'x'", query.LiteralString},
+		{"u&'x'", query.LiteralString},
+		{"b'0'", query.LiteralOther},
+		{"x'1f'", query.LiteralOther},
+	} {
+		code, err := probe(p.src)
+		if err != nil {
+			return nil, err
+		}
+		codes.literal[code] = p.lit
+	}
+	for _, src := range []string{"abc", `u&"x"`} {
+		code, err := probe(src)
+		if err != nil {
+			return nil, err
+		}
+		if codes.literal[code] != "" {
+			return nil, errRedactProbeFailure
+		}
+		codes.ident[code] = true
+	}
+	var err error
+	if codes.param, err = probe("$1"); err != nil {
+		return nil, err
+	}
+	if codes.literal[codes.param] != "" || codes.ident[codes.param] {
+		return nil, errRedactProbeFailure
+	}
+	return codes, nil
+})
