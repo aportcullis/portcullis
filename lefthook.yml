@@ -7,6 +7,7 @@ pre-commit:
       fail_text: "Go files need gofmt — run: gofmt -w ."
 
 pre-push:
+  follow: true
   commands:
     verify:
       run: make verify
