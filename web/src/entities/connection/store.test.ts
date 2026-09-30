@@ -1,10 +1,10 @@
+import { create } from "@bufbuild/protobuf";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
+import { ConnectionSummarySchema } from "@/gen/portcullis/v1/connections_pb";
 
-// The store's race guards (generation / listRevision / loadSeq) exist for
-// interleavings Playwright cannot schedule deterministically, so they are
-// pinned here with deferred promises (external review — 11th round).
+// The store's race guards (generation / listRevision / loadSeq) exist for interleavings Playwright cannot schedule deterministically, so they are pinned here with deferred promises.
 const client = vi.hoisted(() => ({
   list: vi.fn(),
   create: vi.fn(),
@@ -35,9 +35,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-// A structurally sufficient summary; the store never touches proto internals.
+
 const summary = (id: string, version: bigint): ConnectionSummary =>
-  ({ id, displayName: id, dbType: "postgresql", version }) as ConnectionSummary;
+  create(ConnectionSummarySchema, { id, displayName: id, dbType: "postgresql", version });
 
 const fresh = () => {
   vi.clearAllMocks();
@@ -72,8 +72,7 @@ describe("connection list store", () => {
     await createConnection("created", "development", "", emptyDraft());
     expect(listState()).toBe("loading");
 
-    // The stale snapshot (started before the create) resolves last; the store
-    // must refetch rather than apply it or park in "loading" forever.
+    // The stale snapshot (started before the create) resolves last; the store must refetch rather than apply it or park in "loading" forever.
     client.list.mockResolvedValueOnce({
       connections: [summary("created", 1n), summary("preexisting", 1n)],
     });

@@ -3,14 +3,13 @@ import { Show, createSignal } from "solid-js";
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { PasswordField } from "@/features/auth/PasswordField";
 import { authClient } from "@/shared/api/client";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// Bootstrap is refused once any user exists (install-level state, so naming it
-// is not an account oracle); other rejections surface the server's validation
-// reason category without echoing input back.
+// Bootstrap is refused once any user exists (install-level state, so naming it is not an account oracle); other rejections surface the server's validation reason category without echoing input back.
 function bootstrapError(err: unknown): string {
   if (err instanceof ConnectError) {
     switch (err.code) {
@@ -68,22 +67,19 @@ export const BootstrapForm: Component<{ onSuccess: () => void }> = (props) => {
         <TextFieldInput
           id="displayName"
           type="text"
+          required
           value={displayName()}
           onInput={(e) => setDisplayName(e.currentTarget.value)}
         />
       </TextField>
-      <TextField>
-        <TextFieldLabel for="password">Password (15+ characters)</TextFieldLabel>
-        <TextFieldInput
-          id="password"
-          type="password"
-          autocomplete="new-password"
-          required
-          minlength={15}
-          value={password()}
-          onInput={(e) => setPassword(e.currentTarget.value)}
-        />
-      </TextField>
+      <PasswordField
+        id="password"
+        label="Password (15+ characters)"
+        autocomplete="new-password"
+        minlength={15}
+        value={password()}
+        onInput={setPassword}
+      />
       <Show when={error() !== ""}>
         <Alert variant="destructive">
           <AlertDescription>{error()}</AlertDescription>

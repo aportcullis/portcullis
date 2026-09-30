@@ -1,23 +1,16 @@
 import type { Component } from "solid-js";
-import { Match, Show, Switch } from "solid-js";
+import { For, Match, Show, Switch } from "solid-js";
 
 import type { RouteSectionProps } from "@solidjs/router";
 import { Navigate } from "@solidjs/router";
 
+import { visibleSections } from "@/app/navigation";
 import { UnreachableCard } from "@/entities/session/UnreachableCard";
-import { can, session } from "@/entities/session/store";
+import { hasPermission, session } from "@/entities/session/store";
 import { LogoutButton } from "@/features/auth/LogoutButton";
+import { Badge } from "@/shared/ui/badge";
 
-// AppShell is the authenticated layout: ONE route guard for every signed-in
-// page (anonymous → login, unreachable → retry card) plus the app header. The
-// header keeps navigation (left) and the user area (right) as separate
-// regions — account info and sign-out never mix into the nav. Composition
-// root concern (frontend.md): only the app layer may compose entities
-// (session) with features (auth) like this.
-//
-// Nav items are permission-gated via can() — pure affordance hiding; the
-// server still returns the uniform permission-denied if an RPC is attempted
-// (ADR-0008). Future sections (Requests, Audit) append here the same way.
+// AppShell owns the session guard and capability-based navigation; the server still authorizes every RPC.
 const AppShell: Component<RouteSectionProps> = (props) => (
   <Switch>
     <Match when={session().status === "anonymous"}>
@@ -33,23 +26,35 @@ const AppShell: Component<RouteSectionProps> = (props) => (
             <div class="flex items-center gap-6">
               <span class="text-base font-semibold tracking-tight">Portcullis</span>
               <nav aria-label="Main" class="flex items-center gap-4">
-                <Show when={can("connections.list")}>
-                  <a
-                    class="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                    href="/connections"
-                  >
-                    Connections
-                  </a>
-                </Show>
+                <For each={visibleSections(hasPermission)}>
+                  {(section) => (
+                    <a
+                      class="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      href={section.href}
+                    >
+                      {section.label}
+                    </a>
+                  )}
+                </For>
               </nav>
             </div>
             <div class="flex items-center gap-3">
               <span class="text-sm text-muted-foreground">
                 {(() => {
                   const s = session();
-                  return s.status === "authenticated" ? s.user.email : "";
+                  if (s.status !== "authenticated") return "";
+                  return s.user.displayName || s.user.email;
                 })()}
               </span>
+              {/* Role badge: the membership's display label (empty when the server degraded resolution) — a label, never authorization. */}
+              <Show
+                when={(() => {
+                  const s = session();
+                  return s.status === "authenticated" && s.roleName !== "" ? s.roleName : "";
+                })()}
+              >
+                {(role) => <Badge variant="secondary">{role()}</Badge>}
+              </Show>
               <LogoutButton />
             </div>
           </div>

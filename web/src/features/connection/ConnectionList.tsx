@@ -1,15 +1,18 @@
 import type { Component } from "solid-js";
-import { For, Show, onMount } from "solid-js";
+import { For, Show, createSignal, onMount } from "solid-js";
 
 import { connections, listError, listState, loadConnections } from "@/entities/connection/store";
-import { can } from "@/entities/session/store";
+import { hasPermission } from "@/entities/session/store";
+import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import { ArchiveConnectionDialog } from "@/features/connection/ArchiveConnectionDialog";
 import { ConnectionDetailsDialog } from "@/features/connection/ConnectionDetailsDialog";
 import { EditConnectionDialog } from "@/features/connection/EditConnectionDialog";
 import { EditPolicyDialog } from "@/features/connection/EditPolicyDialog";
+import { resolveEditTarget } from "@/features/connection/editTarget";
 import { TestConnectionButton } from "@/features/connection/TestConnectionButton";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 import {
   Table,
   TableBody,
@@ -19,14 +22,13 @@ import {
   TableRow,
 } from "@/shared/ui/table";
 
-// ConnectionList owns "viewing the connections" end to end: it fetches on mount
-// and renders the table plus the per-row actions. Fetching lives here (a
-// feature), not in the page — the page is assembly only (frontend.md).
-// Per-row actions are hidden by can() (Me.permissions) — affordance UX only,
-// the server still authorizes every RPC (ADR-0008). Production rows carry a
-// destructive-variant badge so the label is unmissable before any risky edit.
+// ConnectionList owns fetching and per-action permission affordances; production targets carry a prominent badge.
 export const ConnectionList: Component = () => {
   onMount(() => void loadConnections());
+  // Own draft dialogs outside Solid’s keyed rows so list refreshes preserve typed input.
+  const [editing, setEditing] = createSignal<ConnectionSummary | undefined>();
+  const [editingPolicy, setEditingPolicy] = createSignal<ConnectionSummary | undefined>();
+
   return (
     <>
       <Show when={listError() !== ""}>
@@ -38,10 +40,7 @@ export const ConnectionList: Component = () => {
       <Show
         when={connections().length > 0}
         fallback={
-          // The empty state renders only after a load actually SUCCEEDED — the
-          // store starts empty, and showing "no connections" before the first
-          // response would misinform an operator whose connections just have
-          // not arrived yet (external review).
+          // The empty state renders only after a load actually SUCCEEDED — the store starts empty, and showing "no connections" before the first response would misinform an operator whose connections just have not arrived yet.
           <Show
             when={listState() === "ready"}
             fallback={
@@ -84,31 +83,35 @@ export const ConnectionList: Component = () => {
                   </TableCell>
                   <TableCell class="text-right">
                     <span class="inline-flex items-center gap-2">
-                      <Show when={can("connections.get")}>
+                      <Show when={hasPermission("connections.get")}>
                         <ConnectionDetailsDialog id={conn.id} displayName={conn.displayName} />
                       </Show>
                       <Show
                         when={!conn.archivedAt}
-                        // An archived row keeps its descriptor editable — name,
-                        // environment, and description label its history; test,
-                        // config edit, and re-archive stay hidden.
+                        // An archived row keeps its descriptor editable — name, environment, and description label its history; test, config edit, and re-archive stay hidden.
                         fallback={
-                          <Show when={can("connections.update")}>
-                            <EditConnectionDialog id={conn.id} displayName={conn.displayName} environment={conn.environment} description={conn.description} archived />
+                          <Show when={hasPermission("connections.update")}>
+                            <Button size="sm" variant="outline" onClick={() => setEditing(conn)}>
+                              Edit
+                            </Button>
                           </Show>
                         }
                       >
                         <span class="inline-flex items-center gap-2">
-                          <Show when={can("policies.get")}>
-                            <EditPolicyDialog id={conn.id} displayName={conn.displayName} />
+                          <Show when={hasPermission("policies.get")}>
+                            <Button size="sm" variant="outline" onClick={() => setEditingPolicy(conn)}>
+                              Policy
+                            </Button>
                           </Show>
-                          <Show when={can("connections.test")}>
+                          <Show when={hasPermission("connections.test")}>
                             <TestConnectionButton id={conn.id} />
                           </Show>
-                          <Show when={can("connections.update")}>
-                            <EditConnectionDialog id={conn.id} displayName={conn.displayName} environment={conn.environment} description={conn.description} />
+                          <Show when={hasPermission("connections.update")}>
+                            <Button size="sm" variant="outline" onClick={() => setEditing(conn)}>
+                              Edit
+                            </Button>
                           </Show>
-                          <Show when={can("connections.delete")}>
+                          <Show when={hasPermission("connections.delete")}>
                             <ArchiveConnectionDialog id={conn.id} displayName={conn.displayName} />
                           </Show>
                         </span>
@@ -121,6 +124,16 @@ export const ConnectionList: Component = () => {
           </TableBody>
         </Table>
       </Show>
+
+      {/* Mounted here, not in a row: see the note on `editing` above. Each resolves its target by id against the current list, so a refresh hands the open form a fresh version token instead of destroying it. */}
+      <EditConnectionDialog
+        target={resolveEditTarget(connections(), editing())}
+        onClose={() => setEditing(undefined)}
+      />
+      <EditPolicyDialog
+        target={resolveEditTarget(connections(), editingPolicy())}
+        onClose={() => setEditingPolicy(undefined)}
+      />
     </>
   );
 };

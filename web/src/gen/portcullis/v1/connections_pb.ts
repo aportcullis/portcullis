@@ -12,11 +12,10 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/connections.proto.
  */
 export const file_portcullis_v1_connections: GenFile = /*@__PURE__*/
-  fileDesc("Ch9wb3J0Y3VsbGlzL3YxL2Nvbm5lY3Rpb25zLnByb3RvEg1wb3J0Y3VsbGlzLnYxItYCCgpDb25uZWN0aW9uEgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdkYl90eXBlGAMgASgJEgwKBGhvc3QYBCABKAkSDAoEcG9ydBgFIAEoDRIQCghkYXRhYmFzZRgGIAEoCRIQCgh0bHNfbW9kZRgHIAEoCRIaChJ0YXJnZXRfZmluZ2VycHJpbnQYCCABKAkSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLYXJjaGl2ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhMKC2Vudmlyb25tZW50GAwgASgJEhMKC2Rlc2NyaXB0aW9uGA0gASgJIrIBChFDb25uZWN0aW9uU3VtbWFyeRIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSDwoHZGJfdHlwZRgDIAEoCRIvCgthcmNoaXZlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHdmVyc2lvbhgFIAEoAxITCgtlbnZpcm9ubWVudBgGIAEoCRITCgtkZXNjcmlwdGlvbhgHIAEoCSJ3ChVDb25uZWN0aW9uQ29uZmlnSW5wdXQSDAoEaG9zdBgBIAEoCRIMCgRwb3J0GAIgASgNEhAKCGRhdGFiYXNlGAMgASgJEgwKBHVzZXIYBCABKAkSEAoIcGFzc3dvcmQYBSABKAkSEAoIdGxzX21vZGUYBiABKAkiMgoWTGlzdENvbm5lY3Rpb25zUmVxdWVzdBIYChBpbmNsdWRlX2FyY2hpdmVkGAEgASgIIlAKF0xpc3RDb25uZWN0aW9uc1Jlc3BvbnNlEjUKC2Nvbm5lY3Rpb25zGAEgAygLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSIiChRHZXRDb25uZWN0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSJGChVHZXRDb25uZWN0aW9uUmVzcG9uc2USLQoKY29ubmVjdGlvbhgBIAEoCzIZLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbiKPAQoXQ3JlYXRlQ29ubmVjdGlvblJlcXVlc3QSFAoMZGlzcGxheV9uYW1lGAEgASgJEjQKBmNvbmZpZxgCIAEoCzIkLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbkNvbmZpZ0lucHV0EhMKC2Vudmlyb25tZW50GAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJIlAKGENyZWF0ZUNvbm5lY3Rpb25SZXNwb25zZRI0Cgpjb25uZWN0aW9uGAEgASgLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSKwAQoXVXBkYXRlQ29ubmVjdGlvblJlcXVlc3QSCgoCaWQYASABKAkSFAoMZGlzcGxheV9uYW1lGAIgASgJEjQKBmNvbmZpZxgDIAEoCzIkLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbkNvbmZpZ0lucHV0EhMKC2Vudmlyb25tZW50GAQgASgJEhgKC2Rlc2NyaXB0aW9uGAUgASgJSACIAQFCDgoMX2Rlc2NyaXB0aW9uIlAKGFVwZGF0ZUNvbm5lY3Rpb25SZXNwb25zZRI0Cgpjb25uZWN0aW9uGAEgASgLMiAucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uU3VtbWFyeSJnChVUZXN0Q29ubmVjdGlvblJlcXVlc3QSNgoGY29uZmlnGAEgASgLMiQucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uQ29uZmlnSW5wdXRIABIMCgJpZBgCIAEoCUgAQggKBnRhcmdldCI1ChZUZXN0Q29ubmVjdGlvblJlc3BvbnNlEgoKAm9rGAEgASgIEg8KB21lc3NhZ2UYAiABKAkiJgoYQXJjaGl2ZUNvbm5lY3Rpb25SZXF1ZXN0EgoKAmlkGAEgASgJIlEKGUFyY2hpdmVDb25uZWN0aW9uUmVzcG9uc2USNAoKY29ubmVjdGlvbhgBIAEoCzIgLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvblN1bW1hcnkyqwQKC0Nvbm5lY3Rpb25zElcKBExpc3QSJS5wb3J0Y3VsbGlzLnYxLkxpc3RDb25uZWN0aW9uc1JlcXVlc3QaJi5wb3J0Y3VsbGlzLnYxLkxpc3RDb25uZWN0aW9uc1Jlc3BvbnNlIgASUgoDR2V0EiMucG9ydGN1bGxpcy52MS5HZXRDb25uZWN0aW9uUmVxdWVzdBokLnBvcnRjdWxsaXMudjEuR2V0Q29ubmVjdGlvblJlc3BvbnNlIgASWwoGQ3JlYXRlEiYucG9ydGN1bGxpcy52MS5DcmVhdGVDb25uZWN0aW9uUmVxdWVzdBonLnBvcnRjdWxsaXMudjEuQ3JlYXRlQ29ubmVjdGlvblJlc3BvbnNlIgASWwoGVXBkYXRlEiYucG9ydGN1bGxpcy52MS5VcGRhdGVDb25uZWN0aW9uUmVxdWVzdBonLnBvcnRjdWxsaXMudjEuVXBkYXRlQ29ubmVjdGlvblJlc3BvbnNlIgASVQoEVGVzdBIkLnBvcnRjdWxsaXMudjEuVGVzdENvbm5lY3Rpb25SZXF1ZXN0GiUucG9ydGN1bGxpcy52MS5UZXN0Q29ubmVjdGlvblJlc3BvbnNlIgASXgoHQXJjaGl2ZRInLnBvcnRjdWxsaXMudjEuQXJjaGl2ZUNvbm5lY3Rpb25SZXF1ZXN0GigucG9ydGN1bGxpcy52MS5BcmNoaXZlQ29ubmVjdGlvblJlc3BvbnNlIgBCQlpAZ2l0aHViLmNvbS9hcG9ydGN1bGxpcy9wb3J0Y3VsbGlzL2dlbi9wb3J0Y3VsbGlzL3YxO3BvcnRjdWxsaXN2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("Ch9wb3J0Y3VsbGlzL3YxL2Nvbm5lY3Rpb25zLnByb3RvEg1wb3J0Y3VsbGlzLnYxIucCCgpDb25uZWN0aW9uEgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdkYl90eXBlGAMgASgJEgwKBGhvc3QYBCABKAkSDAoEcG9ydBgFIAEoDRIQCghkYXRhYmFzZRgGIAEoCRIQCgh0bHNfbW9kZRgHIAEoCRIaChJ0YXJnZXRfZmluZ2VycHJpbnQYCCABKAkSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLYXJjaGl2ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhMKC2Vudmlyb25tZW50GAwgASgJEhMKC2Rlc2NyaXB0aW9uGA0gASgJEg8KB3ZlcnNpb24YDiABKAMisgEKEUNvbm5lY3Rpb25TdW1tYXJ5EgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdkYl90eXBlGAMgASgJEi8KC2FyY2hpdmVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgd2ZXJzaW9uGAUgASgDEhMKC2Vudmlyb25tZW50GAYgASgJEhMKC2Rlc2NyaXB0aW9uGAcgASgJIncKFUNvbm5lY3Rpb25Db25maWdJbnB1dBIMCgRob3N0GAEgASgJEgwKBHBvcnQYAiABKA0SEAoIZGF0YWJhc2UYAyABKAkSDAoEdXNlchgEIAEoCRIQCghwYXNzd29yZBgFIAEoCRIQCgh0bHNfbW9kZRgGIAEoCSIyChZMaXN0Q29ubmVjdGlvbnNSZXF1ZXN0EhgKEGluY2x1ZGVfYXJjaGl2ZWQYASABKAgiUAoXTGlzdENvbm5lY3Rpb25zUmVzcG9uc2USNQoLY29ubmVjdGlvbnMYASADKAsyIC5wb3J0Y3VsbGlzLnYxLkNvbm5lY3Rpb25TdW1tYXJ5IiIKFEdldENvbm5lY3Rpb25SZXF1ZXN0EgoKAmlkGAEgASgJIkYKFUdldENvbm5lY3Rpb25SZXNwb25zZRItCgpjb25uZWN0aW9uGAEgASgLMhkucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uIo8BChdDcmVhdGVDb25uZWN0aW9uUmVxdWVzdBIUCgxkaXNwbGF5X25hbWUYASABKAkSNAoGY29uZmlnGAIgASgLMiQucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uQ29uZmlnSW5wdXQSEwoLZW52aXJvbm1lbnQYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkiUAoYQ3JlYXRlQ29ubmVjdGlvblJlc3BvbnNlEjQKCmNvbm5lY3Rpb24YASABKAsyIC5wb3J0Y3VsbGlzLnYxLkNvbm5lY3Rpb25TdW1tYXJ5IsoBChdVcGRhdGVDb25uZWN0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSNAoGY29uZmlnGAMgASgLMiQucG9ydGN1bGxpcy52MS5Db25uZWN0aW9uQ29uZmlnSW5wdXQSEwoLZW52aXJvbm1lbnQYBCABKAkSGAoLZGVzY3JpcHRpb24YBSABKAlIAIgBARIYChBleHBlY3RlZF92ZXJzaW9uGAYgASgDQg4KDF9kZXNjcmlwdGlvbiJQChhVcGRhdGVDb25uZWN0aW9uUmVzcG9uc2USNAoKY29ubmVjdGlvbhgBIAEoCzIgLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvblN1bW1hcnkiZwoVVGVzdENvbm5lY3Rpb25SZXF1ZXN0EjYKBmNvbmZpZxgBIAEoCzIkLnBvcnRjdWxsaXMudjEuQ29ubmVjdGlvbkNvbmZpZ0lucHV0SAASDAoCaWQYAiABKAlIAEIICgZ0YXJnZXQiNQoWVGVzdENvbm5lY3Rpb25SZXNwb25zZRIKCgJvaxgBIAEoCBIPCgdtZXNzYWdlGAIgASgJIiYKGEFyY2hpdmVDb25uZWN0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSJRChlBcmNoaXZlQ29ubmVjdGlvblJlc3BvbnNlEjQKCmNvbm5lY3Rpb24YASABKAsyIC5wb3J0Y3VsbGlzLnYxLkNvbm5lY3Rpb25TdW1tYXJ5MqsECgtDb25uZWN0aW9ucxJXCgRMaXN0EiUucG9ydGN1bGxpcy52MS5MaXN0Q29ubmVjdGlvbnNSZXF1ZXN0GiYucG9ydGN1bGxpcy52MS5MaXN0Q29ubmVjdGlvbnNSZXNwb25zZSIAElIKA0dldBIjLnBvcnRjdWxsaXMudjEuR2V0Q29ubmVjdGlvblJlcXVlc3QaJC5wb3J0Y3VsbGlzLnYxLkdldENvbm5lY3Rpb25SZXNwb25zZSIAElsKBkNyZWF0ZRImLnBvcnRjdWxsaXMudjEuQ3JlYXRlQ29ubmVjdGlvblJlcXVlc3QaJy5wb3J0Y3VsbGlzLnYxLkNyZWF0ZUNvbm5lY3Rpb25SZXNwb25zZSIAElsKBlVwZGF0ZRImLnBvcnRjdWxsaXMudjEuVXBkYXRlQ29ubmVjdGlvblJlcXVlc3QaJy5wb3J0Y3VsbGlzLnYxLlVwZGF0ZUNvbm5lY3Rpb25SZXNwb25zZSIAElUKBFRlc3QSJC5wb3J0Y3VsbGlzLnYxLlRlc3RDb25uZWN0aW9uUmVxdWVzdBolLnBvcnRjdWxsaXMudjEuVGVzdENvbm5lY3Rpb25SZXNwb25zZSIAEl4KB0FyY2hpdmUSJy5wb3J0Y3VsbGlzLnYxLkFyY2hpdmVDb25uZWN0aW9uUmVxdWVzdBooLnBvcnRjdWxsaXMudjEuQXJjaGl2ZUNvbm5lY3Rpb25SZXNwb25zZSIAQkJaQGdpdGh1Yi5jb20vYXBvcnRjdWxsaXMvcG9ydGN1bGxpcy9nZW4vcG9ydGN1bGxpcy92MTtwb3J0Y3VsbGlzdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
- * Connection is the read model: the plaintext descriptor of a registered
- * connection. It has no credential or DSN fields by design.
+ * Connection is the read model: the plaintext descriptor of a registered connection. It has no credential or DSN fields by design.
  *
  * @generated from message portcullis.v1.Connection
  */
@@ -61,8 +60,7 @@ export type Connection = Message<"portcullis.v1.Connection"> & {
   tlsMode: string;
 
   /**
-   * Versioned sha256 identity of the target; survives archive as the
-   * historical snapshot (PRD §4.3).
+   * Versioned sha256 identity of the target; survives archive as the historical snapshot (PRD §4.3).
    *
    * @generated from field: string target_fingerprint = 8;
    */
@@ -98,6 +96,13 @@ export type Connection = Message<"portcullis.v1.Connection"> & {
    * @generated from field: string description = 13;
    */
   description: string;
+
+  /**
+   * The same mutation token the summary carries. The detail read is the natural starting point for a config edit, and Update requires the token, so leaving it out here would make Get→Update impossible without also listing (ADR-0014).
+   *
+   * @generated from field: int64 version = 14;
+   */
+  version: bigint;
 };
 
 /**
@@ -108,9 +113,7 @@ export const ConnectionSchema: GenMessage<Connection> = /*@__PURE__*/
   messageDesc(file_portcullis_v1_connections, 0);
 
 /**
- * ConnectionSummary is deliberately safe for connections.list: it identifies a
- * collection member without exposing target coordinates or TLS configuration.
- * Those inner values require connections.get through Connection.
+ * ConnectionSummary is deliberately safe for connections.list: it identifies a collection member without exposing target coordinates or TLS configuration. Those inner values require connections.get through Connection.
  *
  * @generated from message portcullis.v1.ConnectionSummary
  */
@@ -136,8 +139,7 @@ export type ConnectionSummary = Message<"portcullis.v1.ConnectionSummary"> & {
   archivedAt?: Timestamp | undefined;
 
   /**
-   * Monotonically increasing database mutation token. Clients use it to avoid
-   * applying an out-of-order mutation response over newer state.
+   * Monotonically increasing database mutation token. Clients use it to avoid applying an out-of-order mutation response over newer state.
    *
    * @generated from field: int64 version = 5;
    */
@@ -151,9 +153,7 @@ export type ConnectionSummary = Message<"portcullis.v1.ConnectionSummary"> & {
   environment: string;
 
   /**
-   * Free-text operator context (≤ 500 chars). Carried in the summary so the
-   * edit dialog can prefill WITHOUT a connections.get round-trip — editing
-   * must stay possible for a principal holding only connections.update.
+   * Free-text operator context (≤ 500 chars). Carried in the summary so the edit dialog can prefill WITHOUT a connections.get round-trip — editing must stay possible for a principal holding only connections.update.
    *
    * @generated from field: string description = 7;
    */
@@ -168,8 +168,7 @@ export const ConnectionSummarySchema: GenMessage<ConnectionSummary> = /*@__PURE_
   messageDesc(file_portcullis_v1_connections, 1);
 
 /**
- * ConnectionConfigInput is the write model — the only place credentials
- * travel, inbound only.
+ * ConnectionConfigInput is the write model — the only place credentials travel, inbound only.
  *
  * @generated from message portcullis.v1.ConnectionConfigInput
  */
@@ -200,9 +199,7 @@ export type ConnectionConfigInput = Message<"portcullis.v1.ConnectionConfigInput
   password: string;
 
   /**
-   * One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects
-   * the certificate-verifying default (verify-full). Choosing require/disable
-   * is an explicit relaxed-TLS decision and is audited (PRD §8.1).
+   * One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects the certificate-verifying default (verify-full). Choosing require/disable is an explicit relaxed-TLS decision and is audited (PRD §8.1).
    *
    * @generated from field: string tls_mode = 6;
    */
@@ -358,29 +355,32 @@ export type UpdateConnectionRequest = Message<"portcullis.v1.UpdateConnectionReq
   displayName: string;
 
   /**
-   * Unset = descriptor-only update (name/environment/description, no
-   * connection test). Set = full config replacement, re-tested and
-   * re-encrypted.
+   * Unset = descriptor-only update (name/environment/description, no connection test). Set = full config replacement, re-tested and re-encrypted.
    *
    * @generated from field: portcullis.v1.ConnectionConfigInput config = 3;
    */
   config?: ConnectionConfigInput | undefined;
 
   /**
-   * Empty keeps the current environment — an older client that omits the
-   * field must never silently downgrade a production label.
+   * Empty keeps the current environment — an older client that omits the field must never silently downgrade a production label.
    *
    * @generated from field: string environment = 4;
    */
   environment: string;
 
   /**
-   * Presence-tracked: absent keeps the current description, present (even
-   * empty) replaces it.
+   * Presence-tracked: absent keeps the current description, present (even empty) replaces it.
    *
    * @generated from field: optional string description = 5;
    */
   description?: string | undefined;
+
+  /**
+   * Required positive descriptor version from the caller’s form. Stale versions return ABORTED; missing or invalid versions return INVALID_ARGUMENT.
+   *
+   * @generated from field: int64 expected_version = 6;
+   */
+  expectedVersion: bigint;
 };
 
 /**
@@ -450,9 +450,7 @@ export type TestConnectionResponse = Message<"portcullis.v1.TestConnectionRespon
   ok: boolean;
 
   /**
-   * On failure, the coarse classification only — "unreachable" | "auth-failed"
-   * | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014).
-   * Raw target-DB errors are never returned (PRD §8.1).
+   * On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014). Raw target-DB errors are never returned (PRD §8.1).
    *
    * @generated from field: string message = 2;
    */
@@ -501,12 +499,7 @@ export const ArchiveConnectionResponseSchema: GenMessage<ArchiveConnectionRespon
   messageDesc(file_portcullis_v1_connections, 14);
 
 /**
- * Connections manages registered target databases (PRD §4.1/§7.2, ADR-0014).
- * Every RPC is authenticated and gated by a connections.* permission
- * (ADR-0008), enforced inline in the handler. No message in this file ever
- * carries a stored credential or a DSN: the database user and password travel
- * inbound-only inside ConnectionConfigInput and are never returned after
- * creation (PRD §7.2).
+ * Connections requires inline connections.* permissions. Credentials travel only in write input and are never returned (ADR-0014).
  *
  * @generated from service portcullis.v1.Connections
  */
@@ -532,9 +525,7 @@ export const Connections: GenService<{
     output: typeof GetConnectionResponseSchema;
   },
   /**
-   * Create registers a connection after a mandatory server-side connection
-   * test; a failing test refuses to save (PRD §7.2). Requires
-   * connections.create.
+   * Create registers a connection after a mandatory server-side connection test; a failing test refuses to save (PRD §7.2). Requires connections.create.
    *
    * @generated from rpc portcullis.v1.Connections.Create
    */
@@ -544,9 +535,7 @@ export const Connections: GenService<{
     output: typeof CreateConnectionResponseSchema;
   },
   /**
-   * Update renames a connection (config unset) or replaces the full target +
-   * credential after a fresh successful test (config set — there is no partial
-   * credential edit, ADR-0014). Requires connections.update.
+   * Update renames a connection (config unset) or replaces the full target + credential after a fresh successful test (config set — there is no partial credential edit, ADR-0014). Requires connections.update.
    *
    * @generated from rpc portcullis.v1.Connections.Update
    */
@@ -556,10 +545,7 @@ export const Connections: GenService<{
     output: typeof UpdateConnectionResponseSchema;
   },
   /**
-   * Test dials a target: pre-save with an unsaved config, or a saved
-   * connection by id with its stored credential. The outcome is reported
-   * in-band (ok/message) — a failed test is a result, not an RPC error.
-   * Requires connections.test.
+   * Test dials a target: pre-save with an unsaved config, or a saved connection by id with its stored credential. The outcome is reported in-band (ok/message) — a failed test is a result, not an RPC error. Requires connections.test.
    *
    * @generated from rpc portcullis.v1.Connections.Test
    */
@@ -569,9 +555,7 @@ export const Connections: GenService<{
     output: typeof TestConnectionResponseSchema;
   },
   /**
-   * Archive soft-deletes: it blocks new tests/requests, discards the encrypted
-   * credential, and keeps the descriptor as the historical snapshot (PRD
-   * §4.3). There is no hard delete. Requires connections.delete.
+   * Archive soft-deletes: it blocks new tests/requests, discards the encrypted credential, and keeps the descriptor as the historical snapshot (PRD §4.3). There is no hard delete. Requires connections.delete.
    *
    * @generated from rpc portcullis.v1.Connections.Archive
    */

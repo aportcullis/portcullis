@@ -28,8 +28,7 @@ export type ClassPolicy = Message<"portcullis.v1.ClassPolicy"> & {
   allowed: boolean;
 
   /**
-   * Distinct active approvers a request needs (0 = system auto-approval,
-   * audited the same; max 100).
+   * Distinct active approvers a request needs (0 = system auto-approval, audited the same; max 100).
    *
    * @generated from field: uint32 required_approvals = 2;
    */
@@ -77,8 +76,7 @@ export type ConnectionPolicy = Message<"portcullis.v1.ConnectionPolicy"> & {
   ddl?: ClassPolicy | undefined;
 
   /**
-   * Execution limits — one set per version (ADR-0015): timeout 1..300 s,
-   * rows 1..10000, bytes 4 KiB..64 MiB.
+   * Execution limits — one set per version (ADR-0015): timeout 1..300 s, rows 1..10000, bytes 4 KiB..64 MiB.
    *
    * @generated from field: uint32 query_timeout_seconds = 6;
    */
@@ -158,8 +156,7 @@ export type UpdateConnectionPolicyRequest = Message<"portcullis.v1.UpdateConnect
   expectedVersion: bigint;
 
   /**
-   * read/write/ddl are ALL required: the update is a full replacement, and an
-   * omitted class must not silently reset its kept quorum (InvalidArgument).
+   * read/write/ddl are ALL required: the update is a full replacement, and an omitted class must not silently reset its kept quorum (InvalidArgument).
    *
    * @generated from field: portcullis.v1.ClassPolicy read = 3;
    */
@@ -216,18 +213,13 @@ export const UpdateConnectionPolicyResponseSchema: GenMessage<UpdateConnectionPo
   messageDesc(file_portcullis_v1_connection_policies, 5);
 
 /**
- * ConnectionPolicies manages the per-connection execution policy (PRD §4.3,
- * ADR-0015): per-class allow + required approvals and one execution-limit set,
- * stored as immutable versioned snapshots. Every RPC is authenticated and
- * gated by a policies.* permission (ADR-0008), enforced inline in the handler.
+ * ConnectionPolicies manages the per-connection execution policy (PRD §4.3, ADR-0015): per-class allow + required approvals and one execution-limit set, stored as immutable versioned snapshots. Every RPC is authenticated and gated by a policies.* permission (ADR-0008), enforced inline in the handler.
  *
  * @generated from service portcullis.v1.ConnectionPolicies
  */
 export const ConnectionPolicies: GenService<{
   /**
-   * Get returns the connection's current policy — archived connections
-   * included (the policy is part of the historical snapshot). Requires
-   * policies.get.
+   * Get returns the connection's current policy — archived connections included (the policy is part of the historical snapshot). Requires policies.get.
    *
    * @generated from rpc portcullis.v1.ConnectionPolicies.Get
    */
@@ -237,11 +229,7 @@ export const ConnectionPolicies: GenService<{
     output: typeof GetConnectionPolicyResponseSchema;
   },
   /**
-   * Update replaces the policy with a NEW immutable version (full snapshot
-   * semantics — no partial patch). expected_version is the version the caller
-   * read; a mismatch fails with Aborted ("policy changed — refresh and
-   * retry"). Enabling write/ddl leaves an additional admin audit event (PRD
-   * §4.3). Requires policies.update.
+   * Update replaces the policy with a NEW immutable version (full snapshot semantics — no partial patch). expected_version is the version the caller read; a mismatch fails with Aborted ("policy changed — refresh and retry"). Enabling write/ddl leaves an additional admin audit event (PRD §4.3). Requires policies.update.
    *
    * @generated from rpc portcullis.v1.ConnectionPolicies.Update
    */

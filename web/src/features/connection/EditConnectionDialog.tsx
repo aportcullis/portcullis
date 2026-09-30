@@ -1,46 +1,26 @@
 import type { Component } from "solid-js";
-import { Show, createSignal } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on } from "solid-js";
 
 import type { EnvironmentValue } from "@/entities/connection/model";
 import { parseEnvironment } from "@/entities/connection/model";
-import { errorMessage, updateConnection } from "@/entities/connection/store";
+import { errorMessage, loadConnections, updateConnection } from "@/entities/connection/store";
 import { ConnectionConfigForm } from "@/features/connection/ConnectionConfigForm";
 import { DescriptorFields } from "@/features/connection/DescriptorFields";
 import { createDraftController } from "@/features/connection/draft";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
+import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
+import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/shared/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// EditConnectionDialog covers ADR-0014's two update flows: a descriptor-only
-// edit (name/environment/description — no connection test), or additionally a
-// FULL config replacement — the stored credential is never displayed, so
-// changing anything about the target means re-entering user and password, and
-// the server re-tests before persisting. An ARCHIVED connection keeps its
-// descriptor editable — those fields label its history, not a live target —
-// but its config is not (restore is a separate future flow).
-//
-// The descriptor prefills from the LIST SUMMARY via props (the summary carries
-// environment and description precisely so no connections.get round-trip is
-// needed here): editing must stay possible for a principal holding only
-// connections.update — the list/get/update permission split is deliberate
-// (ADR-0008; self-review F3).
+// Descriptor edits prefill from the list without connections.get; config changes require fresh credentials and a server test. The list owns the dialog so refreshes preserve its draft.
 export const EditConnectionDialog: Component<{
-  id: string;
-  displayName: string;
-  environment: string;
-  description: string;
-  archived?: boolean;
+  target: ConnectionSummary | undefined;
+  onClose: () => void;
 }> = (props) => {
-  const [open, setOpen] = createSignal(false);
-  const [displayName, setDisplayName] = createSignal(props.displayName);
+  const { discardSession, runInSession } = createDialogSession();
+  const [displayName, setDisplayName] = createSignal("");
   const [environment, setEnvironment] = createSignal<EnvironmentValue>("development");
   const [description, setDescription] = createSignal("");
   const [replaceConfig, setReplaceConfig] = createSignal(false);
@@ -48,49 +28,67 @@ export const EditConnectionDialog: Component<{
   const [saving, setSaving] = createSignal(false);
   const config = createDraftController();
 
+  const archived = () => props.target?.archivedAt !== undefined;
+
+  // Memoize the target ID so row refreshes do not reset the draft or discard an in-flight dialog session.
+  const editedId = createMemo(() => props.target?.id);
+  createEffect(
+    on(editedId, (id) => {
+      if (id === undefined) return;
+      discardSession();
+      setSaving(false);
+      setDisplayName(props.target?.displayName ?? "");
+      setEnvironment(parseEnvironment(props.target?.environment ?? "") ?? "development");
+      setDescription(props.target?.description ?? "");
+      setReplaceConfig(false);
+      setError("");
+      config.reset();
+    }),
+  );
+
   const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) return;
-    // Reset ON OPEN from the current summary values.
-    setDisplayName(props.displayName);
-    setEnvironment(parseEnvironment(props.environment) ?? "development");
-    setDescription(props.description);
-    setReplaceConfig(false);
-    setError("");
-    config.reset();
+    if (next) return;
+    // A save still in flight belongs to the session being left behind: it will report "superseded" and touch nothing, so saving is released here (see shared/lib/dialogSession).
+    discardSession();
+    setSaving(false);
+    props.onClose();
   };
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
+    const target = props.target;
+    if (!target) return;
     setError("");
     setSaving(true);
-    try {
-      await updateConnection(
-        props.id,
+    const outcome = await runInSession(() =>
+      updateConnection(
+        target.id,
         displayName(),
         environment(),
         description(),
+        target.version,
         replaceConfig() ? config.draft() : undefined,
-      );
-      setOpen(false);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSaving(false);
+      ),
+    );
+    if (outcome.status === "superseded") return;
+    setSaving(false);
+    if (outcome.status === "failed") {
+      setError(errorMessage(outcome.error));
+      // A refused save may be a conflict: someone else changed this row, so the token is stale. Reload the list — this dialog is not owned by a row, so the refresh reaches it as a new `target` (fresh token) while the operator's edits stay in the local signals, and saving again applies their values on top (the policy dialog's F5 rationale).
+      void loadConnections();
+      return;
     }
+    props.onClose();
   };
 
   return (
-    <Dialog open={open()} onOpenChange={handleOpenChange}>
-      <DialogTrigger as={Button} size="sm" variant="outline">
-        Edit
-      </DialogTrigger>
+    <Dialog open={props.target !== undefined} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit “{props.displayName}”</DialogTitle>
+          <DialogTitle>Edit “{props.target?.displayName ?? ""}”</DialogTitle>
           <DialogDescription>
             <Show
-              when={props.archived}
+              when={archived()}
               fallback="Edit the name, environment, and description, or replace the full configuration. The stored credential is never shown — replacing the configuration means re-entering it, and the connection is re-tested before saving."
             >
               Edit this archived connection's name, environment, and description. They label its
@@ -116,7 +114,7 @@ export const EditConnectionDialog: Component<{
             onDescription={setDescription}
             disabled={saving()}
           />
-          <Show when={!props.archived}>
+          <Show when={!archived()}>
             <label class="flex items-center gap-2 text-sm font-medium leading-none">
               <input
                 type="checkbox"
@@ -135,8 +133,7 @@ export const EditConnectionDialog: Component<{
             </Alert>
           </Show>
           <div class="flex justify-end">
-            {/* Only saving() disables Save: a failed submit must stay retryable
-                after the user corrects the input (self-review F4). */}
+            {/* Only saving() disables Save: a failed submit must stay retryable after the user corrects the input. */}
             <Button type="submit" disabled={saving()}>
               Save
             </Button>

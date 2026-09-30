@@ -12,7 +12,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/audit.proto.
  */
 export const file_portcullis_v1_audit: GenFile = /*@__PURE__*/
-  fileDesc("Chlwb3J0Y3VsbGlzL3YxL2F1ZGl0LnByb3RvEg1wb3J0Y3VsbGlzLnYxIlsKEEF1ZGl0TGlzdFJlcXVlc3QSDAoEcGFnZRgBIAEoDRIRCglwYWdlX3NpemUYAiABKA0SJgoEc29ydBgDIAEoCzIYLnBvcnRjdWxsaXMudjEuQXVkaXRTb3J0IkIKCUF1ZGl0U29ydBINCgVmaWVsZBgBIAEoCRIXCgpkZXNjZW5kaW5nGAIgASgISACIAQFCDQoLX2Rlc2NlbmRpbmcipgIKCkF1ZGl0RXZlbnQSCgoCaWQYASABKAkSLwoLb2NjdXJyZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhIKCmFjdG9yX3R5cGUYAyABKAkSFQoNYWN0b3JfdXNlcl9pZBgEIAEoCRIVCg1hY3Rvcl9zZXJ2aWNlGAUgASgJEg4KBmFjdGlvbhgGIAEoCRITCgt0YXJnZXRfdHlwZRgHIAEoCRIRCgl0YXJnZXRfaWQYCCABKAkSDwoHb3V0Y29tZRgJIAEoCRIRCglzb3VyY2VfaXAYCiABKAkSEgoKcmVxdWVzdF9pZBgLIAEoCRIpCghtZXRhZGF0YRgMIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QirQEKEUF1ZGl0RXZlbnRTdW1tYXJ5EgoKAmlkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBISCgphY3Rvcl90eXBlGAMgASgJEg4KBmFjdGlvbhgEIAEoCRITCgt0YXJnZXRfdHlwZRgFIAEoCRIRCgl0YXJnZXRfaWQYBiABKAkSDwoHb3V0Y29tZRgHIAEoCSKQAQoRQXVkaXRMaXN0UmVzcG9uc2USMAoGZXZlbnRzGAEgAygLMiAucG9ydGN1bGxpcy52MS5BdWRpdEV2ZW50U3VtbWFyeRIMCgRwYWdlGAIgASgNEhEKCXBhZ2Vfc2l6ZRgDIAEoDRITCgt0b3RhbF9jb3VudBgEIAEoBBITCgt0b3RhbF9wYWdlcxgFIAEoDSIiChRHZXRBdWRpdEV2ZW50UmVxdWVzdBIKCgJpZBgBIAEoCSJBChVHZXRBdWRpdEV2ZW50UmVzcG9uc2USKAoFZXZlbnQYASABKAsyGS5wb3J0Y3VsbGlzLnYxLkF1ZGl0RXZlbnQyqAEKBUF1ZGl0EksKBExpc3QSHy5wb3J0Y3VsbGlzLnYxLkF1ZGl0TGlzdFJlcXVlc3QaIC5wb3J0Y3VsbGlzLnYxLkF1ZGl0TGlzdFJlc3BvbnNlIgASUgoDR2V0EiMucG9ydGN1bGxpcy52MS5HZXRBdWRpdEV2ZW50UmVxdWVzdBokLnBvcnRjdWxsaXMudjEuR2V0QXVkaXRFdmVudFJlc3BvbnNlIgBCQlpAZ2l0aHViLmNvbS9hcG9ydGN1bGxpcy9wb3J0Y3VsbGlzL2dlbi9wb3J0Y3VsbGlzL3YxO3BvcnRjdWxsaXN2MWIGcHJvdG8z", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("Chlwb3J0Y3VsbGlzL3YxL2F1ZGl0LnByb3RvEg1wb3J0Y3VsbGlzLnYxIlsKEEF1ZGl0TGlzdFJlcXVlc3QSDAoEcGFnZRgBIAEoDRIRCglwYWdlX3NpemUYAiABKA0SJgoEc29ydBgDIAEoCzIYLnBvcnRjdWxsaXMudjEuQXVkaXRTb3J0IkIKCUF1ZGl0U29ydBINCgVmaWVsZBgBIAEoCRIXCgpkZXNjZW5kaW5nGAIgASgISACIAQFCDQoLX2Rlc2NlbmRpbmciuQMKCkF1ZGl0RXZlbnQSCgoCaWQYASABKAkSLwoLb2NjdXJyZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhIKCmFjdG9yX3R5cGUYAyABKAkSFQoNYWN0b3JfdXNlcl9pZBgEIAEoCRIVCg1hY3Rvcl9zZXJ2aWNlGAUgASgJEg4KBmFjdGlvbhgGIAEoCRITCgt0YXJnZXRfdHlwZRgHIAEoCRIRCgl0YXJnZXRfaWQYCCABKAkSDwoHb3V0Y29tZRgJIAEoCRIRCglzb3VyY2VfaXAYCiABKAkSEgoKcmVxdWVzdF9pZBgLIAEoCRIpCghtZXRhZGF0YRgMIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSFgoOcHJldmlvdXNfc3RhdGUYDSABKAkSEgoKbmV4dF9zdGF0ZRgOIAEoCRIVCg1jb25uZWN0aW9uX2lkGA8gASgJEhIKCnF1ZXJ5X3R5cGUYECABKAkSFgoOcGF5bG9hZF9kaWdlc3QYESABKAwSIgoacGF5bG9hZF9kaWdlc3Rfa2V5X3ZlcnNpb24YEiABKA0irQEKEUF1ZGl0RXZlbnRTdW1tYXJ5EgoKAmlkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBISCgphY3Rvcl90eXBlGAMgASgJEg4KBmFjdGlvbhgEIAEoCRITCgt0YXJnZXRfdHlwZRgFIAEoCRIRCgl0YXJnZXRfaWQYBiABKAkSDwoHb3V0Y29tZRgHIAEoCSKQAQoRQXVkaXRMaXN0UmVzcG9uc2USMAoGZXZlbnRzGAEgAygLMiAucG9ydGN1bGxpcy52MS5BdWRpdEV2ZW50U3VtbWFyeRIMCgRwYWdlGAIgASgNEhEKCXBhZ2Vfc2l6ZRgDIAEoDRITCgt0b3RhbF9jb3VudBgEIAEoBBITCgt0b3RhbF9wYWdlcxgFIAEoDSIiChRHZXRBdWRpdEV2ZW50UmVxdWVzdBIKCgJpZBgBIAEoCSJBChVHZXRBdWRpdEV2ZW50UmVzcG9uc2USKAoFZXZlbnQYASABKAsyGS5wb3J0Y3VsbGlzLnYxLkF1ZGl0RXZlbnQyqAEKBUF1ZGl0EksKBExpc3QSHy5wb3J0Y3VsbGlzLnYxLkF1ZGl0TGlzdFJlcXVlc3QaIC5wb3J0Y3VsbGlzLnYxLkF1ZGl0TGlzdFJlc3BvbnNlIgASUgoDR2V0EiMucG9ydGN1bGxpcy52MS5HZXRBdWRpdEV2ZW50UmVxdWVzdBokLnBvcnRjdWxsaXMudjEuR2V0QXVkaXRFdmVudFJlc3BvbnNlIgBCQlpAZ2l0aHViLmNvbS9hcG9ydGN1bGxpcy9wb3J0Y3VsbGlzL2dlbi9wb3J0Y3VsbGlzL3YxO3BvcnRjdWxsaXN2MWIGcHJvdG8z", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message portcullis.v1.AuditListRequest
@@ -26,16 +26,14 @@ export type AuditListRequest = Message<"portcullis.v1.AuditListRequest"> & {
   page: number;
 
   /**
-   * Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the
-   * default (20). Capped at 100 (PRD §7.1).
+   * Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the default (20). Capped at 100 (PRD §7.1).
    *
    * @generated from field: uint32 page_size = 2;
    */
   pageSize: number;
 
   /**
-   * Optional sort; unset selects occurred_at descending. An off-whitelist field
-   * is rejected with InvalidArgument.
+   * Optional sort; unset selects occurred_at descending. An off-whitelist field is rejected with InvalidArgument.
    *
    * @generated from field: portcullis.v1.AuditSort sort = 3;
    */
@@ -63,10 +61,7 @@ export type AuditSort = Message<"portcullis.v1.AuditSort"> & {
   field: string;
 
   /**
-   * true = descending (newest/largest first). Optional so that UNSET is
-   * distinguishable from an explicit false: unset keeps the server default
-   * (descending), and only an explicit false selects ascending. A plain proto3
-   * bool cannot express that distinction (implicit field presence).
+   * true = descending (newest/largest first). Optional so that UNSET is distinguishable from an explicit false: unset keeps the server default (descending), and only an explicit false selects ascending. A plain proto3 bool cannot express that distinction (implicit field presence).
    *
    * @generated from field: optional bool descending = 2;
    */
@@ -81,8 +76,7 @@ export const AuditSortSchema: GenMessage<AuditSort> = /*@__PURE__*/
   messageDesc(file_portcullis_v1_audit, 1);
 
 /**
- * AuditEvent is one record of the trail. It carries the populated core fields;
- * execution/state/digest columns are added with the features that fill them.
+ * AuditEvent is one record of the trail. It carries the populated core fields; execution/state/digest columns are added with the features that fill them.
  *
  * @generated from message portcullis.v1.AuditEvent
  */
@@ -164,6 +158,46 @@ export type AuditEvent = Message<"portcullis.v1.AuditEvent"> & {
    * @generated from field: google.protobuf.Struct metadata = 12;
    */
   metadata?: JsonObject | undefined;
+
+  /**
+   * Detail reads expose stored approval/execution evidence; summaries stay narrow. Unrelated event dimensions remain empty (ADR-0009).
+   *
+   * @generated from field: string previous_state = 13;
+   */
+  previousState: string;
+
+  /**
+   * @generated from field: string next_state = 14;
+   */
+  nextState: string;
+
+  /**
+   * The connection the event was about (empty when it is not about one).
+   *
+   * @generated from field: string connection_id = 15;
+   */
+  connectionId: string;
+
+  /**
+   * "read" | "write" | "ddl" for statement-bearing events.
+   *
+   * @generated from field: string query_type = 16;
+   */
+  queryType: string;
+
+  /**
+   * Keyed MAC over the approved payload, with the key version that verifies it (ADR-0003). Opaque bytes: the trail never carries SQL or parameter values.
+   *
+   * @generated from field: bytes payload_digest = 17;
+   */
+  payloadDigest: Uint8Array;
+
+  /**
+   * Execution metrics (rows_affected, duration_ms, risk_score) are columns the executor slice fills; they join this message when that slice lands.
+   *
+   * @generated from field: uint32 payload_digest_key_version = 18;
+   */
+  payloadDigestKeyVersion: number;
 };
 
 /**
@@ -174,9 +208,7 @@ export const AuditEventSchema: GenMessage<AuditEvent> = /*@__PURE__*/
   messageDesc(file_portcullis_v1_audit, 2);
 
 /**
- * AuditEventSummary is deliberately safe for audit.list. Correlation data,
- * network addresses, and supplemental metadata are available only through
- * audit.get, preserving ADR-0008's collection/detail permission boundary.
+ * AuditEventSummary is deliberately safe for audit.list. Correlation data, network addresses, and supplemental metadata are available only through audit.get, preserving ADR-0008's collection/detail permission boundary.
  *
  * @generated from message portcullis.v1.AuditEventSummary
  */
@@ -248,8 +280,7 @@ export type AuditListResponse = Message<"portcullis.v1.AuditListResponse"> & {
   pageSize: number;
 
   /**
-   * Total matching rows and the derived page count, for explicit page controls
-   * ("1–20 of 1,340", page jump) (PRD §7.1).
+   * Total matching rows and the derived page count, for explicit page controls ("1–20 of 1,340", page jump) (PRD §7.1).
    *
    * @generated from field: uint64 total_count = 4;
    */
@@ -303,16 +334,13 @@ export const GetAuditEventResponseSchema: GenMessage<GetAuditEventResponse> = /*
   messageDesc(file_portcullis_v1_audit, 6);
 
 /**
- * Audit exposes the append-only audit trail for reading. Listing and a single
- * event's detail have distinct permissions (ADR-0008), enforced inline in the
- * handler.
+ * Audit exposes the append-only audit trail for reading. Listing and a single event's detail have distinct permissions (ADR-0008), enforced inline in the handler.
  *
  * @generated from service portcullis.v1.Audit
  */
 export const Audit: GenService<{
   /**
-   * List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
-   * audit.list.
+   * List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires audit.list.
    *
    * @generated from rpc portcullis.v1.Audit.List
    */

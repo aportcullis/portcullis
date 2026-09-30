@@ -1,20 +1,10 @@
+import { readdirSync } from "node:fs";
+
 import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-// Flat ESLint config. Two conventions are machine-enforced here
-// (docs/conventions/frontend.md):
-//
-//  1. Every import uses the "@/" alias — a relative path ("./" or "../") is
-//     never allowed, including same-slice sibling files.
-//  2. FSD layers point downward only: app → pages → features → entities →
-//     shared → gen. A layer must not import a higher one.
-//
-// Both are matched on the import STRING, so no module resolver is needed. A
-// relative path or an upward import now fails `make web-lint` instead of
-// slipping through review. (Same-layer cross-slice — one entity importing
-// another — cannot be expressed on the string alone while every import is
-// "@/…"; it stays a review/convention item.)
+// Enforce @/ imports, downward FSD layers, and no sibling-slice imports. Generate sibling restrictions from current slice directories.
 
 // forbidUp bans importing the given higher "@/<layer>" roots from a lower layer.
 const forbidUp = (layers) =>
@@ -33,6 +23,33 @@ const restrict = (upLayers) => [
   "error",
   { patterns: [noRelative, ...forbidUp(upLayers)] },
 ];
+
+// slicesOf lists the folders directly under a layer — each is one slice.
+const slicesOf = (layer) =>
+  readdirSync(new URL(`./src/${layer}/`, import.meta.url), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+// forbidSiblings bans every sibling slice of the layer, keeping the slice's own folder importable (a slice's files do reach each other through "@/").
+const forbidSiblings = (layer, own) =>
+  slicesOf(layer)
+    .filter((slice) => slice !== own)
+    .map((slice) => ({
+      group: [`@/${layer}/${slice}`, `@/${layer}/${slice}/*`, `@/${layer}/${slice}/**`],
+      message: `FSD boundary: a ${layer} slice must not import the sibling slice @/${layer}/${slice} — move shared code DOWN a layer (docs/conventions/frontend.md).`,
+    }));
+
+// sliceConfigs produces one config block per slice of a layer, re-stating the layer's own rules (a later block replaces the rule for those files).
+const sliceConfigs = (layer, upLayers) =>
+  slicesOf(layer).map((slice) => ({
+    files: [`src/${layer}/${slice}/**/*.{ts,tsx}`],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        { patterns: [noRelative, ...forbidUp(upLayers), ...forbidSiblings(layer, slice)] },
+      ],
+    },
+  }));
 
 export default tseslint.config(
   {
@@ -55,4 +72,7 @@ export default tseslint.config(
   { files: ["src/features/**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-restricted-imports": restrict(["app", "pages"]) } },
   { files: ["src/entities/**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-restricted-imports": restrict(["app", "pages", "features"]) } },
   { files: ["src/shared/**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-restricted-imports": restrict(["app", "pages", "features", "entities"]) } },
+  // Per-slice blocks come last so they replace the layer-wide rule for their files, adding the sibling ban to what that rule already forbids.
+  ...sliceConfigs("features", ["app", "pages"]),
+  ...sliceConfigs("entities", ["app", "pages", "features"]),
 );

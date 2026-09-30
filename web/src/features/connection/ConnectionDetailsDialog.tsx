@@ -2,8 +2,8 @@ import type { Component } from "solid-js";
 import { Show, createSignal } from "solid-js";
 
 import type { Connection } from "@/gen/portcullis/v1/connections_pb";
-import { getConnection } from "@/entities/connection/store";
-import { createOpenFetch } from "@/features/connection/openFetch";
+import { errorMessage, getConnection } from "@/entities/connection/store";
+import { createOpenFetch } from "@/shared/lib/openFetch";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import {
@@ -15,13 +15,10 @@ import {
   DialogTrigger,
 } from "@/shared/ui/dialog";
 
-// ConnectionDetailsDialog intentionally reads through connections.get only
-// when opened. The list stays safe for list-only principals, while operators
-// with connections.get can inspect the descriptor ADR-0014 requires the UI to
-// expose. Credentials are not part of the response.
+// ConnectionDetailsDialog intentionally reads through connections.get only when opened. The list stays safe for list-only principals, while operators with connections.get can inspect the descriptor ADR-0014 requires the UI to expose. Credentials are not part of the response.
 export const ConnectionDetailsDialog: Component<{ id: string; displayName: string }> = (props) => {
   const [connection, setConnection] = createSignal<Connection>();
-  const fetch = createOpenFetch(() => getConnection(props.id), setConnection);
+  const fetch = createOpenFetch(() => getConnection(props.id), setConnection, errorMessage);
 
   const handleOpenChange = (next: boolean) => {
     if (next) setConnection(); // clear the previous open's data before loading

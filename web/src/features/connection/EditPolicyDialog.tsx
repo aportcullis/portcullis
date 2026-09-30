@@ -1,9 +1,12 @@
 import type { Component } from "solid-js";
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
 import { errorMessage } from "@/entities/connection/store";
+import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
+import { conflictMessage } from "@/features/connection/policyConflict";
+import { rebasePolicy } from "@/features/connection/policyRebase";
 import type { PolicyDraft, StatementClassKey } from "@/features/connection/policyDraft";
 import {
   STATEMENT_CLASSES,
@@ -12,129 +15,144 @@ import {
   newlyEnabledClasses,
   validate,
 } from "@/features/connection/policyDraft";
-import { createOpenFetch } from "@/features/connection/openFetch";
+import { createOpenFetch } from "@/shared/lib/openFetch";
 import { policiesClient } from "@/shared/api/client";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/shared/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// EditPolicyDialog edits a connection's execution policy (ADR-0015): per-class
-// allow + required approvals and one execution-limit set, saved as a NEW
-// immutable version under optimistic concurrency. It is a separate dialog from
-// Details on purpose — Details reads through connections.get, this reads
-// policies.get, and the two permissions must stay independently gateable.
-// State is dialog-local (nothing outside consumes policy state): fetch on
-// open via the shared createOpenFetch guard, submit with the loaded version as
-// the token.
-export const EditPolicyDialog: Component<{ id: string; displayName: string }> = (props) => {
-  const [loaded, setLoaded] = createSignal<PolicyDraft>();
+// EditPolicyDialog reads policies independently of connections.get and saves a new immutable version. The list owns its draft across row refreshes.
+export const EditPolicyDialog: Component<{
+  target: ConnectionSummary | undefined;
+  onClose: () => void;
+}> = (props) => {
+  // openedFrom is the policy version this form was built on. It is the base of the three-way merge on a conflict — "did I change this field?" is only answerable against it.
+  const [openedFrom, setOpenedFrom] = createSignal<PolicyDraft>();
   const [draft, setDraft] = createSignal<PolicyDraft>();
   const [saving, setSaving] = createSignal(false);
 
-  const fetch = createOpenFetch(
-    () => policiesClient.get({ connectionId: props.id }),
+  const policyRead = createOpenFetch(
+    () => policiesClient.get({ connectionId: props.target?.id ?? "" }),
     (res) => {
       if (!res.policy) return;
-      const d = fromPolicy(res.policy);
-      setLoaded(d);
-      setDraft({ ...d, read: { ...d.read }, write: { ...d.write }, ddl: { ...d.ddl } });
+      const current = fromPolicy(res.policy);
+      setOpenedFrom(current);
+      setDraft({
+        ...current,
+        read: { ...current.read },
+        write: { ...current.write },
+        ddl: { ...current.ddl },
+      });
     },
+    errorMessage,
+  );
+
+  // Read when the dialog starts editing a DIFFERENT connection — not when the row object changes under a refresh, which would discard the admin's draft. The id goes through createMemo deliberately: an inline accessor re-runs the effect on every list change, which would re-fetch over the draft.
+  const editedId = createMemo(() => props.target?.id);
+  createEffect(
+    on(editedId, (id) => {
+      if (id === undefined) return;
+      setOpenedFrom();
+      setDraft();
+      setSaving(false);
+      policyRead.handleOpenChange(true);
+    }),
   );
 
   const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setLoaded();
-      setDraft();
-    }
-    fetch.handleOpenChange(next);
+    if (next) return;
+    // Closing ends the session, so a save still in flight will report "superseded" and touch nothing — saving has to be released here or a reopened dialog would sit behind a disabled Save button forever.
+    setSaving(false);
+    policyRead.handleOpenChange(false);
+    props.onClose();
+  };
+
+  // The classes this edit would turn on, or undefined when it turns none on — the shape <Show> narrows, so the warning below needs no assertion.
+  const newlyEnabled = (was: PolicyDraft | undefined, now: PolicyDraft): string[] | undefined => {
+    if (!was) return undefined;
+    const enabled = newlyEnabledClasses(was, now);
+    return enabled.length > 0 ? enabled : undefined;
   };
 
   const patchRule = (key: StatementClassKey, patch: Partial<PolicyDraft["read"]>) => {
-    setDraft((d) => (d ? { ...d, [key]: { ...d[key], ...patch } } : d));
+    setDraft((current) => (current ? { ...current, [key]: { ...current[key], ...patch } } : current));
   };
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
-    const d = draft();
-    if (!d) return;
-    const problem = validate(d);
+    const edited = draft();
+    const base = openedFrom();
+    const target = props.target;
+    if (!edited || !base || !target) return;
+    const problem = validate(edited);
     if (problem !== "") {
-      fetch.setError(problem);
+      policyRead.setError(problem);
       return;
     }
-    fetch.setError("");
+    policyRead.setError("");
     setSaving(true);
-    try {
-      await policiesClient.update({
-        connectionId: props.id,
-        expectedVersion: d.expectedVersion,
-        read: d.read,
-        write: d.write,
-        ddl: d.ddl,
-        queryTimeoutSeconds: d.queryTimeoutSeconds,
-        maxRows: d.maxRows,
-        maxResultBytes: d.maxResultBytes,
-      });
+    const outcome = await policyRead.runInSession(() =>
+      policiesClient.update({
+        connectionId: target.id,
+        expectedVersion: edited.expectedVersion,
+        read: edited.read,
+        write: edited.write,
+        ddl: edited.ddl,
+        queryTimeoutSeconds: edited.queryTimeoutSeconds,
+        maxRows: edited.maxRows,
+        maxResultBytes: edited.maxResultBytes,
+      }),
+    );
+    if (outcome.status === "superseded") return;
+    setSaving(false);
+    if (outcome.status === "ok") {
       handleOpenChange(false);
-    } catch (err) {
-      if (err instanceof ConnectError && err.code === Code.Aborted) {
-        // The policy moved under us. Keep the admin's DRAFT (their edits must
-        // not be wiped by the other admin's values — self-review F5); refresh
-        // only the concurrency token and the diff base, and tell them a
-        // resubmit applies their values on top.
-        const current = fetch.guard();
-        try {
-          const res = await policiesClient.get({ connectionId: props.id });
-          if (current() && res.policy) {
-            const fresh = fromPolicy(res.policy);
-            setLoaded(fresh);
-            setDraft((cur) => (cur ? { ...cur, expectedVersion: fresh.expectedVersion } : cur));
-            fetch.setError(
-              `Another admin saved this policy first (now v${fresh.expectedVersion}). Review the warnings and save again to apply your values on top.`,
-            );
-          }
-        } catch {
-          if (current()) fetch.setError(errorMessage(err));
-        }
-      } else {
-        fetch.setError(errorMessage(err));
-      }
-    } finally {
-      setSaving(false);
+      return;
     }
+    const err = outcome.error;
+    if (!(err instanceof ConnectError) || err.code !== Code.Aborted) {
+      policyRead.setError(errorMessage(err));
+      return;
+    }
+    // The policy moved under us. The admin's edits must not be wiped by the other admin's values — but re-sending this draft whole would wipe THEIRS, because an update is a full replacement (ADR-0015). So read the current version and merge.
+    const refreshed = await policyRead.runInSession(() =>
+      policiesClient.get({ connectionId: target.id }),
+    );
+    if (refreshed.status === "superseded") return;
+    if (refreshed.status === "failed") {
+      // Report the refusal AND why the retry path is closed — the token in the draft is still the stale one, so "save again" would conflict again.
+      policyRead.setError(conflictMessage({ status: "stale", reason: errorMessage(refreshed.error) }));
+      return;
+    }
+    if (!refreshed.value.policy) return;
+    const fresh = fromPolicy(refreshed.value.policy);
+    // Three-way merge against the version this form was opened on: fields only I touched stay mine, fields only they touched come across, and where we both moved the same one theirs wins and is named in the message.
+    const { merged, conflicts } = rebasePolicy(base, edited, fresh);
+    setOpenedFrom(fresh);
+    setDraft(merged);
+    policyRead.setError(
+      conflictMessage({ status: "refreshed", version: fresh.expectedVersion, conflicts }),
+    );
   };
 
   return (
-    <Dialog open={fetch.open()} onOpenChange={handleOpenChange}>
-      <DialogTrigger as={Button} size="sm" variant="outline">
-        Policy
-      </DialogTrigger>
+    <Dialog open={props.target !== undefined} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Execution policy — “{props.displayName}”</DialogTitle>
+          <DialogTitle>Execution policy — “{props.target?.displayName ?? ""}”</DialogTitle>
           <DialogDescription>
             Which statement classes may run here and how many approvals each needs. Saving creates a
             new policy version; requests pin the version they were approved under.
           </DialogDescription>
         </DialogHeader>
-        <Show when={fetch.loading()}>
+        <Show when={policyRead.loading()}>
           <p class="text-sm text-muted-foreground">Loading policy…</p>
         </Show>
         <Show when={draft()}>
-          {(d) => (
+          {(form) => (
             <form class="flex flex-col gap-4" noValidate onSubmit={submit}>
-              {/* noValidate: the numeric min/max attributes are hints only — the
-                  browser's native constraint UI would otherwise swallow the
-                  submit and our validate() messages (the tested contract,
-                  mirroring the server bounds) would never render. */}
+              {/* noValidate: the numeric min/max attributes are hints only — the browser's native constraint UI would otherwise swallow the submit and our validate() messages (the tested contract, mirroring the server bounds) would never render. */}
               <div class="flex flex-col gap-3">
                 <For each={STATEMENT_CLASSES}>
                   {(cls) => (
@@ -142,7 +160,7 @@ export const EditPolicyDialog: Component<{ id: string; displayName: string }> = 
                       <label class="flex items-center gap-2 text-sm font-medium leading-none">
                         <input
                           type="checkbox"
-                          checked={d()[cls.key].allowed}
+                          checked={form()[cls.key].allowed}
                           onChange={(e) => patchRule(cls.key, { allowed: e.currentTarget.checked })}
                         />
                         Allow {cls.label}
@@ -156,7 +174,7 @@ export const EditPolicyDialog: Component<{ id: string; displayName: string }> = 
                           type="number"
                           min="0"
                           max="100"
-                          value={d()[cls.key].requiredApprovals}
+                          value={form()[cls.key].requiredApprovals}
                           onInput={(e) =>
                             patchRule(cls.key, { requiredApprovals: e.currentTarget.valueAsNumber })
                           }
@@ -175,7 +193,7 @@ export const EditPolicyDialog: Component<{ id: string; displayName: string }> = 
                     type="number"
                     min="1"
                     max="300"
-                    value={d().queryTimeoutSeconds}
+                    value={form().queryTimeoutSeconds}
                     onInput={(e) =>
                       setDraft((cur) =>
                         cur ? { ...cur, queryTimeoutSeconds: e.currentTarget.valueAsNumber } : cur,
@@ -190,7 +208,7 @@ export const EditPolicyDialog: Component<{ id: string; displayName: string }> = 
                     type="number"
                     min="1"
                     max="10000"
-                    value={d().maxRows}
+                    value={form().maxRows}
                     onInput={(e) =>
                       setDraft((cur) => (cur ? { ...cur, maxRows: e.currentTarget.valueAsNumber } : cur))
                     }
@@ -203,7 +221,7 @@ export const EditPolicyDialog: Component<{ id: string; displayName: string }> = 
                     type="number"
                     min="1"
                     max="64"
-                    value={Number(d().maxResultBytes / 1048576n)}
+                    value={Number(form().maxResultBytes / 1048576n)}
                     onInput={(e) => {
                       const mib = e.currentTarget.valueAsNumber;
                       setDraft((cur) =>
@@ -216,25 +234,28 @@ export const EditPolicyDialog: Component<{ id: string; displayName: string }> = 
                 </TextField>
               </div>
 
-              <Show when={loaded() && newlyEnabledClasses(loaded()!, d()).length > 0}>
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    Enabling {newlyEnabledClasses(loaded()!, d()).join(" and ")} allows statements
-                    that can modify this database. The change is recorded in the audit trail.
-                  </AlertDescription>
-                </Alert>
+              {/* Show's callback narrows the accessor for us, so the warning reads the classes once and needs no non-null assertion. */}
+              <Show when={newlyEnabled(openedFrom(), form())}>
+                {(classes) => (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      Enabling {classes().join(" and ")} allows statements that can modify this
+                      database. The change is recorded in the audit trail.
+                    </AlertDescription>
+                  </Alert>
+                )}
               </Show>
-              <Show when={autoApproveClasses(d()).length > 0}>
+              <Show when={autoApproveClasses(form()).length > 0}>
                 <Alert>
                   <AlertDescription>
-                    {autoApproveClasses(d()).join(", ")}: 0 approvals means requests are
+                    {autoApproveClasses(form()).join(", ")}: 0 approvals means requests are
                     auto-approved by the system — still fully audited.
                   </AlertDescription>
                 </Alert>
               </Show>
-              <Show when={fetch.error() !== ""}>
+              <Show when={policyRead.error() !== ""}>
                 <Alert variant="destructive">
-                  <AlertDescription>{fetch.error()}</AlertDescription>
+                  <AlertDescription>{policyRead.error()}</AlertDescription>
                 </Alert>
               </Show>
               <div class="flex justify-end">

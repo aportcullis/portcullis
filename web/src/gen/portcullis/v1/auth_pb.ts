@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/auth.proto.
  */
 export const file_portcullis_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIkkKEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIkcKDUxvZ2luUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlchITCgtwZXJtaXNzaW9ucxgCIAMoCSIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlIgsKCU1lUmVxdWVzdCJECgpNZVJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXISEwoLcGVybWlzc2lvbnMYAiADKAkiEgoQR2V0Q29uZmlnUmVxdWVzdCJEChFHZXRDb25maWdSZXNwb25zZRIWCg5nb29nbGVfZW5hYmxlZBgBIAEoCBIXCg9uZWVkc19ib290c3RyYXAYAiABKAgy9gIKBEF1dGgSUAoJQm9vdHN0cmFwEh8ucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXF1ZXN0GiAucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXNwb25zZSIAEkQKBUxvZ2luEhsucG9ydGN1bGxpcy52MS5Mb2dpblJlcXVlc3QaHC5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAElAKCUdldENvbmZpZxIfLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM");
+  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIkkKEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIloKDUxvZ2luUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlchITCgtwZXJtaXNzaW9ucxgCIAMoCRIRCglyb2xlX25hbWUYAyABKAkiDwoNTG9nb3V0UmVxdWVzdCIQCg5Mb2dvdXRSZXNwb25zZSILCglNZVJlcXVlc3QiVwoKTWVSZXNwb25zZRIhCgR1c2VyGAEgASgLMhMucG9ydGN1bGxpcy52MS5Vc2VyEhMKC3Blcm1pc3Npb25zGAIgAygJEhEKCXJvbGVfbmFtZRgDIAEoCSISChBHZXRDb25maWdSZXF1ZXN0ImcKEUdldENvbmZpZ1Jlc3BvbnNlEhYKDmdvb2dsZV9lbmFibGVkGAEgASgIEhcKD25lZWRzX2Jvb3RzdHJhcBgCIAEoCBIhChltYXhfYXBwcm92YWxfcmVhc29uX2NoYXJzGAMgASgFMvYCCgRBdXRoElAKCUJvb3RzdHJhcBIfLnBvcnRjdWxsaXMudjEuQm9vdHN0cmFwUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuQm9vdHN0cmFwUmVzcG9uc2UiABJECgVMb2dpbhIbLnBvcnRjdWxsaXMudjEuTG9naW5SZXF1ZXN0GhwucG9ydGN1bGxpcy52MS5Mb2dpblJlc3BvbnNlIgASRwoGTG9nb3V0EhwucG9ydGN1bGxpcy52MS5Mb2dvdXRSZXF1ZXN0Gh0ucG9ydGN1bGxpcy52MS5Mb2dvdXRSZXNwb25zZSIAEjsKAk1lEhgucG9ydGN1bGxpcy52MS5NZVJlcXVlc3QaGS5wb3J0Y3VsbGlzLnYxLk1lUmVzcG9uc2UiABJQCglHZXRDb25maWcSHy5wb3J0Y3VsbGlzLnYxLkdldENvbmZpZ1JlcXVlc3QaIC5wb3J0Y3VsbGlzLnYxLkdldENvbmZpZ1Jlc3BvbnNlIgBCQlpAZ2l0aHViLmNvbS9hcG9ydGN1bGxpcy9wb3J0Y3VsbGlzL2dlbi9wb3J0Y3VsbGlzL3YxO3BvcnRjdWxsaXN2MWIGcHJvdG8z");
 
 /**
  * @generated from message portcullis.v1.User
@@ -122,13 +122,18 @@ export type LoginResponse = Message<"portcullis.v1.LoginResponse"> & {
   user?: User | undefined;
 
   /**
-   * The caller's permission keys (ADR-0008 catalog), for UI affordance gating
-   * only — the server stays the authority on every RPC. Role changes revoke
-   * sessions immediately (§8.3), so a login/Me-time snapshot is current.
+   * The caller's permission keys (ADR-0008 catalog), for UI affordance gating only — the server stays the authority on every RPC. Role changes revoke sessions immediately (§8.3), so a login/Me-time snapshot is current.
    *
    * @generated from field: repeated string permissions = 2;
    */
   permissions: string[];
+
+  /**
+   * The display name of the caller's role (e.g. "admin"), a UI badge label only — authorization never consults role names (ADR-0008). Empty when resolution degrades (same fail-open stance as permissions).
+   *
+   * @generated from field: string role_name = 3;
+   */
+  roleName: string;
 };
 
 /**
@@ -192,6 +197,13 @@ export type MeResponse = Message<"portcullis.v1.MeResponse"> & {
    * @generated from field: repeated string permissions = 2;
    */
   permissions: string[];
+
+  /**
+   * See LoginResponse.role_name.
+   *
+   * @generated from field: string role_name = 3;
+   */
+  roleName: string;
 };
 
 /**
@@ -219,20 +231,25 @@ export const GetConfigRequestSchema: GenMessage<GetConfigRequest> = /*@__PURE__*
  */
 export type GetConfigResponse = Message<"portcullis.v1.GetConfigResponse"> & {
   /**
-   * google_enabled reports whether "Sign in with Google" is configured on this
-   * server; the SPA hides the button otherwise.
+   * google_enabled reports whether "Sign in with Google" is configured on this server; the SPA hides the button otherwise.
    *
    * @generated from field: bool google_enabled = 1;
    */
   googleEnabled: boolean;
 
   /**
-   * needs_bootstrap reports whether no user exists yet, so the SPA can route
-   * straight to the first-run admin form.
+   * needs_bootstrap reports whether no user exists yet, so the SPA can route straight to the first-run admin form.
    *
    * @generated from field: bool needs_bootstrap = 2;
    */
   needsBootstrap: boolean;
+
+  /**
+   * max_approval_reason_chars is the server's cap on an approval/rejection reason (PRD §4.4). Served so a client can bound its input from the one authority that enforces it — clients MUST NOT restate the number, the same rule the paged lists follow by adopting the response's page_size.
+   *
+   * @generated from field: int32 max_approval_reason_chars = 3;
+   */
+  maxApprovalReasonChars: number;
 };
 
 /**
@@ -243,17 +260,13 @@ export const GetConfigResponseSchema: GenMessage<GetConfigResponse> = /*@__PURE_
   messageDesc(file_portcullis_v1_auth, 10);
 
 /**
- * Auth is the authentication surface: first-run bootstrap, password login, and
- * the current-session endpoints. The opaque session token and the CSRF token are
- * carried in __Host- cookies (set by Login, cleared by Logout), never in these
- * messages (ADR-0006).
+ * Auth is the authentication surface: first-run bootstrap, password login, and the current-session endpoints. The opaque session token and the CSRF token are carried in __Host- cookies (set by Login, cleared by Logout), never in these messages (ADR-0006).
  *
  * @generated from service portcullis.v1.Auth
  */
 export const Auth: GenService<{
   /**
-   * Bootstrap creates the first admin; refused once any user exists. It does not
-   * start a session — the client logs in afterward.
+   * Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
    *
    * @generated from rpc portcullis.v1.Auth.Bootstrap
    */
@@ -293,11 +306,7 @@ export const Auth: GenService<{
     output: typeof MeResponseSchema;
   },
   /**
-   * GetConfig returns the public login configuration the SPA needs before any
-   * session exists: whether Google login is available and whether the instance
-   * still needs its first-run bootstrap. Public read-only metadata — bootstrap
-   * state is install-level, not per-account, so this is not an enumeration
-   * oracle (ADR-0007/ADR-0013).
+   * GetConfig returns the public login configuration the SPA needs before any session exists: whether Google login is available and whether the instance still needs its first-run bootstrap. Public read-only metadata — bootstrap state is install-level, not per-account, so this is not an enumeration oracle (ADR-0007/ADR-0013).
    *
    * @generated from rpc portcullis.v1.Auth.GetConfig
    */

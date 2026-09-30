@@ -2,15 +2,12 @@ import type { Component } from "solid-js";
 import { Show, createSignal } from "solid-js";
 
 import { login } from "@/entities/session/store";
+import { PasswordField } from "@/features/auth/PasswordField";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// ONE uniform message for every rejection — wrong password, unknown email,
-// disabled account, and backoff lockout are indistinguishable by design
-// (the server is oracle-free, ADR-0006; the UI must not undo that). The
-// wording is deliberately gentle: it suggests the next step without blaming
-// or revealing anything.
+// ONE uniform message for every rejection — wrong password, unknown email, disabled account, and backoff lockout are indistinguishable by design (the server is oracle-free, ADR-0006; the UI must not undo that). The wording is deliberately gentle: it suggests the next step without blaming or revealing anything.
 const GENERIC_ERROR = "We couldn't sign you in. Please check your email and password and try again.";
 
 export const LoginForm: Component<{ onSuccess: () => void }> = (props) => {
@@ -46,17 +43,13 @@ export const LoginForm: Component<{ onSuccess: () => void }> = (props) => {
           onInput={(e) => setEmail(e.currentTarget.value)}
         />
       </TextField>
-      <TextField>
-        <TextFieldLabel for="password">Password</TextFieldLabel>
-        <TextFieldInput
-          id="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          value={password()}
-          onInput={(e) => setPassword(e.currentTarget.value)}
-        />
-      </TextField>
+      <PasswordField
+        id="password"
+        label="Password"
+        autocomplete="current-password"
+        value={password()}
+        onInput={setPassword}
+      />
       <Show when={error() !== ""}>
         <Alert variant="destructive">
           <AlertDescription>{error()}</AlertDescription>

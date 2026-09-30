@@ -7,6 +7,7 @@ import { ConnectionConfigForm } from "@/features/connection/ConnectionConfigForm
 import { DescriptorFields } from "@/features/connection/DescriptorFields";
 import { createDraftController } from "@/features/connection/draft";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
+import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -18,10 +19,10 @@ import {
 } from "@/shared/ui/dialog";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// CreateConnectionDialog is the "New connection" flow: the PG form (PRD §7.2),
-// an in-form pre-save test, and the create submit. The server re-tests
-// regardless — the test button is UX, the enforcement is server-side (ADR-0014).
+// CreateConnectionDialog is the "New connection" flow: the PG form (PRD §7.2), an in-form pre-save test, and the create submit. The server re-tests regardless — the test button is UX, the enforcement is server-side (ADR-0014).
 export const CreateConnectionDialog: Component = () => {
+  // Closing mid-save must not let the answer land on the next form the user opens: this dialog is reused, so a late success would wipe fields they are already typing (see shared/lib/dialogSession).
+  const { discardSession, runInSession } = createDialogSession();
   const [open, setOpen] = createSignal(false);
   const [displayName, setDisplayName] = createSignal("");
   const [environment, setEnvironment] = createSignal<EnvironmentValue>("development");
@@ -39,6 +40,8 @@ export const CreateConnectionDialog: Component = () => {
   };
 
   const handleOpenChange = (next: boolean) => {
+    discardSession();
+    setSaving(false); // a superseded save reports nothing, so release the form here
     setOpen(next);
     if (!next) reset();
   };
@@ -47,15 +50,17 @@ export const CreateConnectionDialog: Component = () => {
     e.preventDefault();
     setError("");
     setSaving(true);
-    try {
-      await createConnection(displayName(), environment(), description(), config.draft());
-      reset();
-      setOpen(false);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSaving(false);
+    const outcome = await runInSession(() =>
+      createConnection(displayName(), environment(), description(), config.draft()),
+    );
+    if (outcome.status === "superseded") return;
+    setSaving(false);
+    if (outcome.status === "failed") {
+      setError(errorMessage(outcome.error));
+      return;
     }
+    reset();
+    setOpen(false);
   };
 
   return (

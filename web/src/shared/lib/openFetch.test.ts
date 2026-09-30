@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createOpenFetch } from "@/features/connection/openFetch";
+import { createOpenFetch } from "@/shared/lib/openFetch";
+
+// The error formatter is injected, because shared/ cannot import an entity and each feature words its failures its own way. The tests pass a trivial one and assert the message reaches the caller unchanged.
+const asMessage = (err: unknown) => (err instanceof Error ? err.message : "failed");
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -20,11 +23,11 @@ describe("createOpenFetch", () => {
     const second = deferred<string>();
     const fetcher = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     const onLoaded = vi.fn();
-    const f = createOpenFetch(fetcher, onLoaded);
+    const f = createOpenFetch(fetcher, onLoaded, asMessage);
 
-    f.handleOpenChange(true); // open #1 — will resolve late
+    f.handleOpenChange(true);
     f.handleOpenChange(false);
-    f.handleOpenChange(true); // open #2 — the current owner
+    f.handleOpenChange(true);
 
     second.resolve("fresh");
     first.resolve("stale");
@@ -39,7 +42,7 @@ describe("createOpenFetch", () => {
   it("fences responses that land after the dialog closed", async () => {
     const d = deferred<string>();
     const onLoaded = vi.fn();
-    const f = createOpenFetch(() => d.promise, onLoaded);
+    const f = createOpenFetch(() => d.promise, onLoaded, asMessage);
 
     f.handleOpenChange(true);
     expect(f.loading()).toBe(true);
@@ -55,7 +58,7 @@ describe("createOpenFetch", () => {
     const first = deferred<string>();
     const second = deferred<string>();
     const fetcher = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const f = createOpenFetch(fetcher, vi.fn());
+    const f = createOpenFetch(fetcher, vi.fn(), asMessage);
 
     f.handleOpenChange(true);
     f.handleOpenChange(false);
@@ -71,12 +74,20 @@ describe("createOpenFetch", () => {
     expect(f.loading()).toBe(false);
   });
 
-  it("guard() reports staleness across a reopen — follow-up requests can fence themselves", () => {
-    const f = createOpenFetch(() => Promise.resolve("x"), vi.fn());
+  it("captureSession reports staleness across a reopen — follow-up requests can fence themselves", () => {
+    const f = createOpenFetch(() => Promise.resolve("x"), vi.fn(), asMessage);
     f.handleOpenChange(true);
-    const current = f.guard();
-    expect(current()).toBe(true);
-    f.handleOpenChange(false); // reopen/close invalidates captured guards
-    expect(current()).toBe(false);
+    const isSameSession = f.captureSession();
+    expect(isSameSession()).toBe(true);
+    f.handleOpenChange(false);
+    expect(isSameSession()).toBe(false);
+  });
+
+  it("fences a mutation started from the dialog on the same session", async () => {
+    const f = createOpenFetch(() => Promise.resolve("x"), vi.fn(), asMessage);
+    f.handleOpenChange(true);
+    const outcome = f.runInSession(() => Promise.resolve("saved"));
+    f.handleOpenChange(false);
+    expect(await outcome).toEqual({ status: "superseded" });
   });
 });
