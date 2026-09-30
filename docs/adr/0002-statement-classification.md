@@ -1,10 +1,14 @@
 # ADR-0002: Statement classification table & test fixtures
 
-- **Status:** Accepted — classification table and fixtures fixed. (Amended 2026-07-04: parsers are settled in ADR-0001, fixtures are now literal SQL, and the CTE-DML / `SELECT … INTO` structural question is closed. Amended 2026-07-19: PG reject fixtures #28/#29 added with the PG adapter implementation.)
+- **Status:** Accepted — classification table and fixtures fixed.
+  (Amended 2026-07-04: parsers are settled in ADR-0001, fixtures are now literal SQL, and the CTE-DML / `SELECT … INTO` structural question is closed. Amended 2026-07-19: PG reject fixtures #28/#29 added with the PG adapter implementation.)
 - **Date:** 2026-06-27 (amended 2026-07-04, 2026-07-19)
 
 ## Context
-Every approved statement is classified as `read`, `write`, or `ddl` before execution, and the class is matched against the per-connection policy. The classifier is a **safety gate**: a misclassification can let a write reach a read-only connection. ADR-0001 fixes the parsers and an **allow-list + fail-closed** model. This ADR pins the concrete classification table and the fixtures all three engines must satisfy, so behavior is identical and testable across PostgreSQL, MySQL, and SQLite.
+Every approved statement is classified as `read`, `write`, or `ddl` before execution, and the class is matched against the per-connection policy.
+The classifier is a **safety gate**: a misclassification can let a write reach a read-only connection.
+ADR-0001 fixes the parsers and an **allow-list + fail-closed** model.
+This ADR pins the concrete classification table and the fixtures all three engines must satisfy, so behavior is identical and testable across PostgreSQL, MySQL, and SQLite.
 
 Principles:
 - **Exactly one statement.** More than one top-level statement → reject (a single trailing `;` is fine).
@@ -23,16 +27,33 @@ Principles:
 
 ### Always reject (regardless of policy)
 - **Multiple statements** (top-level count > 1).
-- **Transaction control** — `BEGIN`/`START TRANSACTION`/`COMMIT`/`ROLLBACK`/`SAVEPOINT`. (The server owns the transaction.)
+- **Transaction control** — `BEGIN`/`START TRANSACTION`/`COMMIT`/`ROLLBACK`/`SAVEPOINT`.
+  (The server owns the transaction.)
 - **Session/engine mutation** — `SET`, `RESET`, MySQL `USE`, writable `PRAGMA`.
 - **File/network/utility** — `COPY … (FROM|TO|PROGRAM)`, `SELECT … INTO OUTFILE/DUMPFILE`, `LOAD DATA`, `ATTACH`/`DETACH`.
 - **Side-effecting introspection** — `EXPLAIN ANALYZE` (executes the statement).
 - **Opaque effect** — `CALL`, `DO`, stored-procedure invocation, and any vendor-specific command not on the allow-list.
+- **Function calls outside the function allow-list** (added 2026-07-24) — a statement referencing any function not on the per-dialect allow-list is rejected, including every user-defined function and every schema-qualified name.
+  See "Function effects" below.
 - **Transaction-incompatible DDL** — PG `CREATE INDEX CONCURRENTLY` / `DROP INDEX CONCURRENTLY` (added 2026-07-20): every execution is wrapped in a transaction (PRD §8.2), which PostgreSQL forbids for these forms, so an admitted statement could never succeed — reject at classification, not at runtime.
 - **Unparsed / ambiguous** — anything the parser cannot fully resolve.
 
+### Nested DDL statements (2026-09-30)
+`CREATE SCHEMA` may contain `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, `CREATE TRIGGER`, and `GRANT` as schema elements.
+Each element passes the same statement classifier as a top-level command before the whole schema is admitted as `ddl`.
+In particular, wrapping `GRANT`, a trigger call, or `CREATE INDEX CONCURRENTLY` cannot waive its normal rejection.
+The full-tree function/operator sweep still checks expressions in every admitted element.
+
+| # | Literal input | Engines | Expected |
+|---|---|---|---|
+| 53 | `CREATE SCHEMA s CREATE TABLE t (id int) GRANT SELECT ON t TO PUBLIC` | PG | reject (not allowlisted) |
+| 54 | `CREATE SCHEMA s CREATE TABLE t (id int) CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION public.f()` | PG | reject (not allowlisted) |
+| 55 | `CREATE SCHEMA s CREATE TABLE t (id int) CREATE INDEX CONCURRENTLY i ON t (id)` | PG | reject (non-transactional) |
+| 56 | `CREATE SCHEMA s CREATE TABLE t (id int) CREATE VIEW v AS SELECT id FROM t` | PG | `ddl` |
+
 ### Pinned edge-case fixtures (literal; must hold on every engine where the syntax exists)
-The suite assumes a table `t(id integer, v text)`. `PG`/`MY`/`SQ` mark engine applicability; a fixture without a mark runs on all three.
+The suite assumes a table `t(id integer, v text)`.
+`PG`/`MY`/`SQ` mark engine applicability; a fixture without a mark runs on all three.
 
 | # | Literal input | Engines | Expected |
 |---|---|---|---|
@@ -68,16 +89,56 @@ The suite assumes a table `t(id integer, v text)`. `PG`/`MY`/`SQ` mark engine ap
 | 30 | `CREATE INDEX CONCURRENTLY idx ON t (v)` | PG | reject (non-transactional — cannot run inside the transaction every execution gets) |
 | 31 | `DROP INDEX CONCURRENTLY idx` | PG | reject (non-transactional — same rule as #30) |
 
-These fixtures live as a shared table-driven test suite; each engine's adapter runs its rows of the same matrix. A statement not explicitly expected in the suite defaults to **reject** — new allow-listed forms enter only with a new fixture row here.
+These fixtures live as a shared table-driven test suite; each engine's adapter runs its rows of the same matrix.
+A statement not explicitly expected in the suite defaults to **reject** — new allow-listed forms enter only with a new fixture row here.
 
-A `SELECT` that merely *calls functions* stays `read`: classification is a policy gate, and volatile functions are backstopped at execution time by the server-enforced read-only transaction (PRD §8.2).
+### Function effects (revised 2026-07-24 — the earlier premise was wrong)
+The original text here said a `SELECT` that merely *calls functions* stays `read` because "volatile functions are backstopped at execution time by the server-enforced read-only transaction". **That premise is false.** PostgreSQL's `READ ONLY` mode is explicitly *"a high-level notion of read-only that does not prevent all writes to disk"*; it disallows a fixed list of **commands** (`INSERT`/`UPDATE`/`DELETE`/`MERGE`/`COPY FROM` to non-temp tables, all `CREATE`/`ALTER`/`DROP`, `COMMENT`, `GRANT`, `REVOKE`, `TRUNCATE`, and `EXPLAIN ANALYZE`/`EXECUTE` of those) — not function side effects.
+So `SELECT dblink_exec('…','insert …')`, `SELECT pg_notify(…)`, `SELECT set_config(…)`, advisory-lock and server-file/admin functions all pass a read-only transaction, and an approved **read** could write (PRD §4.3/§8.2 promise the class gate is real).
+
+**Revised again 2026-07-25 (external review round 4).** The two-layer text below previously named the executor's `provolatile` check as the second *boundary*.
+It is not one, and the first layer was applied to the wrong scope.
+Both are corrected here.
+
+1. **Classification-time name allow-list — a coarse pre-filter over EVERY class (fail-closed, this slice).** Each dialect carries an explicit allow-list of pure/standard builtins.
+   Any `FuncCall` whose name is not on it — every user-defined function, every unknown builtin, and every **schema-qualified** name (`public.f`, `pg_catalog.f`) — is a `Rejection`, exactly like an unknown statement node.
+   The same rule covers **operators**: `A_Expr` names are checked against an operator allow-list, because `CREATE OPERATOR` binds an arbitrary function to a symbol, so an unchecked operator is an unchecked function call.
+   This sweep is **class-independent and runs before the class is decided**.
+   Earlier text justified skipping DDL subtrees with "`ddl` is already the highest class, so nothing inside can escalate it" — true of *escalation*, false of *effects*: it silently exempted `CREATE TABLE t AS SELECT dblink_exec(…)`, `CREATE INDEX i ON t ((dblink_exec(…)))`, and `ALTER TABLE … SET DEFAULT pg_notify(…)` from the allow-list.
+   A `ddl` class is a statement of privilege, never a waiver of the effect check.
+2. **The real boundary is the target database account (PRD §8.1).** What ultimately bounds an approved statement is what its login role is *allowed to do* on the target: no `EXECUTE` on `dblink_exec`/admin functions, no `CREATE` in schemas it should not write, no superuser.
+   Portcullis's parser is a governance filter on *intent*; the database's own privilege system is the enforcement.
+3. **Execution-time OID resolution (the executor slice's contract, hook only).** When the executor lands it must resolve each referenced function/operator to an **OID** under a pinned `search_path` and match it against a trusted catalog, rather than trusting the spelling layer 1 saw.
+   Name equality is not identity: PostgreSQL resolves calls by *argument types* and `search_path` order, so `lower(some_custom_type)` can bind a user-defined overload whose name is on the list.
+
+**`provolatile` is NOT part of that boundary.** PostgreSQL states the volatility category is *"a promise to the optimizer about the behavior of the function"*, and that filtering on it is *"not a completely bulletproof test, since such functions could still call `VOLATILE` functions that modify the database"*.
+The server never enforces the declaration, so anyone who can create a function can declare a side-effecting body `STABLE`.
+Checking `provolatile` remains worthwhile as a **hygiene check** against honestly-declared volatile builtins slipping into a `read`; it must never be described as a control.
+
+**Residual risk the classifier cannot close** (deliberately deferred to layers 2–3): overload resolution by argument type, user-defined casts (`TypeCast` to a user type invokes a cast function) and user-defined aggregates, and functions reached *indirectly* — an allow-listed function whose own body calls something else.
+A name-based filter is blind to all three because they are decided by the catalog, not by the text.
 
 ### CTE-DML and `… INTO` detectability (closed 2026-07-04)
 The former open item — "can each parser expose data-modifying CTEs and `INTO` targets?" — is resolved by the ADR-0001 picks:
 - **PostgreSQL** (`pgplex/pgparser`): the AST is the PG parse tree, so CTE bodies are `CommonTableExpr` nodes (walk each for DML) and `SELECT … INTO` carries an `IntoClause` — both structurally visible, exactly as PostgreSQL itself classifies them.
 - **MySQL** (tidb parser): `WITH` clauses hang off the DML/SELECT AST nodes and `SELECT … INTO OUTFILE/DUMPFILE` is an explicit AST field; both are walkable.
-- **SQLite** (engine authorizer): classification is not tree-walking at all — the engine reports the *effects* (action codes) of the fully resolved statement, so a write hidden in a CTE surfaces as `SQLITE_INSERT/UPDATE/DELETE` regardless of nesting. The fail-closed rule stands regardless: if an adapter cannot prove a form's class from the structures above, that form is rejected — never approximated.
+- **SQLite** (engine authorizer): classification is not tree-walking at all — the engine reports the *effects* (action codes) of the fully resolved statement, so a write hidden in a CTE surfaces as `SQLITE_INSERT/UPDATE/DELETE` regardless of nesting.
+  The fail-closed rule stands regardless: if an adapter cannot prove a form's class from the structures above, that form is rejected — never approximated.
 
 ## Consequences
 - The fixture matrix is the contract the three per-dialect parsers (ADR-0001) must pass; it is part of the cross-engine contract test suite and the acceptance gate for any parser bump.
 - `read` PRAGMA / `SHOW`-like introspection that varies per engine is added to the allow-list only with an explicit fixture, never by default.
+- The function allow-list is a maintenance surface: a legitimate query using an unlisted builtin is rejected until the list (and a fixture) admits it.
+  That is the intended direction of failure — a rejected read is a support ticket, an unnoticed write through `dblink_exec` is a governance breach.
+- The operator allow-list is the same trade at a higher traffic volume: every comparison, arithmetic, pattern, and JSON operator a real query uses must be listed, and an exotic-but-legitimate one is rejected until a fixture admits it.
+- The effect sweep is one pass over the whole tree for every statement, independent of the class walk.
+  That is a second traversal of the same nodes — accepted deliberately: fusing it into the class walk is what produced the DDL exemption above.
+
+## Sources (function-effects revision, checked 2026-07-24; boundary revision 2026-07-25)
+- PostgreSQL `CREATE SCHEMA` — nested statement vocabulary (checked 2026-09-30): https://www.postgresql.org/docs/current/sql-createschema.html
+- PostgreSQL `SET TRANSACTION` — the `READ ONLY` command list and the explicit "high-level notion of read-only that does not prevent all writes to disk": https://www.postgresql.org/docs/current/sql-set-transaction.html
+- `dblink_exec` — executes arbitrary commands (including writes) on a remote database from inside a `SELECT`: https://www.postgresql.org/docs/current/contrib-dblink-exec.html
+- System administration functions (`pg_notify`, `set_config`, advisory locks, server-file access) — side effects reachable from a plain `SELECT`: https://www.postgresql.org/docs/current/functions-admin.html
+- Function volatility categories — the source of "a promise to the optimizer" and "not a completely bulletproof test, since such functions could still call `VOLATILE` functions that modify the database", i.e. why `provolatile` is a hygiene check and not a boundary: https://www.postgresql.org/docs/current/xfunc-volatility.html
+- Function/operator resolution by argument type and `search_path` — why the spelling on the allow-list does not identify the function that will actually run: https://www.postgresql.org/docs/current/typeconv-func.html
+- `CREATE OPERATOR` — an operator symbol is a user-suppliable binding to an arbitrary function, hence the operator allow-list: https://www.postgresql.org/docs/current/sql-createoperator.html

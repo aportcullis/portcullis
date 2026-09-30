@@ -1,6 +1,7 @@
 # Frontend conventions (web/ — SolidJS SPA)
 
-Stack: SolidJS + Vite + Tailwind v4 + Kobalte(vendored solid-ui) + Connect-ES v2 (ADR-0013). Package manager is **pnpm only** (`pnpm -C web …`) — never npm/npx.
+Stack: SolidJS + Vite + Tailwind v4 + Kobalte(vendored solid-ui) + Connect-ES v2 (ADR-0013).
+Package manager is **pnpm only** (`pnpm -C web …`) — never npm/npx.
 
 ## Structure — light FSD (Feature-Sliced Design)
 
@@ -22,24 +23,49 @@ web/src/
 ```
 
 ### The one dependency rule
-Imports point **downward only**: `app → pages → features → entities → shared` (`gen` sits below `shared`). Same-layer imports across folders are forbidden (a feature never imports another feature; an entity never imports another entity) — shared code moves DOWN a layer instead. This is the SPA's ports-and-adapters: the same inward-only dependency discipline as the Go layers.
+Imports point **downward only**: `app → pages → features → entities → shared` (`gen` sits below `shared`).
+Same-layer imports across folders are forbidden (a feature never imports another feature; an entity never imports another entity) — shared code moves DOWN a layer instead.
+This is the SPA's ports-and-adapters: the same inward-only dependency discipline as the Go layers.
+
+**ESLint enforces all of it** (`web/eslint.config.js`): the `@/` alias, the downward-only layers, and — since 2026-07-26 — the sibling-slice ban, generated per slice from the folders under `features/` and `entities/`.
+The sibling rule was review-only until a feature did import another one; a convention a tool cannot check is a convention that erodes.
+When shared logic needs a caller-specific piece (an error formatter, a label), **inject it** rather than importing sideways — see `shared/lib/openFetch.ts`.
 
 ### Slicing
 - Split components by **user action**, not by screen: a page composes features; a feature owns one interaction (form, button, dialog) end-to-end.
 - A widgets/ layer (multi-feature blocks) is introduced only when a composition is reused across pages — don't pre-create it.
 
 ## Imports
-- **Always the `@/` alias** from `web/src` (`@/shared/ui/button`). Relative import paths — `./` AND `../`, including same-slice sibling files — are **forbidden**: write `@/entities/connection/model`, never `./model`. Enforced by ESLint (`@typescript-eslint/no-restricted-imports`, `make web-lint`).
+- **Always the `@/` alias** from `web/src` (`@/shared/ui/button`).
+  Relative import paths — `./` AND `../`, including same-slice sibling files — are **forbidden**: write `@/entities/connection/model`, never `./model`.
+  Enforced by ESLint (`@typescript-eslint/no-restricted-imports`, `make web-lint`).
 
 ## Vendored UI (shared/ui)
-- Components are copy-pasted from solid-ui (ADR-0013), reviewed on copy-in, and OWNED here: restyle freely, never blindly re-sync with upstream. Keep their internal import fixed to `@/shared/lib/utils`.
+- Components are copy-pasted from solid-ui (ADR-0013), reviewed on copy-in, and OWNED here: restyle freely, never blindly re-sync with upstream.
+  Keep their internal import fixed to `@/shared/lib/utils`.
 - Add a component only when a feature needs it; prefer extending an existing one over vendoring a near-duplicate.
 
 ## Server interaction
-- All RPC goes through `shared/api` clients (Connect-ES v2, `createClient`); no raw fetch to API routes. The CSRF interceptor lives there — features/entities never touch cookies directly.
+- All RPC goes through `shared/api` clients (Connect-ES v2, `createClient`); no raw fetch to API routes.
+  The CSRF interceptor lives there — features/entities never touch cookies directly.
 - Auth/session errors render **uniform messages** (one string for every login rejection — the server is oracle-free and the UI must not undo that, ADR-0006).
+- **Fence dialog sessions**
+  - Fence work after every `await` through `shared/lib/dialogSession.ts`; closing and reopening remains possible while requests run.
+  - Apply nothing when `runInSession` returns `superseded`; the close handler releases `busy` and `saving`.
+  - Use `createOpenFetch` for the same protection on read-on-open callbacks.
+- **Own drafts at list level**
+  - Solid’s `<For>` is [keyed by reference](https://docs.solidjs.com/reference/components/for), so refreshed row objects destroy row-owned forms.
+  - Keep the edited row in a list signal and resolve it by ID through `features/connection/editTarget.ts`.
+  - Retain the captured row when reload fails and empties the list.
+  - Reset through a `createMemo` of the target ID; row-object changes must not discard the session or input.
+- **Gate each action independently**
+  - Ask for the permission its RPC requires (ADR-0008/0018).
+  - Keep Submit/Cancel on the list row under `requests.create`; Details separately needs `requests.get`.
+  - Offer saved drafts only when the caller can reopen them (`mayReturnToSavedDraft`).
 
 ## Testing
-- Browser e2e: Playwright under `web/e2e/`, driving the real Go binary + throwaway PostgreSQL (`make e2e`). Serial (`workers: 1`) — bootstrap is once per database.
+- Browser e2e: Playwright under `web/e2e/`, driving the real Go binary + throwaway PostgreSQL (`make e2e`).
+  Serial (`workers: 1`) — bootstrap is once per database.
 - Type safety is enforced by `pnpm -C web typecheck` (tsgo).
-- Unit tests: vitest (`make web-test`, part of `make verify`), colocated as `*.test.ts`, node environment (`web/vitest.config.ts` mirrors the `@/` alias). Reserved for pure logic Playwright cannot schedule deterministically — store/state race interleavings are the canonical case (`entities/connection/store.test.ts`); component rendering stays with e2e.
+- Unit tests: vitest (`make web-test`, part of `make verify`), colocated as `*.test.ts`, node environment (`web/vitest.config.ts` mirrors the `@/` alias).
+  Reserved for pure logic Playwright cannot schedule deterministically — store/state race interleavings are the canonical case (`entities/connection/store.test.ts`); component rendering stays with e2e.

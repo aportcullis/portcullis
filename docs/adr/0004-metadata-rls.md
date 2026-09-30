@@ -1,15 +1,19 @@
 # ADR-0004: Metadata RLS — apply or not
 
-- **Status:** Accepted — no RLS in the MVP. Self-host is single-org, so there is no cross-org boundary to enforce yet; schema stays RLS-ready and RLS is revisited at multi-tenant.
+- **Status:** Accepted — no RLS in the MVP.
+  Self-host is single-org, so there is no cross-org boundary to enforce yet; schema stays RLS-ready and RLS is revisited at multi-tenant.
 - **Date:** 2026-06-27
 
 ## Context
-Every core table carries an `organization_id`. The product runs single-org when self-hosted and leaves multi-tenant only as a trace in the data model. The question: should the metadata PostgreSQL database enforce org isolation with **Row-Level Security (RLS)**, on top of the application's repository layer?
+Every core table carries an `organization_id`.
+The product runs single-org when self-hosted and leaves multi-tenant only as a trace in the data model.
+The question: should the metadata PostgreSQL database enforce org isolation with **Row-Level Security (RLS)**, on top of the application's repository layer?
 
 Threat model:
 - The **application is the only path** to the metadata database; there is no second writer.
 - The realistic risk RLS mitigates is an **application bug** — a query that forgets its org predicate — not a fully compromised process (which could set any RLS session variable anyway).
-- RLS has a real cost: the runtime role is a single pooled connection, so every transaction must reliably `SET LOCAL` an org context, and policies must cover every table and access path. With connection pooling a missed/leaked session variable is its own correctness hazard.
+- RLS has a real cost: the runtime role is a single pooled connection, so every transaction must reliably `SET LOCAL` an org context, and policies must cover every table and access path.
+  With connection pooling a missed/leaked session variable is its own correctness hazard.
 
 In a single-org MVP the isolation benefit is low; the benefit grows only when true multi-tenant SaaS arrives.
 

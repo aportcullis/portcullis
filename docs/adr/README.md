@@ -1,6 +1,7 @@
 # Architecture Decision Records (ADR)
 
-These records capture the *how* of Portcullis's implementation — the binding technical choices behind the product requirements. Each ADR states its own context and constraints so it can be read on its own.
+These records capture the *how* of Portcullis's implementation — the binding technical choices behind the product requirements.
+Each ADR states its own context and constraints so it can be read on its own.
 
 ## Status values
 `Proposed` → `Accepted` → (when replaced) `Superseded by ADR-XXXX`
@@ -31,6 +32,9 @@ These must be `Accepted` before Core 1 coding begins.
 | [0015](0015-connection-policies.md) | Connection policies — per-class approvals, limits, immutable versions | Accepted |
 | [0016](0016-sql-redaction-and-named-binding.md) | SQL redaction & named-parameter binding (token-rebuild, fail-closed) | Accepted |
 | [0017](0017-runtime-settings-store.md) | Runtime settings store — DB-backed operator-tunable operational config | Accepted |
+| [0018](0018-access-requests-and-approvals.md) | Access requests & approvals — state machine, immutable payload, quorum | Accepted |
+| [0019](0019-kviklet-baseline-refresh.md) | kviklet 0.9.2 baseline — workflow comparison, execution and logging safeguards | Accepted |
+| [0020](0020-scenario-load-testing.md) | Scenario load testing — k6 capacity gates and measured deployment sizing | Accepted |
 
 ## Template
 ```markdown
