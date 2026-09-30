@@ -1,7 +1,6 @@
 # ─────────────────────────────────────────────
 # Local-only docs
 # ─────────────────────────────────────────────
-prd.md
 todo.md
 
 # ─────────────────────────────────────────────
@@ -64,6 +63,8 @@ internal/platform/assets/dist/*
 .env.*
 !.env.example
 *.local
+tests/load/*.local.json
+tests/load/results/
 
 # ─────────────────────────────────────────────
 # Editors / OS

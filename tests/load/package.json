@@ -1,0 +1,13 @@
+{
+  "name": "portcullis-load-tests",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.3",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/k6": "2.3.0",
+    "typescript": "7.0.2"
+  }
+}

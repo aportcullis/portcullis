@@ -1,0 +1,13 @@
+[
+  {
+    "connectionId": "REGISTERED_TEST_CONNECTION_UUID",
+    "requester": {
+      "session": "REQUESTER_SESSION_COOKIE",
+      "csrf": "REQUESTER_CSRF_COOKIE"
+    },
+    "approver": {
+      "session": "DISTINCT_APPROVER_SESSION_COOKIE",
+      "csrf": "APPROVER_CSRF_COOKIE"
+    }
+  }
+]

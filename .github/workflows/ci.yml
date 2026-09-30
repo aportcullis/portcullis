@@ -1,9 +1,6 @@
 name: CI
 
-# The unbypassable enforcement of the Definition of Done. Make the `verify` and
-# `web` jobs required status checks on the default branch so nothing merges
-# without the backend gate (build + vet + lint + full tests) and the frontend
-# gate (typecheck + build) passing.
+# Require verify and web status checks on the default branch.
 on:
   push:
     branches: [main]
@@ -16,17 +13,13 @@ jobs:
   verify:
     name: gate (make verify)
     runs-on: ubuntu-latest # ships a running Docker daemon for testcontainers + e2e
-    # Actions are pinned to full commit SHAs: only the SHA is immutable — a
-    # major tag can be retagged upstream and silently change the code CI runs
-    # (GitHub Actions security hardening). Renovate keeps the pins fresh.
+    # Pin immutable action SHAs; Renovate updates them.
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: true
-      # verify includes the browser e2e (make e2e), which builds the SPA and
-      # runs Playwright — so the frontend toolchain is needed here too.
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10
@@ -34,7 +27,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: |
+            web/pnpm-lock.yaml
+            tests/load/pnpm-lock.yaml
       - run: make verify
 
   web:
