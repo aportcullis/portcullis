@@ -11,37 +11,43 @@ import (
 )
 
 type Querier interface {
-	// Archive and credential discard are ONE statement (PRD §4.3 "한 작업으로 처리").
-	// The executions slice adds the in-flight-execution guard predicate here
-	// (ADR-0014).
+	// Recheck active status and the action’s live permission inside the decision transaction; see LockApproverMembership for the revocation-lock boundary.
+	ApproverEligible(ctx context.Context, arg ApproverEligibleParams) (bool, error)
+	// Archive and credential discard are ONE statement (PRD §4.3 "한 작업으로 처리"). The executions slice adds the in-flight-execution guard predicate here (ADR-0014). The stamp is the caller's observed instant — the same one its request cascade uses — never now(), which is this transaction's start time and may predate the lock wait entirely (ADR-0009).
 	ArchiveConnection(ctx context.Context, arg ArchiveConnectionParams) (Connection, error)
 	BootstrapRoleID(ctx context.Context, organizationID pgtype.UUID) (pgtype.UUID, error)
-	// The optimistic pointer bump (ADR-0015): succeeds only when the caller's
-	// expected version is still current and the connection is active. Zero rows
-	// → the store disambiguates missing/archived/conflict. connections.version
-	// (the descriptor token) and updated_at are deliberately untouched — policy
-	// and descriptor concurrency are orthogonal.
+	// The optimistic pointer bump (ADR-0015): succeeds only when the caller's expected version is still current and the connection is active. Zero rows → the store disambiguates missing/archived/conflict. connections.version (the descriptor token) and updated_at are deliberately untouched — policy and descriptor concurrency are orthogonal.
 	BumpConnectionPolicyVersion(ctx context.Context, arg BumpConnectionPolicyVersionParams) (Connection, error)
-	// Total matching rows for the page controls. O(n) on a large table — PRD §7.1
-	// accepts this for the audit list and defers keyset pagination to "later".
+	// Archive sweeps drafts to cancelled (§4.3: draft → cancelled on archive), on the same observed instant as the expiry above.
+	CancelDraftsForConnection(ctx context.Context, arg CancelDraftsForConnectionParams) ([]AccessRequest, error)
+	// Counts on the EFFECTIVE state too, so the total matches the filtered rows.
+	CountAccessRequests(ctx context.Context, arg CountAccessRequestsParams) (int64, error)
+	// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".
 	CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
+	// How many recorded approvals still COUNT (ADR-0018): the approver is active, still resolves requests.approve through the live membership→role→permission join (the PermissionsForUser shape, rbac.sql), and is not the requester.
+	CountValidApprovals(ctx context.Context, arg CountValidApprovalsParams) (int64, error)
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (OrganizationMembership, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	// Slide the idle window forward on activity, never past the absolute expiry and
-	// never backward (greatest() guards against a late, older request regressing it).
-	// Re-check both expiries in the write: a session can expire after Authenticate
-	// reads it but before the post-CSRF slide, and an expired session must never be
-	// resurrected by that race.
+	// The archive guard (§4.3): refuse while an execution is in flight. The state is unreachable until the execution slice; the guard is inherited (ADR-0018).
+	ExistsExecutingForConnection(ctx context.Context, arg ExistsExecutingForConnectionParams) (bool, error)
+	// Expire pending/approved requests and append derived audit events in the policy/archive transaction, using the post-lock observed instant (ADR-0018).
+	ExpireLiveRequestsForConnection(ctx context.Context, arg ExpireLiveRequestsForConnectionParams) ([]AccessRequest, error)
+	// Use one materialized clock_timestamp() for expiry predicate and updated_at after locking. The returned instant also dates derived audit evidence (ADR-0018).
+	ExpireOverdueAccessRequest(ctx context.Context, arg ExpireOverdueAccessRequestParams) ([]AccessRequest, error)
+	// Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 	ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) (int64, error)
 	FindUserBySubject(ctx context.Context, arg FindUserBySubjectParams) (User, error)
-	// Detail remains organization-scoped; audit.get must never become an IDOR path.
+	GetAccessRequest(ctx context.Context, arg GetAccessRequestParams) (AccessRequest, error)
+	// The row lock every decision path takes first: concurrent approvals then serialize, so the quorum count and its transition are race-free (ADR-0018).
+	GetAccessRequestForUpdate(ctx context.Context, arg GetAccessRequestForUpdateParams) (AccessRequest, error)
+	// Return requester, target, and current valid-approval count together. Keep detail and list projections aligned for their shared Go row type.
+	GetAccessRequestView(ctx context.Context, arg GetAccessRequestViewParams) (GetAccessRequestViewRow, error)
+	// Detail remains organization-scoped; audit.get must never become an IDOR path. total_count is literally 1 here and goes unused — it keeps the row shape structurally identical to the list rows, so one mapper serves all three.
 	GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
-	// The connection's current policy snapshot, resolved through the pointer.
-	// Works for archived connections too: the policy is part of the historical
-	// snapshot (ADR-0015).
+	// The connection's current policy snapshot, resolved through the pointer. Works for archived connections too: the policy is part of the historical snapshot (ADR-0015).
 	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
@@ -49,75 +55,69 @@ type Querier interface {
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
-	// User + password hash + progressive-backoff state in one round-trip, so a
-	// password login costs the same number of queries whether or not the account
-	// exists (anti-enumeration). The hash is empty for OIDC-only users (no password
-	// row); the backoff columns are zero/null for accounts that never failed. The
-	// locked flag is evaluated HERE on the database clock — the same clock the
-	// failure upsert uses — so app/DB clock skew can't split the expiry decision.
+	// Read identity, password hash, and lockout together so known and unknown accounts use one lookup. Evaluate lockout on the same database clock as failure writes.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
+	// created_at/updated_at are given explicitly rather than left to the column DEFAULT: this insert runs after a FOR SHARE wait on the connection, and the default is now() — the transaction's start time, which predates the wait (ADR-0009).
+	InsertAccessRequest(ctx context.Context, arg InsertAccessRequestParams) error
+	// Read clock_timestamp() after the request lock and reuse the returned instant for approval, transition, expiry, and audit.
+	InsertApproval(ctx context.Context, arg InsertApprovalParams) (pgtype.Timestamptz, error)
+	// Ordinary events use database time; derived events reuse the observation instant so expiry audit cannot precede its deadline (ADR-0009).
 	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
-	// current_policy_version starts at 1; the deferred FK is satisfied by the v1
-	// default policy row the store inserts in the same transaction (ADR-0015).
+	// Create policy v1 in the same transaction to satisfy the deferred FK. Use post-lock database time for row and audit ordering (ADR-0009).
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
-	// Append-only: a policy update inserts version N+1 (the (connection_id,
-	// version) PK is the structural guard against duplicates); rows are never
-	// updated (runtime UPDATE is revoked — ADR-0015).
+	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
-	// Idempotent only for the same user: a new (issuer, subject) inserts; an
-	// existing one owned by the same user refreshes the email; one owned by a
-	// different user matches the conflict but fails the WHERE, so no row is
-	// returned and the caller detects the collision (vs. silently succeeding).
+	// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
 	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
-	// Oldest first; (occurred_at asc, id asc) is the same index scanned backward, so it
-	// stays index-served and tie-breaker-stable.
+	ListAccessRequestsAsc(ctx context.Context, arg ListAccessRequestsAscParams) ([]ListAccessRequestsAscRow, error)
+	// Filter by effective state and requester, then paginate newest-first with an ID tie-breaker; include current valid-approval counts.
+	ListAccessRequestsDesc(ctx context.Context, arg ListAccessRequestsDescParams) ([]ListAccessRequestsDescRow, error)
+	// Every decision with its display fields and computed validity (same predicate as CountValidApprovals). Rejections are listed but never "valid approvals".
+	ListApprovalsForRequest(ctx context.Context, arg ListApprovalsForRequestParams) ([]ListApprovalsForRequestRow, error)
+	// Oldest first; (occurred_at asc, id asc) is the same index scanned backward, so it stays index-served and tie-breaker-stable.
 	ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAscParams) ([]ListAuditEventsAscRow, error)
-	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the
-	// audit_events_org_time_idx covering index (forward scan) and give OFFSET
-	// pagination a stable tie-breaker (PRD §7.1). Extended columns
-	// (state/execution/digest) are omitted until the features that populate them ship.
+	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)
-	// A user's effective permissions within one organization. Scoped by org (ADR-0004
-	// repository contract) and joined to roles so a soft-deleted role stops granting
-	// its permissions even while a membership still references it (FKs are RESTRICT).
+	// Return active target summaries under requests.create without connection-admin permissions (ADR-0008).
+	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
+	// Lock membership FOR SHARE before checking eligibility. Concurrent revocation serializes only once the future role-management path takes FOR UPDATE on the same row (ADR-0018).
+	LockApproverMembership(ctx context.Context, arg LockApproverMembershipParams) ([]int32, error)
+	// Guard state transitions and draft versions. Keep the active, permitted, non-requester approval predicate aligned across counts and views (ADR-0018).
+	// FOR SHARE allows concurrent request writers while serializing archive/policy changes and their cascades against request creation (ADR-0018).
+	LockConnectionForRequest(ctx context.Context, arg LockConnectionForRequestParams) (LockConnectionForRequestRow, error)
+	// Lock before observing time so mutation timestamps follow lock waits. Updates retain their own archive predicates for precise refusal reasons.
+	LockConnectionForWrite(ctx context.Context, arg LockConnectionForWriteParams) (pgtype.UUID, error)
+	// The config-replacement cascade's half of LockSweptRequestsForConnection: it touches pending/approved only, so it locks only those. Drafts survive a config change — the connection is still there and a draft carries no approval, so it can simply be submitted against the new configuration (unlike archive, which takes the connection away entirely).
+	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
+	// Lock cascade request rows before observing time. The caller’s exclusive connection lock prevents new requests from appearing behind the sweep.
+	LockSweptRequestsForConnection(ctx context.Context, arg LockSweptRequestsForConnectionParams) ([]pgtype.UUID, error)
+	// Observe time in a separate statement after all locks; an inline UPDATE timestamp may be evaluated before its lock wait.
+	ObserveWallClock(ctx context.Context) (pgtype.Timestamptz, error)
+	// A user's effective permissions within one organization. Scoped by org (ADR-0004 repository contract) and joined to roles so a soft-deleted role stops granting its permissions even while a membership still references it (FKs are RESTRICT).
 	PermissionsForUser(ctx context.Context, arg PermissionsForUserParams) ([]string, error)
-	// ONE atomic statement per failed attempt (ADR-0006): bump the counter and,
-	// at/after the threshold, impose or extend the jittered lockout — so a
-	// concurrent success reset or lazy expiry-reset can never interleave between
-	// counting and locking, and every failure costs exactly one write. All time
-	// arithmetic runs on the database clock. The counter restarts at 1 when the
-	// previous lockout has expired ("resets on expiry", applied lazily) or when
-	// the last failure is older than the staleness window (months-old typos must
-	// not count toward a fresh lockout). The window is
-	// min(base·2^(n-threshold), cap)·jitter_factor with the exponent clamped to
-	// [0,30], so no operand can overflow; greatest() keeps a concurrent shorter
-	// jittered window from moving an existing lockout backward.
+	// Atomically count failure and extend jittered lockout on the database clock. Expired/stale counters restart; clamped exponents prevent overflow and greatest() prevents shorter expiry.
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error)
-	// Full config replacement (ADR-0014: no partial credential edit). Archived
-	// rows are excluded — restore is a separate future flow; the store
-	// disambiguates "missing" from "archived" on a zero rowcount.
+	// Full config replacement (ADR-0014: no partial credential edit). Archived rows are excluded — restore is a separate future flow; the store disambiguates "missing" from "archived" on a zero rowcount.
 	ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnectionConfigParams) (Connection, error)
-	// A successful login clears the slate. The WHERE leaves an already-clean row
-	// unwritten, so calling this on every success keeps the hot path write-free
-	// while still clearing failures committed by concurrent attempts mid-verify.
+	// A successful login clears the slate. The WHERE leaves an already-clean row unwritten, so calling this on every success keeps the hot path write-free while still clearing failures committed by concurrent attempts mid-verify.
 	ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error
-	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must
-	// not overwrite the original revoked_at — forensic evidence of WHEN the session
-	// actually died — and the caller skips the audit event when no row changed, so
-	// the trail records only real state changes (ADR-0009).
+	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must not overwrite the original revoked_at — forensic evidence of WHEN the session actually died — and the caller skips the audit event when no row changed, so the trail records only real state changes (ADR-0009).
 	RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error)
 	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
 	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
-	// Descriptor-only update: name, environment label, and description — no
-	// credential involved. Archived rows stay editable: these fields label
-	// history, not the live target.
+	// The display name of the user's role within one organization — a UI label (ADR-0008: authorization decisions never consult role names). The same soft-delete join rule as PermissionsForUser applies.
+	RoleNameForUser(ctx context.Context, arg RoleNameForUserParams) (string, error)
+	// Stamp submission, updated_at, and quorum-zero approval expiry from one post-lock database instant; reuse it in derived audit evidence.
+	SubmitAccessRequest(ctx context.Context, arg SubmitAccessRequestParams) (AccessRequest, error)
+	// Use the decision’s observed instant for transition and approval expiry; otherwise clock_timestamp() avoids dating writes before lock waits.
+	TransitionAccessRequest(ctx context.Context, arg TransitionAccessRequestParams) (AccessRequest, error)
+	UpdateAccessRequestDraftPayload(ctx context.Context, arg UpdateAccessRequestDraftPayloadParams) (AccessRequest, error)
+	// Replace descriptor fields at the editor’s version, including archived history labels. Stamp with the post-lock observed instant; zero rows mean missing or stale.
 	UpdateConnectionDescriptor(ctx context.Context, arg UpdateConnectionDescriptorParams) (Connection, error)
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error
-	// Final post-CSRF validity check for a request whose idle slide is throttled.
-	// It deliberately does not write, but its predicates use the database clock so
-	// a concurrently revoked or expired session cannot reach a handler.
+	// Final post-CSRF validity check for a request whose idle slide is throttled. It deliberately does not write, but its predicates use the database clock so a concurrently revoked or expired session cannot reach a handler.
 	ValidateSession(ctx context.Context, id pgtype.UUID) (bool, error)
 }
 

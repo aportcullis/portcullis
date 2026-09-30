@@ -1,6 +1,7 @@
 package crypto_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -8,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/connection"
+	"github.com/aportcullis/portcullis/internal/domain/query"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 )
 
@@ -25,7 +28,7 @@ func TestArgon2HasherMinConcurrency(t *testing.T) {
 func TestArgon2HasherConcurrentSafe(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	h := crypto.NewArgon2Hasher(weakParams, 2) // cap below the goroutine count
+	h := crypto.NewArgon2Hasher(weakParams, 2)
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -46,8 +49,7 @@ func TestArgon2HasherConcurrentSafe(t *testing.T) {
 
 func TestArgon2HasherCancelledContextIsRejected(t *testing.T) {
 	t.Parallel()
-	// An already-cancelled context must be rejected before any hashing, even with a
-	// free slot — deterministically, in a single call (no retry loop).
+	// An already-cancelled context must be rejected before any hashing, even with a free slot — deterministically, in a single call (no retry loop).
 	h := crypto.NewArgon2Hasher(weakParams, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -62,21 +64,16 @@ func TestArgon2HasherCancelledContextIsRejected(t *testing.T) {
 
 func TestArgon2HasherCancelledWaiterErrorsAndLeaksNoSlot(t *testing.T) {
 	t.Parallel()
-	// A waiter parked on a full semaphore whose ctx is cancelled must return
-	// the ctx error and leave the semaphore balanced once the slot frees. What
-	// this deliberately does NOT claim to cover: the pre-check/select-ENTRY
-	// race acquire's post-acquire re-check guards — a parked select commits to
-	// the first case that becomes ready, so that window cannot be reproduced
-	// from outside the package (mutation-checked; see the comment in acquire).
+	// Cancellation must release a parked waiter without leaking a slot. The pre-select acquisition race cannot be scheduled through the public API.
 	for range 100 {
 		h := crypto.NewArgon2Hasher(weakParams, 1)
 		h.TestFillSlot()
 		ctx, cancel := context.WithCancel(context.Background())
 		got := make(chan error, 1)
 		go func() { got <- h.TestAcquire(ctx) }()
-		time.Sleep(time.Millisecond) // let the waiter park in the select
+		time.Sleep(time.Millisecond)
 		cancel()
-		h.TestReleaseSlot() // both cases become ready while the waiter wakes
+		h.TestReleaseSlot()
 		if err := <-got; !errors.Is(err, context.Canceled) {
 			t.Fatalf("cancelled waiter acquired the slot: err=%v", err)
 		}
@@ -123,8 +120,8 @@ func TestArgon2HasherNeedsRehashUnderStrongerProfile(t *testing.T) {
 func loadKeyring(t *testing.T, seed byte) *crypto.Keyring {
 	t.Helper()
 	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = seed
+	for idx := range raw {
+		raw[idx] = seed
 	}
 	kr, err := crypto.LoadKeyring(base64.StdEncoding.EncodeToString(raw), "")
 	if err != nil {
@@ -145,7 +142,7 @@ func TestCSRFProtectorIssueVerify(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A fresh nonce each call → different tokens that both still verify.
+
 	if t1 == t2 {
 		t.Error("each Issue should produce a fresh token")
 	}
@@ -185,8 +182,6 @@ func TestConnectionCredentialCodecRoundTrip(t *testing.T) {
 	}
 }
 
-// A sealed credential must not open under another connection's or another
-// organization's identity — the AAD binds both (ADR-0003/0014), failing closed.
 func TestConnectionCredentialCodecAADBinding(t *testing.T) {
 	t.Parallel()
 	codec := crypto.NewConnectionCredentialCodec(testKeyring(t))
@@ -199,5 +194,64 @@ func TestConnectionCredentialCodecAADBinding(t *testing.T) {
 	}
 	if _, err := codec.Open("org-2", "conn-1", sealed); !errors.Is(err, crypto.ErrDecrypt) {
 		t.Errorf("Open with wrong org err = %v, want ErrDecrypt", err)
+	}
+}
+
+func TestAccessRequestPayloadCodecRoundTrip(t *testing.T) {
+	t.Parallel()
+	codec := crypto.NewAccessRequestPayloadCodec(testKeyring(t))
+	payload := access.Payload{
+		SQL: "update t set note = 'π secret' where id = :id",
+		Params: []query.Parameter{
+			{Name: "id", Value: query.TypedValue{Type: query.ParamInteger, Text: "42"}},
+			{Name: "when", Value: query.TypedValue{Type: query.ParamNull, Text: ""}},
+		},
+	}
+
+	sealed, err := codec.Seal("org-1", "req-1", payload)
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if sealed.KeyVersion == 0 || len(sealed.WrappedDEK) == 0 || len(sealed.Nonce) == 0 || len(sealed.Ciphertext) == 0 {
+		t.Fatalf("sealed envelope incomplete: %+v", sealed)
+	}
+	got, err := codec.Open("org-1", "req-1", sealed)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if got.SQL != payload.SQL || len(got.Params) != 2 || got.Params[0] != payload.Params[0] || got.Params[1] != payload.Params[1] {
+		t.Errorf("round trip = %+v, want %+v", got, payload)
+	}
+}
+
+func TestAccessRequestPayloadCodecAADBinding(t *testing.T) {
+	t.Parallel()
+	codec := crypto.NewAccessRequestPayloadCodec(testKeyring(t))
+	sealed, err := codec.Seal("org-1", "req-1", access.Payload{SQL: "select 1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := codec.Open("org-1", "req-2", sealed); !errors.Is(err, crypto.ErrDecrypt) {
+		t.Errorf("Open with wrong request id err = %v, want ErrDecrypt", err)
+	}
+	if _, err := codec.Open("org-2", "req-1", sealed); !errors.Is(err, crypto.ErrDecrypt) {
+		t.Errorf("Open with wrong org err = %v, want ErrDecrypt", err)
+	}
+}
+
+func TestAccessRequestPayloadCodecDigest(t *testing.T) {
+	t.Parallel()
+	codec := crypto.NewAccessRequestPayloadCodec(testKeyring(t))
+	d1, kv1, err := codec.Digest([]byte("canonical-a"))
+	if err != nil || len(d1) == 0 || kv1 == 0 {
+		t.Fatalf("Digest = %x, %d, %v", d1, kv1, err)
+	}
+	d2, _, err := codec.Digest([]byte("canonical-a"))
+	if err != nil || !bytes.Equal(d1, d2) {
+		t.Errorf("digest not deterministic: %x vs %x (%v)", d1, d2, err)
+	}
+	d3, _, err := codec.Digest([]byte("canonical-b"))
+	if err != nil || bytes.Equal(d1, d3) {
+		t.Errorf("distinct inputs must digest differently (%v)", err)
 	}
 }

@@ -11,12 +11,11 @@ import (
 
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
 	"github.com/aportcullis/portcullis/internal/app/auth"
+	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// authApp is the slice of the auth application service this handler consumes
-// (DIP/ISP — the handler depends on the methods it calls, not the concrete
-// *auth.Service; tests substitute fakes without a database).
+// authApp is the slice of the auth application service this handler consumes (DIP/ISP — the handler depends on the methods it calls, not the concrete *auth.Service; tests substitute fakes without a database).
 type authApp interface {
 	Bootstrap(ctx context.Context, email, password, displayName string) (identity.User, error)
 	Login(ctx context.Context, email, password string) (auth.Session, error)
@@ -24,52 +23,38 @@ type authApp interface {
 	PublicConfig(ctx context.Context) (auth.PublicConfig, error)
 }
 
-// AuthService implements the Auth RPC over the auth application service.
-// Session and CSRF tokens are delivered as __Host- cookies, never in the
-// response body.
+// AuthService implements the Auth RPC over the auth application service. Session and CSRF tokens are delivered as __Host- cookies, never in the response body.
 type AuthService struct {
-	svc    authApp
-	perms  permissionLister
-	logger *slog.Logger
+	svc     authApp
+	session sessionInfoProvider
+	logger  *slog.Logger
 }
 
-// permissionLister enumerates the caller's own permission keys for the SPA's
-// affordance gating (Me/Login). Consumer-defined (ISP): the app authz service
-// satisfies it.
-type permissionLister interface {
-	PermissionsFor(ctx context.Context, user identity.User) ([]identity.Permission, error)
+// sessionInfoProvider enumerates the caller's own permission keys AND role name for the SPA's session views (Me/Login), resolving the org once. Consumer-defined (ISP): the app authz service satisfies it.
+type sessionInfoProvider interface {
+	SessionInfo(ctx context.Context, user identity.User) ([]identity.Permission, string, error)
 }
 
-// NewAuthService builds the Auth RPC handler. The permission lister is a
-// REQUIRED collaborator: an optional builder was a silent footgun — forgotten
-// wiring rendered an authenticated UI with every affordance hidden and no
-// signal (self-review F6).
-func NewAuthService(svc authApp, perms permissionLister) *AuthService {
-	return &AuthService{svc: svc, perms: perms, logger: slog.Default()}
+// NewAuthService builds the Auth RPC handler. The session-info provider is a REQUIRED collaborator: an optional builder was a silent footgun — forgotten wiring rendered an authenticated UI with every affordance hidden and no signal.
+func NewAuthService(svc authApp, session sessionInfoProvider) *AuthService {
+	return &AuthService{svc: svc, session: session, logger: slog.Default()}
 }
 
-// WithLogger routes the service's own warnings (degraded permission listing).
+// WithLogger routes the service's own warnings (degraded session-info listing).
 func (a *AuthService) WithLogger(l *slog.Logger) *AuthService { a.logger = l; return a }
 
-// listPermissions resolves the caller's permission keys as wire strings. The
-// keys are ADVISORY UI data (the server still authorizes every RPC), so a
-// resolution failure fails OPEN: the response proceeds with an empty list and
-// a warning, because failing the RPC would gate login availability and
-// authenticated-session usability on the authz store — Login would error
-// after the session row was committed but before the cookies were delivered,
-// and the SPA maps an Internal from Me to the unreachable retry card
-// (self-review F1). The UI recovers on the next successful Me.
-func (a *AuthService) listPermissions(ctx context.Context, u identity.User) []string {
-	perms, err := a.perms.PermissionsFor(ctx, u)
+// Permission keys and role labels are advisory UI data. Resolution failure returns empty metadata with a warning, preserving a successfully established session.
+func (a *AuthService) sessionInfo(ctx context.Context, u identity.User) ([]string, string) {
+	perms, role, err := a.session.SessionInfo(ctx, u)
 	if err != nil {
-		a.logger.Warn("permission enumeration failed — responding with none (UI affordances only; server-side authorization is unaffected)", "err", err)
-		return nil
+		a.logger.Warn("session info resolution failed — responding with no affordances (UI only; server-side authorization is unaffected)", "err", err)
+		return nil, ""
 	}
 	keys := make([]string, len(perms))
-	for i, p := range perms {
-		keys[i] = string(p)
+	for idx, p := range perms {
+		keys[idx] = string(p)
 	}
-	return keys
+	return keys, role
 }
 
 func (a *AuthService) Bootstrap(
@@ -91,7 +76,8 @@ func (a *AuthService) Login(
 	if err != nil {
 		return nil, authError(err)
 	}
-	resp := connect.NewResponse(&portcullisv1.LoginResponse{User: toProtoUser(sess.User), Permissions: a.listPermissions(ctx, sess.User)})
+	perms, role := a.sessionInfo(ctx, sess.User)
+	resp := connect.NewResponse(&portcullisv1.LoginResponse{User: toProtoUser(sess.User), Permissions: perms, RoleName: role})
 	noStore(resp.Header())
 	setCookie(resp.Header(), sessionCookie, sess.Token, true, sess.Session.AbsoluteExpiresAt)
 	setCookie(resp.Header(), csrfCookie, sess.CSRF, false, sess.Session.AbsoluteExpiresAt)
@@ -120,7 +106,8 @@ func (a *AuthService) Me(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
-	return connect.NewResponse(&portcullisv1.MeResponse{User: toProtoUser(u), Permissions: a.listPermissions(ctx, u)}), nil
+	perms, role := a.sessionInfo(ctx, u)
+	return connect.NewResponse(&portcullisv1.MeResponse{User: toProtoUser(u), Permissions: perms, RoleName: role}), nil
 }
 
 func (a *AuthService) GetConfig(
@@ -134,6 +121,8 @@ func (a *AuthService) GetConfig(
 	return connect.NewResponse(&portcullisv1.GetConfigResponse{
 		GoogleEnabled:  cfg.GoogleEnabled,
 		NeedsBootstrap: cfg.NeedsBootstrap,
+		// A domain limit the UI must not hardcode, served from the one place that enforces it. Filled here rather than in the auth service: the limit belongs to the access domain, and composing per-domain facts into a transport response is the transport's job.
+		MaxApprovalReasonChars: access.MaxApprovalReasonChars,
 	}), nil
 }
 
@@ -146,9 +135,7 @@ func toProtoUser(u identity.User) *portcullisv1.User {
 	}
 }
 
-// setCookie writes a __Host- cookie: Secure + Path=/ + no Domain (host-locked),
-// SameSite=Lax (ADR-0006). httpOnly is true for the session token, false for the
-// CSRF token so the SPA can echo it.
+// setCookie writes a __Host- cookie: Secure + Path=/ + no Domain (host-locked), SameSite=Lax (ADR-0006). httpOnly is true for the session token, false for the CSRF token so the SPA can echo it.
 func setCookie(h http.Header, name, value string, httpOnly bool, expires time.Time) {
 	h.Add("Set-Cookie", (&http.Cookie{
 		Name:     name,
@@ -172,9 +159,7 @@ func clearCookie(h http.Header, name string, httpOnly bool) {
 	}).String())
 }
 
-// noStore prevents session-bearing responses from being retained by browser or
-// intermediary caches. It is applied only to authentication routes so static
-// SPA assets remain cacheable (OWASP Session Management guidance).
+// noStore prevents session-bearing responses from being retained by browser or intermediary caches. It is applied only to authentication routes so static SPA assets remain cacheable (OWASP Session Management guidance).
 func noStore(h http.Header) {
 	h.Set("Cache-Control", "no-store")
 	h.Set("Pragma", "no-cache")

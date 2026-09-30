@@ -6,38 +6,23 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
 
-// Connections manages registered target databases (PRD §4.1/§7.2, ADR-0014).
-// Every RPC is authenticated and gated by a connections.* permission
-// (ADR-0008), enforced inline in the handler. No message in this file ever
-// carries a stored credential or a DSN: the database user and password travel
-// inbound-only inside ConnectionConfigInput and are never returned after
-// creation (PRD §7.2).
+// Connections requires inline connections.* permissions. Credentials travel only in write input and are never returned (ADR-0014).
 service Connections {
   // List returns the organization's connections. Requires connections.list.
   rpc List(ListConnectionsRequest) returns (ListConnectionsResponse) {}
   // Get returns one connection. Requires connections.get.
   rpc Get(GetConnectionRequest) returns (GetConnectionResponse) {}
-  // Create registers a connection after a mandatory server-side connection
-  // test; a failing test refuses to save (PRD §7.2). Requires
-  // connections.create.
+  // Create registers a connection after a mandatory server-side connection test; a failing test refuses to save (PRD §7.2). Requires connections.create.
   rpc Create(CreateConnectionRequest) returns (CreateConnectionResponse) {}
-  // Update renames a connection (config unset) or replaces the full target +
-  // credential after a fresh successful test (config set — there is no partial
-  // credential edit, ADR-0014). Requires connections.update.
+  // Update renames a connection (config unset) or replaces the full target + credential after a fresh successful test (config set — there is no partial credential edit, ADR-0014). Requires connections.update.
   rpc Update(UpdateConnectionRequest) returns (UpdateConnectionResponse) {}
-  // Test dials a target: pre-save with an unsaved config, or a saved
-  // connection by id with its stored credential. The outcome is reported
-  // in-band (ok/message) — a failed test is a result, not an RPC error.
-  // Requires connections.test.
+  // Test dials a target: pre-save with an unsaved config, or a saved connection by id with its stored credential. The outcome is reported in-band (ok/message) — a failed test is a result, not an RPC error. Requires connections.test.
   rpc Test(TestConnectionRequest) returns (TestConnectionResponse) {}
-  // Archive soft-deletes: it blocks new tests/requests, discards the encrypted
-  // credential, and keeps the descriptor as the historical snapshot (PRD
-  // §4.3). There is no hard delete. Requires connections.delete.
+  // Archive soft-deletes: it blocks new tests/requests, discards the encrypted credential, and keeps the descriptor as the historical snapshot (PRD §4.3). There is no hard delete. Requires connections.delete.
   rpc Archive(ArchiveConnectionRequest) returns (ArchiveConnectionResponse) {}
 }
 
-// Connection is the read model: the plaintext descriptor of a registered
-// connection. It has no credential or DSN fields by design.
+// Connection is the read model: the plaintext descriptor of a registered connection. It has no credential or DSN fields by design.
 message Connection {
   string id = 1;
   string display_name = 2;
@@ -48,8 +33,7 @@ message Connection {
   string database = 6;
   // "verify-full" | "verify-ca" | "require" | "disable" (ADR-0014).
   string tls_mode = 7;
-  // Versioned sha256 identity of the target; survives archive as the
-  // historical snapshot (PRD §4.3).
+  // Versioned sha256 identity of the target; survives archive as the historical snapshot (PRD §4.3).
   string target_fingerprint = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
@@ -59,38 +43,32 @@ message Connection {
   string environment = 12;
   // Free-text operator context (≤ 500 chars, may be multi-line).
   string description = 13;
+  // The same mutation token the summary carries. The detail read is the natural starting point for a config edit, and Update requires the token, so leaving it out here would make Get→Update impossible without also listing (ADR-0014).
+  int64 version = 14;
 }
 
-// ConnectionSummary is deliberately safe for connections.list: it identifies a
-// collection member without exposing target coordinates or TLS configuration.
-// Those inner values require connections.get through Connection.
+// ConnectionSummary is deliberately safe for connections.list: it identifies a collection member without exposing target coordinates or TLS configuration. Those inner values require connections.get through Connection.
 message ConnectionSummary {
   string id = 1;
   string display_name = 2;
   string db_type = 3;
   google.protobuf.Timestamp archived_at = 4;
-  // Monotonically increasing database mutation token. Clients use it to avoid
-  // applying an out-of-order mutation response over newer state.
+  // Monotonically increasing database mutation token. Clients use it to avoid applying an out-of-order mutation response over newer state.
   int64 version = 5;
   // "development" | "production" — drives the list's production badge.
   string environment = 6;
-  // Free-text operator context (≤ 500 chars). Carried in the summary so the
-  // edit dialog can prefill WITHOUT a connections.get round-trip — editing
-  // must stay possible for a principal holding only connections.update.
+  // Free-text operator context (≤ 500 chars). Carried in the summary so the edit dialog can prefill WITHOUT a connections.get round-trip — editing must stay possible for a principal holding only connections.update.
   string description = 7;
 }
 
-// ConnectionConfigInput is the write model — the only place credentials
-// travel, inbound only.
+// ConnectionConfigInput is the write model — the only place credentials travel, inbound only.
 message ConnectionConfigInput {
   string host = 1;
   uint32 port = 2;
   string database = 3;
   string user = 4;
   string password = 5;
-  // One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects
-  // the certificate-verifying default (verify-full). Choosing require/disable
-  // is an explicit relaxed-TLS decision and is audited (PRD §8.1).
+  // One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects the certificate-verifying default (verify-full). Choosing require/disable is an explicit relaxed-TLS decision and is audited (PRD §8.1).
   string tls_mode = 6;
 }
 
@@ -129,16 +107,14 @@ message UpdateConnectionRequest {
   string id = 1;
   // New display name; empty keeps the current name (both update flows).
   string display_name = 2;
-  // Unset = descriptor-only update (name/environment/description, no
-  // connection test). Set = full config replacement, re-tested and
-  // re-encrypted.
+  // Unset = descriptor-only update (name/environment/description, no connection test). Set = full config replacement, re-tested and re-encrypted.
   ConnectionConfigInput config = 3;
-  // Empty keeps the current environment — an older client that omits the
-  // field must never silently downgrade a production label.
+  // Empty keeps the current environment — an older client that omits the field must never silently downgrade a production label.
   string environment = 4;
-  // Presence-tracked: absent keeps the current description, present (even
-  // empty) replaces it.
+  // Presence-tracked: absent keeps the current description, present (even empty) replaces it.
   optional string description = 5;
+  // Required positive descriptor version from the caller’s form. Stale versions return ABORTED; missing or invalid versions return INVALID_ARGUMENT.
+  int64 expected_version = 6;
 }
 
 message UpdateConnectionResponse {
@@ -156,9 +132,7 @@ message TestConnectionRequest {
 
 message TestConnectionResponse {
   bool ok = 1;
-  // On failure, the coarse classification only — "unreachable" | "auth-failed"
-  // | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014).
-  // Raw target-DB errors are never returned (PRD §8.1).
+  // On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014). Raw target-DB errors are never returned (PRD §8.1).
   string message = 2;
 }
 

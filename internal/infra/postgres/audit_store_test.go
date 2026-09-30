@@ -15,6 +15,66 @@ import (
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
 
+func TestAuditListPageAndTotalComeFromOneSnapshot(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewAuditStore(pool)
+
+	for range 7 {
+		if err := store.Record(ctx, audit.Event{
+			ActorType: audit.ActorSystem, ActorService: "test", Action: audit.ActionAuthLogin,
+			TargetType: "user", TargetID: "u", Outcome: audit.OutcomeSucceeded,
+		}); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name      string
+		params    audit.ListParams
+		wantItems int
+		wantPage  int
+		wantTotal int64
+	}{
+		{"first page", audit.ListParams{Page: 1, PageSize: 2, SortDescending: true}, 2, 1, 7},
+		{"last partial page", audit.ListParams{Page: 4, PageSize: 2, SortDescending: true}, 1, 4, 7},
+		{"far past the end clamps to the last page", audit.ListParams{Page: 9, PageSize: 2, SortDescending: true}, 1, 4, 7},
+		{"one past the end clamps", audit.ListParams{Page: 5, PageSize: 2, SortDescending: false}, 1, 4, 7},
+		{"whole set on one page", audit.ListParams{Page: 1, PageSize: 50, SortDescending: true}, 7, 1, 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			page, err := store.List(ctx, tc.params)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(page.Events) != tc.wantItems || page.Page != tc.wantPage || page.TotalCount != tc.wantTotal {
+				t.Errorf("page = %d events on page %d / total %d, want %d / %d / %d",
+					len(page.Events), page.Page, page.TotalCount, tc.wantItems, tc.wantPage, tc.wantTotal)
+			}
+		})
+	}
+
+}
+
+func TestAuditListOnAnEmptyTrail(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	page, err := pg.NewAuditStore(pool).List(ctx, audit.ListParams{Page: 5, PageSize: 10, SortDescending: true})
+	if err != nil {
+		t.Fatalf("List on an empty trail: %v", err)
+	}
+	if len(page.Events) != 0 || page.Page != 1 || page.TotalCount != 0 {
+		t.Errorf("empty trail = %d events on page %d / total %d, want 0 / 1 / 0",
+			len(page.Events), page.Page, page.TotalCount)
+	}
+}
+
 func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -34,8 +94,6 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 
 	store := pg.NewAuditStore(pool)
 
-	// Scenario: a login event with an actor, request id, and source IP is
-	// persisted with every field intact, and the row can never be mutated.
 	if err := store.Record(ctx, audit.Event{
 		OrganizationID: org,
 		ActorType:      audit.ActorUser,
@@ -50,10 +108,7 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
-	// An actor-less failure (unknown email) must also persist: no actor AND no
-	// target (A3) — this is the exact shape the auth service emits for a failed
-	// login with no resolved user, so the empty target_type is exercised against
-	// the real NOT NULL column, not just the in-memory fake.
+	// An actor-less failure (unknown email) must also persist: no actor AND no target (A3) — this is the exact shape the auth service emits for a failed login with no resolved user, so the empty target_type is exercised against the real NOT NULL column, not just the in-memory fake.
 	if err := store.Record(ctx, audit.Event{
 		OrganizationID: org,
 		ActorType:      audit.ActorUser,
@@ -87,9 +142,7 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 	if failedActor != nil {
 		t.Errorf("actor-less event stored actor %v, want NULL", *failedActor)
 	}
-	// A3: with no resolved target the pair stays consistent — target_type persists
-	// as "" (the empty value of the NOT NULL column) and target_id as NULL, never a
-	// spurious "user" target.
+
 	if failedTargetType != "" {
 		t.Errorf("actor-less event target_type = %q, want empty", failedTargetType)
 	}
@@ -103,8 +156,74 @@ func TestAuditStoreRecordsAppendOnlyEvent(t *testing.T) {
 	}
 }
 
-// The adapter must target the permanent audit table explicitly. PostgreSQL
-// searches pg_temp before public, so an unqualified insert would be diverted.
+func TestAuditStoreOccurredAtDefaultAndExplicit(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	ids := pg.NewIdentityStore(pool)
+	org, err := ids.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultOrganizationID: %v", err)
+	}
+	store := pg.NewAuditStore(pool)
+
+	// The derived shape: an instant the CALLER supplies (as the TTL observation does, from the DB's own clock) must be stored verbatim, to microsecond precision — the timestamptz column's resolution.
+	var observed time.Time
+	if err := pool.QueryRow(ctx, `select clock_timestamp() - interval '90 seconds'`).Scan(&observed); err != nil {
+		t.Fatalf("db clock: %v", err)
+	}
+	observed = observed.UTC().Truncate(time.Microsecond)
+	derived := audit.Event{
+		OrganizationID: org, ActorType: audit.ActorSystem, ActorService: "ttl_expiry",
+		Action: audit.ActionAccessRequestExpired, TargetType: audit.TargetTypeAccessRequest,
+		TargetID: "11111111-2222-3333-4444-555555555555", Outcome: audit.OutcomeSucceeded,
+		OccurredAt: observed,
+	}
+	if err := store.Record(ctx, derived); err != nil {
+		t.Fatalf("Record derived: %v", err)
+	}
+
+	// The ordinary shape: no instant supplied, so the DB stamps it. The window is measured with the DB's OWN clock — comparing against the host's would make the assertion hostage to container clock skew.
+	dbNow := func() time.Time {
+		t.Helper()
+		var at time.Time
+		if err := pool.QueryRow(ctx, `select clock_timestamp()`).Scan(&at); err != nil {
+			t.Fatalf("db clock: %v", err)
+		}
+		return at.UTC()
+	}
+	before := dbNow()
+	ordinary := audit.Event{
+		OrganizationID: org, ActorType: audit.ActorSystem, ActorService: "test",
+		Action: audit.ActionAccessRequestCancelled, TargetType: audit.TargetTypeAccessRequest,
+		TargetID: "22222222-3333-4444-5555-666666666666", Outcome: audit.OutcomeSucceeded,
+	}
+	if err := store.Record(ctx, ordinary); err != nil {
+		t.Fatalf("Record ordinary: %v", err)
+	}
+
+	read := func(target string) time.Time {
+		t.Helper()
+		var at time.Time
+		if err := pool.QueryRow(ctx, `select occurred_at from audit_events where target_id = $1`, target).Scan(&at); err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		return at.UTC()
+	}
+	if got := read(derived.TargetID); !got.Equal(observed) {
+		t.Errorf("derived occurred_at = %s, want the supplied %s", got, observed)
+	}
+	if got := read(ordinary.TargetID); got.Before(before) || got.After(dbNow()) {
+		t.Errorf("ordinary occurred_at = %s, want between %s and now on the DB clock", got, before)
+	}
+	// And the two must be ordered as their instants were, so a mixed timeline reads chronologically rather than by insert order.
+	if !read(derived.TargetID).Before(read(ordinary.TargetID)) {
+		t.Error("the derived event must sort before the later ordinary one")
+	}
+}
+
 func TestAuditStoreIgnoresTemporaryAuditShadow(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -149,9 +268,6 @@ func TestAuditStoreIgnoresTemporaryAuditShadow(t *testing.T) {
 	}
 }
 
-// Scenario (ADR-0009): the audit event of a state-changing op commits in the
-// SAME transaction — if the event cannot be written, the state change must roll
-// back, and the happy path leaves exactly one event per op.
 func TestStateChangingOpsCommitAuditAtomically(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -169,8 +285,6 @@ func TestStateChangingOpsCommitAuditAtomically(t *testing.T) {
 		return n
 	}
 
-	// Bootstrap commits user + membership + one AUTH_BOOTSTRAP event atomically,
-	// with the actor completed inside the transaction.
 	u, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash",
 		audit.Event{ActorType: audit.ActorUser, Action: audit.ActionAuthBootstrap, TargetType: audit.TargetTypeUser, Outcome: audit.OutcomeSucceeded, RequestID: "req-boot"})
 	if err != nil {
@@ -186,8 +300,7 @@ func TestStateChangingOpsCommitAuditAtomically(t *testing.T) {
 		t.Errorf("bootstrap event actor = %s, want %s (completed in-tx)", bootActor, u.ID)
 	}
 
-	// A rotation whose event cannot be mapped must roll back the WHOLE tx: no new
-	// session, no event.
+	// A rotation whose event cannot be mapped must roll back the WHOLE tx: no new session, no event.
 	sessionsBefore, eventsBefore := countRows("sessions"), countRows("audit_events")
 	badActor := identity.UserID("not-a-uuid")
 	h := sha256.Sum256([]byte("tok-bad"))
@@ -200,7 +313,6 @@ func TestStateChangingOpsCommitAuditAtomically(t *testing.T) {
 		t.Error("failed audit write must roll back the whole rotation (atomicity)")
 	}
 
-	// Happy-path rotate and revoke leave exactly one event each.
 	h2 := sha256.Sum256([]byte("tok-good"))
 	created, err := store.RotateSession(ctx, u.ID, sess, h2[:],
 		audit.Event{ActorType: audit.ActorUser, ActorUserID: &u.ID, Action: audit.ActionAuthLogin, TargetType: audit.TargetTypeUser, Outcome: audit.OutcomeSucceeded})
@@ -219,5 +331,48 @@ func TestStateChangingOpsCommitAuditAtomically(t *testing.T) {
 		if n != want {
 			t.Errorf("%s events = %d, want %d", action, n, want)
 		}
+	}
+}
+
+func TestAuditStoreRefusesHalfSetDigest(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	org, err := pg.NewIdentityStore(pool).DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultOrganizationID: %v", err)
+	}
+	store := pg.NewAuditStore(pool)
+
+	base := func() audit.Event {
+		return audit.Event{
+			OrganizationID: org,
+			ActorType:      audit.ActorSystem,
+			Action:         audit.ActionAccessRequestExpired,
+			TargetType:     audit.TargetTypeAccessRequest,
+			Outcome:        audit.OutcomeSucceeded,
+		}
+	}
+
+	digestOnly := base()
+	digestOnly.PayloadDigest = []byte("digest-without-a-version")
+	if err := store.Record(ctx, digestOnly); err == nil {
+		t.Error("a digest without its key version must be refused, not silently dropped")
+	}
+
+	versionOnly := base()
+	versionOnly.PayloadDigestKeyVersion = 7
+	if err := store.Record(ctx, versionOnly); err == nil {
+		t.Error("a key version without its digest must be refused, not silently dropped")
+	}
+
+	var n int
+	if err := pool.QueryRow(ctx, `select count(*) from audit_events`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("refused events wrote %d rows, want 0", n)
 	}
 }

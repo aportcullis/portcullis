@@ -249,10 +249,10 @@ func (x *LoginRequest) GetPassword() string {
 type LoginResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	User  *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	// The caller's permission keys (ADR-0008 catalog), for UI affordance gating
-	// only — the server stays the authority on every RPC. Role changes revoke
-	// sessions immediately (§8.3), so a login/Me-time snapshot is current.
-	Permissions   []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// The caller's permission keys (ADR-0008 catalog), for UI affordance gating only — the server stays the authority on every RPC. Role changes revoke sessions immediately (§8.3), so a login/Me-time snapshot is current.
+	Permissions []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// The display name of the caller's role (e.g. "admin"), a UI badge label only — authorization never consults role names (ADR-0008). Empty when resolution degrades (same fail-open stance as permissions).
+	RoleName      string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -299,6 +299,13 @@ func (x *LoginResponse) GetPermissions() []string {
 		return x.Permissions
 	}
 	return nil
+}
+
+func (x *LoginResponse) GetRoleName() string {
+	if x != nil {
+		return x.RoleName
+	}
+	return ""
 }
 
 type LogoutRequest struct {
@@ -413,7 +420,9 @@ type MeResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	User  *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
 	// See LoginResponse.permissions.
-	Permissions   []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	Permissions []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// See LoginResponse.role_name.
+	RoleName      string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -462,6 +471,13 @@ func (x *MeResponse) GetPermissions() []string {
 	return nil
 }
 
+func (x *MeResponse) GetRoleName() string {
+	if x != nil {
+		return x.RoleName
+	}
+	return ""
+}
+
 type GetConfigRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -500,14 +516,14 @@ func (*GetConfigRequest) Descriptor() ([]byte, []int) {
 
 type GetConfigResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// google_enabled reports whether "Sign in with Google" is configured on this
-	// server; the SPA hides the button otherwise.
+	// google_enabled reports whether "Sign in with Google" is configured on this server; the SPA hides the button otherwise.
 	GoogleEnabled bool `protobuf:"varint,1,opt,name=google_enabled,json=googleEnabled,proto3" json:"google_enabled,omitempty"`
-	// needs_bootstrap reports whether no user exists yet, so the SPA can route
-	// straight to the first-run admin form.
+	// needs_bootstrap reports whether no user exists yet, so the SPA can route straight to the first-run admin form.
 	NeedsBootstrap bool `protobuf:"varint,2,opt,name=needs_bootstrap,json=needsBootstrap,proto3" json:"needs_bootstrap,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// max_approval_reason_chars is the server's cap on an approval/rejection reason (PRD §4.4). Served so a client can bound its input from the one authority that enforces it — clients MUST NOT restate the number, the same rule the paged lists follow by adopting the response's page_size.
+	MaxApprovalReasonChars int32 `protobuf:"varint,3,opt,name=max_approval_reason_chars,json=maxApprovalReasonChars,proto3" json:"max_approval_reason_chars,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GetConfigResponse) Reset() {
@@ -554,6 +570,13 @@ func (x *GetConfigResponse) GetNeedsBootstrap() bool {
 	return false
 }
 
+func (x *GetConfigResponse) GetMaxApprovalReasonChars() int32 {
+	if x != nil {
+		return x.MaxApprovalReasonChars
+	}
+	return 0
+}
+
 var File_portcullis_v1_auth_proto protoreflect.FileDescriptor
 
 const file_portcullis_v1_auth_proto_rawDesc = "" +
@@ -572,21 +595,24 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"Z\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"w\n" +
 	"\rLoginResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"\x0f\n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x1b\n" +
+	"\trole_name\x18\x03 \x01(\tR\broleName\"\x0f\n" +
 	"\rLogoutRequest\"\x10\n" +
 	"\x0eLogoutResponse\"\v\n" +
-	"\tMeRequest\"W\n" +
+	"\tMeRequest\"t\n" +
 	"\n" +
 	"MeResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"\x12\n" +
-	"\x10GetConfigRequest\"c\n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x1b\n" +
+	"\trole_name\x18\x03 \x01(\tR\broleName\"\x12\n" +
+	"\x10GetConfigRequest\"\x9e\x01\n" +
 	"\x11GetConfigResponse\x12%\n" +
 	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\x12'\n" +
-	"\x0fneeds_bootstrap\x18\x02 \x01(\bR\x0eneedsBootstrap2\xf6\x02\n" +
+	"\x0fneeds_bootstrap\x18\x02 \x01(\bR\x0eneedsBootstrap\x129\n" +
+	"\x19max_approval_reason_chars\x18\x03 \x01(\x05R\x16maxApprovalReasonChars2\xf6\x02\n" +
 	"\x04Auth\x12P\n" +
 	"\tBootstrap\x12\x1f.portcullis.v1.BootstrapRequest\x1a .portcullis.v1.BootstrapResponse\"\x00\x12D\n" +
 	"\x05Login\x12\x1b.portcullis.v1.LoginRequest\x1a\x1c.portcullis.v1.LoginResponse\"\x00\x12G\n" +

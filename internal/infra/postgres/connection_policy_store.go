@@ -14,14 +14,9 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
 
-// ConnectionPolicyStore implements the connection-policy app service's
-// repository port over the sqlc queries (ADR-0015). Versions are append-only:
-// an update bumps connections.current_policy_version optimistically and
-// inserts the next version row in one transaction with its audit events
-// (ADR-0009); the runtime role cannot UPDATE the version table at all.
+// ConnectionPolicyStore atomically advances the version pointer and appends immutable policy and audit rows (ADR-0015).
 type ConnectionPolicyStore struct {
-	// conns is reused for org resolution, the withTx helper, and the
-	// zero-rowcount disambiguation helpers — same pool, same queries.
+	// conns is reused for org resolution, the withTx helper, and the zero-rowcount disambiguation helpers — same pool, same queries.
 	conns *ConnectionStore
 }
 
@@ -35,8 +30,7 @@ func (s *ConnectionPolicyStore) DefaultOrganizationID(ctx context.Context) (iden
 	return s.conns.DefaultOrganizationID(ctx)
 }
 
-// GetCurrent returns the connection's current policy snapshot. Archived
-// connections keep answering — the policy is part of the historical snapshot.
+// GetCurrent returns the connection's current policy snapshot. Archived connections keep answering — the policy is part of the historical snapshot.
 func (s *ConnectionPolicyStore) GetCurrent(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (connection.Policy, error) {
 	cid, oid, err := connIDs(id, org)
 	if err != nil {
@@ -49,10 +43,7 @@ func (s *ConnectionPolicyStore) GetCurrent(ctx context.Context, org identity.Org
 	return toPolicy(row), nil
 }
 
-// UpdatePolicy appends next as the new current version. The pointer bump is
-// the optimistic guard: zero rows disambiguates into ErrNotFound / ErrArchived
-// / ErrPolicyConflict; the (connection_id, version) PK and the deferred FK are
-// the structural backstops. Audit events commit in the same transaction.
+// UpdatePolicy appends next as the new current version. The pointer bump is the optimistic guard: zero rows disambiguates into ErrNotFound / ErrArchived / ErrPolicyConflict; the (connection_id, version) PK and the deferred FK are the structural backstops. Audit events commit in the same transaction.
 func (s *ConnectionPolicyStore) UpdatePolicy(ctx context.Context, next connection.Policy, expectedVersion int64, events ...audit.Event) (connection.Policy, error) {
 	cid, oid, err := connIDs(next.ConnectionID, next.OrganizationID)
 	if err != nil {
@@ -62,6 +53,7 @@ func (s *ConnectionPolicyStore) UpdatePolicy(ctx context.Context, next connectio
 	if err != nil {
 		return connection.Policy{}, err
 	}
+	stored := next
 	err = s.conns.withTx(ctx, func(q *db.Queries) error {
 		if _, err := q.BumpConnectionPolicyVersion(ctx, db.BumpConnectionPolicyVersionParams{
 			ID:              cid,
@@ -70,7 +62,24 @@ func (s *ConnectionPolicyStore) UpdatePolicy(ctx context.Context, next connectio
 		}); err != nil {
 			return s.missingArchivedOrPolicyConflict(ctx, q, cid, oid, err)
 		}
+		// The bump above is this transaction's wait: it UPDATEs the connection row, so it parks behind any request write holding it FOR SHARE. The instant is therefore observed HERE, after the wait, and dates EVERYTHING this transaction writes — the policy snapshot included (ADR-0009).
+		at, err := observeCascadeInstant(ctx, q, cid, oid)
+		if err != nil {
+			return err
+		}
+		// The caller's created_at came from the application clock before this transaction existed; it is an input to domain validation, not the moment this version came into being. The observed instant wins, and it is what the caller gets back.
+		params.At = timeToTS(at)
+		stored.CreatedAt = at
 		if err := q.InsertConnectionPolicyVersion(ctx, params); err != nil {
+			return err
+		}
+		events = stampEvents(events, at)
+		// The designated hook point (ADR-0015 §Deferred, discharged by ADR-0018): expire the connection's un-executed pending/approved requests in this same transaction, so no old quorum can approve against the new policy.
+		correlate := audit.Event{}
+		if len(events) > 0 {
+			correlate = events[0]
+		}
+		if err := expireRequestsForPolicyChange(ctx, q, cid, oid, at, correlate); err != nil {
 			return err
 		}
 		return insertEvents(ctx, q, events)
@@ -78,13 +87,10 @@ func (s *ConnectionPolicyStore) UpdatePolicy(ctx context.Context, next connectio
 	if err != nil {
 		return connection.Policy{}, err
 	}
-	return next, nil
+	return stored, nil
 }
 
-// missingArchivedOrPolicyConflict mirrors missingArchivedOrConflict but maps
-// the "still exists, still active" case to ErrPolicyConflict — the policy
-// pointer moved after the caller's read (a distinct message from a descriptor
-// conflict).
+// missingArchivedOrPolicyConflict mirrors missingArchivedOrConflict but maps the "still exists, still active" case to ErrPolicyConflict — the policy pointer moved after the caller's read (a distinct message from a descriptor conflict).
 func (s *ConnectionPolicyStore) missingArchivedOrPolicyConflict(ctx context.Context, q *db.Queries, id, org pgtype.UUID, err error) error {
 	mapped := s.conns.missingArchivedOrConflict(ctx, q, id, org, err)
 	if errors.Is(mapped, connection.ErrConflict) {
@@ -93,9 +99,7 @@ func (s *ConnectionPolicyStore) missingArchivedOrPolicyConflict(ctx context.Cont
 	return mapped
 }
 
-// policyInsertParams converts a validated domain policy into the append-only
-// insert row. Shared with ConnectionStore.Create, which inserts the v1 default
-// alongside the connection.
+// policyInsertParams converts a validated domain policy into the append-only insert row. Shared with ConnectionStore.Create, which inserts the v1 default alongside the connection.
 func policyInsertParams(p connection.Policy) (db.InsertConnectionPolicyVersionParams, error) {
 	cid, oid, err := connIDs(p.ConnectionID, p.OrganizationID)
 	if err != nil {
@@ -119,7 +123,7 @@ func policyInsertParams(p connection.Policy) (db.InsertConnectionPolicyVersionPa
 		MaxRows:                int32(p.Limits.MaxRows),             //nolint:gosec // checked 1..10000 by domain + table constraint
 		MaxResultBytes:         p.Limits.MaxResultBytes,
 		CreatedBy:              createdBy,
-		CreatedAt:              timeToTS(p.CreatedAt),
+		// At is filled by the caller from its observed instant; p.CreatedAt is domain-validation input, not the moment this version came into being (ADR-0009).
 	}, nil
 }
 

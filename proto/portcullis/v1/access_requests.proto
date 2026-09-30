@@ -1,0 +1,203 @@
+syntax = "proto3";
+
+package portcullis.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// AccessRequests requires inline requests.* permissions. Requester and approve/reject holders may read decrypted payload; other callers see only their own requests (ADR-0018).
+service AccessRequests {
+  // Create starts a new DRAFT against a live connection. The SQL and typed parameters are sealed at rest immediately. Requires requests.create.
+  rpc Create(CreateAccessRequestRequest) returns (CreateAccessRequestResponse) {}
+  // UpdateDraft replaces the draft's payload (full replacement; drafts are the only editable state — §4.4). expected_version mismatch → Aborted. Requester-only; requires requests.create.
+  rpc UpdateDraft(UpdateAccessRequestDraftRequest) returns (UpdateAccessRequestDraftResponse) {}
+  // Submit binds before parsing, freezes the approval unit, and auto-approves quorum zero with a system actor. Requester-only; requires requests.create.
+  rpc Submit(SubmitAccessRequestRequest) returns (SubmitAccessRequestResponse) {}
+  // Cancel is the requester's own cancellation (draft/pending/approved). Requires requests.create.
+  rpc Cancel(CancelAccessRequestRequest) returns (CancelAccessRequestResponse) {}
+  // Approve revalidates eligibility under lock, appends a distinct decision, and transitions when valid approvals reach quorum. The store completes audit snapshot and expiry fields.
+  rpc Approve(ApproveAccessRequestRequest) returns (ApproveAccessRequestResponse) {}
+  // Reject records a rejection (terminal; reason required). Requires requests.reject.
+  rpc Reject(RejectAccessRequestRequest) returns (RejectAccessRequestResponse) {}
+  // Get returns one request with its approvals; the decrypted payload is included only for the requester or a reviewer (approve or reject holder). Requires requests.get.
+  rpc Get(GetAccessRequestRequest) returns (GetAccessRequestResponse) {}
+  // List returns a page (OFFSET pagination, PRD §7.1), scoped to the caller's own requests unless they are a reviewer. Requires requests.list.
+  rpc List(ListAccessRequestsRequest) returns (ListAccessRequestsResponse) {}
+  // ListRequestableConnections returns active target summaries under requests.create without requiring connection-admin permissions.
+  rpc ListRequestableConnections(ListRequestableConnectionsRequest) returns (ListRequestableConnectionsResponse) {}
+}
+
+// RequestableConnection is a request target: deliberately narrower than the admin ConnectionSummary (no description, version, or archive state).
+message RequestableConnection {
+  string id = 1;
+  string display_name = 2;
+  string db_type = 3;
+  // "development" | "production" — the form warns on production.
+  string environment = 4;
+}
+
+message ListRequestableConnectionsRequest {}
+message ListRequestableConnectionsResponse {
+  repeated RequestableConnection connections = 1;
+}
+
+// AccessRequestState mirrors the ten-state machine (§4.4). The executing and later terminal states become reachable in the execution slice; they are vocabulary now so the wire never changes shape (ADR-0018).
+enum AccessRequestState {
+  ACCESS_REQUEST_STATE_UNSPECIFIED = 0;
+  ACCESS_REQUEST_STATE_DRAFT = 1;
+  ACCESS_REQUEST_STATE_PENDING = 2;
+  ACCESS_REQUEST_STATE_APPROVED = 3;
+  ACCESS_REQUEST_STATE_REJECTED = 4;
+  ACCESS_REQUEST_STATE_EXPIRED = 5;
+  ACCESS_REQUEST_STATE_CANCELLED = 6;
+  ACCESS_REQUEST_STATE_EXECUTING = 7;
+  ACCESS_REQUEST_STATE_SUCCEEDED = 8;
+  ACCESS_REQUEST_STATE_FAILED = 9;
+  ACCESS_REQUEST_STATE_OUTCOME_UNKNOWN = 10;
+}
+
+// TypedParam is one named, typed parameter value (PRD §4.2). type is the domain vocabulary: string | integer | decimal | boolean | date | timestamp | uuid | null. Values always travel as text; binding is the server's job.
+message TypedParam {
+  string name = 1;
+  string type = 2;
+  string value = 3;
+}
+
+// RequestActor is a person shown on a request (requester or approver).
+message RequestActor {
+  string id = 1;
+  string email = 2;
+  string display_name = 3;
+}
+
+// RequestApproval is one approver's immutable decision. valid reports whether the approval still counts (active approver holding requests.approve — computed, ADR-0018); rejections are never "valid approvals".
+message RequestApproval {
+  RequestActor approver = 1;
+  // "approved" | "rejected".
+  string decision = 2;
+  string reason = 3;
+  google.protobuf.Timestamp decided_at = 4;
+  bool valid = 5;
+}
+
+// AccessRequest is the read model of one request. The raw SQL never appears here — redacted_sql only; the decrypted payload rides GetAccessRequestResponse for authorized viewers.
+message AccessRequest {
+  string id = 1;
+  string connection_id = 2;
+  string connection_name = 3;
+  RequestActor requester = 4;
+  // The STORED state. effective_state derives lazy TTL expiry at read time (an approved request past its window reads as expired/ttl_expired before the stored transition is observed — ADR-0018).
+  AccessRequestState state = 5;
+  AccessRequestState effective_state = 6;
+  // System-caused transition reason: policy_changed | connection_changed | connection_archived | approval_invalidated | ttl_expired; empty otherwise.
+  string state_reason = 7;
+  // Redacted SQL (ADR-0016): comments stripped, literals → typed placeholders. Empty while draft.
+  string redacted_sql = 8;
+  // "read" | "write" | "ddl"; empty while draft.
+  string statement_class = 9;
+  // The pinned policy version and its quorum (empty/0 while draft).
+  int64 policy_version = 10;
+  uint32 required_approvals = 11;
+  // Approvals recorded so far and how many still count.
+  repeated RequestApproval approvals = 12;
+  uint32 valid_approvals = 13;
+  google.protobuf.Timestamp submitted_at = 14;
+  google.protobuf.Timestamp expires_at = 15;
+  // Optimistic token for UpdateDraft/Submit (Cancel carries no token: it is idempotent in intent and refuses by state, not by version).
+  int64 version = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp updated_at = 18;
+  // Submitted requests retain the target snapshot for approval history; drafts use current connection data (PRD §4.3).
+  string connection_db_type = 19;
+  // Versioned sha256 identity of the target the request was submitted against.
+  string connection_fingerprint = 20;
+  // Which configuration of the connection was approved (ADR-0014's config token): a replacement expires this request with reason connection_changed.
+  int64 connection_config_version = 21;
+}
+
+// AccessRequestPayload is the decrypted approval unit (§8.4) — returned only to the requester or a REVIEWER (a holder of requests.approve OR requests.reject), and only from Get.
+message AccessRequestPayload {
+  string sql = 1;
+  repeated TypedParam params = 2;
+}
+
+message CreateAccessRequestRequest {
+  string connection_id = 1;
+  string sql = 2;
+  repeated TypedParam params = 3;
+}
+message CreateAccessRequestResponse {
+  AccessRequest request = 1;
+}
+
+message UpdateAccessRequestDraftRequest {
+  string id = 1;
+  int64 expected_version = 2;
+  string sql = 3;
+  repeated TypedParam params = 4;
+}
+message UpdateAccessRequestDraftResponse {
+  AccessRequest request = 1;
+}
+
+message SubmitAccessRequestRequest {
+  string id = 1;
+  int64 expected_version = 2;
+}
+message SubmitAccessRequestResponse {
+  AccessRequest request = 1;
+}
+
+message CancelAccessRequestRequest {
+  string id = 1;
+}
+message CancelAccessRequestResponse {
+  AccessRequest request = 1;
+}
+
+message ApproveAccessRequestRequest {
+  string id = 1;
+  // Optional note; recorded on the approval row.
+  string reason = 2;
+}
+message ApproveAccessRequestResponse {
+  AccessRequest request = 1;
+}
+
+message RejectAccessRequestRequest {
+  string id = 1;
+  // Required (§4.4): a rejection must say why.
+  string reason = 2;
+}
+message RejectAccessRequestResponse {
+  AccessRequest request = 1;
+}
+
+message GetAccessRequestRequest {
+  string id = 1;
+}
+message GetAccessRequestResponse {
+  AccessRequest request = 1;
+  // Present only for the requester or a reviewer (approve or reject) (§8.4).
+  AccessRequestPayload payload = 2;
+}
+
+message ListAccessRequestsRequest {
+  // 1-based page number; 0 or 1 selects the first page.
+  uint32 page = 1;
+  // Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the default 20 (PRD §7.1).
+  uint32 page_size = 2;
+  // Newest first by default; optional presence distinguishes unset from explicit false.
+  optional bool descending = 3;
+  // Optional state filter (the domain vocabulary, e.g. "pending"); empty = all.
+  string state = 4;
+}
+message ListAccessRequestsResponse {
+  repeated AccessRequest items = 1;
+  // Echoes the effective (clamped) page and page size the server applied.
+  uint32 page = 2;
+  uint32 page_size = 3;
+  int64 total_count = 4;
+  uint32 total_pages = 5;
+}

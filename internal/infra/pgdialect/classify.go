@@ -8,18 +8,20 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// Classify determines the privilege class of a parsed statement per the
-// ADR-0002 allow-list. Read and write trees are walked in full — an unknown
-// node anywhere rejects, hidden DML escalates, SELECT … INTO escalates to
-// ddl. Top-level DDL forms classify by form alone: ddl is already the
-// highest class, so nothing inside can escalate it, and walking the DDL
-// grammar would only false-reject forms the ADR-0002 table explicitly allows.
+// Classify applies the ADR-0002 statement allow-list, then checks functions and operators in every admitted class, including DDL. Unknown read/write nodes fail closed.
 func (d *Dialect) Classify(st query.Statement) (query.StatementClass, error) {
 	ps, ok := st.(*statement)
 	if !ok || ps.node == nil {
 		return "", &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
-	return classifyTop(ps.node)
+	class, err := classifyTop(ps.node)
+	if err != nil {
+		return "", err
+	}
+	if err := sweepEffects(ps.node); err != nil {
+		return "", err
+	}
+	return class, nil
 }
 
 func classifyTop(node nodes.Node) (query.StatementClass, error) {
@@ -34,9 +36,7 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 	case *nodes.InsertStmt, *nodes.UpdateStmt, *nodes.DeleteStmt, *nodes.MergeStmt:
 		return classifyWriteTree(node)
 	case *nodes.IndexStmt:
-		// CONCURRENTLY cannot run inside a transaction block, and every
-		// execution is wrapped in one (PRD §8.2, fixture #30): an admitted
-		// statement that can never succeed must not reach the approval flow.
+		// CONCURRENTLY cannot run inside a transaction block, and every execution is wrapped in one (PRD §8.2, fixture #30): an admitted statement that can never succeed must not reach the approval flow.
 		if stmt.Concurrent {
 			return "", &query.Rejection{Reason: query.RejectNonTransactional}
 		}
@@ -46,9 +46,25 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 			return "", &query.Rejection{Reason: query.RejectNonTransactional}
 		}
 		return query.ClassDDL, nil
-	case *nodes.CreateStmt, *nodes.CreateTableAsStmt, *nodes.TruncateStmt,
+	case *nodes.CreateTableAsStmt:
+		// Reject prepared statements whose SQL is unavailable to the classifier.
+		if _, opaque := stmt.Query.(*nodes.ExecuteStmt); opaque {
+			return "", &query.Rejection{Reason: query.RejectOpaqueCall}
+		}
+		return query.ClassDDL, nil
+	case *nodes.CreateSchemaStmt:
+		// Apply statement gates inside CREATE SCHEMA to prevent nested bypasses.
+		if stmt.SchemaElts != nil {
+			for _, element := range stmt.SchemaElts.Items {
+				if _, err := classifyTop(element); err != nil {
+					return "", err
+				}
+			}
+		}
+		return query.ClassDDL, nil
+	case *nodes.CreateStmt, *nodes.TruncateStmt,
 		*nodes.RenameStmt, *nodes.CommentStmt, *nodes.AlterTableStmt,
-		*nodes.ViewStmt, *nodes.CreateSeqStmt, *nodes.CreateSchemaStmt:
+		*nodes.ViewStmt, *nodes.CreateSeqStmt:
 		return query.ClassDDL, nil
 	case *nodes.TransactionStmt:
 		return "", &query.Rejection{Reason: query.RejectTxnControl}
@@ -63,10 +79,7 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 	}
 }
 
-// classifyReadTree walks a SELECT/VALUES tree: hidden DML (data-modifying
-// CTEs) escalates to write, an IntoClause escalates to ddl (fixture #10),
-// and row locking is rejected while the statement stays read — FOR UPDATE
-// cannot run in a read-only transaction (fixture #28).
+// classifyReadTree walks a SELECT/VALUES tree: hidden DML (data-modifying CTEs) escalates to write, an IntoClause escalates to ddl (fixture #10), and row locking is rejected while the statement stays read — FOR UPDATE cannot run in a read-only transaction (fixture #28).
 func classifyReadTree(node nodes.Node) (query.StatementClass, error) {
 	facts, err := walk(node)
 	if err != nil {
@@ -85,9 +98,7 @@ func classifyReadTree(node nodes.Node) (query.StatementClass, error) {
 	return class, nil
 }
 
-// classifyWriteTree walks a DML tree for unknown nodes; locking inside a
-// write is ordinary row locking, and an IntoClause (not grammatical here)
-// would only escalate further.
+// classifyWriteTree walks a DML tree for unknown nodes; locking inside a write is ordinary row locking, and an IntoClause (not grammatical here) would only escalate further.
 func classifyWriteTree(node nodes.Node) (query.StatementClass, error) {
 	facts, err := walk(node)
 	if err != nil {
@@ -99,12 +110,7 @@ func classifyWriteTree(node nodes.Node) (query.StatementClass, error) {
 	return query.ClassWrite, nil
 }
 
-// classifyExplain allows EXPLAIN of a read-classified statement only
-// (ADR-0002): any ANALYZE option — bare or parenthesized, regardless of its
-// argument — rejects. The inner statement goes through the SAME classifier as
-// a top-level one (nested EXPLAIN cannot parse, so the recursion is one
-// level), and anything that does not come out as read is rejected — the
-// read-only policy is a class requirement, not a node-type list of its own.
+// classifyExplain admits only read-classified statements and rejects every ANALYZE option, regardless of its argument (ADR-0002).
 func classifyExplain(stmt *nodes.ExplainStmt) (query.StatementClass, error) {
 	if stmt.Options != nil {
 		for _, opt := range stmt.Options.Items {

@@ -15,31 +15,25 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// Per ADR-0008 each key is named at its exact enforcement site: list sees only
-// collection summaries, while get unlocks one event's correlation/detail data.
+// Per ADR-0008 each key is named at its exact enforcement site: list sees only collection summaries, while get unlocks one event's correlation/detail data.
 const (
 	permAuditList identity.Permission = "audit.list"
 	permAuditGet  identity.Permission = "audit.get"
 )
 
-// AuditService implements the Audit RPC: reading the append-only trail behind an
-// audit.list permission check (ADR-0008), with OFFSET pagination (PRD §7.1). The
-// authorizer and the read service are injected so the handler holds no storage or
-// authz detail of its own.
+// AuditService implements the Audit RPC: reading the append-only trail behind an audit.list permission check (ADR-0008), with OFFSET pagination (PRD §7.1). The authorizer and the read service are injected so the handler holds no storage or authz detail of its own.
 type AuditService struct {
 	authz  authorizer
 	reader auditReader
 }
 
-// auditReader is the slice of the audit read service this handler consumes
-// (DIP/ISP — depend on the called methods, not the concrete *appaudit.Service).
+// auditReader is the slice of the audit read service this handler consumes (DIP/ISP — depend on the called methods, not the concrete *appaudit.Service).
 type auditReader interface {
 	List(ctx context.Context, q appaudit.Query) (domainaudit.EventPage, error)
 	Get(ctx context.Context, id string) (domainaudit.Event, error)
 }
 
-// NewAuditService builds the Audit RPC handler over the authorizer and the audit
-// read service.
+// NewAuditService builds the Audit RPC handler over the authorizer and the audit read service.
 func NewAuditService(az authorizer, reader auditReader) *AuditService {
 	return &AuditService{authz: az, reader: reader}
 }
@@ -55,11 +49,7 @@ func (a *AuditService) List(
 		Page:     int(req.Msg.GetPage()),
 		PageSize: int(req.Msg.GetPageSize()),
 	}
-	// Sort unset ⇒ newest-first (the service default); when set, honor its
-	// column, and its direction only when the optional descending was actually
-	// sent: a field-only sort keeps the documented descending default, and only
-	// an explicit descending=false opts into ascending (a plain proto3 bool
-	// could not tell those apart — external review).
+	// Default to newest-first and preserve omitted direction; only explicit descending=false selects ascending.
 	if sort := req.Msg.GetSort(); sort != nil {
 		q.SortField = sort.GetField()
 		q.SortAscending = sort.Descending != nil && !sort.GetDescending()
@@ -132,6 +122,13 @@ func toProtoAuditEvent(e domainaudit.Event) *portcullisv1.AuditEvent {
 		Outcome:      string(e.Outcome),
 		SourceIp:     e.SourceIP,
 		RequestId:    e.RequestID,
+		// The structured evidence the row stores. Without it the detail read said only "someone did something, successfully" — the state transition, the connection, the statement class and the digest are what make the row proof of what was approved and run (ADR-0009, PRD §6.1).
+		PreviousState:           e.PreviousState,
+		NextState:               e.NextState,
+		ConnectionId:            e.ConnectionID,
+		QueryType:               e.QueryType,
+		PayloadDigest:           e.PayloadDigest,
+		PayloadDigestKeyVersion: e.PayloadDigestKeyVersion,
 	}
 	if e.ActorUserID != nil {
 		pe.ActorUserId = string(*e.ActorUserID)
@@ -139,9 +136,7 @@ func toProtoAuditEvent(e domainaudit.Event) *portcullisv1.AuditEvent {
 	if !e.OccurredAt.IsZero() {
 		pe.OccurredAt = timestamppb.New(e.OccurredAt)
 	}
-	// Metadata is non-sensitive by contract (ADR-0009); surface it as a Struct. A
-	// value the well-known type can't represent is dropped rather than failing the
-	// read (the read has already succeeded).
+	// Metadata is non-sensitive by contract (ADR-0009); surface it as a Struct. A value the well-known type can't represent is dropped rather than failing the read (the read has already succeeded).
 	if len(e.Metadata) > 0 {
 		if md, err := structpb.NewStruct(e.Metadata); err == nil {
 			pe.Metadata = md

@@ -8,6 +8,44 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessRequest struct {
+	ID                      pgtype.UUID
+	OrganizationID          pgtype.UUID
+	ConnectionID            pgtype.UUID
+	RequesterID             pgtype.UUID
+	State                   string
+	StateReason             *string
+	PayloadKeyVersion       int32
+	PayloadWrappedDek       []byte
+	PayloadNonce            []byte
+	PayloadCiphertext       []byte
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	RedactedSql             *string
+	StatementClass          *string
+	PolicyVersion           *int64
+	RequiredApprovals       *int32
+	SubmittedAt             pgtype.Timestamptz
+	ConnectionConfigVersion *int64
+	ConnectionFingerprint   *string
+	ConnectionDisplayName   *string
+	ConnectionDbType        *string
+	ExpiresAt               pgtype.Timestamptz
+	Version                 int64
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+}
+
+type Approval struct {
+	ID             pgtype.UUID
+	RequestID      pgtype.UUID
+	OrganizationID pgtype.UUID
+	ApproverID     pgtype.UUID
+	Decision       string
+	Reason         string
+	DecidedAt      pgtype.Timestamptz
+}
+
 type AuditEvent struct {
 	ID                      pgtype.UUID
 	OrganizationID          pgtype.UUID
@@ -63,6 +101,7 @@ type Connection struct {
 	Environment          string
 	Description          string
 	CurrentPolicyVersion int64
+	ConfigVersion        int64
 }
 
 type ConnectionPolicyVersion struct {
@@ -141,6 +180,15 @@ type Session struct {
 	AbsoluteExpiresAt pgtype.Timestamptz
 	RevokedAt         pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
+}
+
+type Setting struct {
+	OrganizationID pgtype.UUID
+	Key            string
+	Value          string
+	Version        int64
+	UpdatedBy      pgtype.UUID
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type User struct {

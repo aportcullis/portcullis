@@ -16,7 +16,7 @@ update public.connections
 set current_policy_version = $3::bigint + 1
 where id = $1 and organization_id = $2 and archived_at is null
   and current_policy_version = $3::bigint
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version, config_version
 `
 
 type BumpConnectionPolicyVersionParams struct {
@@ -25,11 +25,7 @@ type BumpConnectionPolicyVersionParams struct {
 	ExpectedVersion int64
 }
 
-// The optimistic pointer bump (ADR-0015): succeeds only when the caller's
-// expected version is still current and the connection is active. Zero rows
-// → the store disambiguates missing/archived/conflict. connections.version
-// (the descriptor token) and updated_at are deliberately untouched — policy
-// and descriptor concurrency are orthogonal.
+// The optimistic pointer bump (ADR-0015): succeeds only when the caller's expected version is still current and the connection is active. Zero rows → the store disambiguates missing/archived/conflict. connections.version (the descriptor token) and updated_at are deliberately untouched — policy and descriptor concurrency are orthogonal.
 func (q *Queries) BumpConnectionPolicyVersion(ctx context.Context, arg BumpConnectionPolicyVersionParams) (Connection, error) {
 	row := q.db.QueryRow(ctx, bumpConnectionPolicyVersion, arg.ID, arg.OrganizationID, arg.ExpectedVersion)
 	var i Connection
@@ -55,6 +51,7 @@ func (q *Queries) BumpConnectionPolicyVersion(ctx context.Context, arg BumpConne
 		&i.Environment,
 		&i.Description,
 		&i.CurrentPolicyVersion,
+		&i.ConfigVersion,
 	)
 	return i, err
 }
@@ -71,9 +68,7 @@ type GetCurrentConnectionPolicyParams struct {
 	OrganizationID pgtype.UUID
 }
 
-// The connection's current policy snapshot, resolved through the pointer.
-// Works for archived connections too: the policy is part of the historical
-// snapshot (ADR-0015).
+// The connection's current policy snapshot, resolved through the pointer. Works for archived connections too: the policy is part of the historical snapshot (ADR-0015).
 func (q *Queries) GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error) {
 	row := q.db.QueryRow(ctx, getCurrentConnectionPolicy, arg.ID, arg.OrganizationID)
 	var i ConnectionPolicyVersion
@@ -108,7 +103,8 @@ insert into connection_policy_versions (
     $4, $5, $6,
     $7, $8, $9,
     $10, $11, $12,
-    $13, $14
+    -- Read the database clock after acquiring mutation locks so rows and audit events follow execution order; now() and inline clock_timestamp() can predate lock waits (ADR-0009). wait — named @at so the contract is visible here and not only in the store (ADR-0009). The caller's own created_at is domain-validation input.
+    $13, $14::timestamptz
 )
 `
 
@@ -126,12 +122,10 @@ type InsertConnectionPolicyVersionParams struct {
 	MaxRows                int32
 	MaxResultBytes         int64
 	CreatedBy              pgtype.UUID
-	CreatedAt              pgtype.Timestamptz
+	At                     pgtype.Timestamptz
 }
 
-// Append-only: a policy update inserts version N+1 (the (connection_id,
-// version) PK is the structural guard against duplicates); rows are never
-// updated (runtime UPDATE is revoked — ADR-0015).
+// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 func (q *Queries) InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error {
 	_, err := q.db.Exec(ctx, insertConnectionPolicyVersion,
 		arg.ConnectionID,
@@ -147,7 +141,7 @@ func (q *Queries) InsertConnectionPolicyVersion(ctx context.Context, arg InsertC
 		arg.MaxRows,
 		arg.MaxResultBytes,
 		arg.CreatedBy,
-		arg.CreatedAt,
+		arg.At,
 	)
 	return err
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aportcullis/portcullis/internal/domain/audit"
@@ -17,8 +18,6 @@ import (
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
 
-// connFixture creates the org-scoped prerequisites (a creator user) and
-// returns a builder for valid domain connections with unique display names.
 type connFixture struct {
 	pool  *pgxpool.Pool
 	store *pg.ConnectionStore
@@ -55,7 +54,7 @@ func (f connFixture) newConn(t *testing.T, name string) connection.Connection {
 		connection.ConnectionID(uuid.NewString()), f.org, connection.DBTypePostgreSQL,
 		name, connection.EnvironmentDevelopment, "fixture connection",
 		target, connection.TLSModeVerifyFull, f.user,
-		time.Now().UTC().Truncate(time.Microsecond), // timestamptz stores microseconds
+		time.Now().UTC().Truncate(time.Microsecond),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -128,12 +127,12 @@ func TestConnectionStoreNameUniquePerOrgUntilArchived(t *testing.T) {
 	if err := f.store.Create(ctx, first, sealedStub(1), connEvent(audit.ActionConnectionCreated, first.ID)); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Same name, case-folded, while the first is active → ErrNameTaken.
+
 	dup := f.newConn(t, name)
 	if err := f.store.Create(ctx, dup, sealedStub(1), connEvent(audit.ActionConnectionCreated, dup.ID)); !errors.Is(err, connection.ErrNameTaken) {
 		t.Fatalf("duplicate name err = %v, want ErrNameTaken", err)
 	}
-	// Archiving frees the name (partial unique on archived_at is null).
+
 	if _, err := f.store.Archive(ctx, f.org, first.ID, connEvent(audit.ActionConnectionArchived, first.ID)); err != nil {
 		t.Fatalf("Archive: %v", err)
 	}
@@ -158,7 +157,7 @@ func TestConnectionStoreArchive(t *testing.T) {
 	if !archived.IsArchived() {
 		t.Error("Archive should return the archived row")
 	}
-	// Descriptor snapshot survives; credential is discarded (PRD §4.3).
+
 	if archived.Fingerprint != c.Fingerprint || archived.DisplayName != c.DisplayName {
 		t.Error("archive must keep the descriptor snapshot")
 	}
@@ -183,7 +182,7 @@ func TestConnectionStoreArchive(t *testing.T) {
 	if _, err := f.store.ReplaceConfig(ctx, archived, archived.Version, sealedStub(1)); !errors.Is(err, connection.ErrArchived) {
 		t.Errorf("ReplaceConfig on archived = %v, want ErrArchived", err)
 	}
-	// Archived rows remain listable only when asked for.
+
 	active, err := f.store.List(ctx, f.org, false)
 	if err != nil {
 		t.Fatal(err)
@@ -208,15 +207,11 @@ func TestConnectionStoreArchive(t *testing.T) {
 	}
 }
 
-// The audit events ride the mutation's transaction: a failing event write must
-// roll the whole mutation back (ADR-0009), and a successful mutation must land
-// its events.
 func TestConnectionStoreAuditSameTransaction(t *testing.T) {
 	f := newConnFixture(t)
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
 
-	// Success: create with two events (the relaxed-TLS shape) lands both.
 	c := f.newConn(t, unique("Audited"))
 	events := []audit.Event{
 		connEvent(audit.ActionConnectionCreated, c.ID),
@@ -235,8 +230,7 @@ func TestConnectionStoreAuditSameTransaction(t *testing.T) {
 		t.Errorf("audit events for %s = %d, want 2 (same tx as the insert)", c.ID, n)
 	}
 
-	// Failure injection: an event whose organization id is not a UUID makes the
-	// audit insert fail inside the tx — the archive must roll back with it.
+	// Failure injection: an event whose organization id is not a UUID makes the audit insert fail inside the tx — the archive must roll back with it.
 	bad := connEvent(audit.ActionConnectionArchived, c.ID)
 	bad.OrganizationID = "not-a-uuid"
 	if _, err := f.store.Archive(ctx, f.org, c.ID, bad); err == nil {
@@ -254,7 +248,6 @@ func TestConnectionStoreAuditSameTransaction(t *testing.T) {
 	}
 }
 
-// Rows are invisible outside their organization (ADR-0004 mandatory test).
 func TestConnectionStoreCrossOrgIsolation(t *testing.T) {
 	f := newConnFixture(t)
 	pool := dbtest.Postgres(t)
@@ -293,9 +286,8 @@ func TestConnectionStoreCrossOrgIsolation(t *testing.T) {
 	}
 }
 
-// The table's credential invariants hold at the SQL level, not just in Go.
 func TestConnectionsTableCredentialConstraints(t *testing.T) {
-	newConnFixture(t) // ensures migrations ran
+	newConnFixture(t)
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
 
@@ -307,7 +299,6 @@ func TestConnectionsTableCredentialConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A partial envelope (key version without ciphertext) is unrepresentable.
 	_, err := pool.Exec(ctx, `insert into connections
 		(id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint,
 		 credential_key_version, created_by)
@@ -317,7 +308,6 @@ func TestConnectionsTableCredentialConstraints(t *testing.T) {
 		t.Error("partial credential envelope should violate connections_credential_all_or_none")
 	}
 
-	// An active row without a credential is unrepresentable.
 	_, err = pool.Exec(ctx, `insert into connections
 		(id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, created_by)
 		values (gen_random_uuid(), $1, 'postgresql', $2, 'h', 5432, 'd', 'verify-full', 'fp', $3)`,
@@ -326,10 +316,7 @@ func TestConnectionsTableCredentialConstraints(t *testing.T) {
 		t.Error("active row without credential should violate connections_active_has_credential")
 	}
 
-	// An archived row holding a credential is unrepresentable.
-	// current_policy_version is set so its NOT NULL cannot mask the intended
-	// failure: the archived-with-credential CHECK fires immediately at INSERT,
-	// before the deferred policy FK would at commit.
+	// An archived row holding a credential is unrepresentable. current_policy_version is set so its NOT NULL cannot mask the intended failure: the archived-with-credential CHECK fires immediately at INSERT, before the deferred policy FK would at commit.
 	_, err = pool.Exec(ctx, `insert into connections
 		(id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint,
 		 credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, archived_at,
@@ -342,6 +329,55 @@ func TestConnectionsTableCredentialConstraints(t *testing.T) {
 	}
 }
 
+func TestConnectionWritesStampAfterTheLockWait(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("descriptor update", func(t *testing.T) {
+		f := newConnFixture(t)
+		c := f.newConn(t, unique("Blocked"))
+		if err := f.store.Create(ctx, c, sealedStub(1), connEvent(audit.ActionConnectionCreated, c.ID)); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		blockedAt := blockOn(t, f.pool, `select id from connections where id = $1 for share`, string(c.ID), func(tx pgx.Tx) time.Time {
+			return stampBlockerEvent(t, tx, f.org, audit.ActionAccessRequestSubmitted, "access_request", string(c.ID))
+		}, func() error {
+			_, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, unique("Renamed"), connection.EnvironmentProduction, "after the wait", c.Version, connEvent(audit.ActionConnectionUpdated, c.ID))
+			return err
+		})
+
+		if got := eventInstant(t, f.pool, audit.ActionConnectionUpdated, string(c.ID)); got.Before(blockedAt) {
+			t.Errorf("CONNECTION_UPDATED %s precedes the write it waited for (%s)", got, blockedAt)
+		}
+	})
+
+	t.Run("config replace", func(t *testing.T) {
+		f := newConnFixture(t)
+		c := f.newConn(t, unique("BlockedConfig"))
+		if err := f.store.Create(ctx, c, sealedStub(1), connEvent(audit.ActionConnectionCreated, c.ID)); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		target, err := connection.NewTarget("replica.example.com", 5433, "otherdb")
+		if err != nil {
+			t.Fatal(err)
+		}
+		updated := c
+		updated.Target = target
+		updated.Fingerprint = target.Fingerprint(updated.DBType)
+
+		blockedAt := blockOn(t, f.pool, `select id from connections where id = $1 for share`, string(c.ID), func(tx pgx.Tx) time.Time {
+			return stampBlockerEvent(t, tx, f.org, audit.ActionAccessRequestSubmitted, "access_request", string(c.ID))
+		}, func() error {
+			_, err := f.store.ReplaceConfig(ctx, updated, c.Version, sealedStub(2), connEvent(audit.ActionConnectionUpdated, c.ID))
+			return err
+		})
+
+		if got := eventInstant(t, f.pool, audit.ActionConnectionUpdated, string(c.ID)); got.Before(blockedAt) {
+			t.Errorf("CONNECTION_UPDATED %s precedes the write it waited for (%s)", got, blockedAt)
+		}
+	})
+}
+
 func TestConnectionStoreRenameAndReplace(t *testing.T) {
 	f := newConnFixture(t)
 	ctx := context.Background()
@@ -352,7 +388,7 @@ func TestConnectionStoreRenameAndReplace(t *testing.T) {
 	}
 
 	newName := unique("Renamed")
-	renamed, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, newName, connection.EnvironmentProduction, "promoted to prod", connEvent(audit.ActionConnectionUpdated, c.ID))
+	renamed, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, newName, connection.EnvironmentProduction, "promoted to prod", c.Version, connEvent(audit.ActionConnectionUpdated, c.ID))
 	if err != nil {
 		t.Fatalf("UpdateDescriptor: %v", err)
 	}
@@ -384,10 +420,7 @@ func TestConnectionStoreRenameAndReplace(t *testing.T) {
 	if replaced.Version != renamed.Version+1 {
 		t.Errorf("config replacement version = %d, want %d", replaced.Version, renamed.Version+1)
 	}
-	// TestMaterial reads descriptor + credential from ONE row, so after a config
-	// replace it returns the NEW target AND the NEW credential together — never
-	// the old target paired with the new credential (the TOCTOU the split reads
-	// allowed, ADR-0014).
+
 	testConn, sealed, err := f.store.TestMaterial(ctx, f.org, c.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -399,7 +432,7 @@ func TestConnectionStoreRenameAndReplace(t *testing.T) {
 		t.Errorf("TestMaterial target = %+v, want the replaced target %+v (descriptor and credential must be one snapshot)", testConn.Target, target)
 	}
 
-	if _, err := f.store.UpdateDescriptor(ctx, f.org, connection.ConnectionID(uuid.NewString()), "x", connection.EnvironmentDevelopment, "", connEvent(audit.ActionConnectionUpdated, "missing")); !errors.Is(err, connection.ErrNotFound) {
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, connection.ConnectionID(uuid.NewString()), "x", connection.EnvironmentDevelopment, "", 1, connEvent(audit.ActionConnectionUpdated, "missing")); !errors.Is(err, connection.ErrNotFound) {
 		t.Errorf("UpdateDescriptor(missing) = %v, want ErrNotFound", err)
 	}
 }
@@ -413,7 +446,7 @@ func TestConnectionStoreReplaceRejectsStaleDescriptor(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if _, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, unique("Renamed"), c.Environment, c.Description, connEvent(audit.ActionConnectionUpdated, c.ID)); err != nil {
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, unique("Renamed"), c.Environment, c.Description, c.Version, connEvent(audit.ActionConnectionUpdated, c.ID)); err != nil {
 		t.Fatalf("UpdateDescriptor: %v", err)
 	}
 	target, err := connection.NewTarget("replica.example.com", 5433, "otherdb")
@@ -437,8 +470,82 @@ func TestConnectionStoreReplaceRejectsStaleDescriptor(t *testing.T) {
 	}
 }
 
-// The version column's positivity is enforced by the schema, not only the
-// application (ADR-0014, migration 0009).
+func TestUpdateDescriptorRejectsAStaleVersion(t *testing.T) {
+	f := newConnFixture(t)
+	ctx := context.Background()
+
+	c := f.newConn(t, unique("Descriptor"))
+	if err := f.store.Create(ctx, c, sealedStub(1), connEvent(audit.ActionConnectionCreated, c.ID)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	updated, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, c.DisplayName, c.Environment, "A's description", c.Version,
+		connEvent(audit.ActionConnectionUpdated, c.ID))
+	if err != nil {
+		t.Fatalf("A's update: %v", err)
+	}
+
+	renamed := unique("BRenamed")
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, renamed, c.Environment, c.Description, c.Version,
+		connEvent(audit.ActionConnectionUpdated, c.ID)); !errors.Is(err, connection.ErrConflict) {
+		t.Fatalf("B's stale update = %v, want ErrConflict", err)
+	}
+	got, err := f.store.GetByID(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Description != "A's description" {
+		t.Errorf("description = %q, want A's — a stale form reverted a concurrent change", got.Description)
+	}
+	if got.DisplayName != c.DisplayName || got.Version != updated.Version {
+		t.Errorf("row = %q v%d, want %q v%d untouched by the refused update",
+			got.DisplayName, got.Version, c.DisplayName, updated.Version)
+	}
+
+	// With the CURRENT version B's rename lands, and keeps A's description because B re-read it.
+	final, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, renamed, c.Environment, got.Description, got.Version,
+		connEvent(audit.ActionConnectionUpdated, c.ID))
+	if err != nil {
+		t.Fatalf("B's retry: %v", err)
+	}
+	if final.DisplayName != renamed || final.Description != "A's description" || final.Version != got.Version+1 {
+		t.Errorf("retry = %q/%q v%d, want %q/A's v%d", final.DisplayName, final.Description, final.Version, renamed, got.Version+1)
+	}
+}
+
+func TestUpdateDescriptorOnArchivedRowStillNeedsItsVersion(t *testing.T) {
+	f := newConnFixture(t)
+	ctx := context.Background()
+
+	c := f.newConn(t, unique("ArchivedDescriptor"))
+	if err := f.store.Create(ctx, c, sealedStub(1), connEvent(audit.ActionConnectionCreated, c.ID)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	archived, err := f.store.Archive(ctx, f.org, c.ID, connEvent(audit.ActionConnectionArchived, c.ID))
+	if err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, unique("Stale"), c.Environment, c.Description, c.Version,
+		connEvent(audit.ActionConnectionUpdated, c.ID)); !errors.Is(err, connection.ErrConflict) {
+		t.Errorf("archived rename with a stale version = %v, want ErrConflict", err)
+	}
+	renamed := unique("HistoryLabel")
+	got, err := f.store.UpdateDescriptor(ctx, f.org, c.ID, renamed, c.Environment, c.Description, archived.Version,
+		connEvent(audit.ActionConnectionUpdated, c.ID))
+	if err != nil {
+		t.Fatalf("archived rename with the current version = %v, want success", err)
+	}
+	if got.DisplayName != renamed || got.ArchivedAt == nil {
+		t.Errorf("archived rename = %q archived=%v, want %q still archived", got.DisplayName, got.ArchivedAt != nil, renamed)
+	}
+
+	if _, err := f.store.UpdateDescriptor(ctx, f.org, connection.ConnectionID(uuid.NewString()), "x",
+		connection.EnvironmentDevelopment, "", 1, connEvent(audit.ActionConnectionUpdated, "missing")); !errors.Is(err, connection.ErrNotFound) {
+		t.Errorf("UpdateDescriptor(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestConnectionVersionPositiveConstraint(t *testing.T) {
 	f := newConnFixture(t)
 	ctx := context.Background()

@@ -61,9 +61,7 @@ type PermissionsForUserParams struct {
 	UserID         pgtype.UUID
 }
 
-// A user's effective permissions within one organization. Scoped by org (ADR-0004
-// repository contract) and joined to roles so a soft-deleted role stops granting
-// its permissions even while a membership still references it (FKs are RESTRICT).
+// A user's effective permissions within one organization. Scoped by org (ADR-0004 repository contract) and joined to roles so a soft-deleted role stops granting its permissions even while a membership still references it (FKs are RESTRICT).
 func (q *Queries) PermissionsForUser(ctx context.Context, arg PermissionsForUserParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, permissionsForUser, arg.OrganizationID, arg.UserID)
 	if err != nil {
@@ -82,4 +80,25 @@ func (q *Queries) PermissionsForUser(ctx context.Context, arg PermissionsForUser
 		return nil, err
 	}
 	return items, nil
+}
+
+const roleNameForUser = `-- name: RoleNameForUser :one
+select r.name
+from public.organization_memberships m
+join public.roles r on r.id = m.role_id and r.deleted_at is null
+where m.organization_id = $1 and m.user_id = $2
+limit 1
+`
+
+type RoleNameForUserParams struct {
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+}
+
+// The display name of the user's role within one organization — a UI label (ADR-0008: authorization decisions never consult role names). The same soft-delete join rule as PermissionsForUser applies.
+func (q *Queries) RoleNameForUser(ctx context.Context, arg RoleNameForUserParams) (string, error) {
+	row := q.db.QueryRow(ctx, roleNameForUser, arg.OrganizationID, arg.UserID)
+	var name string
+	err := row.Scan(&name)
+	return name, err
 }

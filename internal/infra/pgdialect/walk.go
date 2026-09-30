@@ -15,10 +15,7 @@ type treeFacts struct {
 	locking bool // LockingClause anywhere (FOR UPDATE/SHARE …)
 }
 
-// allowedTags is the expression/clause vocabulary a read or write tree may
-// contain (ADR-0002 allow-list). Anything outside it — plus the special
-// cases handled in visit — rejects the statement. The set grows only
-// deliberately, with a fixture or a pinned regression sample.
+// allowedTags is the expression/clause vocabulary a read or write tree may contain (ADR-0002 allow-list). Anything outside it — plus the special cases handled in visit — rejects the statement. The set grows only deliberately, with a fixture or a pinned regression sample.
 var allowedTags = func() map[nodes.NodeTag]struct{} {
 	tags := []nodes.NodeTag{
 		nodes.T_SelectStmt, // subqueries, CTE bodies, VALUES
@@ -44,6 +41,7 @@ var allowedTags = func() map[nodes.NodeTag]struct{} {
 		nodes.T_CollateClause,
 		nodes.T_ColumnRef,
 		nodes.T_ParamRef,
+		// T_FuncCall belongs to the expression vocabulary; its NAME is gated by sweepEffects, which Classify runs over every statement of every class (ADR-0002 "Function effects"). Checking it here as well would only re-derive, for two of the classes, what the sweep already guarantees for all of them.
 		nodes.T_FuncCall,
 		nodes.T_WindowDef,
 		nodes.T_SortBy,
@@ -78,9 +76,36 @@ var allowedTags = func() map[nodes.NodeTag]struct{} {
 	return set
 }()
 
-// walk visits every node reachable from root and returns the collected
-// facts, rejecting the statement on the first node outside the allow-list —
-// ADR-0002: an unknown node anywhere in the tree fails closed.
+// sweepEffects checks functions and operators in every statement class, including DDL, and rejects untraversable nodes (ADR-0002).
+func sweepEffects(root nodes.Node) error {
+	switch root.Tag() {
+	case nodes.T_FuncCall:
+		if err := checkFuncCall(root); err != nil {
+			return err
+		}
+	case nodes.T_A_Expr:
+		if err := checkOperator(root); err != nil {
+			return err
+		}
+	case nodes.T_SortBy:
+		// ORDER BY … USING carries its operator in SortBy.UseOp, not in an A_Expr — and SortBy appears in sort clauses, window definitions, and aggregate ORDER BY alike, so the sweep gates it here for all of them (fixtures #47–#51).
+		if err := checkSortBy(root); err != nil {
+			return err
+		}
+	}
+	kids, err := childNodes(root)
+	if err != nil {
+		return err
+	}
+	for _, child := range kids {
+		if err := sweepEffects(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walk visits every node reachable from root and returns the collected facts, rejecting the statement on the first node outside the allow-list — ADR-0002: an unknown node anywhere in the tree fails closed.
 func walk(root nodes.Node) (treeFacts, error) {
 	var facts treeFacts
 	if err := visit(root, &facts); err != nil {
@@ -114,18 +139,10 @@ func visit(node nodes.Node, facts *treeFacts) error {
 	return nil
 }
 
-// errUntraversable marks a node whose reflected shape the walker cannot fully
-// inspect (a node-bearing field reflection refuses to read — an unexported
-// one). The classifier rejects rather than risk missing a node: an allow-list
-// that silently skips part of the tree fails OPEN, contrary to ADR-0002's
-// "unknown node anywhere fails closed". pgparser v0.2.0's parse nodes have no
-// such field today — this keeps the guarantee if a future bump adds one, and
-// replaces the reflect.Value.Interface() panic that would otherwise occur.
+// errUntraversable rejects nodes whose fields reflection cannot inspect, preventing skipped effects and reflection panics.
 var errUntraversable = &query.Rejection{Reason: query.RejectNotAllowlisted}
 
-// childNodes returns the nodes.Node values one level below node. pgparser
-// exposes no walker, so reflection is the traversal; the node structs are
-// plain data mirroring parsenodes.h.
+// childNodes returns the nodes.Node values one level below node. pgparser exposes no walker, so reflection is the traversal; the node structs are plain data mirroring parsenodes.h.
 func childNodes(node nodes.Node) ([]nodes.Node, error) {
 	v := reflect.ValueOf(node)
 	if v.Kind() == reflect.Pointer {
@@ -138,19 +155,15 @@ func childNodes(node nodes.Node) ([]nodes.Node, error) {
 		return nil, nil
 	}
 	var out []nodes.Node
-	for i := range v.NumField() {
-		if err := collectNodes(v.Field(i), &out); err != nil {
+	for fieldIdx := range v.NumField() {
+		if err := collectNodes(v.Field(fieldIdx), &out); err != nil {
 			return nil, err
 		}
 	}
 	return out, nil
 }
 
-// collectNodes appends every nodes.Node reachable from v to out, descending
-// through pointers, interfaces, slices, arrays, maps, and by-value structs so
-// no reference shape is silently skipped (a missed node would defeat the
-// allow-list). A node-bearing field reflection refuses to read is fail-closed
-// via errUntraversable; scalar leaves carry no nodes and are ignored.
+// collectNodes traverses every container and struct shape and rejects inaccessible node fields so effects cannot be silently skipped.
 func collectNodes(v reflect.Value, out *[]nodes.Node) error {
 	switch v.Kind() {
 	case reflect.Interface, reflect.Pointer:
@@ -166,14 +179,14 @@ func collectNodes(v reflect.Value, out *[]nodes.Node) error {
 		}
 		return collectNodes(v.Elem(), out) // non-Node wrapper: descend into it
 	case reflect.Struct:
-		for i := range v.NumField() {
-			if err := collectNodes(v.Field(i), out); err != nil {
+		for fieldIdx := range v.NumField() {
+			if err := collectNodes(v.Field(fieldIdx), out); err != nil {
 				return err
 			}
 		}
 	case reflect.Slice, reflect.Array:
-		for i := range v.Len() {
-			if err := collectNodes(v.Index(i), out); err != nil {
+		for elementIdx := range v.Len() {
+			if err := collectNodes(v.Index(elementIdx), out); err != nil {
 				return err
 			}
 		}

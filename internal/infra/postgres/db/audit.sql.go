@@ -16,8 +16,7 @@ select count(*) from public.audit_events
 where organization_id = $1
 `
 
-// Total matching rows for the page controls. O(n) on a large table — PRD §7.1
-// accepts this for the audit list and defers keyset pagination to "later".
+// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".
 func (q *Queries) CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countAuditEvents, organizationID)
 	var count int64
@@ -28,7 +27,10 @@ func (q *Queries) CountAuditEvents(ctx context.Context, organizationID pgtype.UU
 const getAuditEvent = `-- name: GetAuditEvent :one
 select
     id, occurred_at, actor_type, actor_user_id, actor_service,
-    action, target_type, target_id, outcome, request_id, metadata
+    action, target_type, target_id, outcome, request_id,
+    previous_state, next_state, connection_id, query_type,
+    payload_digest, payload_digest_key_version, metadata,
+    1::bigint as total_count
 from public.audit_events
 where id = $1 and organization_id = $2
 `
@@ -39,20 +41,27 @@ type GetAuditEventParams struct {
 }
 
 type GetAuditEventRow struct {
-	ID           pgtype.UUID
-	OccurredAt   pgtype.Timestamptz
-	ActorType    string
-	ActorUserID  pgtype.UUID
-	ActorService *string
-	Action       string
-	TargetType   string
-	TargetID     *string
-	Outcome      string
-	RequestID    *string
-	Metadata     []byte
+	ID                      pgtype.UUID
+	OccurredAt              pgtype.Timestamptz
+	ActorType               string
+	ActorUserID             pgtype.UUID
+	ActorService            *string
+	Action                  string
+	TargetType              string
+	TargetID                *string
+	Outcome                 string
+	RequestID               *string
+	PreviousState           *string
+	NextState               *string
+	ConnectionID            pgtype.UUID
+	QueryType               *string
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	Metadata                []byte
+	TotalCount              int64
 }
 
-// Detail remains organization-scoped; audit.get must never become an IDOR path.
+// Detail remains organization-scoped; audit.get must never become an IDOR path. total_count is literally 1 here and goes unused — it keeps the row shape structurally identical to the list rows, so one mapper serves all three.
 func (q *Queries) GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error) {
 	row := q.db.QueryRow(ctx, getAuditEvent, arg.ID, arg.OrganizationID)
 	var i GetAuditEventRow
@@ -67,31 +76,48 @@ func (q *Queries) GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (G
 		&i.TargetID,
 		&i.Outcome,
 		&i.RequestID,
+		&i.PreviousState,
+		&i.NextState,
+		&i.ConnectionID,
+		&i.QueryType,
+		&i.PayloadDigest,
+		&i.PayloadDigestKeyVersion,
 		&i.Metadata,
+		&i.TotalCount,
 	)
 	return i, err
 }
 
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
 insert into public.audit_events (
-    organization_id, actor_type, actor_user_id, actor_service,
-    action, target_type, target_id, outcome, request_id, metadata
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    organization_id, occurred_at, actor_type, actor_user_id, actor_service,
+    action, target_type, target_id, outcome, request_id,
+    previous_state, next_state, connection_id, query_type,
+    payload_digest, payload_digest_key_version, metadata
+) values ($1, coalesce($17::timestamptz, now()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 `
 
 type InsertAuditEventParams struct {
-	OrganizationID pgtype.UUID
-	ActorType      string
-	ActorUserID    pgtype.UUID
-	ActorService   *string
-	Action         string
-	TargetType     string
-	TargetID       *string
-	Outcome        string
-	RequestID      *string
-	Metadata       []byte
+	OrganizationID          pgtype.UUID
+	ActorType               string
+	ActorUserID             pgtype.UUID
+	ActorService            *string
+	Action                  string
+	TargetType              string
+	TargetID                *string
+	Outcome                 string
+	RequestID               *string
+	PreviousState           *string
+	NextState               *string
+	ConnectionID            pgtype.UUID
+	QueryType               *string
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	Metadata                []byte
+	OccurredAt              pgtype.Timestamptz
 }
 
+// Ordinary events use database time; derived events reuse the observation instant so expiry audit cannot precede its deadline (ADR-0009).
 func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error {
 	_, err := q.db.Exec(ctx, insertAuditEvent,
 		arg.OrganizationID,
@@ -103,7 +129,14 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.TargetID,
 		arg.Outcome,
 		arg.RequestID,
+		arg.PreviousState,
+		arg.NextState,
+		arg.ConnectionID,
+		arg.QueryType,
+		arg.PayloadDigest,
+		arg.PayloadDigestKeyVersion,
 		arg.Metadata,
+		arg.OccurredAt,
 	)
 	return err
 }
@@ -111,7 +144,10 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 const listAuditEventsAsc = `-- name: ListAuditEventsAsc :many
 select
     id, occurred_at, actor_type, actor_user_id, actor_service,
-    action, target_type, target_id, outcome, request_id, metadata
+    action, target_type, target_id, outcome, request_id,
+    previous_state, next_state, connection_id, query_type,
+    payload_digest, payload_digest_key_version, metadata,
+    count(*) over ()::bigint as total_count
 from public.audit_events
 where organization_id = $1
 order by occurred_at asc, id asc
@@ -125,21 +161,27 @@ type ListAuditEventsAscParams struct {
 }
 
 type ListAuditEventsAscRow struct {
-	ID           pgtype.UUID
-	OccurredAt   pgtype.Timestamptz
-	ActorType    string
-	ActorUserID  pgtype.UUID
-	ActorService *string
-	Action       string
-	TargetType   string
-	TargetID     *string
-	Outcome      string
-	RequestID    *string
-	Metadata     []byte
+	ID                      pgtype.UUID
+	OccurredAt              pgtype.Timestamptz
+	ActorType               string
+	ActorUserID             pgtype.UUID
+	ActorService            *string
+	Action                  string
+	TargetType              string
+	TargetID                *string
+	Outcome                 string
+	RequestID               *string
+	PreviousState           *string
+	NextState               *string
+	ConnectionID            pgtype.UUID
+	QueryType               *string
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	Metadata                []byte
+	TotalCount              int64
 }
 
-// Oldest first; (occurred_at asc, id asc) is the same index scanned backward, so it
-// stays index-served and tie-breaker-stable.
+// Oldest first; (occurred_at asc, id asc) is the same index scanned backward, so it stays index-served and tie-breaker-stable.
 func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAscParams) ([]ListAuditEventsAscRow, error) {
 	rows, err := q.db.Query(ctx, listAuditEventsAsc, arg.OrganizationID, arg.RowOffset, arg.PageLimit)
 	if err != nil {
@@ -160,7 +202,14 @@ func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAsc
 			&i.TargetID,
 			&i.Outcome,
 			&i.RequestID,
+			&i.PreviousState,
+			&i.NextState,
+			&i.ConnectionID,
+			&i.QueryType,
+			&i.PayloadDigest,
+			&i.PayloadDigestKeyVersion,
 			&i.Metadata,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}
@@ -175,7 +224,11 @@ func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAsc
 const listAuditEventsDesc = `-- name: ListAuditEventsDesc :many
 select
     id, occurred_at, actor_type, actor_user_id, actor_service,
-    action, target_type, target_id, outcome, request_id, metadata
+    action, target_type, target_id, outcome, request_id,
+    previous_state, next_state, connection_id, query_type,
+    payload_digest, payload_digest_key_version, metadata,
+    -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
+    count(*) over ()::bigint as total_count
 from public.audit_events
 where organization_id = $1
 order by occurred_at desc, id desc
@@ -189,23 +242,27 @@ type ListAuditEventsDescParams struct {
 }
 
 type ListAuditEventsDescRow struct {
-	ID           pgtype.UUID
-	OccurredAt   pgtype.Timestamptz
-	ActorType    string
-	ActorUserID  pgtype.UUID
-	ActorService *string
-	Action       string
-	TargetType   string
-	TargetID     *string
-	Outcome      string
-	RequestID    *string
-	Metadata     []byte
+	ID                      pgtype.UUID
+	OccurredAt              pgtype.Timestamptz
+	ActorType               string
+	ActorUserID             pgtype.UUID
+	ActorService            *string
+	Action                  string
+	TargetType              string
+	TargetID                *string
+	Outcome                 string
+	RequestID               *string
+	PreviousState           *string
+	NextState               *string
+	ConnectionID            pgtype.UUID
+	QueryType               *string
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	Metadata                []byte
+	TotalCount              int64
 }
 
-// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the
-// audit_events_org_time_idx covering index (forward scan) and give OFFSET
-// pagination a stable tie-breaker (PRD §7.1). Extended columns
-// (state/execution/digest) are omitted until the features that populate them ship.
+// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 func (q *Queries) ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error) {
 	rows, err := q.db.Query(ctx, listAuditEventsDesc, arg.OrganizationID, arg.RowOffset, arg.PageLimit)
 	if err != nil {
@@ -226,7 +283,14 @@ func (q *Queries) ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDe
 			&i.TargetID,
 			&i.Outcome,
 			&i.RequestID,
+			&i.PreviousState,
+			&i.NextState,
+			&i.ConnectionID,
+			&i.QueryType,
+			&i.PayloadDigest,
+			&i.PayloadDigestKeyVersion,
 			&i.Metadata,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

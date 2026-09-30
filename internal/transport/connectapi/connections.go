@@ -14,16 +14,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// parseConnectionID validates a request's connection id at the transport
-// boundary so a malformed one (empty, "not-a-uuid") is a client error
-// (InvalidArgument), not a storage failure surfaced as Internal. Connection
-// ids are app-generated UUIDs (ADR-0014), so anything else can never match a
-// row. The parsed value is re-rendered so the app always receives the
-// CANONICAL form: uuid.Parse accepts non-standard encodings (uppercase, no
-// hyphens, urn:, braces — its docs say not to use it for validation), the
-// database matches them all to the same row, and the id becomes the AEAD AAD
-// — a non-canonical spelling would seal a credential no canonical request
-// could ever decrypt again (external review).
+// parseConnectionID rejects malformed UUIDs and canonicalizes accepted encodings before they become AEAD associated data.
 func parseConnectionID(raw string) (connection.ConnectionID, error) {
 	parsed, err := uuid.Parse(raw)
 	if err != nil {
@@ -32,9 +23,7 @@ func parseConnectionID(raw string) (connection.ConnectionID, error) {
 	return connection.ConnectionID(parsed.String()), nil
 }
 
-// Permissions gating the Connections RPCs. Per ADR-0008 each key is named
-// here, at its exact enforcement site, and nowhere else. The catalog's delete
-// verb gates Archive — "delete" IS archive; no hard delete exists (PRD §4.3).
+// Permissions gating the Connections RPCs. Per ADR-0008 each key is named here, at its exact enforcement site, and nowhere else. The catalog's delete verb gates Archive — "delete" IS archive; no hard delete exists (PRD §4.3).
 const (
 	permConnectionsList   identity.Permission = "connections.list"
 	permConnectionsGet    identity.Permission = "connections.get"
@@ -44,9 +33,7 @@ const (
 	permConnectionsDelete identity.Permission = "connections.delete"
 )
 
-// connectionApp is the slice of the connection application service this
-// handler consumes (DIP/ISP — depend on the called methods, not the concrete
-// *appconn.Service).
+// connectionApp is the slice of the connection application service this handler consumes (DIP/ISP — depend on the called methods, not the concrete *appconn.Service).
 type connectionApp interface {
 	List(ctx context.Context, includeArchived bool) ([]connection.Connection, error)
 	Get(ctx context.Context, id connection.ConnectionID) (connection.Connection, error)
@@ -57,18 +44,13 @@ type connectionApp interface {
 	TestByID(ctx context.Context, actor identity.UserID, id connection.ConnectionID) error
 }
 
-// ConnectionsService implements the Connections RPCs (PRD §4.1/§7.2,
-// ADR-0014): admin-gated registration with a mandatory server-side
-// test-before-save, rename/config updates, in-band connection tests, and
-// archive. Responses never carry a credential or DSN — the read model has no
-// such fields.
+// ConnectionsService implements the Connections RPCs (PRD §4.1/§7.2, ADR-0014): admin-gated registration with a mandatory server-side test-before-save, rename/config updates, in-band connection tests, and archive. Responses never carry a credential or DSN — the read model has no such fields.
 type ConnectionsService struct {
 	authz authorizer
 	svc   connectionApp
 }
 
-// NewConnectionsService builds the Connections RPC handler over the authorizer
-// and the connection app service.
+// NewConnectionsService builds the Connections RPC handler over the authorizer and the connection app service.
 func NewConnectionsService(az authorizer, svc connectionApp) *ConnectionsService {
 	return &ConnectionsService{authz: az, svc: svc}
 }
@@ -147,9 +129,15 @@ func (c *ConnectionsService) Update(
 	if err != nil {
 		return nil, err
 	}
+	// The descriptor token is required, not defaulted: version 0 does not exist (the column starts at 1 and a CHECK keeps it positive), so accepting it would be accepting an unguarded write — the lost update ADR-0014 defines this column to prevent.
+	expectedVersion := req.Msg.GetExpectedVersion()
+	if expectedVersion <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("expected_version is required"))
+	}
 	params := appconn.UpdateParams{
-		DisplayName: req.Msg.GetDisplayName(),
-		Environment: req.Msg.GetEnvironment(),
+		DisplayName:     req.Msg.GetDisplayName(),
+		Environment:     req.Msg.GetEnvironment(),
+		ExpectedVersion: expectedVersion,
 	}
 	if req.Msg.Description != nil { // presence-tracked: absent keeps the stored text
 		desc := req.Msg.GetDescription()
@@ -194,8 +182,7 @@ func (c *ConnectionsService) Test(
 	if err == nil {
 		return connect.NewResponse(&portcullisv1.TestConnectionResponse{Ok: true}), nil
 	}
-	// A failed test is an in-band result, not an RPC error; the message is the
-	// classified bucket only (ADR-0014), safe by construction.
+	// A failed test is an in-band result, not an RPC error; the message is the classified bucket only (ADR-0014), safe by construction.
 	var te *connection.TestError
 	if errors.As(err, &te) {
 		return connect.NewResponse(&portcullisv1.TestConnectionResponse{Ok: false, Message: string(te.Bucket)}), nil
@@ -227,9 +214,7 @@ func (c *ConnectionsService) Archive(
 
 var errAuthRequired = errors.New("authentication required")
 
-// connectionError maps the connection use cases' outcomes onto Connect codes.
-// Domain sentinels and test buckets are safe to surface; anything else
-// collapses to a generic internal error (no driver or storage detail leaks).
+// connectionError maps the connection use cases' outcomes onto Connect codes. Domain sentinels and test buckets are safe to surface; anything else collapses to a generic internal error (no driver or storage detail leaks).
 func connectionError(err error) error {
 	var te *connection.TestError
 	switch {
@@ -239,11 +224,13 @@ func connectionError(err error) error {
 		return connect.NewError(connect.CodeAlreadyExists, errors.New("display name already in use"))
 	case errors.Is(err, connection.ErrArchived), errors.Is(err, connection.ErrAlreadyArchived):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("connection is archived"))
+	case errors.Is(err, connection.ErrExecutionInFlight):
+		// §4.3: archive waits for the in-flight execution — a business refusal the caller can act on, not a server fault.
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("an execution is in flight; retry once it settles"))
 	case errors.Is(err, connection.ErrConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("connection changed; refresh and retry"))
 	case errors.As(err, &te):
-		// Create/Update refuse to persist on a failed test (PRD §7.2); the bucket
-		// message is the whole story.
+		// Create/Update refuse to persist on a failed test (PRD §7.2); the bucket message is the whole story.
 		return connect.NewError(connect.CodeFailedPrecondition, te)
 	case errors.Is(err, connection.ErrInvalidTLSMode),
 		errors.Is(err, connection.ErrInvalidTarget),
@@ -282,6 +269,7 @@ func toProtoConnection(c connection.Connection) *portcullisv1.Connection {
 		Database:          c.Target.DatabaseName,
 		TlsMode:           string(c.TLSMode),
 		TargetFingerprint: c.Fingerprint,
+		Version:           c.Version,
 	}
 	if !c.CreatedAt.IsZero() {
 		pc.CreatedAt = timestamppb.New(c.CreatedAt)

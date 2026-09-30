@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -14,76 +16,100 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
 
-// AuditStore persists audit events into the append-only audit_events table. It
-// satisfies auth.AuditRecorder structurally; mutation and truncation are blocked
-// by DB triggers, so the adapter only ever inserts.
+// AuditStore persists audit events into the append-only audit_events table. It satisfies auth.AuditRecorder structurally; mutation and truncation are blocked by DB triggers, so the adapter only ever inserts. The pool backs the one-snapshot list read (readSnapshot).
 type AuditStore struct {
-	q *db.Queries
+	pool *pgxpool.Pool
+	q    *db.Queries
 }
 
 // NewAuditStore builds the store on a connection pool.
 func NewAuditStore(pool *pgxpool.Pool) *AuditStore {
-	return &AuditStore{q: db.New(pool)}
+	return &AuditStore{pool: pool, q: db.New(pool)}
 }
 
-// Record inserts one event (best-effort path — no surrounding transaction).
+// Record inserts one event (best-effort path — no surrounding transaction), completing the organization when the caller left it empty (single-org MVP) — the same contract as the transactional path, so the two cannot drift.
 func (s *AuditStore) Record(ctx context.Context, e audit.Event) error {
-	p, err := auditEventParams(e)
-	if err != nil {
-		return err
-	}
-	return s.q.InsertAuditEvent(ctx, p)
+	return insertAuditTx(ctx, s.q, e)
 }
 
-// List returns one page of audit events, org-scoped to the single organization
-// (single-org MVP), ordered by occurred_at in the requested direction with an id
-// tie-breaker. The source IP is lifted back out of the metadata JSONB — where
-// Record folds it in, the schema having no dedicated column — so the read shape
-// mirrors the write shape. Limit/Offset are int64, so a large page offset never
-// wraps negative.
-func (s *AuditStore) List(ctx context.Context, p audit.ListParams) ([]audit.Event, error) {
-	org, err := s.q.GetDefaultOrganization(ctx)
-	if err != nil {
-		return nil, err
-	}
-	orgID := identity.OrganizationID(uuidToString(org.ID))
-
-	// The two queries differ only in ORDER BY direction; their row types are
-	// structurally identical, so both convert to auditListRow for one mapper.
+// List validates pagination and sorting, then delegates rows, count, and page clamp to one repository snapshot (PRD §7.1).
+func (s *AuditStore) List(ctx context.Context, p audit.ListParams) (audit.EventPage, error) {
+	page := p.Page
 	var rows []auditListRow
-	if p.SortDescending {
-		got, err := s.q.ListAuditEventsDesc(ctx, db.ListAuditEventsDescParams{OrganizationID: org.ID, PageLimit: p.Limit, RowOffset: p.Offset})
+	var total int64
+	var orgID identity.OrganizationID
+	err := readSnapshot(ctx, s.pool, s.q, func(_ pgx.Tx, q *db.Queries) error {
+		org, err := q.GetDefaultOrganization(ctx)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		rows = make([]auditListRow, len(got))
-		for i, r := range got {
-			rows[i] = auditListRow(r)
+		orgID = identity.OrganizationID(uuidToString(org.ID))
+
+		// The two queries differ only in ORDER BY direction; their row types are structurally identical, so both convert to auditListRow for one mapper.
+		limit := int64(p.PageSize)
+		read := func(pageNumber int) error {
+			offset := int64(pageNumber-1) * limit
+			if p.SortDescending {
+				got, err := q.ListAuditEventsDesc(ctx, db.ListAuditEventsDescParams{OrganizationID: org.ID, PageLimit: limit, RowOffset: offset})
+				if err != nil {
+					return err
+				}
+				rows = make([]auditListRow, len(got))
+				for idx, r := range got {
+					rows[idx] = auditListRow(r)
+				}
+				return nil
+			}
+			got, err := q.ListAuditEventsAsc(ctx, db.ListAuditEventsAscParams{OrganizationID: org.ID, PageLimit: limit, RowOffset: offset})
+			if err != nil {
+				return err
+			}
+			rows = make([]auditListRow, len(got))
+			for idx, r := range got {
+				rows[idx] = auditListRow(r)
+			}
+			return nil
 		}
-	} else {
-		got, err := s.q.ListAuditEventsAsc(ctx, db.ListAuditEventsAscParams{OrganizationID: org.ID, PageLimit: p.Limit, RowOffset: p.Offset})
-		if err != nil {
-			return nil, err
+
+		if err := read(page); err != nil {
+			return err
 		}
-		rows = make([]auditListRow, len(got))
-		for i, r := range got {
-			rows[i] = auditListRow(r)
+		if len(rows) > 0 {
+			total = rows[0].TotalCount
+			return nil
 		}
+		if total, err = q.CountAuditEvents(ctx, org.ID); err != nil {
+			return err
+		}
+		// Empty because the caller asked past the end: land on the last page that has rows. An empty TRAIL stays on page 1 — there is no page to go back to.
+		last := int(total+int64(p.PageSize)-1) / p.PageSize
+		if last == 0 {
+			page = 1
+			return nil
+		}
+		if page <= last {
+			return nil // genuinely empty in range
+		}
+		page = last
+		return read(page)
+	})
+	if err != nil {
+		return audit.EventPage{}, err
 	}
 
 	events := make([]audit.Event, 0, len(rows))
 	for _, r := range rows {
 		e, err := auditEventFromRow(r, orgID)
 		if err != nil {
-			return nil, err
+			return audit.EventPage{}, err
 		}
 		events = append(events, e)
 	}
-	return events, nil
+	// Page is the page actually READ, which is what the caller must echo: after a clamp it is no longer the page that was asked for.
+	return audit.EventPage{Events: events, Page: page, PageSize: p.PageSize, TotalCount: total}, nil
 }
 
-// Get returns one full audit event, scoped to the default organization. The
-// detail endpoint is separately guarded by audit.get in the transport layer.
+// Get returns one full audit event, scoped to the default organization. The detail endpoint is separately guarded by audit.get in the transport layer.
 func (s *AuditStore) Get(ctx context.Context, id string) (audit.Event, error) {
 	eventID, err := stringToUUID(id)
 	if err != nil {
@@ -103,38 +129,30 @@ func (s *AuditStore) Get(ctx context.Context, id string) (audit.Event, error) {
 	return auditEventFromRow(auditListRow(row), identity.OrganizationID(uuidToString(org.ID)))
 }
 
-// Count returns the total number of audit events for the single organization —
-// the denominator for the page controls (PRD §7.1).
-func (s *AuditStore) Count(ctx context.Context) (int64, error) {
-	org, err := s.q.GetDefaultOrganization(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return s.q.CountAuditEvents(ctx, org.ID)
-}
-
-// auditListRow is the shared shape of the (structurally identical) Desc/Asc list
-// rows, so one mapper serves both sort directions. If the selected columns change,
-// sqlc regenerates both row types and this conversion fails to compile until they
-// are realigned — a compile-time guard, not silent drift.
+// auditListRow is the shared shape of the (structurally identical) Desc/Asc list rows, so one mapper serves both sort directions. If the selected columns change, sqlc regenerates both row types and this conversion fails to compile until they are realigned — a compile-time guard, not silent drift.
 type auditListRow struct {
-	ID           pgtype.UUID
-	OccurredAt   pgtype.Timestamptz
-	ActorType    string
-	ActorUserID  pgtype.UUID
-	ActorService *string
-	Action       string
-	TargetType   string
-	TargetID     *string
-	Outcome      string
-	RequestID    *string
-	Metadata     []byte
+	ID                      pgtype.UUID
+	OccurredAt              pgtype.Timestamptz
+	ActorType               string
+	ActorUserID             pgtype.UUID
+	ActorService            *string
+	Action                  string
+	TargetType              string
+	TargetID                *string
+	Outcome                 string
+	RequestID               *string
+	PreviousState           *string
+	NextState               *string
+	ConnectionID            pgtype.UUID
+	QueryType               *string
+	PayloadDigest           []byte
+	PayloadDigestKeyVersion *int32
+	Metadata                []byte
+	// TotalCount is the page's total, computed by the SAME query as the rows (count(*) over ()) so the two cannot come from different snapshots. On the detail path the expression is literally 1 and the field goes unused.
+	TotalCount int64
 }
 
-// auditEventFromRow maps a read row back onto the domain event — the inverse of
-// auditEventParams. The source IP is recovered from the metadata JSONB and removed
-// from the remaining supplemental map, so callers see the same SourceIP/Metadata
-// split they wrote.
+// auditEventFromRow maps a read row back onto the domain event — the inverse of auditEventParams. The source IP is recovered from the metadata JSONB and removed from the remaining supplemental map, so callers see the same SourceIP/Metadata split they wrote.
 func auditEventFromRow(r auditListRow, org identity.OrganizationID) (audit.Event, error) {
 	e := audit.Event{
 		ID:             uuidToString(r.ID),
@@ -158,6 +176,22 @@ func auditEventFromRow(r auditListRow, org identity.OrganizationID) (audit.Event
 	if r.RequestID != nil {
 		e.RequestID = *r.RequestID
 	}
+	if r.PreviousState != nil {
+		e.PreviousState = *r.PreviousState
+	}
+	if r.NextState != nil {
+		e.NextState = *r.NextState
+	}
+	if id := uuidToString(r.ConnectionID); id != "" {
+		e.ConnectionID = id
+	}
+	if r.QueryType != nil {
+		e.QueryType = *r.QueryType
+	}
+	e.PayloadDigest = r.PayloadDigest
+	if r.PayloadDigestKeyVersion != nil {
+		e.PayloadDigestKeyVersion = uint32(*r.PayloadDigestKeyVersion)
+	}
 	if len(r.Metadata) > 0 {
 		var meta map[string]any
 		if err := json.Unmarshal(r.Metadata, &meta); err != nil {
@@ -174,9 +208,7 @@ func auditEventFromRow(r auditListRow, org identity.OrganizationID) (audit.Event
 	return e, nil
 }
 
-// insertAuditTx writes an event through the given (transaction-bound) queries,
-// completing the organization when the caller left it empty (single-org MVP) —
-// used by IdentityStore so the event commits atomically with its state change.
+// insertAuditTx writes an event through the given (transaction-bound) queries, completing the organization when the caller left it empty (single-org MVP) — used by IdentityStore so the event commits atomically with its state change.
 func insertAuditTx(ctx context.Context, q *db.Queries, evt audit.Event) error {
 	if evt.OrganizationID == "" {
 		org, err := q.GetDefaultOrganization(ctx)
@@ -192,10 +224,7 @@ func insertAuditTx(ctx context.Context, q *db.Queries, evt audit.Event) error {
 	return q.InsertAuditEvent(ctx, p)
 }
 
-// auditEventParams maps a domain event onto the insert parameters. Shared by the
-// best-effort store above and by IdentityStore's transactional writes (ADR-0009).
-// The source IP travels in the metadata JSONB (the schema has no dedicated
-// column); occurred_at is the insert-time DB default.
+// auditEventParams maps a domain event onto the insert parameters. Shared by the best-effort store above and by IdentityStore's transactional writes (ADR-0009). The source IP travels in the metadata JSONB (the schema has no dedicated column); occurred_at is the insert-time DB default.
 func auditEventParams(e audit.Event) (db.InsertAuditEventParams, error) {
 	org, err := stringToUUID(string(e.OrganizationID))
 	if err != nil {
@@ -219,8 +248,39 @@ func auditEventParams(e audit.Event) (db.InsertAuditEventParams, error) {
 	if e.TargetID != "" {
 		p.TargetID = &e.TargetID
 	}
+	// occurred_at is normally the column DEFAULT — the DB's clock, out of the caller's hands. A DERIVED event may instead carry the DB instant that produced the observation it reports, so the event cannot predate it (ADR-0009; see observeOverdue).
+	if !e.OccurredAt.IsZero() {
+		p.OccurredAt = timeToTS(e.OccurredAt)
+	}
 	if e.RequestID != "" {
 		p.RequestID = &e.RequestID
+	}
+	if e.PreviousState != "" {
+		p.PreviousState = &e.PreviousState
+	}
+	if e.NextState != "" {
+		p.NextState = &e.NextState
+	}
+	if e.ConnectionID != "" {
+		if p.ConnectionID, err = stringToUUID(e.ConnectionID); err != nil {
+			return db.InsertAuditEventParams{}, err
+		}
+	}
+	if e.QueryType != "" {
+		p.QueryType = &e.QueryType
+	}
+	// The digest pair is all-or-nothing (audit_digest_pairing CHECK): a digest without its key version is unverifiable, a version without a digest is meaningless. A half-set pair is a CALLER DEFECT, so refuse it — dropping both to NULL would satisfy the CHECK and lose the evidence silently.
+	switch hasDigest, hasVersion := len(e.PayloadDigest) > 0, e.PayloadDigestKeyVersion > 0; {
+	case hasDigest != hasVersion:
+		return db.InsertAuditEventParams{}, fmt.Errorf(
+			"audit: payload digest and key version must be set together (digest present: %t, key version present: %t)", hasDigest, hasVersion)
+	case hasDigest:
+		if e.PayloadDigestKeyVersion > math.MaxInt32 {
+			return db.InsertAuditEventParams{}, fmt.Errorf("audit: payload digest key version %d exceeds the column's range", e.PayloadDigestKeyVersion)
+		}
+		p.PayloadDigest = e.PayloadDigest
+		kv := int32(e.PayloadDigestKeyVersion) //nolint:gosec // bounded by the check above
+		p.PayloadDigestKeyVersion = &kv
 	}
 	// Copy the metadata rather than mutating the caller's map.
 	meta := make(map[string]any, len(e.Metadata)+1)

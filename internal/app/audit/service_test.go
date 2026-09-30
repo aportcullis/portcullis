@@ -16,20 +16,21 @@ type fakeReader struct {
 	event   domainaudit.Event
 	getErr  error
 	listErr error
-	cntErr  error
+	// clampedTo, when set, is the page the reader reports having actually read — the store clamps an out-of-range request inside its own snapshot, and the service must echo what came back rather than what was asked for.
+	clampedTo int
 }
 
-func (f *fakeReader) List(_ context.Context, p domainaudit.ListParams) ([]domainaudit.Event, error) {
+func (f *fakeReader) List(_ context.Context, p domainaudit.ListParams) (domainaudit.EventPage, error) {
 	f.got = p
-	return f.events, f.listErr
+	read := p.Page
+	if f.clampedTo != 0 {
+		read = f.clampedTo
+	}
+	return domainaudit.EventPage{Events: f.events, Page: read, TotalCount: f.count}, f.listErr
 }
 
 func (f *fakeReader) Get(_ context.Context, _ string) (domainaudit.Event, error) {
 	return f.event, f.getErr
-}
-
-func (f *fakeReader) Count(context.Context) (int64, error) {
-	return f.count, f.cntErr
 }
 
 func newService(t *testing.T, r *fakeReader) *auditapp.Service {
@@ -52,26 +53,36 @@ func TestListNormalizesPageSizeToWhitelist(t *testing.T) {
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
-		if page.PageSize != c.want || f.got.Limit != int64(c.want) {
-			t.Errorf("page_size %d → echoed %d / limit %d, want %d", c.in, page.PageSize, f.got.Limit, c.want)
+		if page.PageSize != c.want || f.got.PageSize != c.want {
+			t.Errorf("page_size %d → echoed %d / asked the reader for %d, want %d",
+				c.in, page.PageSize, f.got.PageSize, c.want)
 		}
 	}
 }
 
-func TestListFloorsPageAndComputesOffset(t *testing.T) {
+func TestListFloorsPageAndEchoesThePageThatWasRead(t *testing.T) {
 	f := &fakeReader{}
 	page, err := newService(t, f).List(context.Background(), auditapp.Query{Page: 3, PageSize: 20})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if page.Page != 3 || f.got.Offset != 40 { // (3-1)*20
-		t.Errorf("page=%d offset=%d, want page 3 offset 40", page.Page, f.got.Offset)
+	if page.Page != 3 || f.got.Page != 3 {
+		t.Errorf("page=%d asked for %d, want 3 and 3", page.Page, f.got.Page)
 	}
 
-	f2 := &fakeReader{}
-	page2, _ := newService(t, f2).List(context.Background(), auditapp.Query{Page: -5, PageSize: 20})
-	if page2.Page != 1 || f2.got.Offset != 0 {
-		t.Errorf("page<1 → page=%d offset=%d, want page 1 offset 0", page2.Page, f2.got.Offset)
+	floored := &fakeReader{}
+	belowOne, _ := newService(t, floored).List(context.Background(), auditapp.Query{Page: -5, PageSize: 20})
+	if belowOne.Page != 1 || floored.got.Page != 1 {
+		t.Errorf("page<1 → echoed %d, asked for %d; want 1 and 1", belowOne.Page, floored.got.Page)
+	}
+
+	clamped := &fakeReader{clampedTo: 2, count: 25}
+	overflow, err := newService(t, clamped).List(context.Background(), auditapp.Query{Page: 9, PageSize: 20})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if overflow.Page != 2 || overflow.TotalPages != 2 {
+		t.Errorf("clamped page = %d of %d, want 2 of 2", overflow.Page, overflow.TotalPages)
 	}
 }
 
@@ -129,9 +140,6 @@ func TestListRejectsOffWhitelistSortField(t *testing.T) {
 
 func TestListPropagatesReaderErrors(t *testing.T) {
 	sentinel := errors.New("db down")
-	if _, err := newService(t, &fakeReader{cntErr: sentinel}).List(context.Background(), auditapp.Query{Page: 1, PageSize: 20}); !errors.Is(err, sentinel) {
-		t.Fatalf("Count error not propagated: %v", err)
-	}
 	if _, err := newService(t, &fakeReader{listErr: sentinel}).List(context.Background(), auditapp.Query{Page: 1, PageSize: 20}); !errors.Is(err, sentinel) {
 		t.Fatalf("List error not propagated: %v", err)
 	}

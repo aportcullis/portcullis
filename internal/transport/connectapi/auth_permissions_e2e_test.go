@@ -21,18 +21,12 @@ import (
 	"github.com/aportcullis/portcullis/internal/transport/connectapi"
 )
 
-// failingLister always errors — the shape of an authz-store blip during the
-// advisory permission enumeration.
 type failingLister struct{}
 
-func (failingLister) PermissionsFor(context.Context, identity.User) ([]identity.Permission, error) {
-	return nil, errors.New("authz store unavailable")
+func (failingLister) SessionInfo(context.Context, identity.User) ([]identity.Permission, string, error) {
+	return nil, "", errors.New("authz store unavailable")
 }
 
-// Permission enumeration is advisory UI data: a resolver failure must degrade
-// to an empty list (fail-open), never fail Login (the session/cookies are
-// already committed) or Me (the SPA would trap the user on the unreachable
-// card) — self-review F1.
 func TestLoginAndMeSurvivePermissionResolverFailure(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -73,8 +67,6 @@ func TestLoginAndMeSurvivePermissionResolverFailure(t *testing.T) {
 		t.Errorf("Login.permissions = %v, want empty on resolver failure", got)
 	}
 
-	// The session cookies were delivered: an authenticated Me works — and also
-	// degrades to empty permissions rather than an Internal error.
 	serverURL, err := url.Parse(ts.URL)
 	if err != nil {
 		t.Fatal(err)

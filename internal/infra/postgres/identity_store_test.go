@@ -17,16 +17,11 @@ import (
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
 
-// unique returns a per-run unique name so tests on the SHARED dbtest.Postgres
-// database stay re-runnable against a persistent PORTCULLIS_TEST_DATABASE_URL:
-// rows are soft-delete-only (data.md), so a fixed email/name would collide with
-// the previous run's unique index entry.
+// unique returns a per-run unique name so tests on the SHARED dbtest.Postgres database stay re-runnable against a persistent PORTCULLIS_TEST_DATABASE_URL: rows are soft-delete-only (data.md), so a fixed email/name would collide with the previous run's unique index entry.
 func unique(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
 }
 
-// testEvent is a minimal valid audit event for exercising the transactional ops
-// in tests whose subject is not the audit trail itself.
 func testEvent(action audit.Action) audit.Event {
 	return audit.Event{ActorType: audit.ActorUser, Action: action, TargetType: audit.TargetTypeUser, Outcome: audit.OutcomeSucceeded}
 }
@@ -39,7 +34,6 @@ func TestIdentityStore(t *testing.T) {
 	}
 	store := pg.NewIdentityStore(pool)
 
-	// Permission catalog and system roles are seeded.
 	perms, err := store.ListPermissions(ctx)
 	if err != nil {
 		t.Fatalf("ListPermissions: %v", err)
@@ -57,7 +51,6 @@ func TestIdentityStore(t *testing.T) {
 		t.Fatalf("BootstrapRoleID: %v", err)
 	}
 
-	// Create a user with a password and the bootstrap (admin) role.
 	email := unique("admin") + "@example.com"
 	u, err := store.CreateUser(ctx, email, "Admin")
 	if err != nil {
@@ -70,7 +63,6 @@ func TestIdentityStore(t *testing.T) {
 		t.Fatalf("AddMembership: %v", err)
 	}
 
-	// The bootstrap (admin) role grants the full catalog.
 	userPerms, err := store.PermissionsForUser(ctx, org, u.ID)
 	if err != nil {
 		t.Fatalf("PermissionsForUser: %v", err)
@@ -89,7 +81,6 @@ func TestIdentityStore(t *testing.T) {
 		t.Errorf("want ErrUserNotFound, got %v", err)
 	}
 
-	// Sessions round-trip and revoke. (token_hash is unique — per-run value.)
 	now := time.Now()
 	sess := identity.NewSession("", u.ID, now, 12*time.Hour, 7*24*time.Hour)
 	tokenHash := sha256.Sum256([]byte(unique("raw-token")))
@@ -104,8 +95,6 @@ func TestIdentityStore(t *testing.T) {
 		t.Fatalf("RevokeSession: %v", err)
 	}
 
-	// OIDC link + session rotation is the only production linking operation;
-	// lookup verifies the committed link. ((issuer, subject) is unique per run.)
 	subject := unique("sub")
 	oidcToken := sha256.Sum256([]byte(unique("oidc-token")))
 	oidcSession := identity.NewSession("", u.ID, time.Now(), 12*time.Hour, 7*24*time.Hour)
@@ -122,13 +111,6 @@ func TestIdentityStore(t *testing.T) {
 	}
 }
 
-// Progressive-backoff state (ADR-0006): zero-valued before any failure,
-// counted and locked in ONE atomic statement (no lost updates under
-// concurrency, no increment/lockout interleave), the lockout never moves
-// backward, expired lockouts and stale sub-threshold counters lazily restart
-// at 1, and a reset clears the slate without touching clean rows. Everything
-// time-related runs on the DATABASE clock inside the statement, which is why
-// it is exercised here and not only against the fake.
 func TestLoginBackoffStore(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -137,12 +119,11 @@ func TestLoginBackoffStore(t *testing.T) {
 	}
 	store := pg.NewIdentityStore(pool)
 
-	// The ADR parameters with jitter pinned to the midpoint (factor 1.0).
 	params := identity.FailureParams{
 		Threshold: 5, Base: time.Minute, Cap: 15 * time.Minute,
 		Staleness: 15 * time.Minute, JitterFactor: 1.0,
 	}
-	// window asserts a lockout expiry sits within tolerance of now+want.
+
 	window := func(t *testing.T, lockedUntil *time.Time, want time.Duration) {
 		t.Helper()
 		if lockedUntil == nil {
@@ -160,7 +141,6 @@ func TestLoginBackoffStore(t *testing.T) {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
-	// No row yet: the login query reports a zero-value, unlocked state.
 	_, _, b, err := store.GetUserForLogin(ctx, email)
 	if err != nil {
 		t.Fatalf("GetUserForLogin: %v", err)
@@ -169,8 +149,7 @@ func TestLoginBackoffStore(t *testing.T) {
 		t.Errorf("fresh account backoff = %+v, want zero value", b)
 	}
 
-	// Concurrent failures must not lose updates (the upsert is atomic), and
-	// crossing the threshold under concurrency imposes a lockout.
+	// Concurrent failures must not lose updates (the upsert is atomic), and crossing the threshold under concurrency imposes a lockout.
 	const n = 8
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
@@ -196,8 +175,6 @@ func TestLoginBackoffStore(t *testing.T) {
 		t.Fatal("crossing the threshold under concurrency did not lock")
 	}
 
-	// Doubling: with the count at 8, the next failure's window is
-	// min(1m·2^(9-5), 15m) = 15m (the cap).
 	res, err := store.RecordLoginFailure(ctx, u.ID, params)
 	if err != nil {
 		t.Fatalf("RecordLoginFailure: %v", err)
@@ -207,8 +184,7 @@ func TestLoginBackoffStore(t *testing.T) {
 	}
 	window(t, res.LockedUntil, 15*time.Minute)
 
-	// greatest(): a shorter concurrent jittered window (factor 0.01 → ~9s from
-	// count 10) must not move the existing 15m expiry backward.
+	// greatest(): a shorter concurrent jittered window (factor 0.01 → ~9s from count 10) must not move the existing 15m expiry backward.
 	shorter := params
 	shorter.JitterFactor = 0.01
 	prev := *res.LockedUntil
@@ -220,7 +196,6 @@ func TestLoginBackoffStore(t *testing.T) {
 		t.Errorf("shorter jittered window moved the lockout backward: %v → %v", prev, res.LockedUntil)
 	}
 
-	// A reset clears both counter and lockout.
 	if err := store.ResetLoginBackoff(ctx, u.ID); err != nil {
 		t.Fatalf("ResetLoginBackoff: %v", err)
 	}
@@ -228,9 +203,6 @@ func TestLoginBackoffStore(t *testing.T) {
 		t.Fatalf("backoff after reset = %+v (%v), want cleared", b, err)
 	}
 
-	// An expired lockout lazily restarts the counter at 1 on the next failure
-	// ("resets on expiry"): seed failures to a lockout, expire it in the DB,
-	// then fail once more.
 	for i := 0; i < 5; i++ {
 		if _, err := store.RecordLoginFailure(ctx, u.ID, params); err != nil {
 			t.Fatalf("RecordLoginFailure: %v", err)
@@ -247,8 +219,6 @@ func TestLoginBackoffStore(t *testing.T) {
 		t.Errorf("state after expired lockout = %+v, want count 1, unlocked (lazy reset)", res)
 	}
 
-	// A stale sub-threshold counter (last failure older than the staleness
-	// window, no lockout) also restarts at 1.
 	if _, err := store.RecordLoginFailure(ctx, u.ID, params); err != nil {
 		t.Fatalf("RecordLoginFailure: %v", err)
 	}
@@ -264,9 +234,6 @@ func TestLoginBackoffStore(t *testing.T) {
 	}
 }
 
-// The first lockout windows are exact under a pinned jitter factor: 1m at the
-// threshold, 2m on the next failure (ADR-0006 doubling), evaluated end-to-end
-// through the SQL expression.
 func TestLoginBackoffWindows(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -303,9 +270,6 @@ func TestLoginBackoffWindows(t *testing.T) {
 	}
 }
 
-// A duplicate email (case-insensitive, per the lower(email) unique index) maps to
-// the domain sentinel ErrEmailTaken, not a raw driver error, so callers can tell a
-// conflict from an infrastructure failure across the port boundary.
 func TestCreateUserDuplicateEmailMapsToErrEmailTaken(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -325,10 +289,6 @@ func TestCreateUserDuplicateEmailMapsToErrEmailTaken(t *testing.T) {
 	}
 }
 
-// A second revocation of the same session (concurrent double logout) must not
-// overwrite the original revoked_at — forensic evidence of WHEN the session
-// actually died — nor append a second AUTH_LOGOUT event: the audit trail
-// mirrors real state changes only (ADR-0009).
 func TestRevokeSessionIsIdempotent(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -349,7 +309,7 @@ func TestRevokeSessionIsIdempotent(t *testing.T) {
 	}
 
 	evt := testEvent(audit.ActionAuthLogout)
-	evt.TargetID = string(u.ID) // so this test's events are countable on a shared DB
+	evt.TargetID = string(u.ID)
 	if err := store.RevokeSession(ctx, created.ID, evt); err != nil {
 		t.Fatalf("RevokeSession: %v", err)
 	}
@@ -358,7 +318,6 @@ func TestRevokeSessionIsIdempotent(t *testing.T) {
 		t.Fatalf("read revoked_at: %v", err)
 	}
 
-	// Second revoke: a no-op, not an error — and no new evidence.
 	if err := store.RevokeSession(ctx, created.ID, evt); err != nil {
 		t.Fatalf("second RevokeSession should be a no-op, got: %v", err)
 	}
@@ -380,8 +339,6 @@ func TestRevokeSessionIsIdempotent(t *testing.T) {
 	}
 }
 
-// Authentication and the post-CSRF idle slide are separate operations. If the
-// idle deadline passes between them, the UPDATE must not resurrect the session.
 func TestExtendSessionIdleDoesNotResurrectExpiredSession(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -420,9 +377,138 @@ func TestExtendSessionIdleDoesNotResurrectExpiredSession(t *testing.T) {
 	}
 }
 
-// The idle-slide UPDATE carries two normative guards (ADR-0006): greatest()
-// so a late-arriving older request can never move the expiry backward, and
-// least() so the idle expiry never exceeds the absolute one.
+func TestExtendSessionIdleUnderLockDoesNotResurrect(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	for _, tc := range []struct {
+		name  string
+		block string
+	}{
+		{
+
+			name:  "idle deadline passes during the wait",
+			block: `update public.sessions set idle_expires_at = clock_timestamp() - interval '1 millisecond' where id = $1::uuid`,
+		},
+		{
+
+			name:  "revoked during the wait",
+			block: `update public.sessions set revoked_at = clock_timestamp() where id = $1::uuid`,
+		},
+		{
+
+			name:  "absolute lifetime ends during the wait",
+			block: `update public.sessions set absolute_expires_at = clock_timestamp() - interval '1 millisecond' where id = $1::uuid`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, err := store.CreateUser(ctx, unique("locked-session")+"@example.com", "Locked")
+			if err != nil {
+				t.Fatalf("CreateUser: %v", err)
+			}
+			sess := identity.NewSession("", u.ID, time.Now(), time.Hour, 24*time.Hour)
+			hash := sha256.Sum256([]byte(unique("locked-session-token")))
+			created, err := store.CreateSession(ctx, sess, hash[:])
+			if err != nil {
+				t.Fatalf("CreateSession: %v", err)
+			}
+			holder, err := pool.Begin(ctx)
+			if err != nil {
+				t.Fatalf("begin holder: %v", err)
+			}
+			if _, err := holder.Exec(ctx,
+				`select id from public.sessions where id = $1::uuid for update`, string(created.ID)); err != nil {
+				t.Fatalf("hold session row: %v", err)
+			}
+
+			done := make(chan error, 1)
+			go func() {
+				done <- store.ExtendSessionIdle(ctx, created.ID, time.Now().Add(time.Hour))
+			}()
+
+			time.Sleep(300 * time.Millisecond)
+
+			// The value the blocker leaves behind is what the row must still hold: comparing against the ORIGINAL would miss a resurrection that lands below it, and this way every case reads the same assertion.
+			var ended time.Time
+			if err := holder.QueryRow(ctx, tc.block+` returning idle_expires_at`,
+				string(created.ID)).Scan(&ended); err != nil {
+				t.Fatalf("end the session mid-wait: %v", err)
+			}
+			if err := holder.Commit(ctx); err != nil {
+				t.Fatalf("release session row: %v", err)
+			}
+
+			if err := <-done; !errors.Is(err, identity.ErrSessionNotFound) {
+				t.Errorf("slide over an ended session = %v, want ErrSessionNotFound", err)
+			}
+			var after time.Time
+			if err := pool.QueryRow(ctx,
+				`select idle_expires_at from public.sessions where id = $1::uuid`,
+				string(created.ID)).Scan(&after); err != nil {
+				t.Fatalf("read idle expiry: %v", err)
+			}
+			if !after.Equal(ended) {
+				t.Errorf("idle_expires_at = %s, want the ended session's %s — the slide moved a session that ended while it waited",
+					after, ended)
+			}
+		})
+	}
+}
+
+func TestExtendSessionIdleUnderLockStillSlidesALiveSession(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := pg.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := pg.NewIdentityStore(pool)
+
+	u, err := store.CreateUser(ctx, unique("live-session")+"@example.com", "Live")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	sess := identity.NewSession("", u.ID, time.Now(), time.Hour, 24*time.Hour)
+	hash := sha256.Sum256([]byte(unique("live-session-token")))
+	created, err := store.CreateSession(ctx, sess, hash[:])
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	holder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin holder: %v", err)
+	}
+	if _, err := holder.Exec(ctx,
+		`select id from public.sessions where id = $1::uuid for update`, string(created.ID)); err != nil {
+		t.Fatalf("hold session row: %v", err)
+	}
+
+	target := time.Now().Add(90 * time.Minute)
+	done := make(chan error, 1)
+	go func() { done <- store.ExtendSessionIdle(ctx, created.ID, target) }()
+	time.Sleep(200 * time.Millisecond)
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatalf("release session row: %v", err)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("slide on a live session = %v, want nil", err)
+	}
+	var idle time.Time
+	if err := pool.QueryRow(ctx,
+		`select idle_expires_at from public.sessions where id = $1::uuid`,
+		string(created.ID)).Scan(&idle); err != nil {
+		t.Fatalf("read idle expiry: %v", err)
+	}
+	if idle.Before(target.Add(-time.Second)) {
+		t.Errorf("idle_expires_at = %s, want ~%s — the wait must not cost a live session its slide", idle, target)
+	}
+}
+
 func TestExtendSessionIdleGuardsBackwardAndAbsolute(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -477,10 +563,6 @@ func TestExtendSessionIdleGuardsBackwardAndAbsolute(t *testing.T) {
 	}
 }
 
-// Concurrent first-run bootstraps must serialize (advisory lock) so exactly one
-// admin is created — the rest see ErrAlreadyBootstrapped, never a duplicate or a
-// half-created user. Runs on an isolated database since it asserts on the whole
-// users table.
 func TestBootstrapAdminSerializesConcurrent(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -494,9 +576,9 @@ func TestBootstrapAdminSerializesConcurrent(t *testing.T) {
 	errs := make([]error, n)
 	for i := range n {
 		wg.Add(1)
-		go func(i int) {
+		go func(idx int) {
 			defer wg.Done()
-			_, errs[i] = store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", testEvent(audit.ActionAuthBootstrap))
+			_, errs[idx] = store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", testEvent(audit.ActionAuthBootstrap))
 		}(i)
 	}
 	wg.Wait()
@@ -520,8 +602,6 @@ func TestBootstrapAdminSerializesConcurrent(t *testing.T) {
 	}
 }
 
-// Concurrent logins (RotateSession) must serialize so exactly one session stays
-// active — the per-user advisory lock makes revoke+insert atomic.
 func TestRotateSessionLeavesOneActive(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -562,8 +642,6 @@ func TestRotateSessionLeavesOneActive(t *testing.T) {
 	}
 }
 
-// A soft-deleted role must stop granting its permissions even though the
-// membership still references it (FKs are RESTRICT, so the row lingers).
 func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 	pool := dbtest.Postgres(t)
 	ctx := context.Background()
@@ -577,7 +655,6 @@ func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 		t.Fatalf("DefaultOrganizationID: %v", err)
 	}
 
-	// A throwaway custom role granting exactly one permission.
 	var roleID string
 	if err := pool.QueryRow(ctx,
 		`insert into roles (organization_id, name) values ($1::uuid, $2) returning id::text`,
@@ -602,7 +679,6 @@ func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 		t.Fatalf("active role should grant 1 permission, got %d (%v)", len(perms), err)
 	}
 
-	// Soft-delete the role; the membership row stays but grants nothing.
 	if _, err := pool.Exec(ctx, `update roles set deleted_at = now() where id = $1::uuid`, roleID); err != nil {
 		t.Fatalf("soft-delete role: %v", err)
 	}
@@ -611,7 +687,6 @@ func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 	}
 }
 
-// insertRole creates a role in org granting exactly one permission, returning its id.
 func insertRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, org, name, perm string) string {
 	t.Helper()
 	var id string
@@ -627,8 +702,6 @@ func insertRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, org, name
 	return id
 }
 
-// Permission resolution is per-organization: a user with different roles in two
-// orgs gets only the queried org's permissions, never the cross-org union (ADR-0004).
 func TestPermissionsAreOrgScoped(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()

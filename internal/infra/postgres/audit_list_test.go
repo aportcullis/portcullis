@@ -9,9 +9,6 @@ import (
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
 
-// Scenario: recorded events are read back with Count + a page, in both directions,
-// with the source IP lifted back out of the metadata JSONB and request_id restored
-// (the read shape mirrors the write shape).
 func TestAuditStoreListReadsBackEvents(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -30,8 +27,7 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 	}
 
 	store := pg.NewAuditStore(pool)
-	// Insert oldest→newest; occurred_at defaults to now(), so sequential inserts are
-	// monotonic and the newest lands first under (occurred_at desc, id desc).
+
 	for i := 0; i < 3; i++ {
 		if err := store.Record(ctx, audit.Event{
 			OrganizationID: org,
@@ -42,9 +38,7 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 			t.Fatalf("Record #%d: %v", i, err)
 		}
 	}
-	// A fully-populated event last, so it is the newest and carries the fields we
-	// round-trip: actor, request id, source IP (folded into metadata on write), and
-	// remaining metadata.
+
 	if err := store.Record(ctx, audit.Event{
 		OrganizationID: org,
 		ActorType:      audit.ActorUser,
@@ -60,36 +54,28 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 		t.Fatalf("Record populated: %v", err)
 	}
 
-	total, err := store.Count(ctx)
-	if err != nil {
-		t.Fatalf("Count: %v", err)
-	}
-	if total != 4 {
-		t.Fatalf("Count = %d, want 4", total)
-	}
-
-	desc, err := store.List(ctx, audit.ListParams{Limit: 100, Offset: 0, SortDescending: true})
+	page, err := store.List(ctx, audit.ListParams{Page: 1, PageSize: 100, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List desc: %v", err)
 	}
+	if page.TotalCount != 4 {
+		t.Fatalf("total = %d, want 4", page.TotalCount)
+	}
+	desc := page.Events
 	if len(desc) != 4 {
 		t.Fatalf("List desc returned %d events, want 4", len(desc))
 	}
 
-	// Newest first: the fully-populated logout was inserted last, so it heads the
-	// desc list, and the slice is non-increasing by occurred_at.
 	newest := desc[0]
 	if newest.Action != audit.ActionAuthLogout {
 		t.Errorf("newest action = %q, want AUTH_LOGOUT", newest.Action)
 	}
-	for i := 1; i < len(desc); i++ {
-		if desc[i].OccurredAt.After(desc[i-1].OccurredAt) {
-			t.Fatalf("desc events not ordered newest-first at index %d", i)
+	for idx := 1; idx < len(desc); idx++ {
+		if desc[idx].OccurredAt.After(desc[idx-1].OccurredAt) {
+			t.Fatalf("desc events not ordered newest-first at index %d", idx)
 		}
 	}
 
-	// Field round-trip: source IP lifted out of metadata, remaining metadata kept,
-	// request id and actor restored, store-assigned id/occurred_at present.
 	if newest.SourceIP != "9.9.9.9" {
 		t.Errorf("SourceIP = %q, want 9.9.9.9", newest.SourceIP)
 	}
@@ -109,33 +95,32 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 		t.Errorf("read event missing store-assigned ID/OccurredAt: id=%q ts=%v", newest.ID, newest.OccurredAt)
 	}
 
-	// Ascending: same rows, oldest first — the populated logout is now last.
-	asc, err := store.List(ctx, audit.ListParams{Limit: 100, Offset: 0, SortDescending: false})
+	ascending, err := store.List(ctx, audit.ListParams{Page: 1, PageSize: 100, SortDescending: false})
 	if err != nil {
 		t.Fatalf("List asc: %v", err)
 	}
+	asc := ascending.Events
 	if len(asc) != 4 || asc[len(asc)-1].Action != audit.ActionAuthLogout {
 		t.Errorf("asc order wrong: newest (logout) should be last, got last=%q", asc[len(asc)-1].Action)
 	}
-	for i := 1; i < len(asc); i++ {
-		if asc[i].OccurredAt.Before(asc[i-1].OccurredAt) {
-			t.Fatalf("asc events not ordered oldest-first at index %d", i)
+	for idx := 1; idx < len(asc); idx++ {
+		if asc[idx].OccurredAt.Before(asc[idx-1].OccurredAt) {
+			t.Fatalf("asc events not ordered oldest-first at index %d", idx)
 		}
 	}
 
-	// OFFSET pagination: two pages of 2, no overlap.
-	page1, err := store.List(ctx, audit.ListParams{Limit: 2, Offset: 0, SortDescending: true})
+	page1, err := store.List(ctx, audit.ListParams{Page: 1, PageSize: 2, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List page1: %v", err)
 	}
-	page2, err := store.List(ctx, audit.ListParams{Limit: 2, Offset: 2, SortDescending: true})
+	page2, err := store.List(ctx, audit.ListParams{Page: 2, PageSize: 2, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List page2: %v", err)
 	}
-	if len(page1) != 2 || len(page2) != 2 {
-		t.Fatalf("page sizes = %d/%d, want 2/2", len(page1), len(page2))
+	if len(page1.Events) != 2 || len(page2.Events) != 2 {
+		t.Fatalf("page sizes = %d/%d, want 2/2", len(page1.Events), len(page2.Events))
 	}
-	if page1[0].ID == page2[0].ID {
+	if page1.Events[0].ID == page2.Events[0].ID {
 		t.Error("offset pagination returned overlapping rows")
 	}
 }

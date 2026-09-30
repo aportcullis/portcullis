@@ -6,10 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// privMatrix is the effective-privilege snapshot of one role/user against the
-// audit boundary (ADR-0009). has_*_privilege computes EFFECTIVE privileges
-// (direct + membership + PUBLIC; implicit owner and superuser rights evaluate
-// true), so drift inherited through another role is caught the same way.
+// privMatrix is the effective-privilege snapshot of one role/user against the audit boundary (ADR-0009). has_*_privilege computes EFFECTIVE privileges (direct + membership + PUBLIC; implicit owner and superuser rights evaluate true), so drift inherited through another role is caught the same way.
 type privMatrix struct {
 	connect      bool // CONNECT on the current database
 	schemaUsage  bool // USAGE on schema public (without it every runtime query fails)
@@ -22,17 +19,12 @@ type privMatrix struct {
 	historyAny   bool // any privilege at all on schema_migrations
 }
 
-// canCreateRelation reports whether the principal can create ANY relation that
-// could shadow a protected table by name resolution (temp, permanent-in-public,
-// or a whole new schema).
+// canCreateRelation reports whether the principal can create ANY relation that could shadow a protected table by name resolution (temp, permanent-in-public, or a whole new schema).
 func (m privMatrix) canCreateRelation() bool {
 	return m.temporary || m.dbCreate || m.schemaCreate
 }
 
-// queryPrivilegeMatrix snapshots the boundary privileges of a role or login user.
-// The forbidden lists include TRIGGER (with it, a non-owner could CREATE TRIGGER
-// — e.g. one that blocks every audit insert), plus REFERENCES and MAINTAIN, so
-// "append-only" and "owner-only" mean ALL other table privileges.
+// queryPrivilegeMatrix snapshots the boundary privileges of a role or login user. The forbidden lists include TRIGGER (with it, a non-owner could CREATE TRIGGER — e.g. one that blocks every audit insert), plus REFERENCES and MAINTAIN, so "append-only" and "owner-only" mean ALL other table privileges.
 func queryPrivilegeMatrix(ctx context.Context, q rowQuerier, name string) (privMatrix, error) {
 	var m privMatrix
 	err := q.QueryRow(ctx, `
@@ -49,14 +41,7 @@ func queryPrivilegeMatrix(ctx context.Context, q rowQuerier, name string) (privM
 	return m, err
 }
 
-// floorErr reports a missing REQUIRED privilege (CONNECT / schema USAGE / audit
-// SELECT+INSERT), or nil. This is the functional floor: without it the server
-// cannot operate, so callers treat it as always fatal — never dev-downgradable.
-// Schema USAGE is part of the floor because table privileges evaluate
-// independently of it: without USAGE every runtime query fails at the schema,
-// even with every table grant in place (the drift ADR-0009's rotation risks).
-// subject names the checked principal; lacksHint is appended (the role check
-// points at the rename/rotation procedure, the connection check does not).
+// floorErr checks required runtime privileges; missing CONNECT, schema USAGE, or audit SELECT/INSERT is always fatal, including development mode.
 func (m privMatrix) floorErr(subject, lacksHint string) error {
 	if !m.connect || !m.schemaUsage || !m.auditRead || !m.auditAppend {
 		return safeErrorf("%s lacks required privileges (CONNECT=%t, schema USAGE=%t, audit SELECT=%t, audit INSERT=%t)%s (ADR-0009)", subject, m.connect, m.schemaUsage, m.auditRead, m.auditAppend, lacksHint)
@@ -64,8 +49,7 @@ func (m privMatrix) floorErr(subject, lacksHint string) error {
 	return nil
 }
 
-// excessErr reports a FORBIDDEN privilege (audit mutation / any migration-history
-// access), or nil — the over-privilege class the dev flag may downgrade.
+// excessErr reports a FORBIDDEN privilege (audit mutation / any migration-history access), or nil — the over-privilege class the dev flag may downgrade.
 func (m privMatrix) excessErr(subject string) error {
 	switch {
 	case m.canCreateRelation():
@@ -86,8 +70,7 @@ func (m privMatrix) verdict(subject, lacksHint string) error {
 	return m.excessErr(subject)
 }
 
-// tableVerbs is the fixed set of table privileges the per-table matrix
-// inspects, in query column order.
+// tableVerbs is the fixed set of table privileges the per-table matrix inspects, in query column order.
 var tableVerbs = [...]string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"}
 
 // tablePolicy is what the runtime role must and must not hold on one table.
@@ -96,25 +79,13 @@ type tablePolicy struct {
 	forbidden []string
 }
 
-// defaultTablePolicy applies to every table without an entry in tablePolicies:
-// SELECT/INSERT/UPDATE (what 0003's default privileges grant after 0010's
-// DELETE revoke) and none of DELETE or the schema-shaping verbs — every entity
-// is soft-delete-only (data.md), no runtime query issues DELETE, and TRIGGER
-// anywhere is schema modification. Because unknown tables get this policy, a
-// future migration that creates a table without runtime grants — e.g. run by
-// a principal whose default privileges don't cover it (ADR-0009) — fails the
-// very first boot instead of the first RPC. Conversely, a table that needs
-// looser or tighter verbs (a hard-deleting cache, a SENSITIVE table's extra
-// revokes) fails boot until its tablePolicies entry lands, enforcing data.md's
-// review gate in code. connections needs no entry: archive is an UPDATE and
-// its no-DELETE boundary (ADR-0014) IS this default.
+// Require SELECT/INSERT/UPDATE and forbid DELETE or schema changes on uncatalogued tables (ADR-0009). Tables needing different privileges require an explicit policy.
 var defaultTablePolicy = tablePolicy{
 	required:  []string{"SELECT", "INSERT", "UPDATE"},
 	forbidden: []string{"DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 }
 
-// tablePolicies is the single source of the per-table exceptions — the code
-// form of data.md's sensitive-table judgments.
+// tablePolicies is the single source of the per-table exceptions — the code form of data.md's sensitive-table judgments.
 var tablePolicies = map[string]tablePolicy{
 	// Append-only evidence: read and append, never mutate (ADR-0009).
 	"audit_events": {
@@ -125,38 +96,29 @@ var tablePolicies = map[string]tablePolicy{
 	"schema_migrations": {
 		forbidden: []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
-	// Append-only policy snapshots: approval payloads pin a version, so the
-	// runtime may read and append versions but never rewrite one (ADR-0015;
-	// 0011 revokes UPDATE).
+	// Append-only policy snapshots: approval payloads pin a version, so the runtime may read and append versions but never rewrite one (ADR-0015; 0011 revokes UPDATE).
 	"connection_policy_versions": {
 		required:  []string{"SELECT", "INSERT"},
 		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
-	// Mutable operational overrides (ADR-0017): reset-to-default removes the
-	// row (absent row = default), so this is the one table the runtime hard-
-	// DELETEs — 0012 grants it and documents the not-sensitive judgment; the
-	// change trail lives in append-only audit_events.
+	// Append-only approval evidence: a decision row is never rewritten — validity is computed at count time, invalidation needs no mutation (ADR-0018; 0013 revokes UPDATE). access_requests itself takes the default policy: state transitions are UPDATEs, rows are never deleted.
+	"approvals": {
+		required:  []string{"SELECT", "INSERT"},
+		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
+	// Mutable operational overrides (ADR-0017): reset-to-default removes the row (absent row = default), so this is the one table the runtime hard- DELETEs — 0012 grants it and documents the not-sensitive judgment; the change trail lives in append-only audit_events.
 	"settings": {
 		required:  []string{"SELECT", "INSERT", "UPDATE", "DELETE"},
 		forbidden: []string{"TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
 }
 
-// querier is the multi-row query surface verifyTablePrivileges needs; both
-// *pgxpool.Conn (migration postflight) and *pgxpool.Pool (runtime boot check)
-// satisfy it.
+// querier is the multi-row query surface verifyTablePrivileges needs; both *pgxpool.Conn (migration postflight) and *pgxpool.Pool (runtime boot check) satisfy it.
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-// verifyTablePrivileges checks the role's effective privileges on EVERY base
-// table and sequence in schema public against the policy table. It returns the
-// two violation classes separately because callers treat them differently:
-// a missing required privilege is a functional failure (always fatal), while a
-// forbidden privilege is the over-privilege class VerifyRuntimeConnection may
-// downgrade behind the dev flag. Views/matviews/foreign tables are out of
-// scope — the bug class this guards (default privileges binding to the
-// creating role, ADR-0009) is about base relations.
+// verifyTablePrivileges separates missing required grants from excess grants on public base tables and sequences; only excess grants may be downgraded in development.
 func verifyTablePrivileges(ctx context.Context, q querier, role, subject string) (missing, forbidden error, _ error) {
 	rows, err := q.Query(ctx, `
 		select c.relname,
@@ -183,8 +145,8 @@ func verifyTablePrivileges(ctx context.Context, q querier, role, subject string)
 			return nil, nil, err
 		}
 		has := map[string]bool{}
-		for i, verb := range tableVerbs {
-			has[verb] = held[i]
+		for idx, verb := range tableVerbs {
+			has[verb] = held[idx]
 		}
 		policy, ok := tablePolicies[table]
 		if !ok {
@@ -205,9 +167,7 @@ func verifyTablePrivileges(ctx context.Context, q querier, role, subject string)
 		return nil, nil, err
 	}
 
-	// Sequences share the bug class (0005 noted the coverage gap): the runtime
-	// needs USAGE for identity/serial columns, and UPDATE (setval — a rewind is
-	// a duplicate-key denial of service) is over-privilege.
+	// Sequences share the bug class (0005 noted the coverage gap): the runtime needs USAGE for identity/serial columns, and UPDATE (setval — a rewind is a duplicate-key denial of service) is over-privilege.
 	seqRows, err := q.Query(ctx, `
 		select c.relname,
 		       has_sequence_privilege($1, c.oid, 'USAGE'),

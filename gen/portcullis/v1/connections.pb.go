@@ -22,8 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Connection is the read model: the plaintext descriptor of a registered
-// connection. It has no credential or DSN fields by design.
+// Connection is the read model: the plaintext descriptor of a registered connection. It has no credential or DSN fields by design.
 type Connection struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -35,8 +34,7 @@ type Connection struct {
 	Database string `protobuf:"bytes,6,opt,name=database,proto3" json:"database,omitempty"`
 	// "verify-full" | "verify-ca" | "require" | "disable" (ADR-0014).
 	TlsMode string `protobuf:"bytes,7,opt,name=tls_mode,json=tlsMode,proto3" json:"tls_mode,omitempty"`
-	// Versioned sha256 identity of the target; survives archive as the
-	// historical snapshot (PRD §4.3).
+	// Versioned sha256 identity of the target; survives archive as the historical snapshot (PRD §4.3).
 	TargetFingerprint string                 `protobuf:"bytes,8,opt,name=target_fingerprint,json=targetFingerprint,proto3" json:"target_fingerprint,omitempty"`
 	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -45,7 +43,9 @@ type Connection struct {
 	// "development" | "production" — the UI makes production unmistakable.
 	Environment string `protobuf:"bytes,12,opt,name=environment,proto3" json:"environment,omitempty"`
 	// Free-text operator context (≤ 500 chars, may be multi-line).
-	Description   string `protobuf:"bytes,13,opt,name=description,proto3" json:"description,omitempty"`
+	Description string `protobuf:"bytes,13,opt,name=description,proto3" json:"description,omitempty"`
+	// The same mutation token the summary carries. The detail read is the natural starting point for a config edit, and Update requires the token, so leaving it out here would make Get→Update impossible without also listing (ADR-0014).
+	Version       int64 `protobuf:"varint,14,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -171,23 +171,25 @@ func (x *Connection) GetDescription() string {
 	return ""
 }
 
-// ConnectionSummary is deliberately safe for connections.list: it identifies a
-// collection member without exposing target coordinates or TLS configuration.
-// Those inner values require connections.get through Connection.
+func (x *Connection) GetVersion() int64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+// ConnectionSummary is deliberately safe for connections.list: it identifies a collection member without exposing target coordinates or TLS configuration. Those inner values require connections.get through Connection.
 type ConnectionSummary struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	DisplayName string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	DbType      string                 `protobuf:"bytes,3,opt,name=db_type,json=dbType,proto3" json:"db_type,omitempty"`
 	ArchivedAt  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
-	// Monotonically increasing database mutation token. Clients use it to avoid
-	// applying an out-of-order mutation response over newer state.
+	// Monotonically increasing database mutation token. Clients use it to avoid applying an out-of-order mutation response over newer state.
 	Version int64 `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
 	// "development" | "production" — drives the list's production badge.
 	Environment string `protobuf:"bytes,6,opt,name=environment,proto3" json:"environment,omitempty"`
-	// Free-text operator context (≤ 500 chars). Carried in the summary so the
-	// edit dialog can prefill WITHOUT a connections.get round-trip — editing
-	// must stay possible for a principal holding only connections.update.
+	// Free-text operator context (≤ 500 chars). Carried in the summary so the edit dialog can prefill WITHOUT a connections.get round-trip — editing must stay possible for a principal holding only connections.update.
 	Description   string `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -272,8 +274,7 @@ func (x *ConnectionSummary) GetDescription() string {
 	return ""
 }
 
-// ConnectionConfigInput is the write model — the only place credentials
-// travel, inbound only.
+// ConnectionConfigInput is the write model — the only place credentials travel, inbound only.
 type ConnectionConfigInput struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Host     string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
@@ -281,9 +282,7 @@ type ConnectionConfigInput struct {
 	Database string                 `protobuf:"bytes,3,opt,name=database,proto3" json:"database,omitempty"`
 	User     string                 `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
 	Password string                 `protobuf:"bytes,5,opt,name=password,proto3" json:"password,omitempty"`
-	// One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects
-	// the certificate-verifying default (verify-full). Choosing require/disable
-	// is an explicit relaxed-TLS decision and is audited (PRD §8.1).
+	// One of "verify-full" | "verify-ca" | "require" | "disable"; empty selects the certificate-verifying default (verify-full). Choosing require/disable is an explicit relaxed-TLS decision and is audited (PRD §8.1).
 	TlsMode       string `protobuf:"bytes,6,opt,name=tls_mode,json=tlsMode,proto3" json:"tls_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -658,18 +657,16 @@ type UpdateConnectionRequest struct {
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// New display name; empty keeps the current name (both update flows).
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	// Unset = descriptor-only update (name/environment/description, no
-	// connection test). Set = full config replacement, re-tested and
-	// re-encrypted.
+	// Unset = descriptor-only update (name/environment/description, no connection test). Set = full config replacement, re-tested and re-encrypted.
 	Config *ConnectionConfigInput `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
-	// Empty keeps the current environment — an older client that omits the
-	// field must never silently downgrade a production label.
+	// Empty keeps the current environment — an older client that omits the field must never silently downgrade a production label.
 	Environment string `protobuf:"bytes,4,opt,name=environment,proto3" json:"environment,omitempty"`
-	// Presence-tracked: absent keeps the current description, present (even
-	// empty) replaces it.
-	Description   *string `protobuf:"bytes,5,opt,name=description,proto3,oneof" json:"description,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Presence-tracked: absent keeps the current description, present (even empty) replaces it.
+	Description *string `protobuf:"bytes,5,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// Required positive descriptor version from the caller’s form. Stale versions return ABORTED; missing or invalid versions return INVALID_ARGUMENT.
+	ExpectedVersion int64 `protobuf:"varint,6,opt,name=expected_version,json=expectedVersion,proto3" json:"expected_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UpdateConnectionRequest) Reset() {
@@ -735,6 +732,13 @@ func (x *UpdateConnectionRequest) GetDescription() string {
 		return *x.Description
 	}
 	return ""
+}
+
+func (x *UpdateConnectionRequest) GetExpectedVersion() int64 {
+	if x != nil {
+		return x.ExpectedVersion
+	}
+	return 0
 }
 
 type UpdateConnectionResponse struct {
@@ -868,9 +872,7 @@ func (*TestConnectionRequest_Id) isTestConnectionRequest_Target() {}
 type TestConnectionResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Ok    bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
-	// On failure, the coarse classification only — "unreachable" | "auth-failed"
-	// | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014).
-	// Raw target-DB errors are never returned (PRD §8.1).
+	// On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014). Raw target-DB errors are never returned (PRD §8.1).
 	Message       string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1012,7 +1014,7 @@ var File_portcullis_v1_connections_proto protoreflect.FileDescriptor
 
 const file_portcullis_v1_connections_proto_rawDesc = "" +
 	"\n" +
-	"\x1fportcullis/v1/connections.proto\x12\rportcullis.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdd\x03\n" +
+	"\x1fportcullis/v1/connections.proto\x12\rportcullis.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf7\x03\n" +
 	"\n" +
 	"Connection\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
@@ -1031,7 +1033,8 @@ const file_portcullis_v1_connections_proto_rawDesc = "" +
 	"\varchived_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAt\x12 \n" +
 	"\venvironment\x18\f \x01(\tR\venvironment\x12 \n" +
-	"\vdescription\x18\r \x01(\tR\vdescription\"\xfa\x01\n" +
+	"\vdescription\x18\r \x01(\tR\vdescription\x12\x18\n" +
+	"\aversion\x18\x0e \x01(\x03R\aversion\"\xfa\x01\n" +
 	"\x11ConnectionSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x17\n" +
@@ -1066,13 +1069,14 @@ const file_portcullis_v1_connections_proto_rawDesc = "" +
 	"\x18CreateConnectionResponse\x12@\n" +
 	"\n" +
 	"connection\x18\x01 \x01(\v2 .portcullis.v1.ConnectionSummaryR\n" +
-	"connection\"\xe3\x01\n" +
+	"connection\"\x8e\x02\n" +
 	"\x17UpdateConnectionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12<\n" +
 	"\x06config\x18\x03 \x01(\v2$.portcullis.v1.ConnectionConfigInputR\x06config\x12 \n" +
 	"\venvironment\x18\x04 \x01(\tR\venvironment\x12%\n" +
-	"\vdescription\x18\x05 \x01(\tH\x00R\vdescription\x88\x01\x01B\x0e\n" +
+	"\vdescription\x18\x05 \x01(\tH\x00R\vdescription\x88\x01\x01\x12)\n" +
+	"\x10expected_version\x18\x06 \x01(\x03R\x0fexpectedVersionB\x0e\n" +
 	"\f_description\"\\\n" +
 	"\x18UpdateConnectionResponse\x12@\n" +
 	"\n" +

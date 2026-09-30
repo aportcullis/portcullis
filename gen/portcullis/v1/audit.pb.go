@@ -27,11 +27,9 @@ type AuditListRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 1-based page number; 0 or 1 selects the first page.
 	Page uint32 `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
-	// Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the
-	// default (20). Capped at 100 (PRD §7.1).
+	// Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the default (20). Capped at 100 (PRD §7.1).
 	PageSize uint32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Optional sort; unset selects occurred_at descending. An off-whitelist field
-	// is rejected with InvalidArgument.
+	// Optional sort; unset selects occurred_at descending. An off-whitelist field is rejected with InvalidArgument.
 	Sort          *AuditSort `protobuf:"bytes,3,opt,name=sort,proto3" json:"sort,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -93,10 +91,7 @@ type AuditSort struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whitelisted column, e.g. "occurred_at". An unknown value is rejected.
 	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
-	// true = descending (newest/largest first). Optional so that UNSET is
-	// distinguishable from an explicit false: unset keeps the server default
-	// (descending), and only an explicit false selects ascending. A plain proto3
-	// bool cannot express that distinction (implicit field presence).
+	// true = descending (newest/largest first). Optional so that UNSET is distinguishable from an explicit false: unset keeps the server default (descending), and only an explicit false selects ascending. A plain proto3 bool cannot express that distinction (implicit field presence).
 	Descending    *bool `protobuf:"varint,2,opt,name=descending,proto3,oneof" json:"descending,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -146,8 +141,7 @@ func (x *AuditSort) GetDescending() bool {
 	return false
 }
 
-// AuditEvent is one record of the trail. It carries the populated core fields;
-// execution/state/digest columns are added with the features that fill them.
+// AuditEvent is one record of the trail. It carries the populated core fields; execution/state/digest columns are added with the features that fill them.
 type AuditEvent struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -170,9 +164,19 @@ type AuditEvent struct {
 	// Correlates the event with the request log (empty when unavailable).
 	RequestId string `protobuf:"bytes,11,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	// Non-sensitive supplemental fields (never secrets, tokens, or result rows).
-	Metadata      *structpb.Struct `protobuf:"bytes,12,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Metadata *structpb.Struct `protobuf:"bytes,12,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	// Detail reads expose stored approval/execution evidence; summaries stay narrow. Unrelated event dimensions remain empty (ADR-0009).
+	PreviousState string `protobuf:"bytes,13,opt,name=previous_state,json=previousState,proto3" json:"previous_state,omitempty"`
+	NextState     string `protobuf:"bytes,14,opt,name=next_state,json=nextState,proto3" json:"next_state,omitempty"`
+	// The connection the event was about (empty when it is not about one).
+	ConnectionId string `protobuf:"bytes,15,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	// "read" | "write" | "ddl" for statement-bearing events.
+	QueryType string `protobuf:"bytes,16,opt,name=query_type,json=queryType,proto3" json:"query_type,omitempty"`
+	// Keyed MAC over the approved payload, with the key version that verifies it (ADR-0003). Opaque bytes: the trail never carries SQL or parameter values.
+	PayloadDigest           []byte `protobuf:"bytes,17,opt,name=payload_digest,json=payloadDigest,proto3" json:"payload_digest,omitempty"`
+	PayloadDigestKeyVersion uint32 `protobuf:"varint,18,opt,name=payload_digest_key_version,json=payloadDigestKeyVersion,proto3" json:"payload_digest_key_version,omitempty"` // Execution metrics (rows_affected, duration_ms, risk_score) are columns the executor slice fills; they join this message when that slice lands.
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *AuditEvent) Reset() {
@@ -289,9 +293,49 @@ func (x *AuditEvent) GetMetadata() *structpb.Struct {
 	return nil
 }
 
-// AuditEventSummary is deliberately safe for audit.list. Correlation data,
-// network addresses, and supplemental metadata are available only through
-// audit.get, preserving ADR-0008's collection/detail permission boundary.
+func (x *AuditEvent) GetPreviousState() string {
+	if x != nil {
+		return x.PreviousState
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetNextState() string {
+	if x != nil {
+		return x.NextState
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetQueryType() string {
+	if x != nil {
+		return x.QueryType
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetPayloadDigest() []byte {
+	if x != nil {
+		return x.PayloadDigest
+	}
+	return nil
+}
+
+func (x *AuditEvent) GetPayloadDigestKeyVersion() uint32 {
+	if x != nil {
+		return x.PayloadDigestKeyVersion
+	}
+	return 0
+}
+
+// AuditEventSummary is deliberately safe for audit.list. Correlation data, network addresses, and supplemental metadata are available only through audit.get, preserving ADR-0008's collection/detail permission boundary.
 type AuditEventSummary struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -391,8 +435,7 @@ type AuditListResponse struct {
 	// Echoes the effective (clamped) page and page size the server applied.
 	Page     uint32 `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
 	PageSize uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Total matching rows and the derived page count, for explicit page controls
-	// ("1–20 of 1,340", page jump) (PRD §7.1).
+	// Total matching rows and the derived page count, for explicit page controls ("1–20 of 1,340", page jump) (PRD §7.1).
 	TotalCount    uint64 `protobuf:"varint,4,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	TotalPages    uint32 `protobuf:"varint,5,opt,name=total_pages,json=totalPages,proto3" json:"total_pages,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -566,7 +609,7 @@ const file_portcullis_v1_audit_proto_rawDesc = "" +
 	"\n" +
 	"descending\x18\x02 \x01(\bH\x00R\n" +
 	"descending\x88\x01\x01B\r\n" +
-	"\v_descending\"\xa2\x03\n" +
+	"\v_descending\"\x90\x05\n" +
 	"\n" +
 	"AuditEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
@@ -585,7 +628,15 @@ const file_portcullis_v1_audit_proto_rawDesc = "" +
 	" \x01(\tR\bsourceIp\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\v \x01(\tR\trequestId\x123\n" +
-	"\bmetadata\x18\f \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\xef\x01\n" +
+	"\bmetadata\x18\f \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12%\n" +
+	"\x0eprevious_state\x18\r \x01(\tR\rpreviousState\x12\x1d\n" +
+	"\n" +
+	"next_state\x18\x0e \x01(\tR\tnextState\x12#\n" +
+	"\rconnection_id\x18\x0f \x01(\tR\fconnectionId\x12\x1d\n" +
+	"\n" +
+	"query_type\x18\x10 \x01(\tR\tqueryType\x12%\n" +
+	"\x0epayload_digest\x18\x11 \x01(\fR\rpayloadDigest\x12;\n" +
+	"\x1apayload_digest_key_version\x18\x12 \x01(\rR\x17payloadDigestKeyVersion\"\xef\x01\n" +
 	"\x11AuditEventSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +

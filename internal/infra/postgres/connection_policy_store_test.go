@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -19,7 +20,6 @@ import (
 	"github.com/aportcullis/portcullis/migrations"
 )
 
-// policyFixture layers the policy store over the shared connection fixture.
 type policyFixture struct {
 	connFixture
 	policies *pg.ConnectionPolicyStore
@@ -47,8 +47,95 @@ func validNextPolicy(t *testing.T, current connection.Policy, by identity.UserID
 	return next
 }
 
-// Creating a connection leaves the v1 default policy row and the pointer in
-// the SAME transaction — the deferred FK proves the pair at commit (ADR-0015).
+func TestPolicyVersionIsDatedFromTheObservedInstant(t *testing.T) {
+	f := newPolicyFixture(t)
+	ctx := context.Background()
+
+	c := f.newConn(t, unique("PolicyClock"))
+	if err := f.store.Create(ctx, c, sealedStub(1), connEvent(audit.ActionConnectionCreated, c.ID)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	current, err := f.policies.GetCurrent(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatalf("GetCurrent: %v", err)
+	}
+	// An application clock a long way in the past, the way a skewed app server (or a slow request) hands one in. The stored moment must not be this.
+	next := validNextPolicy(t, current, f.user)
+	next.CreatedAt = time.Now().UTC().Add(-72 * time.Hour)
+
+	holder := holdConnection(t, f.pool, c.ID)
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.policies.UpdatePolicy(ctx, next, current.Version, connEvent(audit.ActionConnectionPolicyUpdated, c.ID))
+		done <- err
+	}()
+	time.Sleep(300 * time.Millisecond)
+	blockedAt := stampBlockerEvent(t, holder, f.org, audit.ActionAccessRequestSubmitted, "connection", string(c.ID))
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatalf("release connection: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("UpdatePolicy: %v", err)
+	}
+
+	var createdAt, eventAt time.Time
+	if err := f.pool.QueryRow(ctx,
+		`select p.created_at, e.occurred_at
+		   from connection_policy_versions p
+		   join audit_events e on e.target_id = p.connection_id::text and e.action = $3
+		  where p.connection_id = $1::uuid and p.version = $2`,
+		string(c.ID), current.Version+1, string(audit.ActionConnectionPolicyUpdated)).Scan(&createdAt, &eventAt); err != nil {
+		t.Fatalf("read policy stamps: %v", err)
+	}
+	if createdAt.Before(blockedAt) {
+		t.Errorf("policy created_at %s precedes the write it waited for (%s)", createdAt, blockedAt)
+	}
+	if !createdAt.Equal(eventAt) {
+		t.Errorf("created_at %s != CONNECTION_POLICY_UPDATED %s — one transaction must be one moment", createdAt, eventAt)
+	}
+}
+
+func TestPolicyUpdateReturnsTheStoredInstant(t *testing.T) {
+	f := newPolicyFixture(t)
+	ctx := context.Background()
+
+	c := f.newConn(t, unique("PolicyReturned"))
+	if err := f.store.Create(ctx, c, sealedStub(1), connEvent(audit.ActionConnectionCreated, c.ID)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	current, err := f.policies.GetCurrent(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatalf("GetCurrent: %v", err)
+	}
+	next := validNextPolicy(t, current, f.user)
+	next.CreatedAt = time.Now().UTC().Add(72 * time.Hour) // adversarial: a clock in the FUTURE
+
+	saved, err := f.policies.UpdatePolicy(ctx, next, current.Version, connEvent(audit.ActionConnectionPolicyUpdated, c.ID))
+	if err != nil {
+		t.Fatalf("UpdatePolicy: %v", err)
+	}
+	var stored time.Time
+	if err := f.pool.QueryRow(ctx,
+		`select created_at from connection_policy_versions where connection_id = $1::uuid and version = $2`,
+		string(c.ID), current.Version+1).Scan(&stored); err != nil {
+		t.Fatalf("read created_at: %v", err)
+	}
+	if !saved.CreatedAt.Equal(stored) {
+		t.Errorf("returned created_at %s != stored %s", saved.CreatedAt, stored)
+	}
+	if !stored.Before(next.CreatedAt) {
+		t.Errorf("stored created_at %s took the caller's future clock (%s) instead of the database's", stored, next.CreatedAt)
+	}
+
+	reread, err := f.policies.GetCurrent(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatalf("GetCurrent: %v", err)
+	}
+	if !reread.CreatedAt.Equal(stored) {
+		t.Errorf("re-read created_at %s != stored %s", reread.CreatedAt, stored)
+	}
+}
+
 func TestConnectionCreateInsertsDefaultPolicy(t *testing.T) {
 	f := newPolicyFixture(t)
 	ctx := context.Background()
@@ -79,7 +166,6 @@ func TestConnectionCreateInsertsDefaultPolicy(t *testing.T) {
 	}
 }
 
-// The descriptor round-trips environment and description (D8-0c).
 func TestConnectionDescriptorEnvironmentRoundTrip(t *testing.T) {
 	f := newPolicyFixture(t)
 	ctx := context.Background()
@@ -99,8 +185,6 @@ func TestConnectionDescriptorEnvironmentRoundTrip(t *testing.T) {
 	}
 }
 
-// UpdatePolicy bumps the pointer, appends the immutable version row, and
-// commits the audit events — one transaction, observed via the trail.
 func TestConnectionPolicyUpdateFlow(t *testing.T) {
 	f := newPolicyFixture(t)
 	ctx := context.Background()
@@ -152,13 +236,11 @@ func TestConnectionPolicyUpdateFlow(t *testing.T) {
 		t.Errorf("version rows = %d, want 2 (append-only)", versions)
 	}
 
-	// Stale expected version → conflict, nothing changed.
-	stale := validNextPolicy(t, current, f.user) // still says version 2
+	stale := validNextPolicy(t, current, f.user)
 	if _, err := f.policies.UpdatePolicy(ctx, stale, current.Version); !errors.Is(err, connection.ErrPolicyConflict) {
 		t.Fatalf("stale UpdatePolicy = %v, want ErrPolicyConflict", err)
 	}
 
-	// Unknown connection → not found.
 	missing := validNextPolicy(t, current, f.user)
 	missing.ConnectionID = connection.ConnectionID(uuid.NewString())
 	if _, err := f.policies.UpdatePolicy(ctx, missing, 1); !errors.Is(err, connection.ErrNotFound) {
@@ -166,8 +248,6 @@ func TestConnectionPolicyUpdateFlow(t *testing.T) {
 	}
 }
 
-// Archive freezes the policy: Get keeps answering (historical snapshot),
-// Update fails with ErrArchived.
 func TestConnectionPolicyOnArchivedConnection(t *testing.T) {
 	f := newPolicyFixture(t)
 	ctx := context.Background()
@@ -190,8 +270,6 @@ func TestConnectionPolicyOnArchivedConnection(t *testing.T) {
 	}
 }
 
-// Cross-org isolation: a caller scoped to another organization cannot read the
-// policy (ADR-0004 repository enforcement).
 func TestConnectionPolicyCrossOrgIsolation(t *testing.T) {
 	f := newPolicyFixture(t)
 	ctx := context.Background()
@@ -206,9 +284,6 @@ func TestConnectionPolicyCrossOrgIsolation(t *testing.T) {
 	}
 }
 
-// The runtime role is structurally unable to rewrite a policy snapshot: 0011
-// revokes UPDATE (DELETE was already gone via 0010) — append-only in the
-// schema, not just in code (ADR-0015).
 func TestConnectionPolicyVersionsAppendOnlyForRuntime(t *testing.T) {
 	f := newPolicyFixture(t)
 	ctx := context.Background()
@@ -230,16 +305,11 @@ func TestConnectionPolicyVersionsAppendOnlyForRuntime(t *testing.T) {
 
 	_, err = conn.Exec(ctx, `update connection_policy_versions set max_rows = 1 where connection_id = $1`, string(c.ID))
 	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "42501" { // insufficient_privilege
+	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("runtime UPDATE on policy versions = %v, want insufficient_privilege", err)
 	}
 }
 
-// Migration 0011 backfills a v1 default policy for connections that existed
-// BEFORE it — archived included — and pins current_policy_version = 1. The
-// pre-0011 state is built by applying 0001..0010 manually (recorded in
-// schema_migrations exactly as Migrate would), inserting old-shape rows, then
-// running the real Migrate, which applies only 0011.
 func TestMigration0011BackfillsExistingConnections(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
@@ -254,8 +324,7 @@ func TestMigration0011BackfillsExistingConnections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Mirror Migrate's session setup: unqualified names resolve to public and
-	// the migrations read the runtime role from the session GUC.
+
 	for _, stmt := range []string{
 		`select set_config('search_path', 'public', false)`,
 		`select set_config('portcullis.runtime_role', 'portcullis_runtime', false)`,
@@ -283,8 +352,6 @@ func TestMigration0011BackfillsExistingConnections(t *testing.T) {
 		}
 	}
 
-	// Pre-0011 data: the default org, a creator, one active and one archived
-	// connection in the old column shape (no environment/description/policy).
 	var orgID, userID string
 	if err := conn.QueryRow(ctx, `select id::text from organizations limit 1`).Scan(&orgID); err != nil {
 		t.Fatal(err)
@@ -312,8 +379,6 @@ func TestMigration0011BackfillsExistingConnections(t *testing.T) {
 	}
 	conn.Release()
 
-	// The real migration path applies 0011 (and only 0011 — history says the
-	// rest are done).
 	if err := pg.Migrate(ctx, pool); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
@@ -346,7 +411,6 @@ func TestMigration0011BackfillsExistingConnections(t *testing.T) {
 		}
 	}
 
-	// Re-running the whole chain is idempotent: no duplicate policy rows.
 	if err := pg.Migrate(ctx, pool); err != nil {
 		t.Fatalf("Migrate rerun: %v", err)
 	}

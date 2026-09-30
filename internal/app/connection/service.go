@@ -1,7 +1,4 @@
-// Package connection implements the connection-management use cases (M1,
-// ADR-0014): registering target databases with a sealed credential, the
-// mandatory server-side test-before-save, rename/config updates, and archive.
-// It depends only on the domain and its consumer-defined ports.
+// Package connection implements the connection-management use cases (M1, ADR-0014): registering target databases with a sealed credential, the mandatory server-side test-before-save, rename/config updates, and archive. It depends only on the domain and its consumer-defined ports.
 package connection
 
 import (
@@ -19,8 +16,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// New wires the service. Every dependency is required so a half-built service
-// never starts.
+// New wires the service. Every dependency is required so a half-built service never starts.
 func New(repo Repository, validator ConnectionValidator, codec CredentialCodec, auditor AuditRecorder) (*Service, error) {
 	if repo == nil || validator == nil || codec == nil || auditor == nil {
 		return nil, errors.New("connection: nil dependency (repo, validator, codec, and auditor are required)")
@@ -40,11 +36,7 @@ func (s *Service) WithIDGenerator(newID func() string) *Service { s.newID = newI
 // WithLogger routes the service's own warnings (dropped audit events).
 func (s *Service) WithLogger(l *slog.Logger) *Service { s.logger = l; return s }
 
-// Create registers a connection: validate → test the target (refusing to
-// persist on failure — PRD §7.2's test-before-save is enforced here, not in
-// the UI) → seal the credential under the pre-generated id → insert with
-// CONNECTION_CREATED (and CONNECTION_TLS_RELAXED for a relaxed mode) in one
-// transaction.
+// Create registers a connection: validate → test the target (refusing to persist on failure — PRD §7.2's test-before-save is enforced here, not in the UI) → seal the credential under the pre-generated id → insert with CONNECTION_CREATED (and CONNECTION_TLS_RELAXED for a relaxed mode) in one transaction.
 func (s *Service) Create(ctx context.Context, actor identity.UserID, p CreateParams) (connection.Connection, error) {
 	if err := connection.ValidateDisplayName(p.DisplayName); err != nil {
 		return connection.Connection{}, err
@@ -69,9 +61,7 @@ func (s *Service) Create(ctx context.Context, actor identity.UserID, p CreatePar
 	if err := s.test(ctx, actor, id, target, mode, cred, false); err != nil {
 		return connection.Connection{}, err
 	}
-	// From here the target HAS been dialed: any failure below must still leave
-	// the access in the trail — the transactional CONNECTION_CREATED that would
-	// normally imply it rolls back with the failure (ADR-0014).
+	// From here the target HAS been dialed: any failure below must still leave the access in the trail — the transactional CONNECTION_CREATED that would normally imply it rolls back with the failure (ADR-0014).
 
 	conn, err := connection.New(id, org, connection.DBTypePostgreSQL, p.DisplayName, env, p.Description, target, mode, actor, s.now())
 	if err != nil {
@@ -101,9 +91,7 @@ func (s *Service) Create(ctx context.Context, actor identity.UserID, p CreatePar
 	return conn, nil
 }
 
-// Update edits a connection. A nil Config renames only (no test); a non-nil
-// Config replaces the full target + credential after a fresh successful test
-// (ADR-0014).
+// Update edits a connection. A nil Config renames only (no test); a non-nil Config replaces the full target + credential after a fresh successful test (ADR-0014).
 func (s *Service) Update(ctx context.Context, actor identity.UserID, id connection.ConnectionID, p UpdateParams) (connection.Connection, error) {
 	org, err := s.repo.DefaultOrganizationID(ctx)
 	if err != nil {
@@ -115,9 +103,10 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 		if err != nil {
 			return connection.Connection{}, err
 		}
-		// The same keep-current contract as environment/description: an empty
-		// name keeps the stored one — all three descriptor fields behave alike
-		// in both update flows (self-review F9).
+		if err := guardVersion(existing, p.ExpectedVersion); err != nil {
+			return connection.Connection{}, err
+		}
+		// The same keep-current contract as environment/description: an empty name keeps the stored one — all three descriptor fields behave alike in both update flows.
 		name := p.DisplayName
 		if name == "" {
 			name = existing.DisplayName
@@ -135,7 +124,7 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 			"display_name": name,
 			"environment":  string(env),
 		})
-		return s.repo.UpdateDescriptor(ctx, org, id, name, env, desc, evt)
+		return s.repo.UpdateDescriptor(ctx, org, id, name, env, desc, existing.Version, evt)
 	}
 
 	existing, err := s.repo.GetByID(ctx, org, id)
@@ -143,9 +132,11 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 		return connection.Connection{}, err
 	}
 	if existing.IsArchived() {
-		// Restore is a separate future flow (ADR-0014): an archived connection's
-		// credential is gone, and editing it back to life must stay explicit.
+		// Restore is a separate future flow (ADR-0014): an archived connection's credential is gone, and editing it back to life must stay explicit.
 		return connection.Connection{}, connection.ErrArchived
+	}
+	if err := guardVersion(existing, p.ExpectedVersion); err != nil {
+		return connection.Connection{}, err
 	}
 	name := p.DisplayName
 	if name == "" {
@@ -162,15 +153,11 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	if err != nil {
 		return connection.Connection{}, err
 	}
-	// From here on the STORED id is authoritative, never the caller's: the
-	// adapter matches ids by uuid value, so a non-canonical spelling reaches
-	// this row while differing as a string — and the id is the AEAD AAD
-	// (external review).
+	// From here on the STORED id is authoritative, never the caller's: the adapter matches ids by uuid value, so a non-canonical spelling reaches this row while differing as a string — and the id is the AEAD AAD.
 	if err := s.test(ctx, actor, existing.ID, target, mode, cred, false); err != nil {
 		return connection.Connection{}, err
 	}
-	// The target has been dialed: failures below must still leave the access in
-	// the trail (see Create).
+	// The target has been dialed: failures below must still leave the access in the trail (see Create).
 	sealed, err := s.codec.Seal(org, existing.ID, cred)
 	if err != nil {
 		s.recordUnsavedDial(ctx, actor, existing.ID, target, mode)
@@ -186,9 +173,7 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	updated.TLSMode = mode
 	updated.Fingerprint = target.Fingerprint(existing.DBType)
 
-	// "fields" names what actually changed: an empty or unchanged DisplayName
-	// keeps the current name (UpdateParams contract), so it is not a rename.
-	// display_name itself stays recorded as the final-name snapshot either way.
+	// "fields" names what actually changed: an empty or unchanged DisplayName keeps the current name (UpdateParams contract), so it is not a rename. display_name itself stays recorded as the final-name snapshot either way.
 	fields := append([]string{"config"}, descriptorFields(existing, name, env, desc)...)
 	events := []audit.Event{s.mutationEvent(ctx, actor, org, updated, audit.ActionConnectionUpdated, map[string]any{
 		"fields":       fields,
@@ -208,10 +193,14 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	return replaced, nil
 }
 
-// resolveDescriptor applies UpdateParams' keep-current semantics: an empty
-// Environment keeps the stored label (an older client that omits the field
-// must never silently downgrade production) and a nil Description keeps the
-// stored text.
+// resolveDescriptor preserves omitted descriptor fields. guardVersion compares the caller’s version with the stored row before either replacement flow to prevent lost updates.
+func guardVersion(existing connection.Connection, expected int64) error {
+	if existing.Version != expected {
+		return connection.ErrConflict
+	}
+	return nil
+}
+
 func resolveDescriptor(existing connection.Connection, p UpdateParams) (connection.Environment, string, error) {
 	env := existing.Environment
 	if p.Environment != "" {
@@ -230,9 +219,7 @@ func resolveDescriptor(existing connection.Connection, p UpdateParams) (connecti
 	return env, desc, nil
 }
 
-// descriptorFields names which descriptor fields actually changed — the audit
-// "fields" list reflects the real change set (8th-review rule), while the
-// metadata keeps the final snapshot values either way.
+// descriptorFields records only changed fields while audit metadata retains the final descriptor snapshot.
 func descriptorFields(existing connection.Connection, name string, env connection.Environment, desc string) []string {
 	var fields []string
 	if name != "" && name != existing.DisplayName {
@@ -247,25 +234,20 @@ func descriptorFields(existing connection.Connection, name string, env connectio
 	return fields
 }
 
-// Archive soft-deletes the connection and discards its credential in one
-// transaction with CONNECTION_ARCHIVED (PRD §4.3). The in-flight-execution
-// guard is added by the executions slice (ADR-0014).
+// Archive soft-deletes the connection and discards its credential in one transaction with CONNECTION_ARCHIVED (PRD §4.3). The in-flight-execution guard is added by the executions slice (ADR-0014).
 func (s *Service) Archive(ctx context.Context, actor identity.UserID, id connection.ConnectionID) (connection.Connection, error) {
 	org, err := s.repo.DefaultOrganizationID(ctx)
 	if err != nil {
 		return connection.Connection{}, fmt.Errorf("resolve organization: %w", err)
 	}
-	// Archive's snapshot must describe the row actually archived, not a descriptor
-	// read before a concurrent config update. The Postgres adapter completes this
-	// event's metadata from ArchiveConnection RETURNING inside the same transaction.
+	// Archive's snapshot must describe the row actually archived, not a descriptor read before a concurrent config update. The Postgres adapter completes this event's metadata from ArchiveConnection RETURNING inside the same transaction.
 	evt := s.newEvent(ctx, actor, audit.ActionConnectionArchived, audit.OutcomeSucceeded)
 	evt.OrganizationID = org
 	evt.TargetID = string(id)
 	return s.repo.Archive(ctx, org, id, evt)
 }
 
-// Get returns one connection (descriptor only — the credential never leaves
-// the store unsealed).
+// Get returns one connection (descriptor only — the credential never leaves the store unsealed).
 func (s *Service) Get(ctx context.Context, id connection.ConnectionID) (connection.Connection, error) {
 	org, err := s.repo.DefaultOrganizationID(ctx)
 	if err != nil {
@@ -283,9 +265,7 @@ func (s *Service) List(ctx context.Context, includeArchived bool) ([]connection.
 	return s.repo.List(ctx, org, includeArchived)
 }
 
-// TestByConfig runs the pre-save connection test against unsaved input. As an
-// explicit test action it leaves a best-effort CONNECTION_TEST event either
-// way (with no target id — nothing is saved yet).
+// TestByConfig runs the pre-save connection test against unsaved input. As an explicit test action it leaves a best-effort CONNECTION_TEST event either way (with no target id — nothing is saved yet).
 func (s *Service) TestByConfig(ctx context.Context, actor identity.UserID, cfg ConfigInput) error {
 	target, mode, cred, err := parseConfig(cfg)
 	if err != nil {
@@ -300,15 +280,12 @@ func (s *Service) TestByID(ctx context.Context, actor identity.UserID, id connec
 	if err != nil {
 		return fmt.Errorf("resolve organization: %w", err)
 	}
-	// One atomic read of descriptor + credential: never dial an old target with
-	// a freshly replaced credential (ADR-0014). TestMaterial already rejects an
-	// archived connection.
+	// One atomic read of descriptor + credential: never dial an old target with a freshly replaced credential (ADR-0014). TestMaterial already rejects an archived connection.
 	conn, sealed, err := s.repo.TestMaterial(ctx, org, id)
 	if err != nil {
 		return err
 	}
-	// The STORED id is the AAD and the audit target — the caller's spelling may
-	// be a non-canonical uuid rendering of it (see Update).
+	// The STORED id is the AAD and the audit target — the caller's spelling may be a non-canonical uuid rendering of it (see Update).
 	cred, err := s.codec.Open(org, conn.ID, sealed)
 	if err != nil {
 		return fmt.Errorf("open credential: %w", err)
@@ -316,11 +293,7 @@ func (s *Service) TestByID(ctx context.Context, actor identity.UserID, id connec
 	return s.test(ctx, actor, conn.ID, conn.Target, conn.TLSMode, cred, true)
 }
 
-// test dials the target and records the best-effort CONNECTION_TEST trail.
-// Failures are normalized to *TestError so nothing but the bucket can reach a
-// caller, and are always recorded — a refused save is evidence. Success is
-// recorded only for explicit test actions (the Test RPC); inside Create/Update
-// it is implied by the transactional CONNECTION_CREATED/UPDATED event.
+// test normalizes failures and records refused dials. Explicit tests record success here; successful saves include it in their transactional mutation event.
 func (s *Service) test(ctx context.Context, actor identity.UserID, id connection.ConnectionID, target connection.Target, mode connection.TLSMode, cred connection.Credential, explicit bool) error {
 	err := s.validator.ValidateConnection(ctx, target, mode, cred)
 	if err == nil {
@@ -337,10 +310,7 @@ func (s *Service) test(ctx context.Context, actor identity.UserID, id connection
 	return te
 }
 
-// recordUnsavedDial leaves the best-effort trail for a dial whose save then
-// failed: the transactional CONNECTION_CREATED/UPDATED that would normally
-// imply the successful test rolled back with the mutation, but the target WAS
-// accessed (ADR-0014; persisted=false marks the distinction).
+// recordUnsavedDial leaves the best-effort trail for a dial whose save then failed: the transactional CONNECTION_CREATED/UPDATED that would normally imply the successful test rolled back with the mutation, but the target WAS accessed (ADR-0014; persisted=false marks the distinction).
 func (s *Service) recordUnsavedDial(ctx context.Context, actor identity.UserID, id connection.ConnectionID, target connection.Target, mode connection.TLSMode) {
 	e := s.newEvent(ctx, actor, audit.ActionConnectionTest, audit.OutcomeSucceeded)
 	e.TargetID = string(id)
@@ -352,10 +322,7 @@ func (s *Service) recordUnsavedDial(ctx context.Context, actor identity.UserID, 
 	s.recordBestEffort(ctx, e)
 }
 
-// recordTest writes the best-effort CONNECTION_TEST event for an explicit test
-// action or a failed pre-save test. tls_mode is part of every CONNECTION_TEST
-// (ADR-0014): these paths never emit CONNECTION_TLS_RELAXED, and a relaxed dial
-// must stay audit-visible (PRD §8.1).
+// recordTest writes the best-effort CONNECTION_TEST event for an explicit test action or a failed pre-save test. tls_mode is part of every CONNECTION_TEST (ADR-0014): these paths never emit CONNECTION_TLS_RELAXED, and a relaxed dial must stay audit-visible (PRD §8.1).
 func (s *Service) recordTest(ctx context.Context, actor identity.UserID, id connection.ConnectionID, target connection.Target, mode connection.TLSMode, outcome audit.Outcome, reason string) {
 	e := s.newEvent(ctx, actor, audit.ActionConnectionTest, outcome)
 	e.TargetID = string(id)
@@ -369,8 +336,7 @@ func (s *Service) recordTest(ctx context.Context, actor identity.UserID, id conn
 	s.recordBestEffort(ctx, e)
 }
 
-// recordBestEffort persists an event detached from the request context so a
-// client disconnect cannot erase it; a failure is logged, never surfaced.
+// recordBestEffort persists an event detached from the request context so a client disconnect cannot erase it; a failure is logged, never surfaced.
 func (s *Service) recordBestEffort(ctx context.Context, e audit.Event) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
 	defer cancel()
@@ -385,9 +351,7 @@ func (s *Service) recordBestEffort(ctx context.Context, e audit.Event) {
 	}
 }
 
-// mutationEvent assembles a transactional event for a state change: it rides
-// the repository call and commits with it (ADR-0009). The organization is
-// already resolved by the calling use case.
+// mutationEvent assembles a transactional event for a state change: it rides the repository call and commits with it (ADR-0009). The organization is already resolved by the calling use case.
 func (s *Service) mutationEvent(ctx context.Context, actor identity.UserID, org identity.OrganizationID, c connection.Connection, action audit.Action, metadata map[string]any) audit.Event {
 	e := s.newEvent(ctx, actor, action, audit.OutcomeSucceeded)
 	e.OrganizationID = org

@@ -4,13 +4,9 @@ package portcullis.v1;
 
 option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
 
-// Auth is the authentication surface: first-run bootstrap, password login, and
-// the current-session endpoints. The opaque session token and the CSRF token are
-// carried in __Host- cookies (set by Login, cleared by Logout), never in these
-// messages (ADR-0006).
+// Auth is the authentication surface: first-run bootstrap, password login, and the current-session endpoints. The opaque session token and the CSRF token are carried in __Host- cookies (set by Login, cleared by Logout), never in these messages (ADR-0006).
 service Auth {
-  // Bootstrap creates the first admin; refused once any user exists. It does not
-  // start a session — the client logs in afterward.
+  // Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
   rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse) {}
   // Login verifies the password and starts a session (sets the session + CSRF cookies).
   rpc Login(LoginRequest) returns (LoginResponse) {}
@@ -18,11 +14,7 @@ service Auth {
   rpc Logout(LogoutRequest) returns (LogoutResponse) {}
   // Me returns the currently authenticated user.
   rpc Me(MeRequest) returns (MeResponse) {}
-  // GetConfig returns the public login configuration the SPA needs before any
-  // session exists: whether Google login is available and whether the instance
-  // still needs its first-run bootstrap. Public read-only metadata — bootstrap
-  // state is install-level, not per-account, so this is not an enumeration
-  // oracle (ADR-0007/ADR-0013).
+  // GetConfig returns the public login configuration the SPA needs before any session exists: whether Google login is available and whether the instance still needs its first-run bootstrap. Public read-only metadata — bootstrap state is install-level, not per-account, so this is not an enumeration oracle (ADR-0007/ADR-0013).
   rpc GetConfig(GetConfigRequest) returns (GetConfigResponse) {}
 }
 
@@ -49,10 +41,10 @@ message LoginRequest {
 }
 message LoginResponse {
   User user = 1;
-  // The caller's permission keys (ADR-0008 catalog), for UI affordance gating
-  // only — the server stays the authority on every RPC. Role changes revoke
-  // sessions immediately (§8.3), so a login/Me-time snapshot is current.
+  // The caller's permission keys (ADR-0008 catalog), for UI affordance gating only — the server stays the authority on every RPC. Role changes revoke sessions immediately (§8.3), so a login/Me-time snapshot is current.
   repeated string permissions = 2;
+  // The display name of the caller's role (e.g. "admin"), a UI badge label only — authorization never consults role names (ADR-0008). Empty when resolution degrades (same fail-open stance as permissions).
+  string role_name = 3;
 }
 
 message LogoutRequest {}
@@ -63,14 +55,16 @@ message MeResponse {
   User user = 1;
   // See LoginResponse.permissions.
   repeated string permissions = 2;
+  // See LoginResponse.role_name.
+  string role_name = 3;
 }
 
 message GetConfigRequest {}
 message GetConfigResponse {
-  // google_enabled reports whether "Sign in with Google" is configured on this
-  // server; the SPA hides the button otherwise.
+  // google_enabled reports whether "Sign in with Google" is configured on this server; the SPA hides the button otherwise.
   bool google_enabled = 1;
-  // needs_bootstrap reports whether no user exists yet, so the SPA can route
-  // straight to the first-run admin form.
+  // needs_bootstrap reports whether no user exists yet, so the SPA can route straight to the first-run admin form.
   bool needs_bootstrap = 2;
+  // max_approval_reason_chars is the server's cap on an approval/rejection reason (PRD §4.4). Served so a client can bound its input from the one authority that enforces it — clients MUST NOT restate the number, the same rule the paged lists follow by adopting the response's page_size.
+  int32 max_approval_reason_chars = 3;
 }

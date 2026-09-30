@@ -16,10 +16,7 @@ const (
 	KindEnum
 )
 
-// Descriptor pins one tunable's shape, bounds, and compiled default. The
-// SAME descriptor validates the env seed at boot and every DB write/read
-// (ADR-0017: one registry, no drift). Bounds mirror their source ADRs and
-// remain normative there (ADR-0010 amendment).
+// Descriptor pins one tunable's shape, bounds, and compiled default. The SAME descriptor validates the env seed at boot and every DB write/read (ADR-0017: one registry, no drift). Bounds mirror their source ADRs and remain normative there (ADR-0010 amendment).
 type Descriptor struct {
 	Key     Key
 	Kind    Kind
@@ -33,8 +30,7 @@ type Descriptor struct {
 	Enum []string
 }
 
-// Validate reports whether value is a well-formed, in-bounds text form for
-// this descriptor. All failures wrap ErrInvalidValue.
+// Validate reports whether value is a well-formed, in-bounds text form for this descriptor. All failures wrap ErrInvalidValue.
 func (d Descriptor) Validate(value string) error {
 	switch d.Kind {
 	case KindDuration:
@@ -63,20 +59,18 @@ func (d Descriptor) Validate(value string) error {
 	return nil
 }
 
-// Bounds authoritative here and referenced by platform/config (ADR-0017):
-// connection-test window per ADR-0014; backoff guardrails per ADR-0006 (the
-// cap ceiling rules out a fat-fingered duration, the threshold ceiling only
-// catches typos).
+// Bounds authoritative here and referenced by platform/config (ADR-0017): connection-test window per ADR-0014; backoff guardrails per ADR-0006 (the cap ceiling rules out a fat-fingered duration, the threshold ceiling only catches typos).
 const (
 	MinConnectionTestTimeout = time.Second
 	MaxConnectionTestTimeout = time.Minute
 	MaxLoginBackoffCap       = 24 * time.Hour
 	MaxLoginBackoffThreshold = 1000
+	// Approval validity window (PRD §4.3: default 24h, org-configurable 15 minutes to 7 days; ADR-0018).
+	MinApprovalValidity = 15 * time.Minute
+	MaxApprovalValidity = 7 * 24 * time.Hour
 )
 
-// LogLevels is the log_level vocabulary. platform/logging owns the runtime
-// mapping; a config test pins the two lists together (the repo's established
-// cross-package-literal pattern — domain imports nothing outward).
+// LogLevels is the log_level vocabulary. platform/logging owns the runtime mapping; a config test pins the two lists together (the repo's established cross-package-literal pattern — domain imports nothing outward).
 var LogLevels = []string{"debug", "info", "warn", "error"}
 
 // registry is the Tier-C catalog, keyed for Lookup; ordered for All.
@@ -86,6 +80,7 @@ var registry = []Descriptor{
 	{Key: KeyLoginBackoffBase, Kind: KindDuration, Default: "1m0s", MinDuration: time.Nanosecond, MaxDuration: MaxLoginBackoffCap},
 	{Key: KeyLoginBackoffCap, Kind: KindDuration, Default: "15m0s", MinDuration: time.Nanosecond, MaxDuration: MaxLoginBackoffCap},
 	{Key: KeyConnectionTestTimeout, Kind: KindDuration, Default: "10s", MinDuration: MinConnectionTestTimeout, MaxDuration: MaxConnectionTestTimeout},
+	{Key: KeyApprovalValidity, Kind: KindDuration, Default: "24h0m0s", MinDuration: MinApprovalValidity, MaxDuration: MaxApprovalValidity},
 }
 
 var byKey = func() map[Key]Descriptor {
@@ -96,15 +91,13 @@ var byKey = func() map[Key]Descriptor {
 	return m
 }()
 
-// DefaultDuration returns a KindDuration descriptor's compiled default in its
-// typed form. Defaults always validate (pinned by test), so parsing is total.
+// DefaultDuration returns a KindDuration descriptor's compiled default in its typed form. Defaults always validate (pinned by test), so parsing is total.
 func (d Descriptor) DefaultDuration() time.Duration {
 	v, _ := time.ParseDuration(d.Default)
 	return v
 }
 
-// DefaultInt64 returns a KindInt descriptor's compiled default in its typed
-// form.
+// DefaultInt64 returns a KindInt descriptor's compiled default in its typed form.
 func (d Descriptor) DefaultInt64() int64 {
 	v, _ := strconv.ParseInt(d.Default, 10, 64)
 	return v

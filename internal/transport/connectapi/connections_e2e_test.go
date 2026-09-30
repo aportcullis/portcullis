@@ -15,21 +15,21 @@ import (
 
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
+	accessreq "github.com/aportcullis/portcullis/internal/app/accessrequest"
 	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
 	"github.com/aportcullis/portcullis/internal/transport/connectapi"
+	"github.com/aportcullis/portcullis/internal/transport/server"
 )
 
-// connsTestEnv mounts Auth + Connections + Audit behind the interceptor chain
-// on one TLS server. The FRESH test database doubles as the target the tester
-// dials, so the create→test→archive flow runs against a real PostgreSQL.
 type connsTestEnv struct {
 	pool      *pgxpool.Pool
 	store     *postgres.IdentityStore
@@ -80,20 +80,35 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatalf("connpolicy.New: %v", err)
 	}
+	requestStore := postgres.NewAccessRequestStore(pool)
+	requestSvc, err := accessreq.New(
+		requestStore,
+		requestStore,
+		crypto.NewAccessRequestPayloadCodec(keyring),
+		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second}),
+		24*time.Hour,
+	)
+	if err != nil {
+		t.Fatalf("accessreq.New: %v", err)
+	}
 
 	chain := connect.WithInterceptors(
 		connectapi.NewClientIPInterceptor(nil),
 		connectapi.NewAuthInterceptor(authSvc),
 	)
+	// Apply production limits in the harness: Connect caps decompressed messages and MaxBytesHandler caps the request stream.
+	readLimit := connect.WithReadMaxBytes(server.MaxRequestBytes)
 	mux := http.NewServeMux()
-	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc, authzSvc), chain)
-	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), chain)
-	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), chain)
-	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), chain)
-	mux.Handle(authPath, authHandler)
-	mux.Handle(auditPath, auditHandler)
-	mux.Handle(connsPath, connsHandler)
-	mux.Handle(policiesPath, policiesHandler)
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc, authzSvc), chain, readLimit)
+	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), chain, readLimit)
+	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), chain, readLimit)
+	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), chain, readLimit)
+	requestsPath, requestsHandler := portcullisv1connect.NewAccessRequestsHandler(connectapi.NewAccessRequestsService(authzSvc, requestSvc), chain, readLimit)
+	mux.Handle(authPath, http.MaxBytesHandler(authHandler, server.MaxRequestBytes))
+	mux.Handle(auditPath, http.MaxBytesHandler(auditHandler, server.MaxRequestBytes))
+	mux.Handle(connsPath, http.MaxBytesHandler(connsHandler, server.MaxRequestBytes))
+	mux.Handle(policiesPath, http.MaxBytesHandler(policiesHandler, server.MaxRequestBytes))
+	mux.Handle(requestsPath, http.MaxBytesHandler(requestsHandler, server.MaxRequestBytes))
 	ts := httptest.NewTLSServer(mux)
 	t.Cleanup(ts.Close)
 
@@ -109,14 +124,115 @@ func (e *connsTestEnv) clients() (http.CookieJar, portcullisv1connect.AuthClient
 		portcullisv1connect.NewAuditClient(hc, e.tsURL)
 }
 
-// policyClient shares the caller's cookie jar so it rides the same session.
+func (e *connsTestEnv) connectionClient(jar http.CookieJar) portcullisv1connect.ConnectionsClient {
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	return portcullisv1connect.NewConnectionsClient(hc, e.tsURL)
+}
+
 func (e *connsTestEnv) policyClient(jar http.CookieJar) portcullisv1connect.ConnectionPoliciesClient {
 	hc := &http.Client{Transport: e.transport, Jar: jar}
 	return portcullisv1connect.NewConnectionPoliciesClient(hc, e.tsURL)
 }
 
-// targetConfig returns the fresh test database's own coordinates as the
-// connection config under test.
+func (e *connsTestEnv) requestClient(jar http.CookieJar) portcullisv1connect.AccessRequestsClient {
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	return portcullisv1connect.NewAccessRequestsClient(hc, e.tsURL)
+}
+
+// requestClientJSON is the same service over ProtoJSON — the encoding the SPA's connect-web transport uses by default. Size and encoding claims must be checked on the wire the product actually ships, not only on the Go client's binary one (ADR-0010/0013).
+func (e *connsTestEnv) requestClientJSON(jar http.CookieJar) portcullisv1connect.AccessRequestsClient {
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	return portcullisv1connect.NewAccessRequestsClient(hc, e.tsURL, connect.WithProtoJSON())
+}
+
+func (e *connsTestEnv) authClient(jar http.CookieJar) portcullisv1connect.AuthClient {
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	return portcullisv1connect.NewAuthClient(hc, e.tsURL)
+}
+
+func (e *connsTestEnv) auditClient(jar http.CookieJar) portcullisv1connect.AuditClient {
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	return portcullisv1connect.NewAuditClient(hc, e.tsURL)
+}
+
+func (e *connsTestEnv) seedUser(t *testing.T, email, role string) {
+	t.Helper()
+	ctx := context.Background()
+	u, err := e.store.CreateUser(ctx, email, "User "+role)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	org, err := e.store.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("org: %v", err)
+	}
+	if _, err := e.pool.Exec(ctx,
+		`insert into organization_memberships (organization_id, user_id, role_id)
+		 select $1, $2, r.id from roles r where r.organization_id = $1 and r.name = $3`,
+		string(org), string(u.ID), role); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
+}
+
+func (e *connsTestEnv) seedUserWithCustomRole(t *testing.T, email, roleName string, perms ...string) {
+	t.Helper()
+	ctx := context.Background()
+	u, err := e.store.CreateUser(ctx, email, "User "+roleName)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	org, err := e.store.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("org: %v", err)
+	}
+	var roleID string
+	if err := e.pool.QueryRow(ctx,
+		`insert into roles (organization_id, name, is_system) values ($1, $2, false) returning id`,
+		string(org), roleName).Scan(&roleID); err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	for _, p := range perms {
+		if _, err := e.pool.Exec(ctx,
+			`insert into role_permissions (role_id, permission_key) values ($1, $2)`, roleID, p); err != nil {
+			t.Fatalf("grant %s: %v", p, err)
+		}
+	}
+	if _, err := e.pool.Exec(ctx,
+		`insert into organization_memberships (organization_id, user_id, role_id) values ($1, $2, $3)`,
+		string(org), string(u.ID), roleID); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
+}
+
+func (e *connsTestEnv) loginAs(t *testing.T, email, password string) (portcullisv1connect.AccessRequestsClient, string) {
+	t.Helper()
+	ctx := context.Background()
+	uid := e.userIDByEmail(t, email)
+	phc, err := e.hasher.Hash(ctx, password)
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	if err := e.store.SetPassword(ctx, identity.UserID(uid), phc); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	jar, _ := cookiejar.New(nil)
+	hc := &http.Client{Transport: e.transport, Jar: jar}
+	authC := portcullisv1connect.NewAuthClient(hc, e.tsURL)
+	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
+		t.Fatalf("Login %s: %v", email, err)
+	}
+	return portcullisv1connect.NewAccessRequestsClient(hc, e.tsURL), csrfFromJar(jar, e.serverURL)
+}
+
+func (e *connsTestEnv) userIDByEmail(t *testing.T, email string) string {
+	t.Helper()
+	var id string
+	if err := e.pool.QueryRow(context.Background(), `select id from users where email = $1`, email).Scan(&id); err != nil {
+		t.Fatalf("user id for %s: %v", email, err)
+	}
+	return id
+}
+
 func (e *connsTestEnv) targetConfig() *portcullisv1.ConnectionConfigInput {
 	cc := e.pool.Config().ConnConfig
 	return &portcullisv1.ConnectionConfigInput{
@@ -125,7 +241,7 @@ func (e *connsTestEnv) targetConfig() *portcullisv1.ConnectionConfigInput {
 		Database: cc.Database,
 		User:     cc.User,
 		Password: cc.Password,
-		TlsMode:  "disable", // the test container has no TLS — the relaxed path
+		TlsMode:  "disable",
 	}
 }
 
@@ -134,9 +250,6 @@ func withCSRF[T any](req *connect.Request[T], csrf string) *connect.Request[T] {
 	return req
 }
 
-// TestConnectionsLifecycle drives bootstrap → create (test-before-save) →
-// list/get → test → rename → archive against a real PostgreSQL target, and
-// verifies the audit trail and the credential-free read model along the way.
 func TestConnectionsLifecycle(t *testing.T) {
 	env := newConnsTestEnv(t)
 	ctx := context.Background()
@@ -151,15 +264,11 @@ func TestConnectionsLifecycle(t *testing.T) {
 	}
 	csrf := csrfFromJar(jar, env.serverURL)
 
-	// A malformed connection id is a client error (InvalidArgument), not a
-	// storage failure surfaced as Internal (external review) — checked with an
-	// admin who holds connections.get, so it can't be masked by a permission
-	// denial.
+	// A malformed connection id is a client error (InvalidArgument), not a storage failure surfaced as Internal — checked with an admin who holds connections.get, so it can't be masked by a permission denial.
 	if _, err := connsC.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetConnectionRequest{Id: "not-a-uuid"}), csrf)); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("Get(bad uuid) code = %v, want InvalidArgument", connect.CodeOf(err))
 	}
 
-	// Create with a wrong password: the mandatory pre-save test refuses to save.
 	badCfg := env.targetConfig()
 	badCfg.Password = "definitely-wrong"
 	_, err := connsC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateConnectionRequest{
@@ -172,7 +281,6 @@ func TestConnectionsLifecycle(t *testing.T) {
 		t.Fatalf("error leaks credential material: %v", err)
 	}
 
-	// Create succeeds against the live target.
 	created, err := connsC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateConnectionRequest{
 		DisplayName: "Primary", Config: env.targetConfig(),
 	}), csrf))
@@ -183,28 +291,25 @@ func TestConnectionsLifecycle(t *testing.T) {
 	if conn.GetId() == "" || conn.GetDbType() != "postgresql" || conn.GetArchivedAt() != nil {
 		t.Fatalf("created connection incomplete: %+v", conn)
 	}
-	// Creation returns a list-safe summary. Only connections.get can expose the
-	// descriptor's inner target and TLS fields.
+
 	detail, err := connsC.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetConnectionRequest{Id: conn.GetId()}), csrf))
 	if err != nil || detail.Msg.GetConnection().GetTargetFingerprint() == "" || detail.Msg.GetConnection().GetTlsMode() != "disable" {
 		t.Fatalf("Get after Create = %+v, %v", detail.Msg.GetConnection(), err)
 	}
 
-	// Duplicate active display name is refused.
 	if _, err := connsC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateConnectionRequest{
 		DisplayName: "Primary", Config: env.targetConfig(),
 	}), csrf)); connect.CodeOf(err) != connect.CodeAlreadyExists {
 		t.Errorf("duplicate name code = %v, want AlreadyExists", connect.CodeOf(err))
 	}
 
-	// Test by id uses the STORED credential (decrypt → dial).
 	testResp, err := connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{
 		Target: &portcullisv1.TestConnectionRequest_Id{Id: conn.GetId()},
 	}), csrf))
 	if err != nil || !testResp.Msg.GetOk() {
 		t.Fatalf("Test by id = (%v, %v), want ok", testResp.Msg.GetOk(), err)
 	}
-	// Test by config with a wrong password reports the bucket in-band.
+
 	testResp, err = connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{
 		Target: &portcullisv1.TestConnectionRequest_Config{Config: badCfg},
 	}), csrf))
@@ -215,14 +320,10 @@ func TestConnectionsLifecycle(t *testing.T) {
 		t.Errorf("failed test = (%v, %q), want (false, auth-failed)", testResp.Msg.GetOk(), testResp.Msg.GetMessage())
 	}
 
-	// A NON-CANONICAL spelling of the id (uppercase) reaches the same row —
-	// PostgreSQL compares uuid values — and must behave exactly like the
-	// canonical one: the credential resealed by this update has to open for a
-	// later canonical-id test, i.e. the AAD must bind to the canonical id, not
-	// the caller's spelling (external review).
+	// A NON-CANONICAL spelling of the id (uppercase) reaches the same row — PostgreSQL compares uuid values — and must behave exactly like the canonical one: the credential resealed by this update has to open for a later canonical-id test, i.e. the AAD must bind to the canonical id, not the caller's spelling.
 	upper := strings.ToUpper(conn.GetId())
 	if _, err := connsC.Update(ctx, withCSRF(connect.NewRequest(&portcullisv1.UpdateConnectionRequest{
-		Id: upper, Config: env.targetConfig(),
+		Id: upper, Config: env.targetConfig(), ExpectedVersion: conn.GetVersion(),
 	}), csrf)); err != nil {
 		t.Fatalf("Update with uppercase id: %v", err)
 	}
@@ -233,7 +334,6 @@ func TestConnectionsLifecycle(t *testing.T) {
 		t.Fatalf("Test by canonical id after uppercase-id update = (%v, %v), want ok — credential resealed under a non-canonical AAD", testResp.Msg.GetOk(), err)
 	}
 
-	// List and Get return the descriptor only.
 	list, err := connsC.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.ListConnectionsRequest{}), csrf))
 	if err != nil || len(list.Msg.GetConnections()) != 1 {
 		t.Fatalf("List = %d conns, %v; want 1", len(list.Msg.GetConnections()), err)
@@ -243,15 +343,35 @@ func TestConnectionsLifecycle(t *testing.T) {
 		t.Fatalf("Get = %+v, %v", got.Msg.GetConnection(), err)
 	}
 
-	// Rename-only update (no config, no re-test).
 	renamed, err := connsC.Update(ctx, withCSRF(connect.NewRequest(&portcullisv1.UpdateConnectionRequest{
-		Id: conn.GetId(), DisplayName: "Primary (renamed)",
+		Id: conn.GetId(), DisplayName: "Primary (renamed)", ExpectedVersion: got.Msg.GetConnection().GetVersion(),
 	}), csrf))
 	if err != nil || renamed.Msg.GetConnection().GetDisplayName() != "Primary (renamed)" {
 		t.Fatalf("Update rename = %+v, %v", renamed.Msg.GetConnection(), err)
 	}
 
-	// Archive blocks further tests and repeats.
+	for _, tc := range []struct {
+		name    string
+		version int64
+		want    connect.Code
+	}{
+		{"the version just spent", got.Msg.GetConnection().GetVersion(), connect.CodeAborted},
+		{"a future version", renamed.Msg.GetConnection().GetVersion() + 5, connect.CodeAborted},
+		{"absent", 0, connect.CodeInvalidArgument},
+		{"negative", -1, connect.CodeInvalidArgument},
+	} {
+		_, err := connsC.Update(ctx, withCSRF(connect.NewRequest(&portcullisv1.UpdateConnectionRequest{
+			Id: conn.GetId(), DisplayName: "Hijacked", ExpectedVersion: tc.version,
+		}), csrf))
+		if connect.CodeOf(err) != tc.want {
+			t.Errorf("update with %s = %v, want %s", tc.name, err, tc.want)
+		}
+	}
+	after, err := connsC.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetConnectionRequest{Id: conn.GetId()}), csrf))
+	if err != nil || after.Msg.GetConnection().GetDisplayName() != "Primary (renamed)" {
+		t.Fatalf("after the refused updates = %+v, %v; want the rename intact", after.Msg.GetConnection(), err)
+	}
+
 	archived, err := connsC.Archive(ctx, withCSRF(connect.NewRequest(&portcullisv1.ArchiveConnectionRequest{Id: conn.GetId()}), csrf))
 	if err != nil {
 		t.Fatalf("Archive: %v", err)
@@ -267,7 +387,7 @@ func TestConnectionsLifecycle(t *testing.T) {
 	}), csrf)); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("test after archive code = %v, want FailedPrecondition", connect.CodeOf(err))
 	}
-	// The archived row disappears from the default list and returns with the flag.
+
 	list, err = connsC.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.ListConnectionsRequest{}), csrf))
 	if err != nil || len(list.Msg.GetConnections()) != 0 {
 		t.Fatalf("List(active) after archive = %d, %v; want 0", len(list.Msg.GetConnections()), err)
@@ -277,8 +397,6 @@ func TestConnectionsLifecycle(t *testing.T) {
 		t.Fatalf("List(all) after archive = %d, %v; want 1", len(list.Msg.GetConnections()), err)
 	}
 
-	// The audit trail carries the whole story (ADR-0014 vocabulary). disable is
-	// a relaxed mode, so the create also emitted CONNECTION_TLS_RELAXED.
 	trail, err := auditC.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.AuditListRequest{Page: 1, PageSize: 100}), csrf))
 	if err != nil {
 		t.Fatalf("Audit.List: %v", err)
@@ -302,13 +420,10 @@ func TestConnectionsLifecycle(t *testing.T) {
 	}
 }
 
-// TestConnectionsPermissionDenied verifies every Connections RPC is gated: an
-// authenticated user with no role gets the uniform generic denial (ADR-0008).
 func TestConnectionsPermissionDenied(t *testing.T) {
 	env := newConnsTestEnv(t)
 	ctx := context.Background()
 
-	// Bootstrap the install, then log in as a role-less viewer.
 	jar, authC, _, _ := env.clients()
 	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: "admin@example.com", Password: "correct-horse-battery", DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)

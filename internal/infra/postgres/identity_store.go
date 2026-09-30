@@ -17,15 +17,12 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
 
-// IdentityStore implements the identity domain's repository ports over the sqlc
-// queries. A single type satisfies the user, role, OIDC, session, and permission
-// catalog ports.
+// IdentityStore implements the identity domain's repository ports over the sqlc queries. A single type satisfies the user, role, OIDC, session, and permission catalog ports.
 type IdentityStore struct {
 	pool *pgxpool.Pool
 	q    *db.Queries
 
-	// orgID caches the single-org id (immutable after seeding) so audit writes on
-	// hot paths (every failed login, every rotate/revoke tx) don't re-query it.
+	// orgID caches the single-org id (immutable after seeding) so audit writes on hot paths (every failed login, every rotate/revoke tx) don't re-query it.
 	orgMu sync.Mutex
 	orgID identity.OrganizationID
 }
@@ -35,18 +32,14 @@ func NewIdentityStore(pool *pgxpool.Pool) *IdentityStore {
 	return &IdentityStore{pool: pool, q: db.New(pool)}
 }
 
-// userLockObject hashes a user id into the int32 object space for a per-user
-// advisory lock; a collision only over-serializes two users' logins, which is
-// harmless (the lock guards correctness, not exclusivity of access).
+// userLockObject hashes a user id into the int32 object space for a per-user advisory lock; a collision only over-serializes two users' logins, which is harmless (the lock guards correctness, not exclusivity of access).
 func userLockObject(user identity.UserID) int32 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(user))
 	return int32(h.Sum32())
 }
 
-// withLockedTx runs fn in a transaction holding the (class, object) advisory lock,
-// committing on success and rolling back on error. It centralizes the tx +
-// advisory-lock lifecycle so BootstrapAdmin and RotateSession can't drift apart.
+// withLockedTx runs fn in a transaction holding the (class, object) advisory lock, committing on success and rolling back on error. It centralizes the tx + advisory-lock lifecycle so BootstrapAdmin and RotateSession can't drift apart.
 func (s *IdentityStore) withLockedTx(ctx context.Context, class, object int32, fn func(*db.Queries) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -69,12 +62,7 @@ func notFound(err, domainErr error) error {
 	return err
 }
 
-// onUniqueViolation maps a unique-constraint violation (SQLSTATE 23505) to a domain
-// sentinel so a duplicate is distinguishable from a real failure across the port
-// boundary — callers branch on the sentinel, never on the raw driver error. When
-// constraint is non-empty it must also match ConstraintName (the index/constraint
-// that was violated), so unrelated unique conflicts on the same statement still
-// surface as themselves. Other errors pass through unchanged.
+// onUniqueViolation maps SQLSTATE 23505 only when the optional constraint name matches; unrelated database errors pass through.
 func onUniqueViolation(err error, constraint string, domainErr error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode &&
@@ -145,9 +133,7 @@ func (s *IdentityStore) GetUserByEmail(ctx context.Context, email string) (ident
 	return toUser(u), nil
 }
 
-// GetUserForLogin returns the user, password hash, and progressive-backoff
-// state in one query; the hash is "" for an OIDC-only user with no password
-// row, and the backoff is zero-valued for an account that never failed.
+// GetUserForLogin returns the user, password hash, and progressive-backoff state in one query; the hash is "" for an OIDC-only user with no password row, and the backoff is zero-valued for an account that never failed.
 func (s *IdentityStore) GetUserForLogin(ctx context.Context, email string) (identity.User, string, identity.LoginBackoff, error) {
 	row, err := s.q.GetUserForLogin(ctx, email)
 	if err != nil {
@@ -168,9 +154,7 @@ func (s *IdentityStore) GetUserForLogin(ctx context.Context, email string) (iden
 	return u, row.PasswordHash, backoff, nil
 }
 
-// RecordLoginFailure counts one failed attempt and imposes/extends the lockout
-// in a single atomic statement on the database clock (ADR-0006); the policy
-// values travel per call, so the store stays policy-free.
+// RecordLoginFailure counts one failed attempt and imposes/extends the lockout in a single atomic statement on the database clock (ADR-0006); the policy values travel per call, so the store stays policy-free.
 func (s *IdentityStore) RecordLoginFailure(ctx context.Context, id identity.UserID, p identity.FailureParams) (identity.LoginBackoff, error) {
 	uid, err := stringToUUID(string(id))
 	if err != nil {
@@ -249,9 +233,28 @@ func (s *IdentityStore) AddMembership(ctx context.Context, org identity.Organiza
 		return err
 	}
 	_, err = s.q.CreateMembership(ctx, db.CreateMembershipParams{OrganizationID: orgU, UserID: userU, RoleID: roleU})
-	// The one unique constraint on the insert is (organization_id, user_id); map its
-	// violation to the domain sentinel rather than leaking the raw driver error.
+	// The one unique constraint on the insert is (organization_id, user_id); map its violation to the domain sentinel rather than leaking the raw driver error.
 	return onUniqueViolation(err, "", identity.ErrMembershipExists)
+}
+
+// RoleNameForUser returns the display name of the user's role in the organization — a UI label only, never an authorization input (ADR-0008). A user without an active membership/role maps to ErrUserNotFound.
+func (s *IdentityStore) RoleNameForUser(ctx context.Context, org identity.OrganizationID, id identity.UserID) (string, error) {
+	orgU, err := stringToUUID(string(org))
+	if err != nil {
+		return "", err
+	}
+	uid, err := stringToUUID(string(id))
+	if err != nil {
+		return "", err
+	}
+	name, err := s.q.RoleNameForUser(ctx, db.RoleNameForUserParams{OrganizationID: orgU, UserID: uid})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", identity.ErrUserNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func (s *IdentityStore) PermissionsForUser(ctx context.Context, org identity.OrganizationID, id identity.UserID) ([]identity.Permission, error) {
@@ -274,12 +277,7 @@ func (s *IdentityStore) PermissionsForUser(ctx context.Context, org identity.Org
 	return perms, nil
 }
 
-// BootstrapAdmin atomically creates the first admin: under an advisory lock (so
-// concurrent bootstraps serialize), it re-checks that no user exists, then writes
-// the user, password, bootstrap-role membership, AND the audit event in one
-// transaction (ADR-0009) — completing the event's actor with the user created
-// inside the tx. A partial failure rolls back fully, so a retry can still
-// bootstrap and a created admin can never lack its trail.
+// BootstrapAdmin serializes first-admin creation and commits user, password, membership, and audit event together; partial failure leaves bootstrap retryable.
 func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, evt audit.Event) (identity.User, error) {
 	var out identity.User
 	err := s.withLockedTx(ctx, lockClassBootstrap, 0, func(q *db.Queries) error {
@@ -361,8 +359,7 @@ func linkOIDCIdentity(ctx context.Context, q *db.Queries, id identity.OIDCIdenti
 	if err != nil {
 		return err
 	}
-	// No row comes back when the (issuer, subject) is already linked to a
-	// different user (the conflict's WHERE fails), which we surface as a collision.
+	// No row comes back when the (issuer, subject) is already linked to a different user (the conflict's WHERE fails), which we surface as a collision.
 	_, err = q.LinkOIDCIdentity(ctx, db.LinkOIDCIdentityParams{
 		UserID:  uid,
 		Issuer:  id.Issuer,
@@ -399,9 +396,7 @@ func (s *IdentityStore) GetSessionByTokenHash(ctx context.Context, tokenHash []b
 	return toSession(row), nil
 }
 
-// ValidateSession is the no-write counterpart to ExtendSessionIdle. It is run
-// after CSRF succeeds when a throttled request does not need to renew idle
-// expiry, making server-side revocation and expiry effective on every request.
+// ValidateSession is the no-write counterpart to ExtendSessionIdle. It is run after CSRF succeeds when a throttled request does not need to renew idle expiry, making server-side revocation and expiry effective on every request.
 func (s *IdentityStore) ValidateSession(ctx context.Context, id identity.SessionID) error {
 	sid, err := stringToUUID(string(id))
 	if err != nil {
@@ -413,10 +408,7 @@ func (s *IdentityStore) ValidateSession(ctx context.Context, id identity.Session
 	return nil
 }
 
-// completeEventOrg fills a missing OrganizationID from the cached single-org id
-// BEFORE the transaction opens (insertAuditTx can also resolve it, but only via
-// an extra query inside the tx). Every state-changing method that rides an audit
-// event calls this one helper so the invariant can't be forgotten per call site.
+// completeEventOrg fills a missing OrganizationID from the cached single-org id BEFORE the transaction opens (insertAuditTx can also resolve it, but only via an extra query inside the tx). Every state-changing method that rides an audit event calls this one helper so the invariant can't be forgotten per call site.
 func (s *IdentityStore) completeEventOrg(ctx context.Context, evt *audit.Event) error {
 	if evt.OrganizationID != "" {
 		return nil
@@ -429,8 +421,7 @@ func (s *IdentityStore) completeEventOrg(ctx context.Context, evt *audit.Event) 
 	return nil
 }
 
-// RevokeSession revokes one session and writes the audit event in the same
-// transaction (ADR-0009), so a logout can never commit without its trail.
+// RevokeSession revokes one session and writes the audit event in the same transaction (ADR-0009), so a logout can never commit without its trail.
 func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID, evt audit.Event) error {
 	sid, err := stringToUUID(string(id))
 	if err != nil {
@@ -450,9 +441,7 @@ func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID
 		return err
 	}
 	if rows == 0 {
-		// Already revoked (concurrent double logout): no state changed, so no
-		// audit event — the trail must mirror real state changes (ADR-0009) and
-		// the original revoked_at stays intact. Nothing to commit.
+		// Already revoked (concurrent double logout): no state changed, so no audit event — the trail must mirror real state changes (ADR-0009) and the original revoked_at stays intact. Nothing to commit.
 		return nil
 	}
 	if err := insertAuditTx(ctx, q, evt); err != nil {
@@ -479,19 +468,13 @@ func (s *IdentityStore) ExtendSessionIdle(ctx context.Context, id identity.Sessi
 		return err
 	}
 	if updated == 0 {
-		// Authenticate and the post-CSRF slide are deliberately separate so a
-		// rejected request cannot prolong a session. The conditional UPDATE is
-		// therefore the authoritative final check: a concurrent revocation or
-		// expiry must reject this request, not merely avoid resurrection.
+		// Authenticate and the post-CSRF slide are deliberately separate so a rejected request cannot prolong a session. The conditional UPDATE is therefore the authoritative final check: a concurrent revocation or expiry must reject this request, not merely avoid resurrection.
 		return identity.ErrSessionNotFound
 	}
 	return nil
 }
 
-// RotateSession revokes the user's active sessions, inserts the new one, and
-// writes the login audit event in one transaction, serialized by a per-user
-// advisory lock — concurrent logins still leave exactly one active session
-// (ADR-0006) and a session can never be issued without its trail (ADR-0009).
+// RotateSession revokes the user's active sessions, inserts the new one, and writes the login audit event in one transaction, serialized by a per-user advisory lock — concurrent logins still leave exactly one active session (ADR-0006) and a session can never be issued without its trail (ADR-0009).
 func (s *IdentityStore) RotateSession(ctx context.Context, user identity.UserID, sess identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error) {
 	uid, err := stringToUUID(string(user))
 	if err != nil {
@@ -507,9 +490,7 @@ func (s *IdentityStore) RotateSession(ctx context.Context, user identity.UserID,
 	return out, err
 }
 
-// LinkIdentityAndRotateSession makes first OIDC login one atomic security state
-// change: the provider subject link, session rotation, and AUTH_LOGIN evidence
-// either all commit or all roll back (ADR-0007/0009).
+// LinkIdentityAndRotateSession makes first OIDC login one atomic security state change: the provider subject link, session rotation, and AUTH_LOGIN evidence either all commit or all roll back (ADR-0007/0009).
 func (s *IdentityStore) LinkIdentityAndRotateSession(ctx context.Context, link identity.OIDCIdentity, sess identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error) {
 	uid, err := stringToUUID(string(link.UserID))
 	if err != nil {

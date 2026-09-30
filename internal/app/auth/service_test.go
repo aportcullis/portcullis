@@ -14,8 +14,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// --- in-memory fake satisfying auth.Repository ---
-
 type fakeRepo struct {
 	users     map[identity.UserID]identity.User
 	emails    map[string]identity.UserID
@@ -25,27 +23,20 @@ type fakeRepo struct {
 	oidc      map[string]identity.UserID
 	backoff   map[identity.UserID]identity.LoginBackoff
 	seq       int
-	// clock is the repo's now() — the real store's lazy expiry-reset runs on the
-	// database clock, so tests that advance the service clock set this too.
+	// clock is the repo's now() — the real store's lazy expiry-reset runs on the database clock, so tests that advance the service clock set this too.
 	clock func() time.Time
-	// txEvents captures the audit events passed to the transactional ops
-	// (BootstrapAdmin, RotateSession, RevokeSession) in call order, mimicking the
-	// real store's same-transaction write (ADR-0009). The fake completes the
-	// actor for bootstrap the way the store does.
+
 	txEvents []audit.Event
-	// lastFailure mirrors the row's last_failure_at (the staleness input).
+
 	lastFailure map[identity.UserID]time.Time
-	// call counters, so tests can pin that a write did NOT happen (throttles,
-	// best-effort rehash, clean-row resets).
+
 	extendCalls      int
 	setPasswordCalls int
 	failureWrites    int
 	resetWrites      int
-	// failBackoffWrites makes the backoff writes fail, to prove they are
-	// best-effort (a counter outage must never change the login response).
+	// failBackoffWrites makes the backoff writes fail, to prove they are best-effort (a counter outage must never change the login response).
 	failBackoffWrites bool
-	// failOIDCComplete simulates a failure in the transaction that persists a
-	// first OIDC link plus its session/audit record.
+
 	failOIDCComplete bool
 }
 
@@ -107,13 +98,10 @@ func (f *fakeRepo) GetUserForLogin(_ context.Context, email string) (identity.Us
 		return identity.User{}, "", identity.LoginBackoff{}, identity.ErrUserNotFound
 	}
 	b := f.backoff[id]
-	// Like the real query, the locked flag is evaluated at read time on the
-	// repo's clock (the stand-in for the database clock).
+	// Like the real query, the locked flag is evaluated at read time on the repo's clock (the stand-in for the database clock).
 	b.Locked = b.LockedUntil != nil && b.LockedUntil.After(f.clock())
 	return f.users[id], f.passwords[id], b, nil
 }
-
-// --- progressive backoff (mirrors the store's atomic upsert semantics) ---
 
 func (f *fakeRepo) RecordLoginFailure(_ context.Context, id identity.UserID, p identity.FailureParams) (identity.LoginBackoff, error) {
 	f.failureWrites++
@@ -122,8 +110,7 @@ func (f *fakeRepo) RecordLoginFailure(_ context.Context, id identity.UserID, p i
 	}
 	now := f.clock()
 	b := f.backoff[id]
-	// Lazy resets, exactly like the upsert: an expired lockout — or a stale
-	// sub-threshold counter — restarts at 1.
+
 	expired := b.LockedUntil != nil && !b.LockedUntil.After(now)
 	stale := b.LockedUntil == nil && b.FailureCount > 0 && !f.lastFailure[id].After(now.Add(-p.Staleness))
 	if expired || stale {
@@ -153,8 +140,7 @@ func (f *fakeRepo) ResetLoginBackoff(_ context.Context, id identity.UserID) erro
 	if f.failBackoffWrites {
 		return errors.New("backoff store down")
 	}
-	// The real statement's WHERE leaves a clean row unwritten; only dirty rows
-	// count as a write, so tests can pin the hot path stays write-free.
+
 	if b, ok := f.backoff[id]; ok && (b.FailureCount > 0 || b.LockedUntil != nil) {
 		f.resetWrites++
 		delete(f.backoff, id)
@@ -242,8 +228,7 @@ func (f *fakeRepo) RotateSession(ctx context.Context, user identity.UserID, s id
 	return f.CreateSession(ctx, s, tokenHash)
 }
 func (f *fakeRepo) LinkIdentityAndRotateSession(ctx context.Context, id identity.OIDCIdentity, s identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error) {
-	// Mirror the production transaction: a conflicting subject or a failed
-	// session/audit operation leaves no newly linked identity behind.
+
 	key := id.Issuer + "|" + id.Subject
 	if existing, ok := f.oidc[key]; ok && existing != id.UserID {
 		return identity.Session{}, identity.ErrIdentityLinkedToAnotherUser
@@ -262,8 +247,7 @@ func (f *fakeRepo) FindUserBySubject(_ context.Context, issuer, subject string) 
 	return f.users[id], nil
 }
 
-// linkIdentity is test-fixture setup only. Production linking is exposed only
-// through LinkIdentityAndRotateSession so it cannot bypass its transaction.
+// linkIdentity is test-fixture setup only. Production linking is exposed only through LinkIdentityAndRotateSession so it cannot bypass its transaction.
 func (f *fakeRepo) linkIdentity(id identity.OIDCIdentity) error {
 	key := id.Issuer + "|" + id.Subject
 	if existing, ok := f.oidc[key]; ok && existing != id.UserID {
@@ -272,8 +256,6 @@ func (f *fakeRepo) linkIdentity(id identity.OIDCIdentity) error {
 	f.oidc[key] = id.UserID
 	return nil
 }
-
-// --- fake crypto adapters (fast: no real Argon2/keyring) ---
 
 type fakeHasher struct{}
 
@@ -284,24 +266,20 @@ func (fakeHasher) Verify(_ context.Context, password, encoded string) (ok, needs
 	return encoded == "h:"+password, false, nil
 }
 
-// errHashHasher fails every Hash, to prove auth.New refuses to build a service
-// whose timing-equalizer hash can't be precomputed.
+// errHashHasher fails every Hash, to prove auth.New refuses to build a service whose timing-equalizer hash can't be precomputed.
 type errHashHasher struct{ fakeHasher }
 
 func (errHashHasher) Hash(context.Context, string) (string, error) {
 	return "", errors.New("argon2 broken")
 }
 
-// errVerifyHasher verifies nothing — its errors stand in for an unparsable
-// stored hash, which must not be distinguishable from a wrong password.
+// errVerifyHasher verifies nothing — its errors stand in for an unparsable stored hash, which must not be distinguishable from a wrong password.
 type errVerifyHasher struct{ fakeHasher }
 
 func (errVerifyHasher) Verify(context.Context, string, string) (bool, bool, error) {
 	return false, false, errors.New("stored hash unparsable")
 }
 
-// rehashHasher always reports an outdated profile, exercising the transparent
-// rehash-on-login path; failRehash makes the re-hash itself fail (best-effort).
 type rehashHasher struct{ failRehash bool }
 
 func (h *rehashHasher) Hash(_ context.Context, password string) (string, error) {
@@ -321,14 +299,11 @@ type fakeCSRF struct{}
 func (fakeCSRF) Issue(sessionToken string) (string, error) { return "csrf:" + sessionToken, nil }
 func (fakeCSRF) Verify(sessionToken, token string) bool    { return token == "csrf:"+sessionToken }
 
-// errCSRF fails issuance, to prove a CSRF failure happens before the rotation commit.
 type errCSRF struct{}
 
 func (errCSRF) Issue(string) (string, error) { return "", errors.New("rng failed") }
 func (errCSRF) Verify(string, string) bool   { return false }
 
-// capturingRecorder collects audit events so tests can assert on emission,
-// and the ctx liveness observed at each write (to pin the WithoutCancel behavior).
 type capturingRecorder struct {
 	mu      sync.Mutex
 	events  []audit.Event
@@ -349,13 +324,10 @@ func (r *capturingRecorder) all() []audit.Event {
 	return append([]audit.Event(nil), r.events...)
 }
 
-// errRecorder always fails, to prove audit is best-effort.
 type errRecorder struct{}
 
 func (errRecorder) Record(context.Context, audit.Event) error { return errors.New("audit down") }
 
-// ctxAwareRepo respects request-context cancellation on the login lookup, the
-// way the real pgx-backed store does — the plain fake ignores ctx.
 type ctxAwareRepo struct{ *fakeRepo }
 
 func (r ctxAwareRepo) GetUserForLogin(ctx context.Context, email string) (identity.User, string, identity.LoginBackoff, error) {
@@ -365,8 +337,6 @@ func (r ctxAwareRepo) GetUserForLogin(ctx context.Context, email string) (identi
 	return r.fakeRepo.GetUserForLogin(ctx, email)
 }
 
-// ctxAwareHasher respects cancellation the way the bounded Argon2 hasher does
-// (its semaphore acquire returns ctx.Err()).
 type ctxAwareHasher struct{ fakeHasher }
 
 func (h ctxAwareHasher) Verify(ctx context.Context, password, encoded string) (bool, bool, error) {
@@ -375,8 +345,6 @@ func (h ctxAwareHasher) Verify(ctx context.Context, password, encoded string) (b
 	}
 	return h.fakeHasher.Verify(ctx, password, encoded)
 }
-
-// --- helpers ---
 
 func newService(t *testing.T, repo auth.Repository) *auth.Service {
 	t.Helper()
@@ -391,8 +359,6 @@ func newServiceWithRecorder(t *testing.T, repo auth.Repository, rec auth.AuditRe
 	}
 	return svc
 }
-
-// --- tests ---
 
 func TestAuthRecordsAuditEvents(t *testing.T) {
 	t.Parallel()
@@ -419,7 +385,6 @@ func TestAuthRecordsAuditEvents(t *testing.T) {
 		t.Fatalf("Logout: %v", err)
 	}
 
-	// State-changing ops ride the repo call so they commit atomically (ADR-0009).
 	wantTx := []struct {
 		action  audit.Action
 		outcome audit.Outcome
@@ -431,28 +396,26 @@ func TestAuthRecordsAuditEvents(t *testing.T) {
 	if len(repo.txEvents) != len(wantTx) {
 		t.Fatalf("transactional events = %d, want %d: %+v", len(repo.txEvents), len(wantTx), repo.txEvents)
 	}
-	for i, w := range wantTx {
-		e := repo.txEvents[i]
+	for idx, w := range wantTx {
+		e := repo.txEvents[idx]
 		if e.Action != w.action || e.Outcome != w.outcome {
-			t.Errorf("txEvent[%d] = %s/%s, want %s/%s", i, e.Action, e.Outcome, w.action, w.outcome)
+			t.Errorf("txEvent[%d] = %s/%s, want %s/%s", idx, e.Action, e.Outcome, w.action, w.outcome)
 		}
 	}
-	// Login/logout events carry the resolved actor; bootstrap's actor is completed
-	// by the store inside the transaction.
+
 	if a := repo.txEvents[1].ActorUserID; a == nil || *a != u.ID {
 		t.Errorf("login txEvent actor = %v, want %v", a, u.ID)
 	}
 	if a := repo.txEvents[2].ActorUserID; a == nil || *a != u.ID {
 		t.Errorf("logout txEvent actor = %v, want %v", a, u.ID)
 	}
-	// Every resolved-target event tags the target type "user" (paired with TargetID).
-	for _, i := range []int{1, 2} {
-		if tt := repo.txEvents[i].TargetType; tt != audit.TargetTypeUser {
-			t.Errorf("txEvent[%d] TargetType = %q, want %q", i, tt, audit.TargetTypeUser)
+
+	for _, idx := range []int{1, 2} {
+		if tt := repo.txEvents[idx].TargetType; tt != audit.TargetTypeUser {
+			t.Errorf("txEvent[%d] TargetType = %q, want %q", idx, tt, audit.TargetTypeUser)
 		}
 	}
 
-	// Failures change no state, so they go through the best-effort recorder.
 	failures := rec.all()
 	if len(failures) != 2 {
 		t.Fatalf("recorded %d failure events, want 2: %+v", len(failures), failures)
@@ -465,15 +428,14 @@ func TestAuthRecordsAuditEvents(t *testing.T) {
 			t.Errorf("failure[%d] has no organization", i)
 		}
 	}
-	// Wrong password resolved the user; unknown email has no actor to attribute.
+
 	if a := failures[0].ActorUserID; a == nil || *a != u.ID {
 		t.Errorf("wrong-password failure actor = %v, want %v", a, u.ID)
 	}
 	if failures[1].ActorUserID != nil {
 		t.Errorf("unknown-email failure actor = %v, want nil", *failures[1].ActorUserID)
 	}
-	// TargetType mirrors the actor: "user" once a target resolves, empty for the
-	// actor-less unknown-email failure (no spurious target vocabulary in the trail).
+
 	if tt := failures[0].TargetType; tt != audit.TargetTypeUser {
 		t.Errorf("wrong-password failure TargetType = %q, want %q", tt, audit.TargetTypeUser)
 	}
@@ -487,8 +449,7 @@ func TestFailedLoginAuditSurvivesCancelledContext(t *testing.T) {
 	rec := &capturingRecorder{}
 	svc := newServiceWithRecorder(t, newFake(), rec)
 
-	// A client that disconnects mid-request must not erase the failed-attempt
-	// trail: recordAudit detaches from the request ctx (WithoutCancel).
+	// A client that disconnects mid-request must not erase the failed-attempt trail: recordAudit detaches from the request ctx (WithoutCancel).
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := svc.Login(ctx, "ghost@example.com", "hunter2-secretz"); !errors.Is(err, identity.ErrInvalidCredentials) {
@@ -503,9 +464,6 @@ func TestFailedLoginAuditSurvivesCancelledContext(t *testing.T) {
 	}
 }
 
-// A disconnect that cancels the request BEFORE the user lookup completes (the
-// real store propagates ctx cancellation) must still leave a failed-attempt
-// event — otherwise cancelling early erases the trail entirely.
 func TestFailedLoginAuditSurvivesCancelDuringLookup(t *testing.T) {
 	t.Parallel()
 	rec := &capturingRecorder{}
@@ -528,8 +486,6 @@ func TestFailedLoginAuditSurvivesCancelDuringLookup(t *testing.T) {
 	}
 }
 
-// Cancellation while waiting on the (bounded) password hash must likewise still
-// record the attempt, attributed to the resolved user.
 func TestFailedLoginAuditSurvivesCancelDuringVerify(t *testing.T) {
 	t.Parallel()
 	rec := &capturingRecorder{}
@@ -566,8 +522,7 @@ func TestAuditFailureDoesNotBlockAuth(t *testing.T) {
 	ctx := context.Background()
 	svc := newServiceWithRecorder(t, newFake(), errRecorder{})
 
-	// The failure path must succeed even though the audit write fails
-	// (best-effort applies to no-state-change events only).
+	// The failure path must succeed even though the audit write fails (best-effort applies to no-state-change events only).
 	if _, err := svc.Login(ctx, "ghost@example.com", "some-long-password"); !errors.Is(err, identity.ErrInvalidCredentials) {
 		t.Fatalf("login with failing audit = %v, want ErrInvalidCredentials", err)
 	}
@@ -592,8 +547,7 @@ func TestAuthenticateIsPureRead_SlideIdleExtends(t *testing.T) {
 	// Well past IdleRenewInterval — enough that a slide WOULD move the window.
 	clock = clock.Add(time.Hour)
 
-	// Authenticate is a pure read: it must NOT advance the idle expiry (so a later
-	// CSRF-rejected request can't keep the session alive).
+	// Authenticate is a pure read: it must NOT advance the idle expiry (so a later CSRF-rejected request can't keep the session alive).
 	_, sess, err := svc.Authenticate(ctx, res.Token)
 	if err != nil {
 		t.Fatalf("Authenticate: %v", err)
@@ -602,7 +556,6 @@ func TestAuthenticateIsPureRead_SlideIdleExtends(t *testing.T) {
 		t.Errorf("Authenticate advanced idle expiry %v → %v; it must be a pure read", idle0, sess.IdleExpiresAt)
 	}
 
-	// SlideIdle is what advances it (called by transport only after CSRF passes).
 	if err := svc.SlideIdle(ctx, sess); err != nil {
 		t.Fatalf("SlideIdle: %v", err)
 	}
@@ -615,8 +568,6 @@ func TestAuthenticateIsPureRead_SlideIdleExtends(t *testing.T) {
 	}
 }
 
-// A half-built service must never start: nil dependencies and a failing
-// timing-equalizer precompute both refuse construction (ADR-0006).
 func TestNewRefusesBrokenDependencies(t *testing.T) {
 	t.Parallel()
 	if svc, err := auth.New(nil, fakeHasher{}, fakeCSRF{}, &capturingRecorder{}, auth.Config{}); err == nil || svc != nil {
@@ -627,8 +578,6 @@ func TestNewRefusesBrokenDependencies(t *testing.T) {
 	}
 }
 
-// The idle-slide write is throttled to once per IdleRenewInterval (ADR-0006):
-// within the interval SlideIdle must be a no-op, past it exactly one UPDATE.
 func TestSlideIdleThrottlesFrequentWrites(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -644,7 +593,6 @@ func TestSlideIdleThrottlesFrequentWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Within the (default 1 min) renew interval: no write.
 	clock = clock.Add(10 * time.Second)
 	if err := svc.SlideIdle(ctx, res.Session); err != nil {
 		t.Fatalf("SlideIdle: %v", err)
@@ -653,7 +601,6 @@ func TestSlideIdleThrottlesFrequentWrites(t *testing.T) {
 		t.Errorf("SlideIdle within the renew interval wrote %d times, want 0", repo.extendCalls)
 	}
 
-	// Past the interval: exactly one write.
 	clock = clock.Add(2 * time.Minute)
 	if err := svc.SlideIdle(ctx, res.Session); err != nil {
 		t.Fatalf("SlideIdle: %v", err)
@@ -663,9 +610,6 @@ func TestSlideIdleThrottlesFrequentWrites(t *testing.T) {
 	}
 }
 
-// A throttled idle slide must still consult server-side state: a logout or a
-// rotation between Authenticate and the post-CSRF check cannot authorize one
-// more handler invocation merely because no renewal write was due.
 func TestSlideIdleRejectsRevokedSessionWithinRenewInterval(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -679,7 +623,7 @@ func TestSlideIdleRejectsRevokedSessionWithinRenewInterval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock = clock.Add(10 * time.Second) // below IdleRenewInterval
+	clock = clock.Add(10 * time.Second)
 	if err := repo.RevokeSession(ctx, res.Session.ID, audit.Event{Action: audit.ActionAuthLogout}); err != nil {
 		t.Fatal(err)
 	}
@@ -691,8 +635,6 @@ func TestSlideIdleRejectsRevokedSessionWithinRenewInterval(t *testing.T) {
 	}
 }
 
-// A stored hash on an outdated profile is transparently re-hashed on the next
-// successful login; a failing re-hash must not fail the login (best-effort).
 func TestLoginRehashesOutdatedProfile(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -705,7 +647,7 @@ func TestLoginRehashesOutdatedProfile(t *testing.T) {
 	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
-	baseline := repo.setPasswordCalls // Bootstrap stores via BootstrapAdmin, not SetPassword
+	baseline := repo.setPasswordCalls
 
 	if _, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz"); err != nil {
 		t.Fatalf("Login: %v", err)
@@ -714,7 +656,6 @@ func TestLoginRehashesOutdatedProfile(t *testing.T) {
 		t.Errorf("rehash-on-login stored %d times, want exactly 1", repo.setPasswordCalls-baseline)
 	}
 
-	// Re-hash failure is swallowed: the login still succeeds, nothing is stored.
 	hasher.failRehash = true
 	if _, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz"); err != nil {
 		t.Errorf("Login with failing rehash = %v, want success (best-effort)", err)
@@ -724,15 +665,11 @@ func TestLoginRehashesOutdatedProfile(t *testing.T) {
 	}
 }
 
-// An unverifiable stored hash (e.g. corrupted PHC) must be indistinguishable
-// from a wrong password — the one uniform-error exception found in review —
-// and still leave a failed-login audit event. Caller cancellation, by
-// contrast, keeps propagating (the abort-mid-hash trail depends on it).
 func TestLoginUniformErrorOnUnverifiableHash(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := newFake()
-	// Bootstrap with a working hasher so a password row exists.
+
 	boot := newServiceWithRecorder(t, repo, &capturingRecorder{})
 	if _, err := boot.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
@@ -752,8 +689,6 @@ func TestLoginUniformErrorOnUnverifiableHash(t *testing.T) {
 	}
 }
 
-// PublicConfig is the pre-session metadata the SPA routes on: whether Google
-// login is configured and whether the instance still needs its first admin.
 func TestPublicConfig(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -794,8 +729,40 @@ func TestBootstrapOnce(t *testing.T) {
 	}
 }
 
-// A refused Bootstrap on an already-installed instance records a best-effort
-// failure event, so probing the public bootstrap endpoint leaves an audit trail.
+func TestBootstrapPasswordRoundTripsVerbatim(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name     string
+		password string
+	}{
+		{"leading space", " hunter2-secretzz"},
+		{"trailing space", "hunter2-secretzz "},
+		{"internal spaces", "correct horse battery staple"},
+		{"tab inside", "hunter2\tsecretzz"},
+		{"multi-byte", "비밀번호가-충분히-길어야-합니다"},
+		{"emoji", "🙂🙂🙂-hunter2-secretz"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := newService(t, newFake())
+			email := "admin@example.com"
+			if _, err := svc.Bootstrap(ctx, email, tc.password, "Admin"); err != nil {
+				t.Fatalf("Bootstrap: %v", err)
+			}
+			if _, err := svc.Login(ctx, email, tc.password); err != nil {
+				t.Errorf("Login with the bootstrapped password failed: %v", err)
+			}
+
+			if trimmed := strings.TrimSpace(tc.password); trimmed != tc.password {
+				if _, err := svc.Login(ctx, email, trimmed); err == nil {
+					t.Error("the trimmed password also signed in — the space was dropped somewhere")
+				}
+			}
+		})
+	}
+}
+
 func TestBootstrapRefusedRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -824,8 +791,7 @@ func TestBootstrapRefusedRecordsFailureEvent(t *testing.T) {
 	if failed != 1 {
 		t.Errorf("bootstrap FAILED events = %d, want 1 (the refused attempt)", failed)
 	}
-	// The successful first bootstrap commits its event in the creation transaction
-	// (the store, not the recorder), so the recorder sees only the failure here.
+
 	if succeeded != 0 {
 		t.Errorf("recorder saw %d bootstrap SUCCEEDED events, want 0 (success commits in-tx)", succeeded)
 	}
@@ -849,13 +815,13 @@ func TestBootstrapValidatesInput(t *testing.T) {
 		{"empty password", "admin@example.com", "", identity.ErrWeakPassword},
 		{"short password", "admin@example.com", "short", identity.ErrWeakPassword},
 	}
-	// Display name is validated too (bounded length, no control/format chars —
-	// a bidi override or zero-width character spoofs the rendered name the same
-	// way a raw control character corrupts it).
+
 	dnCases := []struct {
 		name, display string
 		want          error
 	}{
+		{"empty", "", identity.ErrInvalidDisplayName},
+		{"whitespace only", "   ", identity.ErrInvalidDisplayName},
 		{"too long", strings.Repeat("x", 257), identity.ErrInvalidDisplayName},
 		{"control char", "Ad\x00min", identity.ErrInvalidDisplayName},
 		{"newline", "Ad\nmin", identity.ErrInvalidDisplayName},
@@ -908,8 +874,6 @@ func TestLoginRejectsWrongPasswordAndDisabled(t *testing.T) {
 		t.Errorf("unknown user = %v, want ErrInvalidCredentials", err)
 	}
 
-	// A disabled account is refused with the SAME generic error as a wrong password
-	// (OWASP anti-enumeration; ErrUserDisabled is not exposed by the login path).
 	id := repo.emails["admin@example.com"]
 	u := repo.users[id]
 	u.Status = identity.StatusDisabled
@@ -919,8 +883,6 @@ func TestLoginRejectsWrongPasswordAndDisabled(t *testing.T) {
 	}
 }
 
-// countingHasher counts Verify calls, so a test can pin that no hashing work
-// happens for inputs rejected up front.
 type countingHasher struct {
 	fakeHasher
 	verifies atomic.Int64
@@ -931,10 +893,6 @@ func (h *countingHasher) Verify(ctx context.Context, password, encoded string) (
 	return h.fakeHasher.Verify(ctx, password, encoded)
 }
 
-// Oversized login input can never match a stored credential (Bootstrap enforces
-// the same caps), so Login must reject it BEFORE any hashing — the upper
-// password bound exists to cap Argon2 input cost on verification (ADR-0006) —
-// with the same generic error as a wrong password.
 func TestLoginRejectsOversizedInputBeforeHashing(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -970,7 +928,6 @@ func TestLoginCanonicalizesEmailAndPassword(t *testing.T) {
 	ctx := context.Background()
 	svc := newService(t, newFake())
 
-	// Bootstrap with a mixed-case email and a decomposed é (e + combining acute).
 	const bootPw = "café-password-xy"
 	if _, err := svc.Bootstrap(ctx, "Admin@Example.com", bootPw, "Admin"); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
@@ -1003,20 +960,17 @@ func TestLoginLogoutAuthenticate(t *testing.T) {
 		t.Fatalf("Authenticate = %v, %v", u, err)
 	}
 
-	// CSRF token round-trips (bound to the raw session token) and rejects a wrong value.
 	if !svc.VerifyCSRF(res.Token, res.CSRF) {
 		t.Error("VerifyCSRF should accept the issued token")
 	}
 	if svc.VerifyCSRF(res.Token, "forged") {
 		t.Error("VerifyCSRF should reject a forged token")
 	}
-	// Contract pin: CSRF binds the raw session TOKEN, not the session id — a transport
-	// interceptor must pass the cookie value, not Session.ID, or every check fails.
+	// Contract pin: CSRF binds the raw session TOKEN, not the session id — a transport interceptor must pass the cookie value, not Session.ID, or every check fails.
 	if svc.VerifyCSRF(string(res.Session.ID), res.CSRF) {
 		t.Error("VerifyCSRF must be keyed by the session token, not the session id")
 	}
 
-	// After logout the session no longer authenticates.
 	if err := svc.Logout(ctx, res.Token); err != nil {
 		t.Fatalf("Logout: %v", err)
 	}
@@ -1056,8 +1010,7 @@ func TestSlideIdleCapsAtAbsolute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Sliding near the absolute expiry (default idle 12h < absolute 7d, so jump to
-	// 1h before absolute) must clamp the new idle expiry at the absolute one.
+	// Sliding near the absolute expiry (default idle 12h < absolute 7d, so jump to 1h before absolute) must clamp the new idle expiry at the absolute one.
 	near := res.Session.AbsoluteExpiresAt.Add(-time.Hour)
 	later := svc.WithClock(func() time.Time { return near })
 	if err := later.SlideIdle(ctx, res.Session); err != nil {
@@ -1092,7 +1045,6 @@ func TestLoginRevokesPriorSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// ADR-0006: a new login invalidates the prior session.
 	if _, _, err := svc.Authenticate(ctx, first.Token); err == nil {
 		t.Error("the first session should be revoked after a second login")
 	}
@@ -1112,7 +1064,7 @@ func TestLinkIdentityFixtureRejectsConflict(t *testing.T) {
 	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
 		t.Fatalf("first link: %v", err)
 	}
-	// Same identity, same user — idempotent.
+
 	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: a.ID, Issuer: iss, Subject: sub}); err != nil {
 		t.Errorf("re-link to same user should succeed: %v", err)
 	}
@@ -1135,8 +1087,7 @@ func TestLoginCSRFFailureLeavesPriorSessionIntact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A service whose CSRF issuance fails must error before RotateSession, so the
-	// commit is the last fallible step and the prior session is not revoked.
+	// A service whose CSRF issuance fails must error before RotateSession, so the commit is the last fallible step and the prior session is not revoked.
 	broken, err := auth.New(repo, fakeHasher{}, errCSRF{}, &capturingRecorder{}, auth.Config{})
 	if err != nil {
 		t.Fatal(err)

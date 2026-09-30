@@ -26,11 +26,11 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogLevel != "info" || cfg.LogFormat != "json" {
 		t.Errorf("LogLevel/Format = %q/%q, want info/json", cfg.LogLevel, cfg.LogFormat)
 	}
-	// Progressive-backoff defaults are the ADR-0006 pinned parameters.
+
 	if cfg.LoginBackoffThreshold != 5 || cfg.LoginBackoffBase != time.Minute || cfg.LoginBackoffCap != 15*time.Minute {
 		t.Errorf("login backoff = (%d, %s, %s), want (5, 1m, 15m)", cfg.LoginBackoffThreshold, cfg.LoginBackoffBase, cfg.LoginBackoffCap)
 	}
-	// Connection-test timeout default is the ADR-0014 pinned value.
+
 	if cfg.ConnectionTestTimeout != 10*time.Second {
 		t.Errorf("ConnectionTestTimeout = %v, want 10s", cfg.ConnectionTestTimeout)
 	}
@@ -48,19 +48,17 @@ func TestAllowPrivilegedRuntimeFlag(t *testing.T) {
 }
 
 func TestRuntimeRoleValidation(t *testing.T) {
-	// Default is the standard role name.
+
 	if cfg, err := config.Load(); err != nil || cfg.RuntimeRole != "portcullis_runtime" {
 		t.Errorf("default RuntimeRole = %q, %v; want portcullis_runtime", cfg.RuntimeRole, err)
 	}
 
-	// A custom identifier is accepted.
 	t.Setenv("PORTCULLIS_RUNTIME_ROLE", "pc_install_a")
 	if cfg, err := config.Load(); err != nil || cfg.RuntimeRole != "pc_install_a" {
 		t.Errorf("custom RuntimeRole = %q, %v", cfg.RuntimeRole, err)
 	}
 
-	// Anything that is not a plain lowercase identifier must fail fast: the name
-	// is spliced into migration SQL.
+	// Anything that is not a plain lowercase identifier must fail fast: the name is spliced into migration SQL.
 	for _, bad := range []string{"role; drop table users--", "Role", "1role", "a b"} {
 		t.Setenv("PORTCULLIS_RUNTIME_ROLE", bad)
 		if _, err := config.Load(); err == nil {
@@ -69,8 +67,6 @@ func TestRuntimeRoleValidation(t *testing.T) {
 	}
 }
 
-// Each env var's invalid/edge values must fail startup rather than degrade
-// silently — a misconfiguration should never quietly weaken the running server.
 func TestRejectsInvalidEnvValues(t *testing.T) {
 	cases := []struct {
 		name, env, val string
@@ -107,7 +103,6 @@ func TestRejectsInvalidEnvValues(t *testing.T) {
 	}
 }
 
-// Valid non-default values across every environment-tunable field load cleanly.
 func TestAcceptsValidEnvValues(t *testing.T) {
 	t.Setenv("PORTCULLIS_LOG_LEVEL", "error")
 	t.Setenv("PORTCULLIS_LOG_FORMAT", "text")
@@ -133,9 +128,6 @@ func TestAcceptsValidEnvValues(t *testing.T) {
 	}
 }
 
-// Logging validation delegates to the logging package, which parses
-// case-insensitively — an operator's LOG_LEVEL=ERROR must load, not fail
-// startup while the logger itself would honor it.
 func TestLogConfigIsCaseInsensitive(t *testing.T) {
 	t.Setenv("PORTCULLIS_LOG_LEVEL", "ERROR")
 	t.Setenv("PORTCULLIS_LOG_FORMAT", "TEXT")
@@ -144,12 +136,6 @@ func TestLogConfigIsCaseInsensitive(t *testing.T) {
 	}
 }
 
-// Startup migration is opt-in: the explicit STARTUP_MIGRATE tri-state wins;
-// unset defaults to "a server-held owner DSN is configured" (compatibility).
-// It is deliberately DECOUPLED from ALLOW_PRIVILEGED_RUNTIME — a security
-// debug flag must not silently change who migrates the schema (self-review
-// F6). The recommended production shape leaves everything unset and runs
-// `portcullis migrate` one-shot.
 func TestStartupMigrationSemantics(t *testing.T) {
 	t.Setenv("PORTCULLIS_DATABASE_URL", "postgres://app@localhost/db")
 	cfg, err := config.Load()
@@ -173,7 +159,6 @@ func TestStartupMigrationSemantics(t *testing.T) {
 		t.Error("ALLOW_PRIVILEGED_RUNTIME must not imply startup migration")
 	}
 
-	// Explicit opt-in (single-role dev, e2e).
 	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "true")
 	cfg, err = config.Load()
 	if err != nil {
@@ -183,7 +168,6 @@ func TestStartupMigrationSemantics(t *testing.T) {
 		t.Error("STARTUP_MIGRATE=true must enable startup migration")
 	}
 
-	// A server-held owner DSN keeps migrating by default (compatibility)…
 	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "")
 	t.Setenv("PORTCULLIS_MIGRATE_DATABASE_URL", "postgres://owner@localhost/db")
 	cfg, err = config.Load()
@@ -207,7 +191,6 @@ func TestStartupMigrationSemantics(t *testing.T) {
 		t.Error("STARTUP_MIGRATE=false must win over a configured owner DSN")
 	}
 
-	// A typo is a boot error, not a silent unset.
 	t.Setenv("PORTCULLIS_STARTUP_MIGRATE", "ture")
 	if _, err := config.Load(); err == nil {
 		t.Error("invalid STARTUP_MIGRATE value must fail Load")
@@ -254,12 +237,11 @@ func TestLoadFromEnv(t *testing.T) {
 }
 
 func TestGoogleLoginConfig(t *testing.T) {
-	// All unset (default): the feature is simply disabled — a valid state.
+
 	if cfg, err := config.Load(); err != nil || cfg.GoogleEnabled() {
 		t.Errorf("default GoogleEnabled = %t, %v; want false, nil", cfg.GoogleEnabled(), err)
 	}
 
-	// Fully configured: enabled, and the secret resolves.
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
 	t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", "https://portcullis.example/auth/google/callback")
@@ -273,8 +255,7 @@ func TestGoogleLoginConfig(t *testing.T) {
 }
 
 func TestGoogleLoginConfigRejectsPartialSetup(t *testing.T) {
-	// Any subset without the rest is a misconfig that must fail startup — a
-	// half-configured Google login would otherwise surface only on first use.
+	// Any subset without the rest is a misconfig that must fail startup — a half-configured Google login would otherwise surface only on first use.
 	cases := []struct {
 		name string
 		env  map[string]string
@@ -313,7 +294,7 @@ func TestGoogleClientSecretFile(t *testing.T) {
 	if err != nil || !cfg.GoogleEnabled() {
 		t.Fatalf("file-secret GoogleEnabled = %t, %v; want true, nil", cfg.GoogleEnabled(), err)
 	}
-	// Trailing whitespace from the mounted file is trimmed (as the key file is).
+
 	if secret, err := cfg.ResolveGoogleClientSecret(); err != nil || secret != "file-s3cret" {
 		t.Errorf("ResolveGoogleClientSecret = %q, %v", secret, err)
 	}
@@ -383,22 +364,20 @@ func TestGoogleRedirectURLValidation(t *testing.T) {
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
 
-	// Google's registration rules (web-verified, ADR-0007): HTTPS required with
-	// localhost/loopback as the only HTTP exception; no fragment, userinfo, or
-	// raw public IP. The path must be the one route the server actually mounts.
+	// Google's registration rules (web-verified, ADR-0007): HTTPS required with localhost/loopback as the only HTTP exception; no fragment, userinfo, or raw public IP. The path must be the one route the server actually mounts.
 	for _, bad := range []string{
 		"not a url",
-		"/auth/google/callback", // relative
+		"/auth/google/callback",
 		"ftp://x.example/cb",
-		"http://production.example/auth/google/callback",  // http off-loopback
-		"https://x.example/",                              // wrong path
-		"https://x.example/callback",                      // wrong path
-		"https://x.example/auth/google/callback?next=/x",  // query
-		"https://x.example/auth/google/callback#frag",     // fragment
-		"https://user:pw@x.example/auth/google/callback",  // userinfo
-		"https://203.0.113.7:8443/auth/google/callback",   // raw public IP
-		"http://192.168.1.10:8080/auth/google/callback",   // raw private IP, still not loopback
-		"https://[2001:db8::1]:8443/auth/google/callback", // raw public IPv6
+		"http://production.example/auth/google/callback",
+		"https://x.example/",
+		"https://x.example/callback",
+		"https://x.example/auth/google/callback?next=/x",
+		"https://x.example/auth/google/callback#frag",
+		"https://user:pw@x.example/auth/google/callback",
+		"https://203.0.113.7:8443/auth/google/callback",
+		"http://192.168.1.10:8080/auth/google/callback",
+		"https://[2001:db8::1]:8443/auth/google/callback",
 	} {
 		t.Setenv("PORTCULLIS_GOOGLE_REDIRECT_URL", bad)
 		if _, err := config.Load(); err == nil {
@@ -406,8 +385,8 @@ func TestGoogleRedirectURLValidation(t *testing.T) {
 		}
 	}
 	for _, good := range []string{
-		"https://portcullis.example.com/auth/google/callback", // production shape
-		"http://localhost:8080/auth/google/callback",          // loopback dev
+		"https://portcullis.example.com/auth/google/callback",
+		"http://localhost:8080/auth/google/callback",
 		"http://127.0.0.1:8080/auth/google/callback",
 		"http://[::1]:8080/auth/google/callback",
 	} {
@@ -418,11 +397,6 @@ func TestGoogleRedirectURLValidation(t *testing.T) {
 	}
 }
 
-// A misconfigured redirect URL can carry userinfo credentials, and the
-// validation error goes straight to the startup log — it must name the key and
-// the violated rule, never echo the URL. URL.Redacted() is not enough: it
-// masks only the password, keeping the username (web-verified, external
-// review).
 func TestGoogleRedirectURLErrorsOmitTheURL(t *testing.T) {
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_ID", "client-1")
 	t.Setenv("PORTCULLIS_GOOGLE_CLIENT_SECRET", "s3cret")
@@ -438,5 +412,173 @@ func TestGoogleRedirectURLErrorsOmitTheURL(t *testing.T) {
 	}
 	if !strings.Contains(msg, "google_redirect_url") {
 		t.Errorf("error should name the offending key: %q", msg)
+	}
+}
+
+func TestBootstrapAdminConfig(t *testing.T) {
+
+	if cfg, err := config.Load(); err != nil || cfg.BootstrapAdminEnabled() {
+		t.Errorf("default BootstrapAdminEnabled = %t, %v; want false, nil", cfg.BootstrapAdminEnabled(), err)
+	}
+
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL", "root@example.com")
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD", "correct-horse-battery")
+	cfg, err := config.Load()
+	if err != nil || !cfg.BootstrapAdminEnabled() {
+		t.Fatalf("configured BootstrapAdminEnabled = %t, %v; want true, nil", cfg.BootstrapAdminEnabled(), err)
+	}
+	if pw, err := cfg.ResolveBootstrapAdminPassword(); err != nil || pw != "correct-horse-battery" {
+		t.Errorf("ResolveBootstrapAdminPassword = %q, %v", pw, err)
+	}
+	if cfg.BootstrapAdminDisplayName != "Admin" {
+		t.Errorf("BootstrapAdminDisplayName = %q, want the Admin default", cfg.BootstrapAdminDisplayName)
+	}
+
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_DISPLAY_NAME", "Root Operator")
+	if cfg, err := config.Load(); err != nil || cfg.BootstrapAdminDisplayName != "Root Operator" {
+		t.Errorf("BootstrapAdminDisplayName = %q, %v; want Root Operator", cfg.BootstrapAdminDisplayName, err)
+	}
+}
+
+func TestBootstrapAdminPasswordFile(t *testing.T) {
+	file := t.TempDir() + "/admin-password"
+	if err := os.WriteFile(file, []byte("file-horse-battery\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL", "root@example.com")
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD_FILE", file)
+
+	cfg, err := config.Load()
+	if err != nil || !cfg.BootstrapAdminEnabled() {
+		t.Fatalf("file-password BootstrapAdminEnabled = %t, %v; want true, nil", cfg.BootstrapAdminEnabled(), err)
+	}
+
+	if pw, err := cfg.ResolveBootstrapAdminPassword(); err != nil || pw != "file-horse-battery" {
+		t.Errorf("ResolveBootstrapAdminPassword = %q, %v", pw, err)
+	}
+
+	// Both password sources set: ambiguous, must fail (mirrors the master key).
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD", "inline-too")
+	if _, err := config.Load(); err == nil {
+		t.Error("both bootstrap_admin_password and _password_file must fail Load")
+	}
+}
+
+func TestBootstrapAdminPasswordIsNotRewritten(t *testing.T) {
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL", "root@example.com")
+
+	inline := []struct {
+		name  string
+		value string
+	}{
+		{"leading space", " correct-horse-battery"},
+		{"trailing space", "correct-horse-battery "},
+		{"both ends", "  correct-horse-battery  "},
+		{"internal spaces are ordinary characters", "correct horse battery staple"},
+		{"trailing tab", "correct-horse-battery\t"},
+	}
+	for _, tc := range inline {
+		t.Run("inline "+tc.name, func(t *testing.T) {
+			t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD", tc.value)
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got, err := cfg.ResolveBootstrapAdminPassword()
+			if err != nil || got != tc.value {
+				t.Errorf("ResolveBootstrapAdminPassword = %q, %v; want the value verbatim %q", got, err, tc.value)
+			}
+		})
+	}
+
+	files := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{"one trailing newline is the editor's, not the operator's", "file-horse-battery\n", "file-horse-battery"},
+		{"CRLF counts as one newline", "file-horse-battery\r\n", "file-horse-battery"},
+		{"no trailing newline", "file-horse-battery", "file-horse-battery"},
+
+		{"a second newline is content", "file-horse-battery\n\n", "file-horse-battery\n"},
+		{"leading and internal spaces survive", "  file horse battery\n", "  file horse battery"},
+		{"a trailing space before the newline survives", "file-horse-battery \n", "file-horse-battery "},
+	}
+	for _, tc := range files {
+		t.Run("file "+tc.name, func(t *testing.T) {
+			path := t.TempDir() + "/admin-password"
+			if err := os.WriteFile(path, []byte(tc.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD", "")
+			t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD_FILE", path)
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got, err := cfg.ResolveBootstrapAdminPassword()
+			if err != nil || got != tc.want {
+				t.Errorf("ResolveBootstrapAdminPassword = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestBootstrapAdminConfigRejectsPartialSetup(t *testing.T) {
+	// A half-configured bootstrap admin must fail startup, not silently skip — the operator believes an admin will exist (fail-fast, master-key posture).
+	cases := []struct {
+		name string
+		env  map[string]string
+	}{
+		{"email only", map[string]string{"PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL": "root@example.com"}},
+		{"password only", map[string]string{"PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD": "correct-horse-battery"}},
+		{"display name only", map[string]string{"PORTCULLIS_BOOTSTRAP_ADMIN_DISPLAY_NAME": "Root"}},
+		{"blank password", map[string]string{
+			"PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL":    "root@example.com",
+			"PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD": " \t ",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			if _, err := config.Load(); err == nil {
+				t.Error("partial bootstrap admin config must fail Load")
+			}
+		})
+	}
+}
+
+func TestBootstrapAdminBlankPasswordFile(t *testing.T) {
+	file := t.TempDir() + "/admin-password"
+	if err := os.WriteFile(file, []byte("\n\t"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL", "root@example.com")
+	t.Setenv("PORTCULLIS_BOOTSTRAP_ADMIN_PASSWORD_FILE", file)
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load accepted a blank bootstrap admin password file")
+	}
+}
+
+func TestApprovalValidity(t *testing.T) {
+
+	cfg, err := config.Load()
+	if err != nil || cfg.ApprovalValidity != 24*time.Hour {
+		t.Fatalf("ApprovalValidity = %v, %v; want 24h", cfg.ApprovalValidity, err)
+	}
+	t.Setenv("PORTCULLIS_APPROVAL_VALIDITY", "15m")
+	if cfg, err := config.Load(); err != nil || cfg.ApprovalValidity != 15*time.Minute {
+		t.Errorf("ApprovalValidity = %v, %v; want 15m", cfg.ApprovalValidity, err)
+	}
+
+	t.Setenv("PORTCULLIS_APPROVAL_VALIDITY", "14m")
+	if _, err := config.Load(); err == nil {
+		t.Error("sub-15m approval_validity must fail Load")
+	}
+	t.Setenv("PORTCULLIS_APPROVAL_VALIDITY", "169h")
+	if _, err := config.Load(); err == nil {
+		t.Error("over-7d approval_validity must fail Load")
 	}
 }

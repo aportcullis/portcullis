@@ -13,23 +13,22 @@ import (
 
 const archiveConnection = `-- name: ArchiveConnection :one
 update public.connections
-set archived_at = now(), updated_at = now(), version = version + 1,
+set archived_at = $1::timestamptz, updated_at = $1::timestamptz, version = version + 1,
     credential_key_version = null, credential_wrapped_dek = null,
     credential_nonce = null, credential_ciphertext = null
-where id = $1 and organization_id = $2 and archived_at is null
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
+where id = $2 and organization_id = $3 and archived_at is null
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version, config_version
 `
 
 type ArchiveConnectionParams struct {
+	At             pgtype.Timestamptz
 	ID             pgtype.UUID
 	OrganizationID pgtype.UUID
 }
 
-// Archive and credential discard are ONE statement (PRD §4.3 "한 작업으로 처리").
-// The executions slice adds the in-flight-execution guard predicate here
-// (ADR-0014).
+// Archive and credential discard are ONE statement (PRD §4.3 "한 작업으로 처리"). The executions slice adds the in-flight-execution guard predicate here (ADR-0014). The stamp is the caller's observed instant — the same one its request cascade uses — never now(), which is this transaction's start time and may predate the lock wait entirely (ADR-0009).
 func (q *Queries) ArchiveConnection(ctx context.Context, arg ArchiveConnectionParams) (Connection, error) {
-	row := q.db.QueryRow(ctx, archiveConnection, arg.ID, arg.OrganizationID)
+	row := q.db.QueryRow(ctx, archiveConnection, arg.At, arg.ID, arg.OrganizationID)
 	var i Connection
 	err := row.Scan(
 		&i.ID,
@@ -53,12 +52,13 @@ func (q *Queries) ArchiveConnection(ctx context.Context, arg ArchiveConnectionPa
 		&i.Environment,
 		&i.Description,
 		&i.CurrentPolicyVersion,
+		&i.ConfigVersion,
 	)
 	return i, err
 }
 
 const getConnection = `-- name: GetConnection :one
-select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version from public.connections
+select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version, config_version from public.connections
 where id = $1 and organization_id = $2
 `
 
@@ -92,6 +92,7 @@ func (q *Queries) GetConnection(ctx context.Context, arg GetConnectionParams) (C
 		&i.Environment,
 		&i.Description,
 		&i.CurrentPolicyVersion,
+		&i.ConfigVersion,
 	)
 	return i, err
 }
@@ -108,7 +109,7 @@ insert into public.connections (
     $7, $8, $9,
     $10, $11,
     $12, $13, $14, $15,
-    $16, $17, $18, 1
+    $16, $17::timestamptz, $17::timestamptz, 1
 )
 `
 
@@ -129,12 +130,10 @@ type InsertConnectionParams struct {
 	CredentialNonce      []byte
 	CredentialCiphertext []byte
 	CreatedBy            pgtype.UUID
-	CreatedAt            pgtype.Timestamptz
-	UpdatedAt            pgtype.Timestamptz
+	At                   pgtype.Timestamptz
 }
 
-// current_policy_version starts at 1; the deferred FK is satisfied by the v1
-// default policy row the store inserts in the same transaction (ADR-0015).
+// Create policy v1 in the same transaction to satisfy the deferred FK. Use post-lock database time for row and audit ordering (ADR-0009).
 func (q *Queries) InsertConnection(ctx context.Context, arg InsertConnectionParams) error {
 	_, err := q.db.Exec(ctx, insertConnection,
 		arg.ID,
@@ -153,14 +152,13 @@ func (q *Queries) InsertConnection(ctx context.Context, arg InsertConnectionPara
 		arg.CredentialNonce,
 		arg.CredentialCiphertext,
 		arg.CreatedBy,
-		arg.CreatedAt,
-		arg.UpdatedAt,
+		arg.At,
 	)
 	return err
 }
 
 const listConnections = `-- name: ListConnections :many
-select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version from public.connections
+select id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version, config_version from public.connections
 where organization_id = $1
   and ($2::boolean or archived_at is null)
 order by created_at desc, id desc
@@ -202,6 +200,7 @@ func (q *Queries) ListConnections(ctx context.Context, arg ListConnectionsParams
 			&i.Environment,
 			&i.Description,
 			&i.CurrentPolicyVersion,
+			&i.ConfigVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -213,22 +212,41 @@ func (q *Queries) ListConnections(ctx context.Context, arg ListConnectionsParams
 	return items, nil
 }
 
+const lockConnectionForWrite = `-- name: LockConnectionForWrite :one
+select id from public.connections
+where id = $1 and organization_id = $2
+for update
+`
+
+type LockConnectionForWriteParams struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+}
+
+// Lock before observing time so mutation timestamps follow lock waits. Updates retain their own archive predicates for precise refusal reasons.
+func (q *Queries) LockConnectionForWrite(ctx context.Context, arg LockConnectionForWriteParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockConnectionForWrite, arg.ID, arg.OrganizationID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const replaceConnectionConfig = `-- name: ReplaceConnectionConfig :one
 update public.connections
-set display_name = $3, environment = $4, description = $5,
-    host = $6, port = $7, database_name = $8, tls_mode = $9,
-    target_fingerprint = $10,
-    credential_key_version = $11, credential_wrapped_dek = $12,
-    credential_nonce = $13, credential_ciphertext = $14,
-    updated_at = now(), version = version + 1
-where id = $1 and organization_id = $2 and archived_at is null
-  and version = $15
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
+set display_name = $1, environment = $2, description = $3,
+    host = $4, port = $5, database_name = $6, tls_mode = $7,
+    target_fingerprint = $8,
+    credential_key_version = $9, credential_wrapped_dek = $10,
+    credential_nonce = $11, credential_ciphertext = $12,
+    updated_at = $13::timestamptz, version = version + 1,
+    -- The TARGET changed, so the target token moves too — this is the only statement that touches it. Requests approved against the old configuration pin the old value and are expired in this same transaction (ADR-0018); a rename must not do that, which is why this is not ` + "`" + `version` + "`" + `.
+    config_version = config_version + 1
+where id = $14 and organization_id = $15 and archived_at is null
+  and version = $16
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version, config_version
 `
 
 type ReplaceConnectionConfigParams struct {
-	ID                   pgtype.UUID
-	OrganizationID       pgtype.UUID
 	DisplayName          string
 	Environment          string
 	Description          string
@@ -241,16 +259,15 @@ type ReplaceConnectionConfigParams struct {
 	CredentialWrappedDek []byte
 	CredentialNonce      []byte
 	CredentialCiphertext []byte
+	At                   pgtype.Timestamptz
+	ID                   pgtype.UUID
+	OrganizationID       pgtype.UUID
 	ExpectedVersion      int64
 }
 
-// Full config replacement (ADR-0014: no partial credential edit). Archived
-// rows are excluded — restore is a separate future flow; the store
-// disambiguates "missing" from "archived" on a zero rowcount.
+// Full config replacement (ADR-0014: no partial credential edit). Archived rows are excluded — restore is a separate future flow; the store disambiguates "missing" from "archived" on a zero rowcount.
 func (q *Queries) ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnectionConfigParams) (Connection, error) {
 	row := q.db.QueryRow(ctx, replaceConnectionConfig,
-		arg.ID,
-		arg.OrganizationID,
 		arg.DisplayName,
 		arg.Environment,
 		arg.Description,
@@ -263,6 +280,9 @@ func (q *Queries) ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnec
 		arg.CredentialWrappedDek,
 		arg.CredentialNonce,
 		arg.CredentialCiphertext,
+		arg.At,
+		arg.ID,
+		arg.OrganizationID,
 		arg.ExpectedVersion,
 	)
 	var i Connection
@@ -288,36 +308,40 @@ func (q *Queries) ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnec
 		&i.Environment,
 		&i.Description,
 		&i.CurrentPolicyVersion,
+		&i.ConfigVersion,
 	)
 	return i, err
 }
 
 const updateConnectionDescriptor = `-- name: UpdateConnectionDescriptor :one
 update public.connections
-set display_name = $3, environment = $4, description = $5,
-    updated_at = now(), version = version + 1
-where id = $1 and organization_id = $2
-returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version
+set display_name = $1, environment = $2, description = $3,
+    updated_at = $4::timestamptz, version = version + 1
+where id = $5 and organization_id = $6
+  and version = $7
+returning id, organization_id, db_type, display_name, host, port, database_name, tls_mode, target_fingerprint, credential_key_version, credential_wrapped_dek, credential_nonce, credential_ciphertext, created_by, created_at, updated_at, archived_at, version, environment, description, current_policy_version, config_version
 `
 
 type UpdateConnectionDescriptorParams struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	DisplayName    string
-	Environment    string
-	Description    string
+	DisplayName     string
+	Environment     string
+	Description     string
+	At              pgtype.Timestamptz
+	ID              pgtype.UUID
+	OrganizationID  pgtype.UUID
+	ExpectedVersion int64
 }
 
-// Descriptor-only update: name, environment label, and description — no
-// credential involved. Archived rows stay editable: these fields label
-// history, not the live target.
+// Replace descriptor fields at the editor’s version, including archived history labels. Stamp with the post-lock observed instant; zero rows mean missing or stale.
 func (q *Queries) UpdateConnectionDescriptor(ctx context.Context, arg UpdateConnectionDescriptorParams) (Connection, error) {
 	row := q.db.QueryRow(ctx, updateConnectionDescriptor,
-		arg.ID,
-		arg.OrganizationID,
 		arg.DisplayName,
 		arg.Environment,
 		arg.Description,
+		arg.At,
+		arg.ID,
+		arg.OrganizationID,
+		arg.ExpectedVersion,
 	)
 	var i Connection
 	err := row.Scan(
@@ -342,6 +366,7 @@ func (q *Queries) UpdateConnectionDescriptor(ctx context.Context, arg UpdateConn
 		&i.Environment,
 		&i.Description,
 		&i.CurrentPolicyVersion,
+		&i.ConfigVersion,
 	)
 	return i, err
 }

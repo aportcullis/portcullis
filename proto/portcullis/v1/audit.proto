@@ -7,12 +7,9 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
 
-// Audit exposes the append-only audit trail for reading. Listing and a single
-// event's detail have distinct permissions (ADR-0008), enforced inline in the
-// handler.
+// Audit exposes the append-only audit trail for reading. Listing and a single event's detail have distinct permissions (ADR-0008), enforced inline in the handler.
 service Audit {
-  // List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
-  // audit.list.
+  // List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires audit.list.
   rpc List(AuditListRequest) returns (AuditListResponse) {}
   // Get returns one audit event's detail. Requires audit.get.
   rpc Get(GetAuditEventRequest) returns (GetAuditEventResponse) {}
@@ -21,11 +18,9 @@ service Audit {
 message AuditListRequest {
   // 1-based page number; 0 or 1 selects the first page.
   uint32 page = 1;
-  // Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the
-  // default (20). Capped at 100 (PRD §7.1).
+  // Rows per page; must be one of {10, 20, 50, 100}. Any other value selects the default (20). Capped at 100 (PRD §7.1).
   uint32 page_size = 2;
-  // Optional sort; unset selects occurred_at descending. An off-whitelist field
-  // is rejected with InvalidArgument.
+  // Optional sort; unset selects occurred_at descending. An off-whitelist field is rejected with InvalidArgument.
   AuditSort sort = 3;
 }
 
@@ -33,15 +28,11 @@ message AuditListRequest {
 message AuditSort {
   // Whitelisted column, e.g. "occurred_at". An unknown value is rejected.
   string field = 1;
-  // true = descending (newest/largest first). Optional so that UNSET is
-  // distinguishable from an explicit false: unset keeps the server default
-  // (descending), and only an explicit false selects ascending. A plain proto3
-  // bool cannot express that distinction (implicit field presence).
+  // true = descending (newest/largest first). Optional so that UNSET is distinguishable from an explicit false: unset keeps the server default (descending), and only an explicit false selects ascending. A plain proto3 bool cannot express that distinction (implicit field presence).
   optional bool descending = 2;
 }
 
-// AuditEvent is one record of the trail. It carries the populated core fields;
-// execution/state/digest columns are added with the features that fill them.
+// AuditEvent is one record of the trail. It carries the populated core fields; execution/state/digest columns are added with the features that fill them.
 message AuditEvent {
   string id = 1;
   google.protobuf.Timestamp occurred_at = 2;
@@ -64,11 +55,21 @@ message AuditEvent {
   string request_id = 11;
   // Non-sensitive supplemental fields (never secrets, tokens, or result rows).
   google.protobuf.Struct metadata = 12;
+
+  // Detail reads expose stored approval/execution evidence; summaries stay narrow. Unrelated event dimensions remain empty (ADR-0009).
+  string previous_state = 13;
+  string next_state = 14;
+  // The connection the event was about (empty when it is not about one).
+  string connection_id = 15;
+  // "read" | "write" | "ddl" for statement-bearing events.
+  string query_type = 16;
+  // Keyed MAC over the approved payload, with the key version that verifies it (ADR-0003). Opaque bytes: the trail never carries SQL or parameter values.
+  bytes payload_digest = 17;
+  uint32 payload_digest_key_version = 18;
+  // Execution metrics (rows_affected, duration_ms, risk_score) are columns the executor slice fills; they join this message when that slice lands.
 }
 
-// AuditEventSummary is deliberately safe for audit.list. Correlation data,
-// network addresses, and supplemental metadata are available only through
-// audit.get, preserving ADR-0008's collection/detail permission boundary.
+// AuditEventSummary is deliberately safe for audit.list. Correlation data, network addresses, and supplemental metadata are available only through audit.get, preserving ADR-0008's collection/detail permission boundary.
 message AuditEventSummary {
   string id = 1;
   google.protobuf.Timestamp occurred_at = 2;
@@ -85,8 +86,7 @@ message AuditListResponse {
   // Echoes the effective (clamped) page and page size the server applied.
   uint32 page = 2;
   uint32 page_size = 3;
-  // Total matching rows and the derived page count, for explicit page controls
-  // ("1–20 of 1,340", page jump) (PRD §7.1).
+  // Total matching rows and the derived page count, for explicit page controls ("1–20 of 1,340", page jump) (PRD §7.1).
   uint64 total_count = 4;
   uint32 total_pages = 5;
 }

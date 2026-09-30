@@ -109,8 +109,8 @@ update public.sessions
 set idle_expires_at = least(greatest(idle_expires_at, $1), absolute_expires_at)
 where id = $2
   and revoked_at is null
-  and idle_expires_at > now()
-  and absolute_expires_at > now()
+  and idle_expires_at > clock_timestamp()
+  and absolute_expires_at > clock_timestamp()
 `
 
 type ExtendSessionIdleParams struct {
@@ -118,11 +118,7 @@ type ExtendSessionIdleParams struct {
 	ID            pgtype.UUID
 }
 
-// Slide the idle window forward on activity, never past the absolute expiry and
-// never backward (greatest() guards against a late, older request regressing it).
-// Re-check both expiries in the write: a session can expire after Authenticate
-// reads it but before the post-CSRF slide, and an expired session must never be
-// resurrected by that race.
+// Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 func (q *Queries) ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) (int64, error) {
 	result, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleExpiresAt, arg.ID)
 	if err != nil {
@@ -264,12 +260,7 @@ type GetUserForLoginRow struct {
 	Locked       bool
 }
 
-// User + password hash + progressive-backoff state in one round-trip, so a
-// password login costs the same number of queries whether or not the account
-// exists (anti-enumeration). The hash is empty for OIDC-only users (no password
-// row); the backoff columns are zero/null for accounts that never failed. The
-// locked flag is evaluated HERE on the database clock — the same clock the
-// failure upsert uses — so app/DB clock skew can't split the expiry decision.
+// Read identity, password hash, and lockout together so known and unknown accounts use one lookup. Evaluate lockout on the same database clock as failure writes.
 func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error) {
 	row := q.db.QueryRow(ctx, getUserForLogin, lower)
 	var i GetUserForLoginRow
@@ -340,17 +331,7 @@ type RecordLoginFailureRow struct {
 	Locked       bool
 }
 
-// ONE atomic statement per failed attempt (ADR-0006): bump the counter and,
-// at/after the threshold, impose or extend the jittered lockout — so a
-// concurrent success reset or lazy expiry-reset can never interleave between
-// counting and locking, and every failure costs exactly one write. All time
-// arithmetic runs on the database clock. The counter restarts at 1 when the
-// previous lockout has expired ("resets on expiry", applied lazily) or when
-// the last failure is older than the staleness window (months-old typos must
-// not count toward a fresh lockout). The window is
-// min(base·2^(n-threshold), cap)·jitter_factor with the exponent clamped to
-// [0,30], so no operand can overflow; greatest() keeps a concurrent shorter
-// jittered window from moving an existing lockout backward.
+// Atomically count failure and extend jittered lockout on the database clock. Expired/stale counters restart; clamped exponents prevent overflow and greatest() prevents shorter expiry.
 func (q *Queries) RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error) {
 	row := q.db.QueryRow(ctx, recordLoginFailure,
 		arg.UserID,
@@ -371,9 +352,7 @@ set failure_count = 0, locked_until = null
 where user_id = $1 and (failure_count > 0 or locked_until is not null)
 `
 
-// A successful login clears the slate. The WHERE leaves an already-clean row
-// unwritten, so calling this on every success keeps the hot path write-free
-// while still clearing failures committed by concurrent attempts mid-verify.
+// A successful login clears the slate. The WHERE leaves an already-clean row unwritten, so calling this on every success keeps the hot path write-free while still clearing failures committed by concurrent attempts mid-verify.
 func (q *Queries) ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, resetLoginBackoff, userID)
 	return err
@@ -384,10 +363,7 @@ update public.sessions set revoked_at = now()
 where id = $1 and revoked_at is null
 `
 
-// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must
-// not overwrite the original revoked_at — forensic evidence of WHEN the session
-// actually died — and the caller skips the audit event when no row changed, so
-// the trail records only real state changes (ADR-0009).
+// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must not overwrite the original revoked_at — forensic evidence of WHEN the session actually died — and the caller skips the audit event when no row changed, so the trail records only real state changes (ADR-0009).
 func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeSession, id)
 	if err != nil {
@@ -432,9 +408,7 @@ where id = $1
   and absolute_expires_at > now()
 `
 
-// Final post-CSRF validity check for a request whose idle slide is throttled.
-// It deliberately does not write, but its predicates use the database clock so
-// a concurrently revoked or expired session cannot reach a handler.
+// Final post-CSRF validity check for a request whose idle slide is throttled. It deliberately does not write, but its predicates use the database clock so a concurrently revoked or expired session cannot reach a handler.
 func (q *Queries) ValidateSession(ctx context.Context, id pgtype.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, validateSession, id)
 	var column_1 bool

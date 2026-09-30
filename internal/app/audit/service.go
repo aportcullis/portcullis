@@ -1,8 +1,4 @@
-// Package audit is the application service for reading the audit trail. It holds no
-// storage or transport detail: it validates a page request against the PRD §7.1
-// policy, delegates to an injected EventReader (ports.go), and assembles the page
-// with its totals. The write side (event emission) lives in the auth service and
-// the identity store.
+// Package audit validates and reads paged audit evidence through an injected EventReader.
 package audit
 
 import (
@@ -12,8 +8,7 @@ import (
 	domainaudit "github.com/aportcullis/portcullis/internal/domain/audit"
 )
 
-// New builds the read service over an EventReader. It fails if the reader is nil,
-// so a half-built service never starts.
+// New builds the read service over an EventReader. It fails if the reader is nil, so a half-built service never starts.
 func New(reader EventReader) (*Service, error) {
 	if reader == nil {
 		return nil, errors.New("audit: nil event reader")
@@ -21,10 +16,7 @@ func New(reader EventReader) (*Service, error) {
 	return &Service{reader: reader}, nil
 }
 
-// List returns one page of audit events plus the totals for explicit page controls
-// (PRD §7.1). It normalizes the request (page ≥ 1, page size to the whitelist/
-// default, sort column validated) and computes the OFFSET, then reads the count and
-// the page. Offsets are int64, so even the largest page can never wrap negative.
+// List validates pagination and sorting, then delegates rows, count, and page clamp to one repository snapshot (PRD §7.1).
 func (s *Service) List(ctx context.Context, q Query) (domainaudit.EventPage, error) {
 	page := q.Page
 	if page < 1 {
@@ -38,31 +30,20 @@ func (s *Service) List(ctx context.Context, q Query) (domainaudit.EventPage, err
 		return domainaudit.EventPage{}, ErrInvalidSortField
 	}
 
-	total, err := s.reader.Count(ctx)
-	if err != nil {
-		return domainaudit.EventPage{}, err
-	}
-	offset := int64(page-1) * int64(pageSize)
-	events, err := s.reader.List(ctx, domainaudit.ListParams{
-		Limit:          int64(pageSize),
-		Offset:         offset,
+	got, err := s.reader.List(ctx, domainaudit.ListParams{
+		Page:           page,
+		PageSize:       pageSize,
 		SortDescending: !q.SortAscending,
 	})
 	if err != nil {
 		return domainaudit.EventPage{}, err
 	}
-	return domainaudit.EventPage{
-		Events:     events,
-		Page:       page,
-		PageSize:   pageSize,
-		TotalCount: total,
-		TotalPages: totalPages(total, pageSize),
-	}, nil
+	got.PageSize = pageSize
+	got.TotalPages = totalPages(got.TotalCount, pageSize)
+	return got, nil
 }
 
-// Get returns one event's full detail. Authorization belongs at the transport
-// boundary; this use case preserves the repository's org-scoped not-found
-// result without exposing storage details.
+// Get returns one event's full detail. Authorization belongs at the transport boundary; this use case preserves the repository's org-scoped not-found result without exposing storage details.
 func (s *Service) Get(ctx context.Context, id string) (domainaudit.Event, error) {
 	return s.reader.Get(ctx, id)
 }

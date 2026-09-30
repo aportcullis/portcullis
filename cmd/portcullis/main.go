@@ -14,11 +14,13 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
+	accessreq "github.com/aportcullis/portcullis/internal/app/accessrequest"
 	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
@@ -29,10 +31,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/transport/server"
 )
 
-// migrate opens the owner DSN, verifies connectivity, applies the migrations,
-// and closes the pool — the owner credential stays alive only for this window.
-// Errors are logged with generic messages/classified fields only: the raw error
-// can echo the DSN, which carries the password.
+// migrate opens the owner DSN, verifies connectivity, applies the migrations, and closes the pool — the owner credential stays alive only for this window. Errors are logged with generic messages/classified fields only: the raw error can echo the DSN, which carries the password.
 func migrate(ctx context.Context, logger *slog.Logger, ownerURL, runtimeRole string) error {
 	pool, err := postgres.Open(ctx, ownerURL)
 	if err != nil {
@@ -40,16 +39,13 @@ func migrate(ctx context.Context, logger *slog.Logger, ownerURL, runtimeRole str
 		return err
 	}
 	defer pool.Close()
-	// Force the first connection so a connectivity/auth failure is caught with a
-	// generic message; after this, Migrate runs on a verified connection.
+	// Force the first connection so a connectivity/auth failure is caught with a generic message; after this, Migrate runs on a verified connection.
 	if err := pool.Ping(ctx); err != nil {
 		logger.Error("database connect failed", "hint", "check the database URL and that the database is reachable")
 		return err
 	}
 	if err := postgres.Migrate(ctx, pool, postgres.WithRuntimeRole(runtimeRole)); err != nil {
-		// pgxpool acquires a connection per operation, so even after the Ping this can
-		// be a connect error that echoes the DSN — classify: a server SQL error logs
-		// its code + structural identifiers, anything else logs only its type.
+		// pgxpool acquires a connection per operation, so even after the Ping this can be a connect error that echoes the DSN — classify: a server SQL error logs its code + structural identifiers, anything else logs only its type.
 		logger.Error("migration failed", postgres.ErrorLogFields(err)...)
 		return err
 	}
@@ -57,8 +53,7 @@ func migrate(ctx context.Context, logger *slog.Logger, ownerURL, runtimeRole str
 }
 
 func main() {
-	// run/runMigrate return an error on any failure; main maps that to a non-zero
-	// exit. Cleanup lives in deferred calls inside them, which still run.
+	// run/runMigrate return an error on any failure; main maps that to a non-zero exit. Cleanup lives in deferred calls inside them, which still run.
 	var err error
 	switch args := os.Args[1:]; {
 	case len(args) == 0 || args[0] == "serve":
@@ -75,11 +70,7 @@ func main() {
 	}
 }
 
-// runMigrate is the one-shot `portcullis migrate` command: apply the migrations
-// on the owner DSN and exit. Running it as a separate short-lived process or
-// container keeps owner credentials out of the serving process entirely — the
-// application account must not own the schema (ADR-0009, OWASP Database
-// Security Cheat Sheet).
+// runMigrate is the one-shot `portcullis migrate` command: apply the migrations on the owner DSN and exit. Running it as a separate short-lived process or container keeps owner credentials out of the serving process entirely — the application account must not own the schema (ADR-0009, OWASP Database Security Cheat Sheet).
 func runMigrate() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -127,13 +118,7 @@ func run() error {
 	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelStartup()
 
-	// Migrations run as the schema OWNER on a short-lived pool; the server then
-	// runs on the (least-privilege) runtime DSN — the permission boundary that
-	// keeps audit_events append-only even against the application (ADR-0009).
-	// The recommended production shape runs them as a one-shot `portcullis
-	// migrate` instead, so the serving process never holds owner credentials;
-	// startup migration stays for a server-held owner DSN (compatibility) and
-	// the single-role dev posture.
+	// Apply migrations with the owner DSN and serve with the restricted runtime DSN (ADR-0009). A separate migrate process keeps owner credentials out of the server.
 	if cfg.StartupMigrationEnabled() {
 		if err := migrate(startupCtx, logger, cfg.OwnerDSN(), cfg.RuntimeRole); err != nil {
 			return err
@@ -154,10 +139,7 @@ func run() error {
 		logger.Error("database connect failed", "hint", "check PORTCULLIS_DATABASE_URL and that the database is reachable")
 		return err
 	}
-	// The boundary must hold for the connection the server ACTUALLY runs on, not
-	// just the configured role: an owner/superuser DSN or a drifted login user is
-	// refused (ADR-0009). The insecure dev flag downgrades ONLY over-privilege
-	// violations; a wrong/unmigrated database or a query failure is always fatal.
+	// The boundary must hold for the connection the server ACTUALLY runs on, not just the configured role: an owner/superuser DSN or a drifted login user is refused (ADR-0009). The insecure dev flag downgrades ONLY over-privilege violations; a wrong/unmigrated database or a query failure is always fatal.
 	if err := postgres.VerifyRuntimeConnection(startupCtx, pool, cfg.RuntimeRole); err != nil {
 		if cfg.AllowPrivilegedRuntime && errors.Is(err, postgres.ErrRuntimeInsecure) {
 			logger.Warn("runtime connection is over-privileged — allowed by PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME (dev only, never production)", "reason", err.Error())
@@ -168,16 +150,13 @@ func run() error {
 		}
 	}
 
-	// Cap request size: Connect defaults to unlimited, so bound both the per-message
-	// read and the whole request stream (auth/health messages are tiny).
+	// Cap request size: Connect defaults to unlimited, so bound both the per-message read and the whole request stream (auth/health messages are tiny).
 	readLimit := connect.WithReadMaxBytes(server.MaxRequestBytes)
-	// Recover panics into a clean CodeInternal (logged via slog, not a stderr stack
-	// dump); wired first so it wraps every interceptor and the handler.
+	// Recover panics into a clean CodeInternal (logged via slog, not a stderr stack dump); wired first so it wraps every interceptor and the handler.
 	recoverOpt := connectapi.NewRecoverOption(logger)
 	healthPath, healthHandler := portcullisv1connect.NewHealthHandler(connectapi.HealthService{}, recoverOpt, readLimit)
 
-	// Identity vertical: inject the crypto and audit adapters into the auth use
-	// cases, then expose them as the Auth RPC behind the interceptor chain.
+	// Identity vertical: inject the crypto and audit adapters into the auth use cases, then expose them as the Auth RPC behind the interceptor chain.
 	store := postgres.NewIdentityStore(pool)
 	authSvc, err := auth.New(store, crypto.NewArgon2Hasher(crypto.DefaultArgon2Params, cfg.Argon2MaxConcurrent), crypto.NewCSRFProtector(keyring), postgres.NewAuditStore(pool), auth.Config{
 		BackoffThreshold: cfg.LoginBackoffThreshold,
@@ -190,10 +169,25 @@ func run() error {
 	}
 	authSvc.WithLogger(logger)
 
-	// Authorization: load the seeded permission catalog once (ADR-0008) and refuse
-	// to boot if it is missing — an unseeded catalog means every has(permission)
-	// check would be undecidable, the same fail-fast stance as the keyring and the
-	// runtime-connection checks above.
+	// Create the configured first admin only on an empty installation; skip ErrAlreadyBootstrapped and fail startup on other errors. Keep email out of logs.
+	if cfg.BootstrapAdminEnabled() {
+		password, err := cfg.ResolveBootstrapAdminPassword()
+		if err != nil {
+			logger.Error("bootstrap admin password unavailable", "err", err)
+			return err
+		}
+		switch _, err := authSvc.Bootstrap(startupCtx, cfg.BootstrapAdminEmail, password, cfg.BootstrapAdminDisplayName); {
+		case err == nil:
+			logger.Info("bootstrap admin created from config")
+		case errors.Is(err, identity.ErrAlreadyBootstrapped):
+			logger.Info("bootstrap admin skipped: users already exist")
+		default:
+			logger.Error("bootstrap admin creation failed", "err", err)
+			return err
+		}
+	}
+
+	// Authorization: load the seeded permission catalog once (ADR-0008) and refuse to boot if it is missing — an unseeded catalog means every has(permission) check would be undecidable, the same fail-fast stance as the keyring and the runtime-connection checks above.
 	catalog, err := authz.LoadCatalog(startupCtx, store)
 	if err != nil {
 		logger.Error("permission catalog unavailable", "err", err, "hint", "apply migrations (`portcullis migrate`) — 0002 seeds the permission catalog")
@@ -212,12 +206,7 @@ func run() error {
 		return err
 	}
 
-	// One interceptor chain shared by every authenticated RPC surface: recover wraps
-	// the whole chain; the error logger is outermost of the interceptors so it records
-	// any server-fault error from the inner interceptors or the handler (returned
-	// errors are otherwise invisible — recover only catches panics); client IP
-	// resolves next (rate limiting and audit consume it), rate-limit sheds floods
-	// before auth, then auth injects the user (ADR-0006/0010).
+	// Order interceptors as error logging → client IP → rate limiting → authentication, with panic recovery around the full chain (ADR-0010).
 	recoverAndChain := []connect.HandlerOption{
 		recoverOpt,
 		connect.WithInterceptors(
@@ -232,10 +221,7 @@ func run() error {
 	// Audit.List is gated by the audit.list permission inside the handler (ADR-0008).
 	auditPath, auditHandler := portcullisv1connect.NewAuditHandler(connectapi.NewAuditService(authzSvc, auditReader), recoverAndChain...)
 
-	// Connections vertical (ADR-0014): the postgres store, the keyring-backed
-	// credential codec, and the PostgreSQL dialect adapter (its
-	// ValidateConnection satisfies the ConnectionValidator port, PRD §5.3)
-	// behind the connections.* gated RPCs.
+	// Connections vertical (ADR-0014): the postgres store, the keyring-backed credential codec, and the PostgreSQL dialect adapter (its ValidateConnection satisfies the ConnectionValidator port, PRD §5.3) behind the connections.* gated RPCs.
 	pgDialect := pgdialect.New(pgdialect.Options{ValidateTimeout: cfg.ConnectionTestTimeout})
 	connSvc, err := connapp.New(
 		postgres.NewConnectionStore(pool),
@@ -250,8 +236,7 @@ func run() error {
 	connSvc.WithLogger(logger)
 	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), recoverAndChain...)
 
-	// Connection policies (ADR-0015): per-connection execution policy as
-	// immutable versions behind the policies.* gated RPCs.
+	// Connection policies (ADR-0015): per-connection execution policy as immutable versions behind the policies.* gated RPCs.
 	policySvc, err := connpolicy.New(postgres.NewConnectionPolicyStore(pool))
 	if err != nil {
 		logger.Error("connection policies init failed", "err", err)
@@ -259,17 +244,31 @@ func run() error {
 	}
 	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), recoverAndChain...)
 
+	// Access requests vertical (ADR-0018): the state machine + approvals behind the requests.* gated RPCs. It reuses the dialect adapter (parse/classify/ bind/redact at submit) and a keyring-backed payload codec. The store satisfies both ports — request storage and the (separate, ISP-narrow) request-target listing — so one adapter covers both.
+	requestStore := postgres.NewAccessRequestStore(pool)
+	requestSvc, err := accessreq.New(
+		requestStore,
+		requestStore,
+		crypto.NewAccessRequestPayloadCodec(keyring),
+		pgDialect,
+		cfg.ApprovalValidity,
+	)
+	if err != nil {
+		logger.Error("access requests init failed", "err", err)
+		return err
+	}
+	requestsPath, requestsHandler := portcullisv1connect.NewAccessRequestsHandler(connectapi.NewAccessRequestsService(authzSvc, requestSvc), recoverAndChain...)
+
 	mounts := []server.Mount{
 		{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
 		{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
 		{Pattern: auditPath, Handler: http.MaxBytesHandler(auditHandler, server.MaxRequestBytes)},
 		{Pattern: connsPath, Handler: http.MaxBytesHandler(connsHandler, server.MaxRequestBytes)},
 		{Pattern: policiesPath, Handler: http.MaxBytesHandler(policiesHandler, server.MaxRequestBytes)},
+		{Pattern: requestsPath, Handler: http.MaxBytesHandler(requestsHandler, server.MaxRequestBytes)},
 	}
 
-	// Google login (ADR-0007) mounts only when configured: provider discovery must
-	// succeed at boot (fail-fast, like the keyring), and when disabled the routes
-	// simply don't exist. The redirect flow is plain HTTP, not Connect.
+	// Google login (ADR-0007) mounts only when configured: provider discovery must succeed at boot (fail-fast, like the keyring), and when disabled the routes simply don't exist. The redirect flow is plain HTTP, not Connect.
 	if cfg.GoogleEnabled() {
 		secret, err := cfg.ResolveGoogleClientSecret()
 		if err != nil {
@@ -301,8 +300,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// A bind/serve failure must terminate the process with a non-zero exit, not
-	// fall through to the normal shutdown path.
+	// A bind/serve failure must terminate the process with a non-zero exit, not fall through to the normal shutdown path.
 	serveErr := make(chan error, 1)
 	go func() {
 		logger.Info("listening", "addr", cfg.Addr)
@@ -313,10 +311,7 @@ func run() error {
 
 	select {
 	case <-ctx.Done():
-		// Restore default signal handling now that the first signal is being handled,
-		// so a SECOND SIGINT/SIGTERM force-quits during a long drain instead of being
-		// swallowed by NotifyContext (os/signal: stop as soon as the first signal is
-		// handled). The deferred stop() still covers the serveErr path.
+		// Restore default signal handling now that the first signal is being handled, so a SECOND SIGINT/SIGTERM force-quits during a long drain instead of being swallowed by NotifyContext (os/signal: stop as soon as the first signal is handled). The deferred stop() still covers the serveErr path.
 		stop()
 		logger.Info("shutting down")
 	case err := <-serveErr:
@@ -324,9 +319,7 @@ func run() error {
 		return err
 	}
 
-	// Background, not a timeout: the drain delay and the shutdown timeout are
-	// sequential budgets (ADR-0010) — Server.Shutdown applies the timeout to the
-	// drain of in-flight requests only, after the delay has fully elapsed.
+	// Background, not a timeout: the drain delay and the shutdown timeout are sequential budgets (ADR-0010) — Server.Shutdown applies the timeout to the drain of in-flight requests only, after the delay has fully elapsed.
 	if err := srv.Shutdown(context.Background(), cfg.ShutdownTimeout); err != nil {
 		logger.Error("graceful shutdown failed", "err", err)
 		return err

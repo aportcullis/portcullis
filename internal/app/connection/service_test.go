@@ -12,9 +12,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// fakeRepo is an in-memory Repository. Mutations append the events they were
-// handed to txEvents, mimicking the real store's same-transaction write
-// (ADR-0009), so tests can assert which events ride which mutation.
+// fakeRepo is an in-memory Repository. Mutations append the events they were handed to txEvents, mimicking the real store's same-transaction write (ADR-0009), so tests can assert which events ride which mutation.
 type fakeRepo struct {
 	conns    map[connection.ConnectionID]*connection.Connection
 	sealed   map[connection.ConnectionID]connection.SealedCredential
@@ -24,6 +22,8 @@ type fakeRepo struct {
 	createCalls  int
 	replaceCalls int
 	renameCalls  int
+	// descriptorExpectedVersion records the optimistic token the descriptor update was guarded with — it must be the version of the row the service read, never a number the client chose.
+	descriptorExpectedVersion int64
 }
 
 func newFakeRepo() *fakeRepo {
@@ -69,11 +69,16 @@ func (r *fakeRepo) List(_ context.Context, org identity.OrganizationID, includeA
 	return out, nil
 }
 
-func (r *fakeRepo) UpdateDescriptor(_ context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, env connection.Environment, description string, events ...audit.Event) (connection.Connection, error) {
+func (r *fakeRepo) UpdateDescriptor(_ context.Context, org identity.OrganizationID, id connection.ConnectionID, displayName string, env connection.Environment, description string, expectedVersion int64, events ...audit.Event) (connection.Connection, error) {
 	r.renameCalls++
+	r.descriptorExpectedVersion = expectedVersion
 	c, ok := r.conns[id]
 	if !ok || org != r.org {
 		return connection.Connection{}, connection.ErrNotFound
+	}
+
+	if c.Version != expectedVersion {
+		return connection.Connection{}, connection.ErrConflict
 	}
 	c.DisplayName = displayName
 	c.Environment = env
@@ -113,7 +118,7 @@ func (r *fakeRepo) Archive(_ context.Context, org identity.OrganizationID, id co
 	now := time.Now()
 	c.ArchivedAt = &now
 	c.Version++
-	delete(r.sealed, id) // credential discarded with the archive (PRD §4.3)
+	delete(r.sealed, id)
 	r.txEvents = append(r.txEvents, events)
 	return *c, nil
 }
@@ -129,7 +134,6 @@ func (r *fakeRepo) TestMaterial(_ context.Context, org identity.OrganizationID, 
 	return *c, r.sealed[id], nil
 }
 
-// fakeValidator scripts the connection test outcome and records what it dialed.
 type fakeValidator struct {
 	err           error
 	calls         int
@@ -149,8 +153,6 @@ func (t *fakeValidator) ValidateConnection(_ context.Context, target connection.
 	return t.err
 }
 
-// fakeCodec seals by remembering the plaintext under the AAD identity it was
-// given, so tests can assert the id/org binding without real crypto.
 type fakeCodec struct {
 	sealedOrg identity.OrganizationID
 	sealedID  connection.ConnectionID
@@ -179,7 +181,6 @@ func (c *fakeCodec) Open(org identity.OrganizationID, id connection.ConnectionID
 	return cred, nil
 }
 
-// fakeAuditor captures best-effort (detached) audit writes.
 type fakeAuditor struct{ events []audit.Event }
 
 func (a *fakeAuditor) Record(_ context.Context, e audit.Event) error {
@@ -211,6 +212,8 @@ func newFixture(t *testing.T) fixture {
 	return fixture{svc: svc, repo: repo, validator: validator, codec: codec, auditor: auditor}
 }
 
+func description(text string) *string { return &text }
+
 func validCreate() appconn.CreateParams {
 	return appconn.CreateParams{
 		DisplayName: "Prod replica",
@@ -237,8 +240,6 @@ func TestNewRejectsNilDependencies(t *testing.T) {
 	}
 }
 
-// A failing pre-save test must persist nothing and leave a best-effort
-// CONNECTION_TEST FAILED trail (the refused save is evidence).
 func TestCreateWithFailingTestPersistsNothing(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -262,8 +263,6 @@ func TestCreateWithFailingTestPersistsNothing(t *testing.T) {
 	}
 }
 
-// The default TLS mode is certificate-verifying and records exactly
-// CONNECTION_CREATED — no relaxed-TLS event, no best-effort event.
 func TestCreateDefaultTLSRecordsExactlyCreated(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -296,8 +295,6 @@ func TestCreateDefaultTLSRecordsExactlyCreated(t *testing.T) {
 	}
 }
 
-// Choosing a relaxed mode rides CONNECTION_TLS_RELAXED in the same mutation
-// (same transaction) as CONNECTION_CREATED (PRD §8.1).
 func TestCreateRelaxedTLSAddsRelaxedEventInSameTx(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -325,8 +322,6 @@ func TestCreateRelaxedTLSAddsRelaxedEventInSameTx(t *testing.T) {
 	}
 }
 
-// The credential is sealed under the pre-generated connection id and org —
-// the AAD binding (ADR-0003/0014) — and the test dials with the raw pair.
 func TestCreateSealsUnderGeneratedIDAndOrg(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -374,10 +369,6 @@ func TestCreateValidationFailuresSkipTester(t *testing.T) {
 	}
 }
 
-// A descriptor-only update with an EMPTY display name keeps the current name —
-// the same keep-current contract environment ("") and description (nil)
-// already have, and the config-replace branch applies to the name too
-// (self-review F9).
 func TestUpdateDescriptorOnlyEmptyNameKeepsCurrent(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -388,7 +379,9 @@ func TestUpdateDescriptorOnlyEmptyNameKeepsCurrent(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Environment: "production"})
+	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+		Environment: "production", ExpectedVersion: created.Version,
+	})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -400,8 +393,103 @@ func TestUpdateDescriptorOnlyEmptyNameKeepsCurrent(t *testing.T) {
 	}
 }
 
-// Rename-only updates skip the connection test; config changes re-test and
-// re-seal (ADR-0014).
+func TestUpdateRequiresTheVersionTheEditorRead(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a stale token is refused before the store is touched", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t)
+		created, err := f.svc.Create(t.Context(), "admin1", validCreate())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			Description: description("theirs"), ExpectedVersion: created.Version,
+		}); err != nil {
+			t.Fatalf("first update: %v", err)
+		}
+		calls := f.repo.renameCalls
+
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			DisplayName: "Renamed", Description: description(""), ExpectedVersion: created.Version,
+		}); !errors.Is(err, connection.ErrConflict) {
+			t.Errorf("stale edit = %v, want ErrConflict", err)
+		}
+		if f.repo.renameCalls != calls {
+			t.Errorf("the store was asked %d extra times; a version the service knows is stale never reaches it",
+				f.repo.renameCalls-calls)
+		}
+		got, err := f.svc.Get(t.Context(), created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Description != "theirs" || got.DisplayName != created.DisplayName {
+			t.Errorf("row = %q/%q, want the first update intact", got.DisplayName, got.Description)
+		}
+	})
+
+	t.Run("guards with the version it read, not the number handed in", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t)
+		created, err := f.svc.Create(t.Context(), "admin1", validCreate())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			DisplayName: "Renamed", ExpectedVersion: created.Version,
+		}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		if f.repo.descriptorExpectedVersion != created.Version {
+			t.Errorf("store guarded with %d, want the read row's %d", f.repo.descriptorExpectedVersion, created.Version)
+		}
+	})
+
+	t.Run("adversarial: a future token cannot pre-claim the next version", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t)
+		created, err := f.svc.Create(t.Context(), "admin1", validCreate())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, version := range []int64{created.Version + 1, created.Version + 99, created.Version - 1, 0, -5} {
+			if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+				DisplayName: "Hijacked", ExpectedVersion: version,
+			}); !errors.Is(err, connection.ErrConflict) {
+				t.Errorf("edit with version %d = %v, want ErrConflict", version, err)
+			}
+		}
+		got, err := f.svc.Get(t.Context(), created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.DisplayName == "Hijacked" {
+			t.Error("a refused edit landed anyway")
+		}
+	})
+
+	t.Run("the config flow is guarded the same way", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t)
+		created, err := f.svc.Create(t.Context(), "admin1", validCreate())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			Description: description("theirs"), ExpectedVersion: created.Version,
+		}); err != nil {
+			t.Fatalf("first update: %v", err)
+		}
+		cfg := validCreate().Config
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			DisplayName: "Renamed", Config: &cfg, ExpectedVersion: created.Version,
+		}); !errors.Is(err, connection.ErrConflict) {
+			t.Errorf("stale config replace = %v, want ErrConflict", err)
+		}
+	})
+}
+
 func TestUpdateRenameOnlySkipsTest(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -411,7 +499,9 @@ func TestUpdateRenameOnlySkipsTest(t *testing.T) {
 	}
 	f.validator.calls = 0
 
-	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{DisplayName: "Renamed"})
+	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+		DisplayName: "Renamed", ExpectedVersion: created.Version,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +532,9 @@ func TestUpdateConfigRetestsAndReseals(t *testing.T) {
 	cfg := validCreate().Config
 	cfg.Host = "replica.example.com"
 	cfg.TLSMode = "disable"
-	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Config: &cfg})
+	got, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+		Config: &cfg, ExpectedVersion: created.Version,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,17 +554,15 @@ func TestUpdateConfigRetestsAndReseals(t *testing.T) {
 	if len(last) != 2 || last[0].Action != audit.ActionConnectionUpdated || last[1].Action != audit.ActionConnectionTLSRelaxed {
 		t.Fatalf("want [CONNECTION_UPDATED, CONNECTION_TLS_RELAXED], got %+v", last)
 	}
-	// A failing test must abort the update.
+	// A failing test must abort the update. The row moved on with the successful update above, so this one carries the version it left behind.
 	f.validator.err = &connection.TestError{Bucket: connection.TestBucketUnreachable}
-	if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Config: &cfg}); err == nil {
+	if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+		Config: &cfg, ExpectedVersion: got.Version,
+	}); err == nil {
 		t.Fatal("config update with a failing test must not persist")
 	}
 }
 
-// CONNECTION_UPDATED's "fields" metadata names what actually changed (external
-// review): an empty (or unchanged) DisplayName on a config update keeps the
-// current name — the UpdateParams contract — so auditing it as a rename would
-// misstate the change scope the trail exists to reconstruct.
 func TestUpdateConfigAuditsActualFieldScope(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -501,7 +591,14 @@ func TestUpdateConfigAuditsActualFieldScope(t *testing.T) {
 		{"actual rename", "Renamed with config", []string{"config", "display_name"}},
 	}
 	for _, tt := range tests {
-		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{DisplayName: tt.displayName, Config: &cfg}); err != nil {
+
+		current, err := f.svc.Get(t.Context(), created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			DisplayName: tt.displayName, Config: &cfg, ExpectedVersion: current.Version,
+		}); err != nil {
 			t.Fatalf("%s: %v", tt.name, err)
 		}
 		got := lastFields()
@@ -509,8 +606,8 @@ func TestUpdateConfigAuditsActualFieldScope(t *testing.T) {
 			t.Errorf("%s: fields = %v, want %v", tt.name, got, tt.want)
 			continue
 		}
-		for i := range tt.want {
-			if got[i] != tt.want[i] {
+		for idx := range tt.want {
+			if got[idx] != tt.want[idx] {
 				t.Errorf("%s: fields = %v, want %v", tt.name, got, tt.want)
 				break
 			}
@@ -533,7 +630,10 @@ func TestUpdateConfigRejectsConcurrentRename(t *testing.T) {
 
 	cfg := validCreate().Config
 	cfg.Host = "replica.example.com"
-	if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Config: &cfg}); !errors.Is(err, connection.ErrConflict) {
+	// The token is CURRENT when the update starts; the rename lands during the external test, so only the store's condition can catch it — this is the window the app-level guard cannot see.
+	if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+		Config: &cfg, ExpectedVersion: created.Version,
+	}); !errors.Is(err, connection.ErrConflict) {
 		t.Fatalf("Update config after concurrent rename = %v, want ErrConflict", err)
 	}
 	if got := f.repo.conns[created.ID].DisplayName; got != "Renamed while testing" {
@@ -573,8 +673,6 @@ func TestArchiveDiscardsCredentialAndRefusesTwice(t *testing.T) {
 	}
 }
 
-// Test-by-id opens the sealed credential through the codec and dials with it,
-// leaving a best-effort CONNECTION_TEST event carrying the connection id.
 func TestTestByIDOpensSealedCredential(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -597,12 +695,6 @@ func TestTestByIDOpensSealedCredential(t *testing.T) {
 	}
 }
 
-// The adapter matches a connection id by uuid VALUE (PostgreSQL uuid
-// comparison), so a caller can reach a row through a non-canonical spelling of
-// its id. Everything derived from that request — the AAD seal, the audit
-// target — must use the STORED id, or the ciphertext binds to a string no
-// canonical request can ever present again (external review). The alias key
-// below emulates the store answering a second spelling with the same row.
 func TestUpdateSealsUnderStoredID(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -616,7 +708,9 @@ func TestUpdateSealsUnderStoredID(t *testing.T) {
 
 	cfg := validCreate().Config
 	cfg.Host = "replica.example.com"
-	if _, err := f.svc.Update(t.Context(), "admin1", alias, appconn.UpdateParams{Config: &cfg}); err != nil {
+	if _, err := f.svc.Update(t.Context(), "admin1", alias, appconn.UpdateParams{
+		Config: &cfg, ExpectedVersion: created.Version,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if f.codec.sealedID != created.ID {
@@ -648,11 +742,6 @@ func TestTestByIDOpensUnderStoredID(t *testing.T) {
 	}
 }
 
-// Archive concurrent with an in-flight test: archive blocks NEW admissions
-// (TestMaterial rejects an archived row), but a test already admitted — its
-// credential snapshot read, its dial in progress — runs to completion within
-// the test timeout (ADR-0014; PRD §4.3's "immediately blocks" is scoped to NEW
-// tests). Canceling could not un-dial the target anyway.
 func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -661,7 +750,7 @@ func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.validator.afterValidate = func() {
-		// The archive commits while the dial is in flight.
+
 		now := time.Now()
 		f.repo.conns[created.ID].ArchivedAt = &now
 		delete(f.repo.sealed, created.ID)
@@ -676,7 +765,6 @@ func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 		t.Fatalf("want the completed test's CONNECTION_TEST SUCCEEDED, got %+v", f.auditor.events)
 	}
 
-	// A NEW test after the archive is refused at admission.
 	f.validator.afterValidate = nil
 	f.validator.calls = 0
 	if err := f.svc.TestByID(t.Context(), "admin1", created.ID); !errors.Is(err, connection.ErrArchived) {
@@ -687,8 +775,6 @@ func TestArchiveDuringDialLetsAdmittedTestComplete(t *testing.T) {
 	}
 }
 
-// TestByConfig (pre-save) validates, dials, and reports the classified outcome
-// without touching the repository.
 func TestTestByConfig(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -707,10 +793,6 @@ func TestTestByConfig(t *testing.T) {
 	}
 }
 
-// Every CONNECTION_TEST event identifies the TLS mode the dial actually used
-// (ADR-0014, PRD §8.1): explicit tests and failed-save dials never emit the
-// transactional CONNECTION_TLS_RELAXED, so without tls_mode a require/disable
-// connection would be indistinguishable in the trail.
 func TestConnectionTestEventsCarryTLSMode(t *testing.T) {
 	t.Parallel()
 
@@ -792,10 +874,6 @@ func TestGetAndList(t *testing.T) {
 	}
 }
 
-// A successful dial whose save then fails must still leave a best-effort
-// CONNECTION_TEST SUCCEEDED trail — otherwise the target-DB access would
-// vanish from the audit record with the rolled-back transaction (ADR-0014
-// amendment; external review finding).
 func TestCreateFailureAfterSuccessfulDialLeavesTestTrail(t *testing.T) {
 	t.Parallel()
 
@@ -807,8 +885,6 @@ func TestCreateFailureAfterSuccessfulDialLeavesTestTrail(t *testing.T) {
 		}
 		f.auditor.events = nil
 
-		// Same display name → the fake repo refuses with ErrNameTaken AFTER the
-		// tester already dialed the target.
 		_, err := f.svc.Create(t.Context(), "admin1", validCreate())
 		if !errors.Is(err, connection.ErrNameTaken) {
 			t.Fatalf("err = %v, want ErrNameTaken", err)
@@ -838,7 +914,9 @@ func TestCreateFailureAfterSuccessfulDialLeavesTestTrail(t *testing.T) {
 		f.codec.sealErr = errors.New("keyring exploded")
 
 		cfg := validCreate().Config
-		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{Config: &cfg}); err == nil {
+		if _, err := f.svc.Update(t.Context(), "admin1", created.ID, appconn.UpdateParams{
+			Config: &cfg, ExpectedVersion: created.Version,
+		}); err == nil {
 			t.Fatal("Update with failing sealer should error")
 		}
 		assertUnsavedDialEvent(t, f.auditor.events)
