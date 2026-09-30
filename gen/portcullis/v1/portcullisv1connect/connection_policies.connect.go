@@ -42,15 +42,9 @@ const (
 
 // ConnectionPoliciesClient is a client for the portcullis.v1.ConnectionPolicies service.
 type ConnectionPoliciesClient interface {
-	// Get returns the connection's current policy — archived connections
-	// included (the policy is part of the historical snapshot). Requires
-	// policies.get.
+	// Get returns the connection's current policy — archived connections included (the policy is part of the historical snapshot). Requires policies.get.
 	Get(context.Context, *connect.Request[v1.GetConnectionPolicyRequest]) (*connect.Response[v1.GetConnectionPolicyResponse], error)
-	// Update replaces the policy with a NEW immutable version (full snapshot
-	// semantics — no partial patch). expected_version is the version the caller
-	// read; a mismatch fails with Aborted ("policy changed — refresh and
-	// retry"). Enabling write/ddl leaves an additional admin audit event (PRD
-	// §4.3). Requires policies.update.
+	// Update replaces the policy with a NEW immutable version (full snapshot semantics — no partial patch). expected_version is the version the caller read; a mismatch fails with Aborted ("policy changed — refresh and retry"). Enabling write/ddl leaves an additional admin audit event (PRD §4.3). Requires policies.update.
 	Update(context.Context, *connect.Request[v1.UpdateConnectionPolicyRequest]) (*connect.Response[v1.UpdateConnectionPolicyResponse], error)
 }
 
@@ -98,15 +92,9 @@ func (c *connectionPoliciesClient) Update(ctx context.Context, req *connect.Requ
 
 // ConnectionPoliciesHandler is an implementation of the portcullis.v1.ConnectionPolicies service.
 type ConnectionPoliciesHandler interface {
-	// Get returns the connection's current policy — archived connections
-	// included (the policy is part of the historical snapshot). Requires
-	// policies.get.
+	// Get returns the connection's current policy — archived connections included (the policy is part of the historical snapshot). Requires policies.get.
 	Get(context.Context, *connect.Request[v1.GetConnectionPolicyRequest]) (*connect.Response[v1.GetConnectionPolicyResponse], error)
-	// Update replaces the policy with a NEW immutable version (full snapshot
-	// semantics — no partial patch). expected_version is the version the caller
-	// read; a mismatch fails with Aborted ("policy changed — refresh and
-	// retry"). Enabling write/ddl leaves an additional admin audit event (PRD
-	// §4.3). Requires policies.update.
+	// Update replaces the policy with a NEW immutable version (full snapshot semantics — no partial patch). expected_version is the version the caller read; a mismatch fails with Aborted ("policy changed — refresh and retry"). Enabling write/ddl leaves an additional admin audit event (PRD §4.3). Requires policies.update.
 	Update(context.Context, *connect.Request[v1.UpdateConnectionPolicyRequest]) (*connect.Response[v1.UpdateConnectionPolicyResponse], error)
 }
 

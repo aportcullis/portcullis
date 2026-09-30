@@ -47,8 +47,7 @@ const (
 
 // AuthClient is a client for the portcullis.v1.Auth service.
 type AuthClient interface {
-	// Bootstrap creates the first admin; refused once any user exists. It does not
-	// start a session — the client logs in afterward.
+	// Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
 	Bootstrap(context.Context, *connect.Request[v1.BootstrapRequest]) (*connect.Response[v1.BootstrapResponse], error)
 	// Login verifies the password and starts a session (sets the session + CSRF cookies).
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
@@ -56,11 +55,7 @@ type AuthClient interface {
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// Me returns the currently authenticated user.
 	Me(context.Context, *connect.Request[v1.MeRequest]) (*connect.Response[v1.MeResponse], error)
-	// GetConfig returns the public login configuration the SPA needs before any
-	// session exists: whether Google login is available and whether the instance
-	// still needs its first-run bootstrap. Public read-only metadata — bootstrap
-	// state is install-level, not per-account, so this is not an enumeration
-	// oracle (ADR-0007/ADR-0013).
+	// GetConfig returns the public login configuration the SPA needs before any session exists: whether Google login is available and whether the instance still needs its first-run bootstrap. Public read-only metadata — bootstrap state is install-level, not per-account, so this is not an enumeration oracle (ADR-0007/ADR-0013).
 	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
 }
 
@@ -144,8 +139,7 @@ func (c *authClient) GetConfig(ctx context.Context, req *connect.Request[v1.GetC
 
 // AuthHandler is an implementation of the portcullis.v1.Auth service.
 type AuthHandler interface {
-	// Bootstrap creates the first admin; refused once any user exists. It does not
-	// start a session — the client logs in afterward.
+	// Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
 	Bootstrap(context.Context, *connect.Request[v1.BootstrapRequest]) (*connect.Response[v1.BootstrapResponse], error)
 	// Login verifies the password and starts a session (sets the session + CSRF cookies).
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
@@ -153,11 +147,7 @@ type AuthHandler interface {
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// Me returns the currently authenticated user.
 	Me(context.Context, *connect.Request[v1.MeRequest]) (*connect.Response[v1.MeResponse], error)
-	// GetConfig returns the public login configuration the SPA needs before any
-	// session exists: whether Google login is available and whether the instance
-	// still needs its first-run bootstrap. Public read-only metadata — bootstrap
-	// state is install-level, not per-account, so this is not an enumeration
-	// oracle (ADR-0007/ADR-0013).
+	// GetConfig returns the public login configuration the SPA needs before any session exists: whether Google login is available and whether the instance still needs its first-run bootstrap. Public read-only metadata — bootstrap state is install-level, not per-account, so this is not an enumeration oracle (ADR-0007/ADR-0013).
 	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
 }
 

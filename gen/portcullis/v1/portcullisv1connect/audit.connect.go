@@ -41,8 +41,7 @@ const (
 
 // AuditClient is a client for the portcullis.v1.Audit service.
 type AuditClient interface {
-	// List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
-	// audit.list.
+	// List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires audit.list.
 	List(context.Context, *connect.Request[v1.AuditListRequest]) (*connect.Response[v1.AuditListResponse], error)
 	// Get returns one audit event's detail. Requires audit.get.
 	Get(context.Context, *connect.Request[v1.GetAuditEventRequest]) (*connect.Response[v1.GetAuditEventResponse], error)
@@ -92,8 +91,7 @@ func (c *auditClient) Get(ctx context.Context, req *connect.Request[v1.GetAuditE
 
 // AuditHandler is an implementation of the portcullis.v1.Audit service.
 type AuditHandler interface {
-	// List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires
-	// audit.list.
+	// List returns a page of audit events (OFFSET pagination, PRD §7.1). Requires audit.list.
 	List(context.Context, *connect.Request[v1.AuditListRequest]) (*connect.Response[v1.AuditListResponse], error)
 	// Get returns one audit event's detail. Requires audit.get.
 	Get(context.Context, *connect.Request[v1.GetAuditEventRequest]) (*connect.Response[v1.GetAuditEventResponse], error)

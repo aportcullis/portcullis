@@ -51,10 +51,7 @@ type LinkOIDCIdentityParams struct {
 	Email   string
 }
 
-// Idempotent only for the same user: a new (issuer, subject) inserts; an
-// existing one owned by the same user refreshes the email; one owned by a
-// different user matches the conflict but fails the WHERE, so no row is
-// returned and the caller detects the collision (vs. silently succeeding).
+// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
 func (q *Queries) LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, linkOIDCIdentity,
 		arg.UserID,

@@ -1,10 +1,13 @@
 # ADR-0005: CellValue / ColumnMeta wire contract
 
-- **Status:** Accepted — wire contract and sort/filter/CSV rules fixed. (Amended 2026-07-04: per-engine scan-type → LogicalType mapping tables and the NULL-ordering / tie-breaker rules are pinned; adapter work pins them with fixtures, it no longer designs them.)
+- **Status:** Accepted — wire contract and sort/filter/CSV rules fixed.
+  (Amended 2026-07-04: per-engine scan-type → LogicalType mapping tables and the NULL-ordering / tie-breaker rules are pinned; adapter work pins them with fixtures, it no longer designs them.)
 - **Date:** 2026-06-27 (amended 2026-07-04)
 
 ## Context
-The result grid is a core differentiator: it streams arbitrary result cells from three engines (PostgreSQL, MySQL, SQLite) to a browser client over Connect RPC (protobuf), and then sorts, filters, paginates, and exports them as CSV — all over a single cached snapshot. This requires a faithful, lossless, type-aware representation of any cell. The contract must be fixed **before** the API is frozen, because every downstream behavior (grid rendering, sort/filter semantics, CSV serialization) depends on it.
+The result grid is a core differentiator: it streams arbitrary result cells from three engines (PostgreSQL, MySQL, SQLite) to a browser client over Connect RPC (protobuf), and then sorts, filters, paginates, and exports them as CSV — all over a single cached snapshot.
+This requires a faithful, lossless, type-aware representation of any cell.
+The contract must be fixed **before** the API is frozen, because every downstream behavior (grid rendering, sort/filter semantics, CSV serialization) depends on it.
 
 Hard requirements:
 - Represent `null`, `string`, `bool`, `bytes`.
@@ -46,24 +49,32 @@ message CellValue {
   }
 }
 ```
-- `LogicalType` is what the grid uses; `db_type_name` is preserved for display and for the redacted audit/EXPLAIN context. Unknown engine types map to `UNKNOWN` and travel as `string_value` (never silently coerced).
+- `LogicalType` is what the grid uses; `db_type_name` is preserved for display and for the redacted audit/EXPLAIN context.
+  Unknown engine types map to `UNKNOWN` and travel as `string_value` (never silently coerced).
 - A row is a repeated `CellValue`; column identity comes from the parallel `ColumnMeta` list.
 
 ### Sort / filter semantics (server-side over the snapshot)
 - `INT`/`DECIMAL` compare numerically on the exact string; `FLOAT` numerically as double.
 - `STRING`/`UUID`/`JSON`/`ARRAY`/`UNKNOWN` compare lexically (byte order, UTF-8).
 - Temporal types compare on the normalized instant/value.
-- `BOOL` false < true. `BYTES` lexicographic.
+- `BOOL` false < true.
+  `BYTES` lexicographic.
 - **NULL ordering is fixed: nulls sort last in both directions** (ASC and DESC), not configurable in the MVP — one rule, no per-request surface.
-- **Pagination tie-breaker: the snapshot row ordinal** (the row's position in the original result order, stored per row), ascending, appended to every sort. Page boundaries are therefore stable across identical requests, and "unsorted" is exactly the original result order.
+- **Pagination tie-breaker: the snapshot row ordinal** (the row's position in the original result order, stored per row), ascending, appended to every sort.
+  Page boundaries are therefore stable across identical requests, and "unsorted" is exactly the original result order.
 
 ### CSV serialization
 - Each cell → text: `is_null` → empty field; `bytes` → base64; `JSON`/`ARRAY` → raw text; temporal → the canonical ISO string; numbers → their string form.
-- **Formula-injection escape:** any field whose first character is `=`, `+`, `-`, `@`, tab, or CR is prefixed with a single quote by default. A raw (un-escaped) export is a separate explicit option with a warning.
+- **Formula-injection escape:** any field whose first character is `=`, `+`, `-`, `@`, tab, or CR is prefixed with a single quote by default.
+  A raw (un-escaped) export is a separate explicit option with a warning.
 - RFC-4180 quoting; UTF-8 encoding; embedded newlines preserved inside quoted fields.
 
 ## Consequences
-- The proto is generated once into Go and TS, giving end-to-end types. Adapters map each engine's driver values into `CellValue` at execution time; the grid and CSV paths consume only the logical type, so they are engine-agnostic.
+- Pin protobuf-go, Connect Go, and protobuf-es generator versions in `buf.gen.yaml` to their corresponding runtime dependencies.
+  Regeneration must not implicitly upgrade plugins; review runtime, generator, and output changes together.
+  See [Buf remote plugin versioning](https://buf.build/docs/configuration/v2/buf-gen-yaml/#plugins).
+- The proto is generated once into Go and TS, giving end-to-end types.
+  Adapters map each engine's driver values into `CellValue` at execution time; the grid and CSV paths consume only the logical type, so they are engine-agnostic.
 - Lossless-by-default: anything not confidently typed becomes `UNKNOWN`+string rather than a lossy cast, matching the fail-closed posture elsewhere.
 
 ## Per-engine mapping tables (normative; fixture-pinned alongside the classification suite)
@@ -106,5 +117,6 @@ Anything not listed maps to `UNKNOWN` and travels as the driver's text rendering
 
 ### SQLite (dynamic typing — two-level rule)
 - **`ColumnMeta.logical_type` comes from the declared type** (decltype) via SQLite's affinity rules: INTEGER affinity → INT, REAL → FLOAT, TEXT → STRING, BLOB (or no decltype) → BYTES, NUMERIC affinity → DECIMAL; expression columns without a decltype → UNKNOWN.
-- **Each `CellValue` follows the cell's actual storage class** (`sqlite3_column_type`): INTEGER → int_value, FLOAT → double_value, TEXT → string_value, BLOB → bytes_value, NULL → is_null. A cell whose storage class contradicts the column's logical type is legal in SQLite and travels by its storage class — the grid renders by cell, sorts by the rules above per cell.
+- **Each `CellValue` follows the cell's actual storage class** (`sqlite3_column_type`): INTEGER → int_value, FLOAT → double_value, TEXT → string_value, BLOB → bytes_value, NULL → is_null.
+  A cell whose storage class contradicts the column's logical type is legal in SQLite and travels by its storage class — the grid renders by cell, sorts by the rules above per cell.
 - SQLite has no native date/time/uuid/json types; such columns surface as their storage class (typically STRING) — no format sniffing.

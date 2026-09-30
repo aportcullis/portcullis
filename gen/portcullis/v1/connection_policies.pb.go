@@ -27,8 +27,7 @@ type ClassPolicy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether the class may run on this connection at all.
 	Allowed bool `protobuf:"varint,1,opt,name=allowed,proto3" json:"allowed,omitempty"`
-	// Distinct active approvers a request needs (0 = system auto-approval,
-	// audited the same; max 100).
+	// Distinct active approvers a request needs (0 = system auto-approval, audited the same; max 100).
 	RequiredApprovals uint32 `protobuf:"varint,2,opt,name=required_approvals,json=requiredApprovals,proto3" json:"required_approvals,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -87,8 +86,7 @@ type ConnectionPolicy struct {
 	Read    *ClassPolicy `protobuf:"bytes,3,opt,name=read,proto3" json:"read,omitempty"`
 	Write   *ClassPolicy `protobuf:"bytes,4,opt,name=write,proto3" json:"write,omitempty"`
 	Ddl     *ClassPolicy `protobuf:"bytes,5,opt,name=ddl,proto3" json:"ddl,omitempty"`
-	// Execution limits — one set per version (ADR-0015): timeout 1..300 s,
-	// rows 1..10000, bytes 4 KiB..64 MiB.
+	// Execution limits — one set per version (ADR-0015): timeout 1..300 s, rows 1..10000, bytes 4 KiB..64 MiB.
 	QueryTimeoutSeconds uint32                 `protobuf:"varint,6,opt,name=query_timeout_seconds,json=queryTimeoutSeconds,proto3" json:"query_timeout_seconds,omitempty"`
 	MaxRows             uint32                 `protobuf:"varint,7,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
 	MaxResultBytes      uint64                 `protobuf:"varint,8,opt,name=max_result_bytes,json=maxResultBytes,proto3" json:"max_result_bytes,omitempty"`
@@ -283,8 +281,7 @@ type UpdateConnectionPolicyRequest struct {
 	ConnectionId string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	// The version the caller read; mismatch → Aborted.
 	ExpectedVersion int64 `protobuf:"varint,2,opt,name=expected_version,json=expectedVersion,proto3" json:"expected_version,omitempty"`
-	// read/write/ddl are ALL required: the update is a full replacement, and an
-	// omitted class must not silently reset its kept quorum (InvalidArgument).
+	// read/write/ddl are ALL required: the update is a full replacement, and an omitted class must not silently reset its kept quorum (InvalidArgument).
 	Read                *ClassPolicy `protobuf:"bytes,3,opt,name=read,proto3" json:"read,omitempty"`
 	Write               *ClassPolicy `protobuf:"bytes,4,opt,name=write,proto3" json:"write,omitempty"`
 	Ddl                 *ClassPolicy `protobuf:"bytes,5,opt,name=ddl,proto3" json:"ddl,omitempty"`

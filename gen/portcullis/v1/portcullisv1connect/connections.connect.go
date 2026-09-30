@@ -53,22 +53,13 @@ type ConnectionsClient interface {
 	List(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error)
 	// Get returns one connection. Requires connections.get.
 	Get(context.Context, *connect.Request[v1.GetConnectionRequest]) (*connect.Response[v1.GetConnectionResponse], error)
-	// Create registers a connection after a mandatory server-side connection
-	// test; a failing test refuses to save (PRD §7.2). Requires
-	// connections.create.
+	// Create registers a connection after a mandatory server-side connection test; a failing test refuses to save (PRD §7.2). Requires connections.create.
 	Create(context.Context, *connect.Request[v1.CreateConnectionRequest]) (*connect.Response[v1.CreateConnectionResponse], error)
-	// Update renames a connection (config unset) or replaces the full target +
-	// credential after a fresh successful test (config set — there is no partial
-	// credential edit, ADR-0014). Requires connections.update.
+	// Update renames a connection (config unset) or replaces the full target + credential after a fresh successful test (config set — there is no partial credential edit, ADR-0014). Requires connections.update.
 	Update(context.Context, *connect.Request[v1.UpdateConnectionRequest]) (*connect.Response[v1.UpdateConnectionResponse], error)
-	// Test dials a target: pre-save with an unsaved config, or a saved
-	// connection by id with its stored credential. The outcome is reported
-	// in-band (ok/message) — a failed test is a result, not an RPC error.
-	// Requires connections.test.
+	// Test dials a target: pre-save with an unsaved config, or a saved connection by id with its stored credential. The outcome is reported in-band (ok/message) — a failed test is a result, not an RPC error. Requires connections.test.
 	Test(context.Context, *connect.Request[v1.TestConnectionRequest]) (*connect.Response[v1.TestConnectionResponse], error)
-	// Archive soft-deletes: it blocks new tests/requests, discards the encrypted
-	// credential, and keeps the descriptor as the historical snapshot (PRD
-	// §4.3). There is no hard delete. Requires connections.delete.
+	// Archive soft-deletes: it blocks new tests/requests, discards the encrypted credential, and keeps the descriptor as the historical snapshot (PRD §4.3). There is no hard delete. Requires connections.delete.
 	Archive(context.Context, *connect.Request[v1.ArchiveConnectionRequest]) (*connect.Response[v1.ArchiveConnectionResponse], error)
 }
 
@@ -168,22 +159,13 @@ type ConnectionsHandler interface {
 	List(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error)
 	// Get returns one connection. Requires connections.get.
 	Get(context.Context, *connect.Request[v1.GetConnectionRequest]) (*connect.Response[v1.GetConnectionResponse], error)
-	// Create registers a connection after a mandatory server-side connection
-	// test; a failing test refuses to save (PRD §7.2). Requires
-	// connections.create.
+	// Create registers a connection after a mandatory server-side connection test; a failing test refuses to save (PRD §7.2). Requires connections.create.
 	Create(context.Context, *connect.Request[v1.CreateConnectionRequest]) (*connect.Response[v1.CreateConnectionResponse], error)
-	// Update renames a connection (config unset) or replaces the full target +
-	// credential after a fresh successful test (config set — there is no partial
-	// credential edit, ADR-0014). Requires connections.update.
+	// Update renames a connection (config unset) or replaces the full target + credential after a fresh successful test (config set — there is no partial credential edit, ADR-0014). Requires connections.update.
 	Update(context.Context, *connect.Request[v1.UpdateConnectionRequest]) (*connect.Response[v1.UpdateConnectionResponse], error)
-	// Test dials a target: pre-save with an unsaved config, or a saved
-	// connection by id with its stored credential. The outcome is reported
-	// in-band (ok/message) — a failed test is a result, not an RPC error.
-	// Requires connections.test.
+	// Test dials a target: pre-save with an unsaved config, or a saved connection by id with its stored credential. The outcome is reported in-band (ok/message) — a failed test is a result, not an RPC error. Requires connections.test.
 	Test(context.Context, *connect.Request[v1.TestConnectionRequest]) (*connect.Response[v1.TestConnectionResponse], error)
-	// Archive soft-deletes: it blocks new tests/requests, discards the encrypted
-	// credential, and keeps the descriptor as the historical snapshot (PRD
-	// §4.3). There is no hard delete. Requires connections.delete.
+	// Archive soft-deletes: it blocks new tests/requests, discards the encrypted credential, and keeps the descriptor as the historical snapshot (PRD §4.3). There is no hard delete. Requires connections.delete.
 	Archive(context.Context, *connect.Request[v1.ArchiveConnectionRequest]) (*connect.Response[v1.ArchiveConnectionResponse], error)
 }
 
