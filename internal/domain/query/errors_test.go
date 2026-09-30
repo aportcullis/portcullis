@@ -8,8 +8,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// The SQL text (and anything embedded in it) is sensitive until redacted
-// (PRD §8.4): typed errors carry positions and reasons, never input text.
 func TestErrorTextsCarryNoInput(t *testing.T) {
 	t.Parallel()
 
@@ -69,9 +67,6 @@ func TestExecErrorCarriesSQLState(t *testing.T) {
 	}
 }
 
-// The primary message can quote input values (22P02 embeds the literal), so
-// it must never reach the Error() string a log line would capture — it is a
-// requester-facing field only (ADR-0016 error-text hygiene).
 func TestExecErrorStringExcludesMessage(t *testing.T) {
 	t.Parallel()
 

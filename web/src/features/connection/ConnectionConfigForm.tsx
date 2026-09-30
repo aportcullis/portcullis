@@ -6,11 +6,7 @@ import type { DraftController } from "@/features/connection/draft";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 
-// ConnectionConfigForm groups the config fields with their pre-save test — the
-// "Test connection" button and its result live next to the fields they test,
-// driven by a shared draft controller whose revision guard prevents a stale
-// test result from reappearing after an edit (ADR-0014). Shared by the create
-// and edit dialogs.
+// ConnectionConfigForm groups the config fields with their pre-save test — the "Test connection" button and its result live next to the fields they test, driven by a shared draft controller whose revision guard prevents a stale test result from reappearing after an edit (ADR-0014). Shared by the create and edit dialogs.
 export const ConnectionConfigForm: Component<{
   controller: DraftController;
   disabled?: boolean;

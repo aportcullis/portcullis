@@ -13,9 +13,7 @@ import (
 // DefaultArgon2Params is the v1 cost profile.
 var DefaultArgon2Params = Argon2Params{Memory: 64 * 1024, Time: 3, Threads: 2, KeyLen: 32, SaltLen: 16}
 
-// HashPassword hashes password with Argon2id and returns a PHC-style encoded
-// string that embeds the cost parameters and salt. It rejects out-of-range
-// parameters, which would otherwise panic Argon2 or exhaust memory.
+// HashPassword hashes password with Argon2id and returns a PHC-style encoded string that embeds the cost parameters and salt. It rejects out-of-range parameters, which would otherwise panic Argon2 or exhaust memory.
 func HashPassword(password string, p Argon2Params) (string, error) {
 	if !validParams(p) {
 		return "", ErrInvalidParams
@@ -28,9 +26,7 @@ func HashPassword(password string, p Argon2Params) (string, error) {
 	return encodeHash(p, salt, hash), nil
 }
 
-// VerifyPassword reports whether password matches encoded, and whether the
-// stored profile differs from want (so the caller can transparently re-hash on
-// the next successful login). A mismatch returns (false, false, nil).
+// VerifyPassword reports whether password matches encoded, and whether the stored profile differs from want (so the caller can transparently re-hash on the next successful login). A mismatch returns (false, false, nil).
 func VerifyPassword(password, encoded string, want Argon2Params) (ok, needsRehash bool, err error) {
 	p, salt, hash, err := decodeHash(encoded)
 	if err != nil {
@@ -48,9 +44,7 @@ func VerifyPassword(password, encoded string, want Argon2Params) (ok, needsRehas
 	return true, needsRehash, nil
 }
 
-// validParams bounds the cost parameters before they reach Argon2, which panics
-// on time<1 or threads<1 and would exhaust memory on huge values. The ceilings
-// keep a single hash from OOM-ing a small container.
+// validParams bounds the cost parameters before they reach Argon2, which panics on time<1 or threads<1 and would exhaust memory on huge values. The ceilings keep a single hash from OOM-ing a small container.
 func validParams(p Argon2Params) bool {
 	const (
 		maxMemoryKiB = 256 * 1024 // 256 MiB

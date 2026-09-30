@@ -13,9 +13,6 @@ import (
 
 const googleIssuer = "https://accounts.google.com"
 
-// fakeProvider scripts the OIDC provider port: AuthCodeURL records its inputs,
-// Exchange returns the configured claims (echoing the code/verifier it saw) or
-// a scripted error.
 type fakeProvider struct {
 	authURLCalls int
 	lastState    string
@@ -44,15 +41,12 @@ func (p *fakeProvider) Exchange(_ context.Context, code, verifier string) (ident
 	return p.claims, nil
 }
 
-// linkRaceRepo simulates the concurrent first-login race: the subject lookup
-// misses, but by the time we link, another user has claimed the identity.
+// linkRaceRepo simulates the concurrent first-login race: the subject lookup misses, but by the time we link, another user has claimed the identity.
 type linkRaceRepo struct{ *fakeRepo }
 
 func (r linkRaceRepo) LinkIdentityAndRotateSession(context.Context, identity.OIDCIdentity, identity.Session, []byte, audit.Event) (identity.Session, error) {
 	return identity.Session{}, identity.ErrIdentityLinkedToAnotherUser
 }
-
-// --- helpers ---
 
 func newOIDCService(t *testing.T, repo auth.Repository, rec auth.AuditRecorder, p auth.OIDCProvider) *auth.Service {
 	t.Helper()
@@ -63,8 +57,6 @@ func newOIDCService(t *testing.T, repo auth.Repository, rec auth.AuditRecorder, 
 	return svc.WithOIDCProvider(p)
 }
 
-// bootstrapUser creates the admin the way production does, so link-by-email
-// tests target a real admin-created account.
 func bootstrapUser(t *testing.T, svc *auth.Service) identity.User {
 	t.Helper()
 	u, err := svc.Bootstrap(context.Background(), "admin@example.com", "hunter2-secretz", "Admin")
@@ -74,8 +66,6 @@ func bootstrapUser(t *testing.T, svc *auth.Service) identity.User {
 	return u
 }
 
-// startFlow runs StartGoogleLogin and points the provider's claims at the
-// minted nonce, so a callback with these claims passes the nonce check.
 func startFlow(t *testing.T, svc *auth.Service, p *fakeProvider) auth.OIDCPending {
 	t.Helper()
 	_, pending, err := svc.StartGoogleLogin(context.Background())
@@ -86,12 +76,9 @@ func startFlow(t *testing.T, svc *auth.Service, p *fakeProvider) auth.OIDCPendin
 	return pending
 }
 
-// verifiedClaims builds provider claims for the given subject/email.
 func verifiedClaims(email string) identity.OIDCClaims {
 	return identity.OIDCClaims{Issuer: googleIssuer, Subject: "sub-1", Email: email, EmailVerified: true}
 }
-
-// --- tests ---
 
 func TestStartGoogleLoginMintsPendingState(t *testing.T) {
 	t.Parallel()
@@ -106,25 +93,22 @@ func TestStartGoogleLoginMintsPendingState(t *testing.T) {
 	if url == "" || p.authURLCalls != 1 {
 		t.Errorf("auth URL = %q (provider called %d times), want the provider's URL exactly once", url, p.authURLCalls)
 	}
-	// state, nonce, and verifier are three independent secrets — sharing any two
-	// would let one leaked value stand in for another.
+	// state, nonce, and verifier are three independent secrets — sharing any two would let one leaked value stand in for another.
 	if pending.State == "" || pending.Nonce == "" || pending.Verifier == "" {
 		t.Fatalf("pending has empty fields: %+v", pending)
 	}
 	if pending.State == pending.Nonce || pending.State == pending.Verifier || pending.Nonce == pending.Verifier {
 		t.Errorf("state/nonce/verifier must be distinct: %+v", pending)
 	}
-	// The provider must be handed exactly the minted values (the URL carries the
-	// S256 challenge derived from this verifier).
+	// The provider must be handed exactly the minted values (the URL carries the S256 challenge derived from this verifier).
 	if p.lastState != pending.State || p.lastNonce != pending.Nonce || p.lastVerifier != pending.Verifier {
 		t.Errorf("provider saw (%q,%q,%q), want the minted pending values", p.lastState, p.lastNonce, p.lastVerifier)
 	}
-	// ADR-0007 pins the pending TTL at exactly 10 minutes.
+
 	if want := base.Add(10 * time.Minute); !pending.ExpiresAt.Equal(want) {
 		t.Errorf("ExpiresAt = %v, want %v", pending.ExpiresAt, want)
 	}
 
-	// A second start mints fresh secrets — pending state is per-flow.
 	_, second, err := svc.StartGoogleLogin(context.Background())
 	if err != nil {
 		t.Fatalf("second StartGoogleLogin: %v", err)
@@ -136,7 +120,7 @@ func TestStartGoogleLoginMintsPendingState(t *testing.T) {
 
 func TestGoogleLoginWithoutProviderRefused(t *testing.T) {
 	t.Parallel()
-	svc := newService(t, newFake()) // no WithOIDCProvider
+	svc := newService(t, newFake())
 	if _, _, err := svc.StartGoogleLogin(context.Background()); !errors.Is(err, auth.ErrOIDCNotConfigured) {
 		t.Errorf("StartGoogleLogin = %v, want ErrOIDCNotConfigured", err)
 	}
@@ -168,12 +152,11 @@ func TestGoogleLoginLinkedSubjectSignsIn(t *testing.T) {
 	if p.exchangeCode != "code-1" || p.exchangeVerf != pending.Verifier {
 		t.Errorf("exchange saw (code=%q, verifier=%q), want the callback code + pending verifier", p.exchangeCode, p.exchangeVerf)
 	}
-	// The session authenticates like any password login.
+
 	if _, _, err := svc.Authenticate(ctx, sess.Token); err != nil {
 		t.Errorf("Authenticate after Google login: %v", err)
 	}
-	// The success event rides the rotation transaction (ADR-0009) and tags the
-	// method so one AUTH_LOGIN action covers every sign-in path.
+
 	last := repo.txEvents[len(repo.txEvents)-1]
 	if last.Action != audit.ActionAuthLogin || last.Outcome != audit.OutcomeSucceeded {
 		t.Fatalf("last tx event = %s/%s, want AUTH_LOGIN/SUCCEEDED", last.Action, last.Outcome)
@@ -209,11 +192,6 @@ func TestGoogleFirstLoginRollsBackIdentityLinkWhenSessionCommitFails(t *testing.
 	}
 }
 
-// A password lockout neither blocks nor is extended by Google login: the
-// backoff protects the LOCAL credential (ADR-0006); Google authenticates the
-// user itself, and blocking it would only hand an attacker a griefing lever.
-// The password counter also survives the Google success — it tracks
-// consecutive PASSWORD failures only.
 func TestGoogleLoginIgnoresLockout(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -251,8 +229,7 @@ func TestGoogleLoginLinksVerifiedEmailOnFirstLogin(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	u := bootstrapUser(t, svc)
-	// The provider asserts a differently-cased email — it must match the stored
-	// (normalized) address.
+	// The provider asserts a differently-cased email — it must match the stored (normalized) address.
 	p.claims = verifiedClaims("ADMIN@Example.com")
 	pending := startFlow(t, svc, p)
 
@@ -267,8 +244,6 @@ func TestGoogleLoginLinksVerifiedEmailOnFirstLogin(t *testing.T) {
 		t.Errorf("identity not linked: oidc[%q] = %v, want %v", googleIssuer+"|sub-1", got, u.ID)
 	}
 
-	// Subsequent logins resolve by (issuer, subject) even if the provider email
-	// changes — the subject is the stable key (ADR-0007).
 	p.claims = verifiedClaims("renamed@example.com")
 	pending = startFlow(t, svc, p)
 	sess, err = svc.LoginWithGoogle(ctx, pending.State, "code-2", pending)
@@ -309,7 +284,6 @@ func TestGoogleLoginRejectsUnknownEmail(t *testing.T) {
 	p.claims = verifiedClaims("stranger@example.com")
 	pending := startFlow(t, svc, p)
 
-	// No auto-signup (ADR-0007): a verified email with no local account is refused.
 	if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrNoLinkedAccount) {
 		t.Errorf("unknown email = %v, want ErrNoLinkedAccount", err)
 	}
@@ -361,8 +335,7 @@ func TestGoogleLoginRejectsDisabledUser(t *testing.T) {
 		if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrUserDisabled) {
 			t.Errorf("disabled email match = %v, want ErrUserDisabled", err)
 		}
-		// The identity must NOT be linked to a disabled account — re-enabling the
-		// user later must not silently activate an unapproved link.
+		// The identity must NOT be linked to a disabled account — re-enabling the user later must not silently activate an unapproved link.
 		if len(repo.oidc) != 0 {
 			t.Errorf("disabled user was linked: %v", repo.oidc)
 		}
@@ -408,8 +381,7 @@ func TestGoogleLoginRejectsBadPendingBeforeExchange(t *testing.T) {
 			if _, err := svc.LoginWithGoogle(ctx, state, "code-1", pending); !errors.Is(err, tc.wantErr) {
 				t.Errorf("LoginWithGoogle = %v, want %v", err, tc.wantErr)
 			}
-			// The pending checks gate the network call: a forged or stale callback
-			// must never spend a code exchange against Google.
+			// The pending checks gate the network call: a forged or stale callback must never spend a code exchange against Google.
 			if p.exchanges != 0 {
 				t.Errorf("exchange ran %d times, want 0 (pending checks come first)", p.exchanges)
 			}
@@ -429,13 +401,13 @@ func TestGoogleLoginRejectsNonceMismatch(t *testing.T) {
 	}
 	p.claims = verifiedClaims("admin@example.com")
 	pending := startFlow(t, svc, p)
-	// The ID token echoes a different nonce — a replayed token from another flow.
+
 	p.claims.Nonce = "replayed-nonce"
 
 	if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, auth.ErrOIDCNonceMismatch) {
 		t.Errorf("nonce mismatch = %v, want ErrOIDCNonceMismatch", err)
 	}
-	// No session may exist for the rejected login.
+
 	if len(repo.sessions) != 0 {
 		t.Errorf("rejected login left %d sessions", len(repo.sessions))
 	}
@@ -463,16 +435,11 @@ func TestGoogleLoginRejectsLinkRace(t *testing.T) {
 	p.claims = verifiedClaims("admin@example.com")
 	pending := startFlow(t, svc, p)
 
-	// Between the subject miss and our link, another user claimed the identity:
-	// the store refuses to re-point it, and the login is rejected — never retried.
 	if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrIdentityLinkedToAnotherUser) {
 		t.Errorf("link race = %v, want ErrIdentityLinkedToAnotherUser", err)
 	}
 }
 
-// Every failure exit of the Google callback records exactly one best-effort
-// AUTH_LOGIN/FAILED event tagged method=google (ADR-0009), and a failing audit
-// store never masks the login error.
 func TestGoogleLoginEveryFailureEmitsOneAuditEvent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

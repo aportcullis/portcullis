@@ -25,15 +25,12 @@ func TestNewTarget(t *testing.T) {
 		{"whitespace-only host", "   ", 5432, "appdb", connection.ErrInvalidTarget},
 		{"host with inner whitespace", "db example.com", 5432, "appdb", connection.ErrInvalidTarget},
 		{"host with control char", "db\x00.example.com", 5432, "appdb", connection.ErrInvalidTarget},
-		// URI-structural characters would make pgx dial a different target than
-		// the stored descriptor (comma → multi-host, slash/@/?/# → confusion).
+		// URI-structural characters would make pgx dial a different target than the stored descriptor (comma → multi-host, slash/@/?/# → confusion).
 		{"host with comma (multi-host)", "a,b", 5432, "appdb", connection.ErrInvalidTarget},
 		{"host with slash", "h/x", 5432, "appdb", connection.ErrInvalidTarget},
 		{"host with userinfo @", "u@h", 5432, "appdb", connection.ErrInvalidTarget},
 		{"host with query ?", "h?x", 5432, "appdb", connection.ErrInvalidTarget},
-		// The fingerprint joins its fields with | — a pipe-bearing host could
-		// shift the field boundaries and collide two distinct targets (external
-		// review). It is never valid in a DNS name or IP literal anyway.
+
 		{"host with pipe (fingerprint separator)", "db|5432", 1234, "prod", connection.ErrInvalidTarget},
 		{"ipv6 literal is allowed", "::1", 5432, "appdb", nil},
 		{"host over limit", strings.Repeat("h", 256), 5432, "appdb", connection.ErrInvalidTarget},
@@ -41,7 +38,7 @@ func TestNewTarget(t *testing.T) {
 		{"port negative", "db.example.com", -1, "appdb", connection.ErrInvalidTarget},
 		{"port over 65535", "db.example.com", 65536, "appdb", connection.ErrInvalidTarget},
 		{"empty database", "db.example.com", 5432, "", connection.ErrInvalidTarget},
-		// A PG quoted identifier allows spaces — "team database" is a valid name.
+
 		{"database with space is allowed", "db.example.com", 5432, "team database", nil},
 		{"database with control char", "db.example.com", 5432, "app\ndb", connection.ErrInvalidTarget},
 		{"database with NUL", "db.example.com", 5432, "app\x00db", connection.ErrInvalidTarget},
@@ -64,9 +61,6 @@ func TestNewTarget(t *testing.T) {
 	}
 }
 
-// TestFingerprintPinsV1Layout pins the exact v1 derivation (ADR-0014): a change
-// to the layout is a breaking change to archived-history snapshots and must be
-// a new version, so the test computes the expected digest independently.
 func TestFingerprintPinsV1Layout(t *testing.T) {
 	t.Parallel()
 	target, err := connection.NewTarget("DB.Example.com", 5432, "appdb")
@@ -105,7 +99,7 @@ func TestFingerprintProperties(t *testing.T) {
 	if otherDB := mk("db.example.com", 5432, "other"); otherDB == base {
 		t.Error("fingerprint should differ by database")
 	}
-	// Database name case is significant in PostgreSQL — no folding.
+
 	if dbCase := mk("db.example.com", 5432, "AppDB"); dbCase == base {
 		t.Error("fingerprint must not fold database name case")
 	}
@@ -113,11 +107,6 @@ func TestFingerprintProperties(t *testing.T) {
 		t.Errorf("fingerprint length = %d, want %d hex chars", len(base), sha256.Size*2)
 	}
 
-	// The review's collision pair: host="db|5432",port=1234,db="prod" and
-	// host="db",port=5432,db="1234|prod" hash the same v1 input. The first is
-	// now unconstructible (pipe-bearing host), and with a |-free host the
-	// remaining input parses uniquely (port is digits-only), so the legitimate
-	// pipe-bearing DATABASE stays allowed without any collision.
 	if _, err := connection.NewTarget("db|5432", 1234, "prod"); !errors.Is(err, connection.ErrInvalidTarget) {
 		t.Errorf("pipe-bearing host must be rejected, got %v", err)
 	}

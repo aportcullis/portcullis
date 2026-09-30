@@ -11,18 +11,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// Redact rebuilds the bound single statement from its token stream: comments
-// never reach the stream (the lexer skips them), inline literals become
-// typed placeholders, $N stays verbatim, identifiers are re-emitted quoted,
-// keywords lowercase, all joined by single spaces (PRD §8.4, ADR-0016).
-// Whitespace/case normalization is deliberate — redacted SQL is display/AI
-// material, never executed; payload_digest covers the original bytes.
-//
-// The input is this dialect's parse handle (the same shape Classify takes):
-// requiring it keeps the fail-closed gate — the lexer only ever sees text
-// that already parsed as exactly one statement — without re-parsing the SQL
-// a second time in the BindNamed → ParseSingle → Classify → Redact pipeline.
-// A Statement minted by anything else fails closed.
+// Redact replaces literals with typed placeholders and normalizes parsed SQL for display only (ADR-0016). Named parameters remain bound; foreign parse handles fail closed.
 func (d *Dialect) Redact(st query.Statement) (query.Redaction, error) {
 	codes, err := lexCodes()
 	if err != nil {
@@ -53,8 +42,7 @@ func (d *Dialect) Redact(st query.Statement) (query.Redaction, error) {
 		case tok.Type == codes.param:
 			parts = append(parts, "$"+strconv.FormatInt(tok.Ival, 10))
 		case tok.Str != "":
-			// Keywords carry their lowercase name; operators, punctuation,
-			// and multi-char specials carry their exact text.
+			// Keywords carry their lowercase name; operators, punctuation, and multi-char specials carry their exact text.
 			parts = append(parts, tok.Str)
 		default:
 			return query.Redaction{}, errRedactUnknownToken
@@ -72,10 +60,7 @@ var (
 	errRedactProbeFailure = errors.New("pgdialect: lexer token probe failed")
 )
 
-// lexTokenCodes classifies the lexer's numeric token types. The values are
-// unexported in pgparser, so they are learned once by lexing canonical
-// single-token snippets — behavior-derived, no magic numbers, and a parser
-// bump that changes them fails closed here instead of mis-redacting.
+// lexTokenCodes classifies the lexer's numeric token types. The values are unexported in pgparser, so they are learned once by lexing canonical single-token snippets — behavior-derived, no magic numbers, and a parser bump that changes them fails closed here instead of mis-redacting.
 type lexTokenCodes struct {
 	literal map[int]query.LiteralType
 	ident   map[int]bool

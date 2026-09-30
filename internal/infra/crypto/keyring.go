@@ -1,6 +1,4 @@
-// Package crypto is the security spine: master-key loading, envelope encryption
-// (AES-256-GCM), keyed payload digests (HMAC-SHA-256), and Argon2id password
-// hashing. It is the only package that touches key material.
+// Package crypto is the security spine: master-key loading, envelope encryption (AES-256-GCM), keyed payload digests (HMAC-SHA-256), and Argon2id password hashing. It is the only package that touches key material.
 package crypto
 
 import (
@@ -11,17 +9,13 @@ import (
 	"strings"
 )
 
-// Keyring holds master keys by version and derives purpose-specific sub-keys.
-// The active version is used for new writes; older versions stay loaded so
-// existing data remains decryptable across rotation.
+// Keyring holds master keys by version and derives purpose-specific sub-keys. The active version is used for new writes; older versions stay loaded so existing data remains decryptable across rotation.
 type Keyring struct {
 	active KeyVersion
 	keys   map[KeyVersion][]byte
 }
 
-// LoadKeyring loads the active master key from a base64 string or a file whose
-// contents are base64. Exactly one source must be set; the key must be 32 bytes.
-// It returns an error (so the caller can refuse to start) when absent or malformed.
+// LoadKeyring loads the active master key from a base64 string or a file whose contents are base64. Exactly one source must be set; the key must be 32 bytes. It returns an error (so the caller can refuse to start) when absent or malformed.
 func LoadKeyring(b64, file string) (*Keyring, error) {
 	raw, err := readMasterKey(b64, file)
 	if err != nil {
@@ -41,8 +35,7 @@ func readMasterKey(b64, file string) ([]byte, error) {
 	hasFile := strings.TrimSpace(file) != ""
 	switch {
 	case hasKey && hasFile:
-		// Refuse ambiguity: a stale env var silently overriding a mounted key
-		// file could re-encrypt with the wrong key and orphan existing data.
+		// Refuse ambiguity: a stale env var silently overriding a mounted key file could re-encrypt with the wrong key and orphan existing data.
 		return nil, ErrMultipleKeySources
 	case hasKey:
 		return decodeKey(b64)

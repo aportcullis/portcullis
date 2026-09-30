@@ -16,13 +16,7 @@ const maxParamNameLen = 64
 
 var errBindLexFailure = errors.New("pgdialect: parameter scan lexing failed")
 
-// BindNamed replaces :name references with $N placeholders in first-
-// appearance order and returns the ordered argument values (ADR-0016). The
-// lexer drives the scan, so a :name inside a string literal or comment is
-// never touched; everything outside the replaced spans is spliced
-// byte-exact. It runs before ParseSingle — :name is not PostgreSQL — and
-// even with zero parameters it validates the input (no stray :name, no
-// positional $N).
+// BindNamed replaces :name outside literals and comments, preserving other bytes and first-use argument order. Validate unknown, unused, malformed, and positional parameters before parsing (ADR-0016).
 func (d *Dialect) BindNamed(sql string, params []query.Parameter) (string, []query.TypedValue, error) {
 	values := make(map[string]query.TypedValue, len(params))
 	for _, p := range params {
@@ -66,13 +60,7 @@ func (d *Dialect) BindNamed(sql string, params []query.Parameter) (string, []que
 			return "", nil, query.ErrPositionalParams
 		}
 		start := tok.Loc
-		// A parameter is a bare ":name": a ":" token immediately followed by a
-		// name start, whose PREVIOUS token cannot end an array-subscript bound
-		// (ADR-0016). After "[", ")", "]", an identifier, or a literal, a glued
-		// colon is PostgreSQL subscript syntax — arr[i:j], arr[(i):j],
-		// arr[fn(i):j], arr[:hi] — never a bind reference; everywhere else
-		// (after an operator, comma, "(", or a keyword) it is one. The escape
-		// hatch for binding inside a subscript is parentheses: arr[(:x)].
+		// Treat :name as a bind parameter unless the preceding token makes it an array-slice bound. Bind inside a subscript with parentheses: arr[(:x)] (ADR-0016).
 		endsSubscriptBound := prevStr == "[" || prevStr == ")" || prevStr == "]" ||
 			codes.ident[prevType] || codes.literal[prevType] != ""
 		isParam := tok.Str == ":" && sql[tok.Loc] == ':' &&
@@ -119,16 +107,13 @@ func (d *Dialect) BindNamed(sql string, params []query.Parameter) (string, []que
 	return out.String(), args, nil
 }
 
-// validParamName enforces the ADR-0016 named-parameter charset
-// [A-Za-z_][A-Za-z0-9_]*, ≤ maxParamNameLen. It is deliberately stricter than
-// identCont, which also admits '$' (a PostgreSQL identifier character): a
-// parameter name is a narrower vocabulary than a PG identifier.
+// validParamName enforces the ADR-0016 named-parameter charset [A-Za-z_][A-Za-z0-9_]*, ≤ maxParamNameLen. It is deliberately stricter than identCont, which also admits '$' (a PostgreSQL identifier character): a parameter name is a narrower vocabulary than a PG identifier.
 func validParamName(name string) bool {
 	if name == "" || len(name) > maxParamNameLen || !identStart(name[0]) {
 		return false
 	}
-	for i := 1; i < len(name); i++ {
-		c := name[i]
+	for idx := 1; idx < len(name); idx++ {
+		c := name[idx]
 		if !identStart(c) && (c < '0' || c > '9') {
 			return false
 		}

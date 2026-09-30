@@ -8,8 +8,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 )
 
-// The v1 defaults are the PRD-mandated safe posture: read-only with one
-// approval per class, §8.2 limits (ADR-0015).
 func TestDefaultPolicy(t *testing.T) {
 	t.Parallel()
 	p := connection.DefaultPolicy()
@@ -94,7 +92,6 @@ func TestNewPolicyValidation(t *testing.T) {
 		})
 	}
 
-	// The per-class rules are validated for every class, not just read.
 	t.Run("invalid ddl rule", func(t *testing.T) {
 		t.Parallel()
 		bad := connection.ClassRule{Allowed: true, RequiredApprovals: -1}
@@ -134,8 +131,6 @@ func TestNewPolicyValidation(t *testing.T) {
 	}
 }
 
-// Rule fans a class out to its per-class rule; Classes fixes the vocabulary
-// (and its order) the classifier and access_requests slices will reuse.
 func TestPolicyRuleAndClasses(t *testing.T) {
 	t.Parallel()
 	id, read, write, ddl, limits := validPolicyArgs()
@@ -159,9 +154,9 @@ func TestPolicyRuleAndClasses(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("Classes() = %v", got)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("Classes()[%d] = %q, want %q", i, got[i], want[i])
+	for idx := range want {
+		if got[idx] != want[idx] {
+			t.Errorf("Classes()[%d] = %q, want %q", idx, got[idx], want[idx])
 		}
 	}
 }

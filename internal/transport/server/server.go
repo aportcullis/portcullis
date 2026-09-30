@@ -24,9 +24,7 @@ type Server struct {
 	drainDelay time.Duration
 }
 
-// New builds the server with health endpoints, the embedded frontend, and any
-// provided API mounts. drainDelay is how long readiness reports "draining"
-// before connections are closed, giving Kubernetes time to deregister the pod.
+// New builds the server with health endpoints, the embedded frontend, and any provided API mounts. drainDelay is how long readiness reports "draining" before connections are closed, giving Kubernetes time to deregister the pod.
 func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...Mount) *Server {
 	h := health.New().WithLogger(logger)
 	s := &Server{logger: logger, health: h, drainDelay: drainDelay}
@@ -44,39 +42,23 @@ func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...M
 		Handler:           securityHeaders(logging.Middleware(logger)(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 		MaxHeaderBytes:    maxHeaderBytes,
-		// Bound the whole request read so a slow-body (slowloris) connection can't
-		// hold a goroutine open indefinitely, and reap idle keep-alives. WriteTimeout
-		// is intentionally unset: once streaming RPCs land, a blanket write deadline
-		// would kill long-lived streams — use per-request http.ResponseController
-		// deadlines there instead.
+		// Bound the whole request read so a slow-body (slowloris) connection can't hold a goroutine open indefinitely, and reap idle keep-alives. WriteTimeout is intentionally unset: once streaming RPCs land, a blanket write deadline would kill long-lived streams — use per-request http.ResponseController deadlines there instead.
 		ReadTimeout: 30 * time.Second,
 		IdleTimeout: 120 * time.Second,
 	}
 	return s
 }
 
-// Health exposes the readiness registry so dependencies (e.g. the metadata
-// database) can register their own checks.
+// Health exposes the readiness registry so dependencies (e.g. the metadata database) can register their own checks.
 func (s *Server) Health() *health.Handler { return s.health }
 
-// Handler returns the root HTTP handler (health, SPA, and—later—RPC). It is the
-// entry point for in-process end-to-end tests.
+// Handler returns the root HTTP handler (health, SPA, and—later—RPC). It is the entry point for in-process end-to-end tests.
 func (s *Server) Handler() http.Handler { return s.http.Handler }
 
 // ListenAndServe starts serving and blocks until the server stops.
 func (s *Server) ListenAndServe() error { return s.http.ListenAndServe() }
 
-// securityHeaders sets hardening response headers on every response (SPA and RPC
-// alike). Portcullis is designed to run behind a TLS-terminating reverse proxy
-// (ADR-0010): __Host-/Secure cookies require HTTPS, and HSTS is the proxy's
-// responsibility (it owns the TLS edge), so it is deliberately not set here. These
-// headers are cheap defense-in-depth that hold even behind the proxy.
-//
-// The CSP is intentionally minimal — frame-ancestors/base-uri/form-action only,
-// with no script-src/style-src — because the embedded SPA and the not-built
-// placeholder both use inline style attributes that a strict style-src would
-// break. Tightening script-src/style-src is a follow-up once the built bundle is
-// verified against a stricter policy.
+// Apply security headers to SPA and RPC responses. The TLS proxy owns HSTS; CSP omits script/style restrictions while inline styles remain supported (ADR-0010).
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -88,13 +70,7 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// Shutdown sheds traffic, then gracefully drains in-flight requests. Readiness
-// flips to draining first so Kubernetes stops routing before connections close.
-// The drain delay and the timeout are SEQUENTIAL budgets (ADR-0010): the delay
-// elapses in full so deregistration propagates, and only then does
-// http.Server.Shutdown get the entire timeout to drain in-flight requests —
-// sharing one deadline would let the delay eat the drain budget. ctx is an
-// escape hatch for a caller-forced abort, not the drain deadline.
+// Shutdown marks readiness draining, waits for deregistration, then gives in-flight requests a separate full timeout. Caller cancellation may abort either phase (ADR-0010).
 func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) error {
 	s.health.StartDraining()
 	if s.drainDelay > 0 {
@@ -109,8 +85,7 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) error {
 	return s.http.Shutdown(ctx)
 }
 
-// spa serves the embedded built frontend, falling back to index.html for
-// client-side routes. Before the frontend is built it serves a placeholder.
+// spa serves the embedded built frontend, falling back to index.html for client-side routes. Before the frontend is built it serves a placeholder.
 func (s *Server) spa() http.Handler {
 	dist, err := assets.Dist()
 	if err != nil {
@@ -123,17 +98,13 @@ func (s *Server) spa() http.Handler {
 	return spaHandler(dist)
 }
 
-// spaHandler serves files from dist (which must contain index.html), falling
-// back to index.html for anything that is not an existing regular file —
-// client-side routes and directories alike.
+// spaHandler serves files from dist (which must contain index.html), falling back to index.html for anything that is not an existing regular file — client-side routes and directories alike.
 func spaHandler(dist fs.FS) http.Handler {
 	fileServer := http.FileServerFS(dist)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		if name != "" {
-			// Serve only real FILES directly: a directory (e.g. /assets/) would make
-			// http.FileServerFS render an auto-generated listing of the embedded
-			// bundle, so it falls through to the SPA fallback like any client route.
+			// Serve only real FILES directly: a directory (e.g. /assets/) would make http.FileServerFS render an auto-generated listing of the embedded bundle, so it falls through to the SPA fallback like any client route.
 			if fi, err := fs.Stat(dist, name); err == nil && !fi.IsDir() {
 				fileServer.ServeHTTP(w, r)
 				return

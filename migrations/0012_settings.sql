@@ -1,16 +1,9 @@
--- 0012_settings: the runtime settings store (ADR-0017) — org-scoped override
--- rows for the Tier-C operator tunables.
---
--- Which keys exist (and their bounds) is code: the domain descriptor registry
--- (internal/domain/setting) validates every write and read. A row here is an
--- explicit override; an ABSENT row means "use the env seed / compiled
--- default", so reset-to-default is DELETE — see the grant below.
+-- Settings rows are explicit overrides; absent rows use env or compiled defaults, so reset deletes the override (ADR-0017).
 
 create table if not exists settings (
     organization_id uuid not null references organizations (id) on delete restrict,
     key             text not null check (char_length(key) <= 128),
-    -- Values are short canonical texts ("10s", "info", "5"); the descriptor
-    -- validates semantics, this CHECK only bounds storage (data.md).
+    -- Values are short canonical texts ("10s", "info", "5"); the descriptor validates semantics, this CHECK only bounds storage (data.md).
     value           text not null check (char_length(value) <= 256),
     -- Optimistic concurrency for the admin RPC (same shape as connections).
     version         bigint not null default 1 check (version > 0),
@@ -19,16 +12,10 @@ create table if not exists settings (
     primary key (organization_id, key)
 );
 
--- FK/lookup indexes (data.md): organization_id is the PK prefix; updated_by
--- gets its own.
+-- FK/lookup indexes (data.md): organization_id is the PK prefix; updated_by gets its own.
 create index if not exists settings_updated_by_idx on settings (updated_by);
 
--- NOT sensitive (data.md review gate, explicit judgment): rows are mutable
--- operational overrides, not evidence — the audit trail of every change lives
--- in append-only audit_events (SETTING_UPDATED, same transaction). Reset
--- semantics REQUIRE hard DELETE (absent row = default, ADR-0017), which 0010
--- revoked globally, so per 0010's own rule this migration grants it back for
--- this one table and privcheck registers the matching tablePolicies exception.
+-- Settings are mutable overrides with transactional audit. Grant DELETE only for reset semantics and enforce the matching privilege exception (ADR-0017).
 do $$
 declare
     rr text := coalesce(nullif(current_setting('portcullis.runtime_role', true), ''), 'portcullis_runtime');
@@ -39,11 +26,7 @@ begin
 end
 $$;
 
--- Change propagation (ADR-0017): any committed write to settings notifies the
--- 'settings_changed' channel with the key as a signal-only payload; listeners
--- re-read the table (the table is the source of truth, the NOTIFY is the
--- nudge). A trigger keeps the signal attached to the data change no matter
--- which code path writes.
+-- Change propagation (ADR-0017): any committed write to settings notifies the 'settings_changed' channel with the key as a signal-only payload; listeners re-read the table (the table is the source of truth, the NOTIFY is the nudge). A trigger keeps the signal attached to the data change no matter which code path writes.
 create or replace function settings_notify() returns trigger
 language plpgsql as $$
 begin
@@ -57,9 +40,7 @@ create trigger settings_notify_trigger
     after insert or update or delete on settings
     for each row execute function settings_notify();
 
--- Permission catalog additions (ADR-0008): settings.* joins the seeded
--- catalog, and the system admin role — which received the 0002-era catalog by
--- cross join at seed time — is granted the new keys explicitly here.
+-- Permission catalog additions (ADR-0008): settings.* joins the seeded catalog, and the system admin role — which received the 0002-era catalog by cross join at seed time — is granted the new keys explicitly here.
 insert into permissions (key, description) values
     ('settings.list', 'List runtime settings'),
     ('settings.get', 'View a runtime setting'),

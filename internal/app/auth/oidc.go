@@ -9,19 +9,13 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// WithOIDCProvider enables Google login by injecting the provider adapter
-// (ADR-0007). It is a chaining setter, not a New parameter, because the
-// provider is optional — the deployment may not configure Google at all.
+// WithOIDCProvider enables Google login by injecting the provider adapter (ADR-0007). It is a chaining setter, not a New parameter, because the provider is optional — the deployment may not configure Google at all.
 func (s *Service) WithOIDCProvider(p OIDCProvider) *Service {
 	s.oidc = p
 	return s
 }
 
-// StartGoogleLogin begins the redirect flow: it mints the per-flow secrets
-// (CSRF state, replay nonce, PKCE verifier — three independent values, so one
-// leaked secret can't stand in for another) and returns the provider's
-// authorization URL plus the pending state the transport seals into the
-// short-lived cookie (ADR-0007).
+// StartGoogleLogin begins the redirect flow: it mints the per-flow secrets (CSRF state, replay nonce, PKCE verifier — three independent values, so one leaked secret can't stand in for another) and returns the provider's authorization URL plus the pending state the transport seals into the short-lived cookie (ADR-0007).
 func (s *Service) StartGoogleLogin(_ context.Context) (string, OIDCPending, error) {
 	if s.oidc == nil {
 		return "", OIDCPending{}, ErrOIDCNotConfigured
@@ -34,8 +28,7 @@ func (s *Service) StartGoogleLogin(_ context.Context) (string, OIDCPending, erro
 	if err != nil {
 		return "", OIDCPending{}, err
 	}
-	// newToken's 32 random bytes base64url-encode to 43 characters, meeting the
-	// RFC 7636 code-verifier length floor; the adapter derives the S256 challenge.
+	// newToken's 32 random bytes base64url-encode to 43 characters, meeting the RFC 7636 code-verifier length floor; the adapter derives the S256 challenge.
 	verifier, err := newToken()
 	if err != nil {
 		return "", OIDCPending{}, err
@@ -44,18 +37,12 @@ func (s *Service) StartGoogleLogin(_ context.Context) (string, OIDCPending, erro
 	return s.oidc.AuthCodeURL(state, nonce, verifier), pending, nil
 }
 
-// LoginWithGoogle completes the callback: it validates the pending state,
-// redeems the code, verifies the nonce, resolves the local account (linked
-// subject first, then link-by-verified-email to an existing user — never
-// auto-creating one, ADR-0007), and issues a session exactly like a password
-// login (rotation + same-transaction audit, ADR-0006/0009).
+// LoginWithGoogle verifies state and nonce, links only existing accounts by subject or verified email, then rotates the session with transactional audit (ADR-0007).
 func (s *Service) LoginWithGoogle(ctx context.Context, state, code string, pending OIDCPending) (_ Session, err error) {
 	if s.oidc == nil {
 		return Session{}, ErrOIDCNotConfigured
 	}
-	// EVERY failure exit records one best-effort event, tagged with the method so
-	// Google sign-ins stay distinguishable under the single AUTH_LOGIN action.
-	// The event gains the actor once a user resolves (mirrors Login).
+	// Audit every login failure with a detached context so disconnects cannot erase the trail. Unknown accounts retain neither actor nor attempted email.
 	failed := newEvent(ctx, audit.ActionAuthLogin, audit.OutcomeFailed)
 	failed.Metadata = map[string]any{"method": oidcMethodMetadata}
 	defer func() {
@@ -64,11 +51,7 @@ func (s *Service) LoginWithGoogle(ctx context.Context, state, code string, pendi
 		}
 	}()
 
-	// The pending checks gate the network call: a forged, stale, or cookie-less
-	// callback must never spend a code exchange against the provider. One
-	// sentinel for all three, so a probe can't tell which check failed; the
-	// state comparison is constant-time out of caution (the state is single-use,
-	// but a timing oracle on it is free to avoid).
+	// The pending checks gate the network call: a forged, stale, or cookie-less callback must never spend a code exchange against the provider. One sentinel for all three, so a probe can't tell which check failed; the state comparison is constant-time out of caution (the state is single-use, but a timing oracle on it is free to avoid).
 	if pending.State == "" || s.now().After(pending.ExpiresAt) ||
 		subtle.ConstantTimeCompare([]byte(state), []byte(pending.State)) != 1 {
 		return Session{}, ErrOIDCPendingInvalid
@@ -94,10 +77,7 @@ func (s *Service) LoginWithGoogle(ctx context.Context, state, code string, pendi
 	return s.issueSession(ctx, u, meta, link)
 }
 
-// resolveOIDCUser maps verified claims to a local user: the (issuer, subject)
-// link is the stable key; a first login may attach to an existing account by
-// provider-verified email, and nothing is ever auto-created (ADR-0007). The
-// failure event is attributed as soon as a user resolves.
+// resolveOIDCUser maps verified claims to a local user: the (issuer, subject) link is the stable key; a first login may attach to an existing account by provider-verified email, and nothing is ever auto-created (ADR-0007). The failure event is attributed as soon as a user resolves.
 func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaims, failed *audit.Event) (identity.User, *identity.OIDCIdentity, error) {
 	u, err := s.repo.FindUserBySubject(ctx, claims.Issuer, claims.Subject)
 	switch {
@@ -111,8 +91,7 @@ func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaim
 		return identity.User{}, nil, err
 	}
 
-	// First login for this subject: only a provider-verified email may attach it
-	// to an existing account.
+	// First login for this subject: only a provider-verified email may attach it to an existing account.
 	if !claims.EmailVerified {
 		return identity.User{}, nil, ErrOIDCEmailUnverified
 	}
@@ -124,14 +103,11 @@ func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaim
 		return identity.User{}, nil, err
 	}
 	*failed = withActor(*failed, u.ID)
-	// Disabled is checked BEFORE linking: re-enabling the user later must not
-	// silently activate a link that was never approved while active.
+	// Disabled is checked BEFORE linking: re-enabling the user later must not silently activate a link that was never approved while active.
 	if !u.Active() {
 		return identity.User{}, nil, identity.ErrUserDisabled
 	}
-	// The store claims this link inside the session/audit transaction. Its unique
-	// (issuer, subject) constraint still turns a first-login race into a
-	// rejection, never a re-point or retry.
+	// The store claims this link inside the session/audit transaction. Its unique (issuer, subject) constraint still turns a first-login race into a rejection, never a re-point or retry.
 	link := &identity.OIDCIdentity{
 		UserID:  u.ID,
 		Issuer:  claims.Issuer,

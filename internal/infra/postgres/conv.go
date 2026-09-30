@@ -6,8 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// Conversions between the sqlc/pgx wire types and plain Go values used by the
-// domain (string ids, time.Time). Kept in one place so repositories stay clean.
+// Conversions between the sqlc/pgx wire types and plain Go values used by the domain (string ids, time.Time). Kept in one place so repositories stay clean.
 
 func uuidToString(u pgtype.UUID) string {
 	if !u.Valid {

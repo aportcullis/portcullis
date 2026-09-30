@@ -1,6 +1,4 @@
-// The e2e stack's throwaway PostgreSQL — the single source of the target
-// coordinates specs dial (minimize-hardcoding: one definition, not one per
-// spec). Pinned in server.sh: PG_PORT and the POSTGRES_* envs there must match.
+// The e2e stack's throwaway PostgreSQL — the single source of the target coordinates specs dial (minimize-hardcoding: one definition, not one per spec). Pinned in server.sh: PG_PORT and the POSTGRES_* envs there must match.
 export type Target = {
   host: string;
   port: number;

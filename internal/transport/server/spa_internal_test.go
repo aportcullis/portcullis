@@ -1,9 +1,6 @@
 package server
 
-// White-box test: the embedded dist FS (assets.Dist) is baked in at build time
-// and can't be injected through the public constructor, so the SPA fallback
-// rules are pinned here against an in-memory FS. Everything else in this
-// package is tested black-box.
+// White-box tests inject an in-memory SPA filesystem because the public constructor uses build-time embedded assets.
 
 import (
 	"io"
@@ -14,10 +11,6 @@ import (
 	"testing/fstest"
 )
 
-// Real files serve directly; everything else — client routes AND directories —
-// falls back to index.html. A directory must never render http.FileServer's
-// auto-generated listing (ADR-0010: unknown paths serve index.html), which
-// would leak the bundle layout and break client-side routing.
 func TestSPAHandlerFallsBackToIndexForDirectories(t *testing.T) {
 	t.Parallel()
 	const index = "<html>app</html>"
@@ -31,9 +24,9 @@ func TestSPAHandlerFallsBackToIndexForDirectories(t *testing.T) {
 	}{
 		{"/", index},
 		{"/assets/app.js", "js-bundle"},
-		{"/assets/", index},    // directory → SPA fallback, never a listing
-		{"/assets", index},     // extensionless directory path = client route
-		{"/some/route", index}, // unknown path = client route
+		{"/assets/", index},
+		{"/assets", index},
+		{"/some/route", index},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)

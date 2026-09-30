@@ -16,7 +16,7 @@ import (
 const (
 	clientID    = "client-1"
 	redirectURL = "https://portcullis.example/auth/google/callback"
-	verifier    = "test-verifier-0123456789abcdefghijklmnopqrstuv" // ≥43 chars (RFC 7636)
+	verifier    = "test-verifier-0123456789abcdefghijklmnopqrstuv"
 )
 
 func newClient(t *testing.T) (*googleoidc.Client, *oidctest.Issuer) {
@@ -29,8 +29,6 @@ func newClient(t *testing.T) (*googleoidc.Client, *oidctest.Issuer) {
 	return c, issuer
 }
 
-// challenge is the S256 transform of the test verifier — what the provider
-// stores at authorization time and checks at redemption.
 func challenge() string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
@@ -68,15 +66,14 @@ func TestAuthCodeURLCarriesFlowParameters(t *testing.T) {
 	if q.Get("state") != "state-1" || q.Get("nonce") != "nonce-1" {
 		t.Errorf("state/nonce = %q/%q", q.Get("state"), q.Get("nonce"))
 	}
-	// PKCE: the URL must carry the S256 challenge derived from OUR verifier —
-	// plain is prohibited (ADR-0007).
+	// PKCE: the URL must carry the S256 challenge derived from OUR verifier — plain is prohibited (ADR-0007).
 	if q.Get("code_challenge_method") != "S256" {
 		t.Errorf("code_challenge_method = %q, want S256", q.Get("code_challenge_method"))
 	}
 	if q.Get("code_challenge") != challenge() {
 		t.Errorf("code_challenge = %q, want S256(verifier) = %q", q.Get("code_challenge"), challenge())
 	}
-	// Exactly the sign-in scopes, and never a refresh token (least privilege).
+
 	if got := q.Get("scope"); got != "openid email profile" {
 		t.Errorf("scope = %q, want %q", got, "openid email profile")
 	}
@@ -103,8 +100,7 @@ func TestExchangeReturnsVerifiedClaims(t *testing.T) {
 	if claims.Email != "user@example.com" || !claims.EmailVerified {
 		t.Errorf("claims email = %q (verified %v)", claims.Email, claims.EmailVerified)
 	}
-	// The nonce is returned for the SERVICE to compare — the adapter passes it
-	// through untouched (go-oidc leaves nonce validation to the caller).
+
 	if claims.Nonce != "nonce-1" {
 		t.Errorf("claims nonce = %q, want nonce-1", claims.Nonce)
 	}
@@ -152,8 +148,6 @@ func TestExchangeRejectsProtocolViolations(t *testing.T) {
 	})
 }
 
-// The adapter must not leak the code or tokens through its error messages —
-// failures are logged upstream as error types only (conventions/security.md).
 func TestExchangeErrorOmitsSecrets(t *testing.T) {
 	t.Parallel()
 	c, issuer := newClient(t)

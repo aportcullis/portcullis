@@ -36,8 +36,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/portcullis.v1": "http://localhost:8080",
-      // Google login is a server-side redirect dance (ADR-0007), so the SPA's
-      // anchor must reach the Go routes in dev too.
+      // Google login is a server-side redirect dance (ADR-0007), so the SPA's anchor must reach the Go routes in dev too.
       "/auth": "http://localhost:8080",
       "/livez": "http://localhost:8080",
       "/readyz": "http://localhost:8080",

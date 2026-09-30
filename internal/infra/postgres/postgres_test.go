@@ -44,7 +44,7 @@ func TestMigratePinsPublicSearchPath(t *testing.T) {
 		t.Fatalf("parse pool config: %v", err)
 	}
 	cfg.ConnConfig.RuntimeParams["search_path"] = "trap"
-	cfg.MaxConns = 1 // force Migrate to reuse the connection carrying the temp table below
+	cfg.MaxConns = 1
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("open trap-search-path pool: %v", err)
@@ -74,8 +74,7 @@ func TestMigrateSerializesConcurrentCallers(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
 
-	// Several instances booting against the same empty database at once: the
-	// advisory lock must serialize them so none races the check-then-apply loop.
+	// Several instances booting against the same empty database at once: the advisory lock must serialize them so none races the check-then-apply loop.
 	const callers = 4
 	var wg sync.WaitGroup
 	errs := make(chan error, callers)
@@ -94,7 +93,6 @@ func TestMigrateSerializesConcurrentCallers(t *testing.T) {
 		}
 	}
 
-	// Every migration recorded exactly once (no duplicate-apply, no gaps).
 	var dups int
 	if err := pool.QueryRow(ctx,
 		`select count(*) from (select version from schema_migrations group by version having count(*) > 1) d`,

@@ -100,9 +100,7 @@ func TestMiddlewareReplacesUnsafeRequestID(t *testing.T) {
 
 func TestMiddlewareLogsFirstStatusOnDuplicateWriteHeader(t *testing.T) {
 	t.Parallel()
-	// net/http sends only the FIRST WriteHeader to the client and ignores the
-	// rest, so the log line must record the first status too — a handler bug like
-	// 401-then-500 must not log a 500 the client never received.
+	// net/http sends only the FIRST WriteHeader to the client and ignores the rest, so the log line must record the first status too — a handler bug like 401-then-500 must not log a 500 the client never received.
 	cases := []struct {
 		name string
 		next http.HandlerFunc
@@ -119,7 +117,7 @@ func TestMiddlewareLogsFirstStatusOnDuplicateWriteHeader(t *testing.T) {
 		{
 			name: "write body then write header",
 			next: func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte("ok")) // implicitly commits 200
+				_, _ = w.Write([]byte("ok"))
 				w.WriteHeader(http.StatusInternalServerError)
 			},
 			want: `"status":200`,
@@ -141,8 +139,7 @@ func TestMiddlewareLogsFirstStatusOnDuplicateWriteHeader(t *testing.T) {
 
 func TestMiddlewareKeepsResponseWriterFlushable(t *testing.T) {
 	t.Parallel()
-	// connect-go does a direct w.(http.Flusher) assertion for server-streaming, so
-	// the logging wrapper must not hide the Flusher from the inner handler.
+	// connect-go does a direct w.(http.Flusher) assertion for server-streaming, so the logging wrapper must not hide the Flusher from the inner handler.
 	var flushable bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, flushable = w.(http.Flusher)

@@ -6,13 +6,6 @@ import (
 	"connectrpc.com/connect"
 )
 
-// parseConnectionID must return the CANONICAL (lowercase, hyphenated) form,
-// not the caller's spelling: google/uuid's Parse accepts non-standard
-// encodings (uppercase, no hyphens, urn:uuid:, braces — its docs say not to
-// use it for validation), and downstream the id becomes the AEAD AAD. A
-// non-canonical id would update the same database row (PostgreSQL compares
-// uuid values) while binding the ciphertext to a string no later canonical
-// request can present — permanently undecryptable (external review).
 func TestParseConnectionIDCanonicalizes(t *testing.T) {
 	t.Parallel()
 	const canonical = "0f60e9a7-c908-4103-9b91-c2e6f9375464"

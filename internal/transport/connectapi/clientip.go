@@ -11,11 +11,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 )
 
-// NewClientIPInterceptor resolves the real client IP once per request and stashes
-// it in the context (reqmeta.ClientIP), so the rate limiter and the audit trail
-// share one source of truth instead of each re-deriving it. It runs first in the
-// chain, for every procedure. trustedProxies are the networks whose
-// X-Forwarded-For is honored to look past the proxy to the originating client.
+// NewClientIPInterceptor runs first and shares one trusted-proxy-aware client IP with rate limiting and audit.
 func NewClientIPInterceptor(trustedProxies []*net.IPNet) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
@@ -25,12 +21,7 @@ func NewClientIPInterceptor(trustedProxies []*net.IPNet) connect.UnaryIntercepto
 	}
 }
 
-// canonicalIP normalizes textual IP forms (e.g. IPv6 zero-compression, so
-// "2001:0db8::1" and "2001:db8::1" read as one client). It runs here, where the
-// value is minted, so EVERY consumer — the rate limiter's bucket key and the
-// audit trail's source_ip — sees the same form and stays correlatable
-// (ADR-0010). An unparsable value stays as-is: it is its own key, same as
-// clientIP's untrusted fallback.
+// canonicalIP gives equivalent IP spellings one rate-limit key and audit identity; unparsable values remain unchanged.
 func canonicalIP(ip string) string {
 	if p := net.ParseIP(ip); p != nil {
 		return p.String()
@@ -38,16 +29,9 @@ func canonicalIP(ip string) string {
 	return ip
 }
 
-// clientIP resolves the address to attribute a request to. When the direct peer
-// is a trusted proxy, it walks X-Forwarded-For right-to-left (nearest hop first)
-// and returns the first address that is NOT itself a trusted proxy — the closest
-// client the trusted chain vouches for. Walking from the right is essential: a
-// client can prepend spoofed entries on the left, but everything from the real
-// connection rightward is written by trusted proxies. Untrusted peers (or a
-// missing header) fall back to the peer IP, so a client can't spoof its key.
+// clientIP walks trusted X-Forwarded-For hops right-to-left to exclude client-prepended spoofed entries. Untrusted peers use their direct IP.
 func clientIP(addr string, h http.Header, trusted []*net.IPNet) string {
-	// No trusted proxies (the common direct-exposure case): the peer is the client;
-	// skip parsing the peer IP and the X-Forwarded-For machinery entirely.
+	// No trusted proxies (the common direct-exposure case): the peer is the client; skip parsing the peer IP and the X-Forwarded-For machinery entirely.
 	if len(trusted) == 0 {
 		return hostOnly(addr)
 	}
@@ -56,24 +40,19 @@ func clientIP(addr string, h http.Header, trusted []*net.IPNet) string {
 		return peer
 	}
 	forwarded := parseForwardedFor(h)
-	for i := len(forwarded) - 1; i >= 0; i-- {
-		// A hop that is not a valid IP can't be a real client address: a trusted
-		// proxy could forward a malformed/oversized value, or an attacker prepends
-		// one past the known-proxy hops. Stop trusting the chain here and attribute
-		// to the peer, so a spoofed X-Forwarded-For can never mint an arbitrary
-		// (unbounded) rate-limit key or a bogus audit source_ip (ADR-0010).
-		if net.ParseIP(forwarded[i]) == nil {
+	for idx := len(forwarded) - 1; idx >= 0; idx-- {
+		// Stop trusting a malformed forwarded hop and use the peer IP so proxy input cannot forge audit identities or unbounded rate-limit keys.
+		if net.ParseIP(forwarded[idx]) == nil {
 			return peer
 		}
-		if !ipInNets(forwarded[i], trusted) {
-			return forwarded[i]
+		if !ipInNets(forwarded[idx], trusted) {
+			return forwarded[idx]
 		}
 	}
 	return peer
 }
 
-// hostOnly strips the port from a "host:port" address, falling back to the raw
-// value (some transports report a bare host).
+// hostOnly strips the port from a "host:port" address, falling back to the raw value (some transports report a bare host).
 func hostOnly(addr string) string {
 	if host, _, err := net.SplitHostPort(addr); err == nil {
 		return host
@@ -81,8 +60,7 @@ func hostOnly(addr string) string {
 	return addr
 }
 
-// parseForwardedFor returns the X-Forwarded-For addresses in order (leftmost =
-// original client, rightmost = nearest proxy).
+// parseForwardedFor returns the X-Forwarded-For addresses in order (leftmost = original client, rightmost = nearest proxy).
 func parseForwardedFor(h http.Header) []string {
 	var out []string
 	for _, line := range h.Values("X-Forwarded-For") {

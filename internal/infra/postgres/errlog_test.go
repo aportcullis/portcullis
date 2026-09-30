@@ -24,7 +24,7 @@ func TestErrorLogFieldsLogsStructuralFieldsNotMessage(t *testing.T) {
 	if !strings.Contains(got, "23505") || !strings.Contains(got, "users_email_key") || !strings.Contains(got, "users") {
 		t.Errorf("should log the SQLSTATE code + structural identifiers, got %v", fields)
 	}
-	// Neither Message nor Detail may reach the fields — both can carry values.
+
 	if strings.Contains(got, "secret-in-message") || strings.Contains(got, "secret@example.com") {
 		t.Errorf("must not log Message or Detail, got %v", fields)
 	}

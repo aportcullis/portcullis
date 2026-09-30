@@ -3,9 +3,7 @@ import { splitProps } from "solid-js"
 
 import { cn } from "@/shared/lib/utils"
 
-// Vendored from solid-ui (stefan-karger/solid-ui), adapted: plain styled HTML
-// table primitives — sorting/virtualization (TanStack) is reserved for the
-// result grid (PRD §7.1), not needed for small admin lists.
+// Vendored from solid-ui (stefan-karger/solid-ui), adapted: plain styled HTML table primitives — sorting/virtualization (TanStack) is reserved for the result grid (PRD §7.1), not needed for small admin lists.
 
 const Table: Component<ComponentProps<"table">> = (props) => {
   const [local, others] = splitProps(props, ["class"])

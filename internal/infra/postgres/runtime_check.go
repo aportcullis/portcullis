@@ -8,17 +8,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// VerifyRuntimeConnection asserts that the connection the server actually runs
-// on upholds the audit boundary (ADR-0009) — verifying the configured group role
-// alone is not enough, because the DSN's login user is what acts.
-//
-// Every check targets SESSION_USER, not current_user: `ALTER ROLE ... SET role`
-// makes current_user the runtime role at connect while the session user keeps
-// its own privileges, and `SET ROLE NONE` restores them at will — the session
-// user is the floor identity a connection can always return to.
+// VerifyRuntimeConnection checks SESSION_USER, which can regain its own privileges with SET ROLE NONE; checking current_user alone misses excess login privileges (ADR-0009).
 func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRole string) error {
-	// Wrong database / never migrated: fatal (not ErrRuntimeInsecure) — a pointer
-	// at the schema rather than a confusing SQL error on first use.
+	// Wrong database / never migrated: fatal (not ErrRuntimeInsecure) — a pointer at the schema rather than a confusing SQL error on first use.
 	var auditOK, historyOK bool
 	if err := pool.QueryRow(ctx,
 		`select to_regclass('public.audit_events') is not null, to_regclass('public.schema_migrations') is not null`,
@@ -29,10 +21,7 @@ func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRol
 		return safeErrorf("runtime database has no audit_events/schema_migrations — is PORTCULLIS_DATABASE_URL pointing at the migrated database?")
 	}
 
-	// One query resolves every property of the session user, so all the
-	// ErrRuntimeInsecure errors below are our own crafted strings — never a
-	// wrapped query/connect error that could echo the DSN (the dev flag logs the
-	// reason text).
+	// One query resolves every property of the session user, so all the ErrRuntimeInsecure errors below are our own crafted strings — never a wrapped query/connect error that could echo the DSN (the dev flag logs the reason text).
 	var user string
 	var member, unsafeAttrs, ownerReach bool
 	var strayRoles []string
@@ -77,8 +66,7 @@ func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRol
 		return fmt.Errorf("inspect runtime connection: %w", err)
 	}
 
-	// Functional floor first, and ALWAYS fatal: a server that cannot connect or
-	// write audit rows must not boot, dev flag or not.
+	// Functional floor first, and ALWAYS fatal: a server that cannot connect or write audit rows must not boot, dev flag or not.
 	m, err := queryPrivilegeMatrix(ctx, pool, user)
 	if err != nil {
 		return fmt.Errorf("verify runtime user %q: %w", user, err)
@@ -87,21 +75,14 @@ func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRol
 		return err
 	}
 
-	// Over-privilege violations: downgradable by the explicit dev flag only. The two
-	// checks below are the ONLY shapes the flag is meant to permit — the intentional
-	// single-role dev setup, where DATABASE_URL is the schema owner (ownerReach) or a
-	// superuser (a dangerous attribute). Both hold implicitly without any membership.
+	// Over-privilege violations: downgradable by the explicit dev flag only. The two checks below are the ONLY shapes the flag is meant to permit — the intentional single-role dev setup, where DATABASE_URL is the schema owner (ownerReach) or a superuser (a dangerous attribute). Both hold implicitly without any membership.
 	if unsafeAttrs {
 		return safeErrorf("%w: runtime user %q holds a dangerous attribute (%s) (ADR-0009)", ErrRuntimeInsecure, user, unsafeRoleAttrsList)
 	}
 	if ownerReach {
 		return safeErrorf("%w: runtime user %q owns (or can use/become the owner of) the database, public schema, or a protected table — the server must not run with owner/superuser credentials (ADR-0009)", ErrRuntimeInsecure, user)
 	}
-	// Membership is checked BEFORE the remaining over-privilege classes: a non-member
-	// is configuration drift (a wrong principal), not the owner/superuser dev shape
-	// caught above, so the dev flag must NEVER mask it — even when the drifted
-	// principal also holds a stray role or an excess table privilege (which would
-	// otherwise classify as downgradable ErrRuntimeInsecure and boot).
+	// Check runtime membership before excess grants so a wrong principal remains fatal even when development mode permits excess privileges.
 	if !member {
 		return safeErrorf("runtime user %q is not a member of runtime role %q (ADR-0009) — grant it or fix PORTCULLIS_DATABASE_URL/PORTCULLIS_RUNTIME_ROLE", user, runtimeRole)
 	}
@@ -111,12 +92,7 @@ func VerifyRuntimeConnection(ctx context.Context, pool *pgxpool.Pool, runtimeRol
 	if err := m.excessErr(fmt.Sprintf("runtime user %q", user)); err != nil {
 		return safeErrorf("%w: %s", ErrRuntimeInsecure, err)
 	}
-	// Per-table policy matrix, AFTER the membership check (a non-member is
-	// configuration drift and must never surface as a downgradable violation):
-	// a missing required privilege means the server cannot function — always
-	// fatal, like the floor; a forbidden one is the over-privilege class the
-	// dev flag may downgrade. The intentional single-role dev shape never gets
-	// here (ownerReach returns above).
+	// Missing required grants remain fatal; development mode may downgrade only excess grants after identity and membership checks.
 	missing, forbidden, err := verifyTablePrivileges(ctx, pool, user, fmt.Sprintf("runtime user %q", user))
 	if err != nil {
 		return fmt.Errorf("verify runtime user %q table privileges: %w", user, err)

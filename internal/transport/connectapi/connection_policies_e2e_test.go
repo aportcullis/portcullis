@@ -23,10 +23,6 @@ func defaultPolicyUpdate(id string, expected int64) *portcullisv1.UpdateConnecti
 	}
 }
 
-// TestConnectionPoliciesLifecycle drives bootstrap → create connection (v1
-// default policy) → get → update (enable write, auto-approve read) → stale
-// conflict → bounds/id validation → archive freeze, and verifies the audit
-// vocabulary and Me.permissions along the way (ADR-0015, ADR-0008).
 func TestConnectionPoliciesLifecycle(t *testing.T) {
 	env := newConnsTestEnv(t)
 	ctx := context.Background()
@@ -43,8 +39,6 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 	}
 	csrf := csrfFromJar(jar, env.serverURL)
 
-	// Me/Login enumerate the caller's permission keys for UI gating (ADR-0014's
-	// deferred Me.permissions): the admin bootstrap role carries the policy keys.
 	if !slices.Contains(login.Msg.GetPermissions(), "policies.update") {
 		t.Errorf("Login.permissions = %v, want policies.update present", login.Msg.GetPermissions())
 	}
@@ -70,7 +64,6 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 		t.Errorf("summary environment = %q, want production", created.Msg.GetConnection().GetEnvironment())
 	}
 
-	// The connection was born with the v1 default policy.
 	got, err := policiesC.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetConnectionPolicyRequest{ConnectionId: id}), csrf))
 	if err != nil {
 		t.Fatalf("Get policy: %v", err)
@@ -83,7 +76,6 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 		t.Errorf("v1 limits = %d/%d/%d", p.GetQueryTimeoutSeconds(), p.GetMaxRows(), p.GetMaxResultBytes())
 	}
 
-	// Update: enable write (2 approvals) and auto-approve read.
 	up := defaultPolicyUpdate(id, 1)
 	up.Write = &portcullisv1.ClassPolicy{Allowed: true, RequiredApprovals: 2}
 	up.Read = &portcullisv1.ClassPolicy{Allowed: true, RequiredApprovals: 0}
@@ -95,7 +87,6 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 		t.Fatalf("v2 policy = %+v", v)
 	}
 
-	// A reader sees the new current version.
 	got, err = policiesC.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetConnectionPolicyRequest{ConnectionId: id}), csrf))
 	if err != nil {
 		t.Fatal(err)
@@ -104,15 +95,14 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 		t.Errorf("current version = %d, want 2", got.Msg.GetPolicy().GetVersion())
 	}
 
-	// Stale expected version → Aborted ("policy changed; refresh and retry").
 	if _, err := policiesC.Update(ctx, withCSRF(connect.NewRequest(defaultPolicyUpdate(id, 1)), csrf)); connect.CodeOf(err) != connect.CodeAborted {
 		t.Errorf("stale update code = %v, want Aborted", connect.CodeOf(err))
 	}
-	// Malformed id → InvalidArgument at the boundary.
+
 	if _, err := policiesC.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetConnectionPolicyRequest{ConnectionId: "not-a-uuid"}), csrf)); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("Get(bad uuid) code = %v, want InvalidArgument", connect.CodeOf(err))
 	}
-	// Out-of-bounds limits → InvalidArgument (domain bounds, ADR-0015).
+
 	bad := defaultPolicyUpdate(id, 2)
 	bad.QueryTimeoutSeconds = 0
 	if _, err := policiesC.Update(ctx, withCSRF(connect.NewRequest(bad), csrf)); connect.CodeOf(err) != connect.CodeInvalidArgument {
@@ -123,16 +113,13 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 	if _, err := policiesC.Update(ctx, withCSRF(connect.NewRequest(bad), csrf)); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("Update(approvals 101) code = %v, want InvalidArgument", connect.CodeOf(err))
 	}
-	// Omitting a class must be rejected, not coerced to {false, 0}: a silent
-	// quorum reset would make a later re-enable auto-approve (ADR-0015's kept
-	// quorum; self-review F2).
+	// Reject omitted policy classes so defaulting cannot silently reset an approval quorum.
 	bad = defaultPolicyUpdate(id, 2)
 	bad.Write = nil
 	if _, err := policiesC.Update(ctx, withCSRF(connect.NewRequest(bad), csrf)); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("Update(write omitted) code = %v, want InvalidArgument", connect.CodeOf(err))
 	}
 
-	// Archive freezes the policy: reads keep answering, updates are refused.
 	if _, err := connsC.Archive(ctx, withCSRF(connect.NewRequest(&portcullisv1.ArchiveConnectionRequest{Id: id}), csrf)); err != nil {
 		t.Fatalf("Archive: %v", err)
 	}
@@ -143,8 +130,6 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 		t.Errorf("Update on archived code = %v, want FailedPrecondition", connect.CodeOf(err))
 	}
 
-	// The trail carries the ADR-0015 vocabulary: the update itself and the
-	// write-enable companion (§4.3's admin audit event).
 	events, err := auditC.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.AuditListRequest{PageSize: 100}), csrf))
 	if err != nil {
 		t.Fatalf("Audit.List: %v", err)

@@ -2,8 +2,7 @@ package identity
 
 import "time"
 
-// Session is a server-side authenticated session. The opaque token handed to the
-// client is never stored here; only its hash lives in the repository.
+// Session is a server-side authenticated session. The opaque token handed to the client is never stored here; only its hash lives in the repository.
 type Session struct {
 	ID                SessionID
 	UserID            UserID
@@ -24,8 +23,7 @@ func NewSession(id SessionID, user UserID, now time.Time, idle, absolute time.Du
 	}
 }
 
-// Valid reports whether the session is usable at now: not revoked, and within
-// both the idle and absolute expiry windows.
+// Valid reports whether the session is usable at now: not revoked, and within both the idle and absolute expiry windows.
 func (s Session) Valid(now time.Time) bool {
 	if s.RevokedAt != nil {
 		return false

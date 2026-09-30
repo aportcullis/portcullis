@@ -6,10 +6,7 @@ import (
 	"crypto/rand"
 )
 
-// Seal envelope-encrypts plaintext: a fresh DEK encrypts the data, and the DEK
-// is wrapped under the active version's dek-wrap key. associatedData (e.g. a
-// record id + owner org id) is authenticated on both layers and must be
-// supplied identically to Open.
+// Seal envelope-encrypts plaintext: a fresh DEK encrypts the data, and the DEK is wrapped under the active version's dek-wrap key. associatedData (e.g. a record id + owner org id) is authenticated on both layers and must be supplied identically to Open.
 func (k *Keyring) Seal(plaintext, associatedData []byte) (Blob, error) {
 	wrapKey, err := k.derive(k.active, infoDEKWrap)
 	if err != nil {
@@ -38,8 +35,7 @@ func (k *Keyring) Seal(plaintext, associatedData []byte) (Blob, error) {
 	}, nil
 }
 
-// Open reverses Seal. associatedData must match what was passed to Seal, or the
-// authentication fails and ErrDecrypt is returned.
+// Open reverses Seal. associatedData must match what was passed to Seal, or the authentication fails and ErrDecrypt is returned.
 func (k *Keyring) Open(b Blob, associatedData []byte) ([]byte, error) {
 	wrapKey, err := k.derive(b.KeyVersion, infoDEKWrap)
 	if err != nil {
@@ -63,8 +59,7 @@ func sealAEAD(key, plaintext, associatedData []byte) (nonce, ciphertext []byte, 
 	if err != nil {
 		return nil, nil, err
 	}
-	// gcmNonceLen is the one source of truth for the nonce size (ADR-0003 pins 12):
-	// Open slices WrappedDEK at this same constant, so seal and open can't diverge.
+	// gcmNonceLen is the one source of truth for the nonce size (ADR-0003 pins 12): Open slices WrappedDEK at this same constant, so seal and open can't diverge.
 	nonce = make([]byte, gcmNonceLen)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, nil, err

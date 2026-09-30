@@ -1,7 +1,6 @@
 package connectapi
 
-// White-box: clientIP's trusted-proxy walk and its malformed-hop fallback live in
-// unexported helpers; a black-box e2e request can't set an arbitrary peer address.
+// White-box tests set peer addresses unavailable through browser or API E2E to verify trusted-proxy traversal.
 
 import (
 	"net"
@@ -62,12 +61,11 @@ func TestClientIP(t *testing.T) {
 
 func TestBoundKeyCapsLength(t *testing.T) {
 	t.Parallel()
-	// A short key passes through unchanged (human-readable, no allocation).
+
 	if got := boundKey("ip:198.51.100.7"); got != "ip:198.51.100.7" {
 		t.Errorf("boundKey short = %q, want unchanged", got)
 	}
-	// An oversized key (only reachable via an attacker-influenced dimension) is
-	// collapsed to a fixed-length digest so the bucket map can't hold large strings.
+	// An oversized key (only reachable via an attacker-influenced dimension) is collapsed to a fixed-length digest so the bucket map can't hold large strings.
 	big := "ip:" + strings.Repeat("a", 100_000)
 	got := boundKey(big)
 	if len(got) > maxRateLimitKeyBytes {

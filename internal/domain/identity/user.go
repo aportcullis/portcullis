@@ -2,10 +2,7 @@ package identity
 
 import "time"
 
-// UserStatus is the lifecycle state of an account. These are fixed domain
-// enums the code branches on (see Active), so they live in code; everything
-// configurable — the permission catalog, roles, the OIDC provider — comes from
-// the database or config, not constants.
+// UserStatus is the lifecycle state of an account. These are fixed domain enums the code branches on (see Active), so they live in code; everything configurable — the permission catalog, roles, the OIDC provider — comes from the database or config, not constants.
 type UserStatus string
 
 // Account lifecycle states — mirrors the users.status check constraint.

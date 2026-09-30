@@ -6,8 +6,7 @@ import * as DialogPrimitive from "@kobalte/core/dialog"
 
 import { cn } from "@/shared/lib/utils"
 
-// Vendored from solid-ui (stefan-karger/solid-ui), adapted: the close icon is
-// an inline SVG so no icon dependency is pulled in.
+// Vendored from solid-ui (stefan-karger/solid-ui), adapted: the close icon is an inline SVG so no icon dependency is pulled in.
 
 const Dialog = DialogPrimitive.Root
 const DialogTrigger = DialogPrimitive.Trigger

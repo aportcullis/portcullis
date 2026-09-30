@@ -10,15 +10,11 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 )
 
-// The ADR-0002 fixture matrix is the classification contract; the PG adapter
-// runs every PG-applicable row (ADR-0001 acceptance gate).
 func TestClassificationFixtures(t *testing.T) {
 	t.Parallel()
 	dialecttest.RunClassification(t, pgdialect.New(pgdialect.Options{}), dialecttest.PG)
 }
 
-// A Statement produced by anything but this dialect's ParseSingle must fail
-// closed, not be trusted.
 func TestClassifyRejectsForeignStatement(t *testing.T) {
 	t.Parallel()
 	d := pgdialect.New(pgdialect.Options{})
@@ -36,8 +32,6 @@ type foreignStatement struct{}
 
 func (foreignStatement) Text() string { return "SELECT 1" }
 
-// Statement.Text must reproduce the exact input the handle was parsed from —
-// the digest and audit paths bind to it.
 func TestParseSingleStatementText(t *testing.T) {
 	t.Parallel()
 	d := pgdialect.New(pgdialect.Options{})
@@ -51,8 +45,6 @@ func TestParseSingleStatementText(t *testing.T) {
 	}
 }
 
-// Parse failures carry a byte offset only — parser messages can quote the
-// input and must not propagate (ADR-0016).
 func TestParseSingleFailureCarriesNoInput(t *testing.T) {
 	t.Parallel()
 	d := pgdialect.New(pgdialect.Options{})

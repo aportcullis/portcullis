@@ -23,8 +23,7 @@ func New(repo Repository) (*Service, error) {
 // WithClock overrides the clock for deterministic tests.
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
 
-// Get returns the connection's current policy. Archived connections keep
-// answering — the policy is part of the historical snapshot (ADR-0015).
+// Get returns the connection's current policy. Archived connections keep answering — the policy is part of the historical snapshot (ADR-0015).
 func (s *Service) Get(ctx context.Context, id connection.ConnectionID) (connection.Policy, error) {
 	org, err := s.repo.DefaultOrganizationID(ctx)
 	if err != nil {
@@ -33,11 +32,7 @@ func (s *Service) Get(ctx context.Context, id connection.ConnectionID) (connecti
 	return s.repo.GetCurrent(ctx, org, id)
 }
 
-// Update replaces the connection's policy with a new immutable version:
-// validate → diff against the version the caller read → append version
-// expected+1 with CONNECTION_POLICY_UPDATED (and one
-// CONNECTION_POLICY_CLASS_ENABLED per newly enabled write/ddl class — §4.3's
-// admin-audit requirement) committing in the same transaction (ADR-0009).
+// Update replaces the connection's policy with a new immutable version: validate → diff against the version the caller read → append version expected+1 with CONNECTION_POLICY_UPDATED (and one CONNECTION_POLICY_CLASS_ENABLED per newly enabled write/ddl class — §4.3's admin-audit requirement) committing in the same transaction (ADR-0009).
 func (s *Service) Update(ctx context.Context, actor identity.UserID, id connection.ConnectionID, p UpdateParams) (connection.Policy, error) {
 	org, err := s.repo.DefaultOrganizationID(ctx)
 	if err != nil {
@@ -57,9 +52,7 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 		return connection.Policy{}, err
 	}
 
-	// The diff base is the CURRENT version. A racing update between this read
-	// and the pointer bump is caught by the bump's optimistic predicate, so the
-	// diff can never be recorded against a version the update didn't replace.
+	// The diff base is the CURRENT version. A racing update between this read and the pointer bump is caught by the bump's optimistic predicate, so the diff can never be recorded against a version the update didn't replace.
 	current, err := s.repo.GetCurrent(ctx, org, id)
 	if err != nil {
 		return connection.Policy{}, err
@@ -77,9 +70,7 @@ func (s *Service) Update(ctx context.Context, actor identity.UserID, id connecti
 	return s.repo.UpdatePolicy(ctx, next, p.ExpectedVersion, events...)
 }
 
-// updatedEvent is the always-present CONNECTION_POLICY_UPDATED: the full new
-// snapshot plus diffs against the replaced version, so the trail answers "who
-// allowed what, when" without replaying history.
+// updatedEvent is the always-present CONNECTION_POLICY_UPDATED: the full new snapshot plus diffs against the replaced version, so the trail answers "who allowed what, when" without replaying history.
 func (s *Service) updatedEvent(ctx context.Context, actor identity.UserID, org identity.OrganizationID, current, next connection.Policy) audit.Event {
 	var enabled, disabled, autoApprove []string
 	for _, class := range connection.Classes() {
@@ -134,8 +125,7 @@ func ruleMetadata(r connection.ClassRule) map[string]any {
 	return map[string]any{"allowed": r.Allowed, "required_approvals": r.RequiredApprovals}
 }
 
-// changedFields names exactly what differs between the replaced and the new
-// version (the audit "fields" rule from the 8th review, applied to policies).
+// changedFields records the policy fields that actually changed.
 func changedFields(current, next connection.Policy) []string {
 	var fields []string
 	for _, class := range connection.Classes() {

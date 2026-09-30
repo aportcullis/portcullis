@@ -1,8 +1,4 @@
-// Package oidctest is a test-only fake OIDC provider (Google stand-in): a
-// httptest server exposing discovery, JWKS, and a PKCE-checking token
-// endpoint, so the googleoidc adapter and the callback e2e flow can run
-// against a real HTTP issuer without the network. It lives beside dbtest as
-// shared test infrastructure — never imported by production code.
+// Package oidctest is a test-only fake OIDC provider (Google stand-in): a httptest server exposing discovery, JWKS, and a PKCE-checking token endpoint, so the googleoidc adapter and the callback e2e flow can run against a real HTTP issuer without the network. It lives beside dbtest as shared test infrastructure — never imported by production code.
 package oidctest
 
 import (
@@ -43,8 +39,7 @@ func New(t *testing.T) *Issuer {
 // URL is the issuer identifier (and base URL) of the fake provider.
 func (i *Issuer) URL() string { return i.srv.URL }
 
-// MintCode registers a single-use authorization code bound to opts, as if the
-// user had just consented at the provider.
+// MintCode registers a single-use authorization code bound to opts, as if the user had just consented at the provider.
 func (i *Issuer) MintCode(opts CodeOptions) string {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -80,8 +75,7 @@ func (i *Issuer) jwks(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// token redeems a code: single use, and the presented code_verifier must S256
-// to the challenge captured with the code.
+// token redeems a code: single use, and the presented code_verifier must S256 to the challenge captured with the code.
 func (i *Issuer) token(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		tokenError(w, "invalid_request")

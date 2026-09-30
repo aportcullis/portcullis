@@ -5,9 +5,7 @@ import { load } from "@/entities/session/store";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 
-// UnreachableCard renders when the session state is "unreachable": the server
-// could not answer Me, which must not be presented as a logout (ADR-0006).
-// Retry re-resolves the session; on success the route guards take over.
+// UnreachableCard renders when the session state is "unreachable": the server could not answer Me, which must not be presented as a logout (ADR-0006). Retry re-resolves the session; on success the route guards take over.
 export const UnreachableCard: Component = () => {
   const [pending, setPending] = createSignal(false);
   const retry = async () => {

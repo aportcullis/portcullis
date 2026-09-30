@@ -60,10 +60,7 @@ create table if not exists audit_events (
     previous_state   text,
     next_state       text,
     payload_digest   bytea,
-    -- Key version of the HMAC key that produced payload_digest, so the digest
-    -- stays verifiable across master-key rotations (ADR-0003). The pair is
-    -- all-or-nothing: a digest without its key version is unverifiable, and a
-    -- version without a digest is meaningless.
+    -- Key version of the HMAC key that produced payload_digest, so the digest stays verifiable across master-key rotations (ADR-0003). The pair is all-or-nothing: a digest without its key version is unverifiable, and a version without a digest is meaningless.
     payload_digest_key_version int
         check (payload_digest_key_version is null or payload_digest_key_version > 0),
     request_id       text,
@@ -78,8 +75,7 @@ create table if not exists audit_events (
 );
 create index if not exists audit_events_org_time_idx on audit_events (organization_id, occurred_at desc, id desc);
 
--- audit_events is append-only: block UPDATE, DELETE, and TRUNCATE at the database
--- level so history cannot be rewritten even by the application runtime.
+-- audit_events is append-only: block UPDATE, DELETE, and TRUNCATE at the database level so history cannot be rewritten even by the application runtime.
 create or replace function audit_events_block_mutation() returns trigger
 language plpgsql as $$
 begin

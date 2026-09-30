@@ -40,7 +40,7 @@ func TestNewConnection(t *testing.T) {
 		{"empty id", "", "org1", connection.DBTypePostgreSQL, "n", "u1", connection.ErrInvalidConnection},
 		{"empty org", "c1", "", connection.DBTypePostgreSQL, "n", "u1", connection.ErrInvalidConnection},
 		{"empty creator", "c1", "org1", connection.DBTypePostgreSQL, "n", "", connection.ErrInvalidConnection},
-		// Only PostgreSQL ships in M1; MySQL/SQLite arrive with M2 adapters.
+
 		{"unsupported db type", "c1", "org1", "mysql", "n", "u1", connection.ErrUnsupportedDBType},
 		{"empty display name", "c1", "org1", connection.DBTypePostgreSQL, "", "u1", connection.ErrInvalidDisplayName},
 		{"whitespace display name", "c1", "org1", connection.DBTypePostgreSQL, "   ", "u1", connection.ErrInvalidDisplayName},
@@ -89,8 +89,7 @@ func TestArchive(t *testing.T) {
 	if conn.ArchivedAt == nil || !conn.ArchivedAt.Equal(later) {
 		t.Errorf("ArchivedAt = %v, want %v", conn.ArchivedAt, later)
 	}
-	// Archiving twice is a caller bug surfaced as a sentinel, not a silent no-op:
-	// the second call must not move the archive timestamp (audit evidence).
+	// Archiving twice is a caller bug surfaced as a sentinel, not a silent no-op: the second call must not move the archive timestamp (audit evidence).
 	if err := conn.Archive(later.Add(time.Hour)); !errors.Is(err, connection.ErrAlreadyArchived) {
 		t.Fatalf("second Archive err = %v, want ErrAlreadyArchived", err)
 	}
@@ -108,7 +107,7 @@ func TestNewCredential(t *testing.T) {
 		wantErr  error
 	}{
 		{"valid", "app_reader", "s3cret", nil},
-		// Password may be empty: peer/trust-authenticated targets exist.
+
 		{"empty password allowed", "app_reader", "", nil},
 		{"empty user", "", "s3cret", connection.ErrInvalidCredential},
 		{"whitespace user", "  ", "s3cret", connection.ErrInvalidCredential},

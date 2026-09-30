@@ -10,19 +10,10 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// errExecFailed is the redacted stand-in for any driver error that is
-// neither a PG error nor a context end: its text must never surface
-// (PRD §8.1).
+// errExecFailed is the redacted stand-in for any driver error that is neither a PG error nor a context end: its text must never surface (PRD §8.1).
 var errExecFailed = errors.New("pgdialect: execution failed")
 
-// redactExecError maps an execution-phase failure onto the caller-safe
-// vocabulary (ADR-0016). A canceled/expired context wins over whatever the
-// driver observed — including the server-side 57014 our own cancel request
-// provoked — so the caller can record outcome_unknown (PRD §8.2). PG errors
-// keep SQLSTATE + primary message + position only; Detail/Hint/Where can
-// embed row data and are dropped. The primary message can itself quote input
-// values, so ExecError carries it as a requester-facing field and keeps it
-// out of Error() (the string a log line would capture).
+// redactExecError prioritizes context cancellation for outcome_unknown and drops row-bearing error fields (ADR-0016). The primary message is requester-only; Error() and audit retain SQLSTATE.
 func redactExecError(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return fmt.Errorf("execution interrupted: %w", ctxErr)

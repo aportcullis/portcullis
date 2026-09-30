@@ -8,17 +8,13 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// Dialect is the slice of a dialect adapter the classification suite
-// exercises; every engine's adapter satisfies it structurally.
+// Dialect is the slice of a dialect adapter the classification suite exercises; every engine's adapter satisfies it structurally.
 type Dialect interface {
 	ParseSingle(sql string) (query.Statement, error)
 	Classify(st query.Statement) (query.StatementClass, error)
 }
 
-// RunClassification runs every fixture applicable to engine through
-// ParseSingle→Classify and asserts the pinned outcome, including the exact
-// reject reason — fail-closed means rejecting for the *right* reason, not
-// just rejecting.
+// RunClassification runs every fixture applicable to engine through ParseSingle→Classify and asserts the pinned outcome, including the exact reject reason — fail-closed means rejecting for the *right* reason, not just rejecting.
 func RunClassification(t *testing.T, d Dialect, engine Engine) {
 	t.Helper()
 	for _, f := range Fixtures() {
@@ -61,9 +57,7 @@ func classifyOnce(d Dialect, sql string) (query.StatementClass, error) {
 	return d.Classify(st)
 }
 
-// rejectReason maps the dialect's refusal errors onto the fixture vocabulary:
-// parse-level sentinels for empty/multi input, *query.Rejection for
-// everything the classifier refuses.
+// rejectReason maps the dialect's refusal errors onto the fixture vocabulary: parse-level sentinels for empty/multi input, *query.Rejection for everything the classifier refuses.
 func rejectReason(err error) (query.RejectReason, bool) {
 	switch {
 	case errors.Is(err, query.ErrEmptyStatement):

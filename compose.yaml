@@ -1,15 +1,11 @@
 name: portcullis
 
-# Local quickstart: `docker compose up --build`, then open http://localhost:8080.
-# The master key is generated once on first run and persisted in the `secrets`
-# volume, so it stays stable across restarts (regenerating it would make all
-# previously encrypted data unreadable). For production, inject the key from a
-# managed secret instead and use a managed/persistent PostgreSQL.
+# Run `docker compose up --build` and open http://localhost:8080.
+# Persist the master key across restarts; production uses a managed secret and persistent database.
 
 services:
   postgres:
-    # tag@digest pin (supply chain — a bare tag is mutable); same digest as
-    # dbtest/postgres.go and web/e2e/server.sh. Renovate bumps all together.
+    # Keep this digest aligned with dbtest and browser E2E.
     image: postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
     environment:
       POSTGRES_USER: portcullis
@@ -17,8 +13,7 @@ services:
       POSTGRES_DB: portcullis
     volumes:
       - pgdata:/var/lib/postgresql
-      # Creates the least-privilege portcullis_app login user on FIRST init only
-      # (runs on an empty data volume; `docker compose down -v` resets it).
+      # Init scripts run only on an empty data volume.
       - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U portcullis -d portcullis"]
@@ -26,18 +21,14 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot: generate a 32-byte base64 master key into the secrets volume,
-  # only if one does not already exist.
+  # Generate the key only if absent; replacing it makes sealed data unreadable.
   keygen:
     image: alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
     command: ["sh", "-c", "[ -s /secrets/master.key ] || head -c 32 /dev/urandom | base64 > /secrets/master.key"]
     volumes:
       - secrets:/secrets
 
-  # One-shot: apply migrations as the schema OWNER, then exit. The owner DSN is
-  # injected ONLY here — the serving container below never holds owner
-  # credentials, so even a compromised server process cannot reach the audit
-  # triggers/tables through its environment (ADR-0009).
+  # Keep owner credentials in the one-shot migration process (ADR-0009).
   migrate:
     build:
       context: .
@@ -57,9 +48,7 @@ services:
       keygen:
         condition: service_completed_successfully
     environment:
-      # Serve as the least-privilege runtime user only (ADR-0009 — the runtime
-      # cannot mutate audit_events or alter tables); migrations ran in the
-      # one-shot migrate service above.
+      # Runtime credentials cannot mutate audit evidence or schema.
       PORTCULLIS_DATABASE_URL: postgres://portcullis_app:portcullis@postgres:5432/portcullis?sslmode=disable
       PORTCULLIS_MASTER_KEY_FILE: /secrets/master.key
     volumes:

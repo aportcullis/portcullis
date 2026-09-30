@@ -7,9 +7,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/setting"
 )
 
-// Resolve applies the single ADR-0017 precedence rule: DB override when
-// present and valid → env seed → compiled default. Invalid entries are
-// reported and skipped — the effective value is always safe.
 func TestResolvePrecedence(t *testing.T) {
 	t.Parallel()
 
@@ -86,16 +83,12 @@ func TestResolvePrecedence(t *testing.T) {
 	})
 }
 
-// The backoff pair rule (cap ≥ base, ADR-0006 via config) spans two keys and
-// must hold on EVERY returned snapshot, whichever layer produced the values:
-// a violating pair first drops both keys' overrides, and if the seed/default
-// mix still violates, both keys drop to their (consistent) defaults.
 func TestResolveBackoffPairRule(t *testing.T) {
 	t.Parallel()
 
 	t.Run("cap override below the default base is dropped", func(t *testing.T) {
 		t.Parallel()
-		overrides := map[setting.Key]string{setting.KeyLoginBackoffCap: "30s"} // default base is 1m
+		overrides := map[setting.Key]string{setting.KeyLoginBackoffCap: "30s"}
 		snap, invalid := setting.Resolve(nil, overrides)
 		if got := snap.Duration(setting.KeyLoginBackoffCap); got != 15*time.Minute {
 			t.Fatalf("login_backoff_cap = %v, want the 15m default after the pair violation", got)
@@ -125,9 +118,7 @@ func TestResolveBackoffPairRule(t *testing.T) {
 
 	t.Run("invalid cap seed cannot leave cap below a valid base seed", func(t *testing.T) {
 		t.Parallel()
-		// The invalid cap seed falls to the 15m default; base's 20m seed would
-		// then violate cap ≥ base with no override involved — both keys must
-		// drop to their defaults instead of returning an inconsistent pair.
+		// The invalid cap seed falls to the 15m default; base's 20m seed would then violate cap ≥ base with no override involved — both keys must drop to their defaults instead of returning an inconsistent pair.
 		seeds := map[setting.Key]string{
 			setting.KeyLoginBackoffBase: "20m",
 			setting.KeyLoginBackoffCap:  "bogus",
@@ -147,9 +138,7 @@ func TestResolveBackoffPairRule(t *testing.T) {
 
 	t.Run("override drop falls back to a still-violating seed mix and lands on defaults", func(t *testing.T) {
 		t.Parallel()
-		// Overrides violate (5m > 2m) → dropped; the caller passed only a base
-		// seed (30m) which still violates against the 15m default cap → both
-		// keys must land on defaults, never on the inconsistent mix.
+		// Overrides violate (5m > 2m) → dropped; the caller passed only a base seed (30m) which still violates against the 15m default cap → both keys must land on defaults, never on the inconsistent mix.
 		seeds := map[setting.Key]string{setting.KeyLoginBackoffBase: "30m"}
 		overrides := map[setting.Key]string{
 			setting.KeyLoginBackoffBase: "5m",
@@ -164,7 +153,7 @@ func TestResolveBackoffPairRule(t *testing.T) {
 
 	t.Run("pair violation blames the keys that actually contributed", func(t *testing.T) {
 		t.Parallel()
-		overrides := map[setting.Key]string{setting.KeyLoginBackoffBase: "20m"} // cap stays at the 15m default
+		overrides := map[setting.Key]string{setting.KeyLoginBackoffBase: "20m"}
 		_, invalid := setting.Resolve(nil, overrides)
 		if len(invalid) != 1 {
 			t.Fatalf("invalid = %v, want exactly the dropped base override", invalid)

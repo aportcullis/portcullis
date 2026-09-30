@@ -19,8 +19,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/transport/server"
 )
 
-// newTestServer builds the full HTTP surface (health, SPA, Connect RPC) for
-// in-process e2e tests.
 func newTestServer(t *testing.T) (*server.Server, *httptest.Server) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -62,7 +60,6 @@ func TestE2E_Readiness(t *testing.T) {
 		t.Fatalf("/readyz = %d, want 200 with no checks", resp.StatusCode)
 	}
 
-	// A failing dependency makes the service unready (but stays alive).
 	srv.Health().Register("db", func(context.Context) error { return errors.New("down") })
 	resp = get(t, ts.URL, "/readyz")
 	_ = resp.Body.Close()
@@ -105,8 +102,6 @@ func TestE2E_SPAPlaceholder(t *testing.T) {
 	}
 }
 
-// Every response carries the hardening headers (defense-in-depth behind the
-// TLS-terminating proxy). HSTS is intentionally absent — it is the proxy's job.
 func TestE2E_SecurityHeaders(t *testing.T) {
 	t.Parallel()
 	_, ts := newTestServer(t)
@@ -133,10 +128,6 @@ func TestE2E_SecurityHeaders(t *testing.T) {
 	}
 }
 
-// The drain delay and the shutdown timeout are SEQUENTIAL budgets (ADR-0010):
-// the delay must elapse in full — so Kubernetes deregisters the pod — even when
-// it exceeds the shutdown timeout, and Shutdown must still succeed instead of
-// handing http.Server.Shutdown an already-expired context.
 func TestShutdownDrainDelayNotChargedToShutdownTimeout(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

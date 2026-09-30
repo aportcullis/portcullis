@@ -49,7 +49,7 @@ describe("autoApproveClasses", () => {
     expect(autoApproveClasses(draft({ read: { allowed: true, requiredApprovals: 0 } }))).toEqual([
       "read",
     ]);
-    // A disabled class with 0 approvals is not auto-approving anything.
+
     expect(autoApproveClasses(draft({ write: { allowed: false, requiredApprovals: 0 } }))).toEqual(
       [],
     );

@@ -14,16 +14,11 @@ import {
   CardTitle,
 } from "@/shared/ui/card";
 
-// The first-run form exists ONLY while the install has no admin: once
-// bootstrapped, this route redirects to the login page so nothing in the UI
-// hints that a bootstrap flow ever existed. (The server refuses a second
-// bootstrap regardless — this is presentation, not enforcement.) While the
-// install state is still loading, render nothing rather than flash the form.
+// Hide bootstrap while loading and redirect after initialization; the server independently rejects repeated bootstrap.
 const BootstrapPage: Component = () => {
   const navigate = useNavigate();
   return (
-    // Guard the resource error before reading loginConfig() (which throws when
-    // errored) — a GetConfig blip must show a retry, not a broken page.
+    // Guard the resource error before reading loginConfig() (which throws when errored) — a GetConfig blip must show a retry, not a broken page.
     <Show when={!loginConfig.error} fallback={<ConfigErrorCard />}>
       <Show when={loginConfig()} keyed>
         {(config) => (
@@ -37,8 +32,7 @@ const BootstrapPage: Component = () => {
               <CardContent>
                 <BootstrapForm
                   onSuccess={() => {
-                    // The install state changed; refresh it before routing or the
-                    // login page would bounce back to the stale first-run form.
+                    // The install state changed; refresh it before routing or the login page would bounce back to the stale first-run form.
                     void (async () => {
                       await refetchLoginConfig();
                       navigate("/login", { replace: true });

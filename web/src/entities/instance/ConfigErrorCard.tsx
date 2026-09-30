@@ -5,11 +5,7 @@ import { refetchLoginConfig } from "@/entities/instance/config";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 
-// ConfigErrorCard renders when the initial GetConfig fails: without it, reading
-// the errored resource throws and the login/bootstrap screen breaks with no
-// recovery. Retry refetches the install config; on success the pages route as
-// usual. Mirrors the session UnreachableCard so a server blip looks the same
-// pre- and post-login.
+// ConfigErrorCard renders when the initial GetConfig fails: without it, reading the errored resource throws and the login/bootstrap screen breaks with no recovery. Retry refetches the install config; on success the pages route as usual. Mirrors the session UnreachableCard so a server blip looks the same pre- and post-login.
 export const ConfigErrorCard: Component = () => {
   const [pending, setPending] = createSignal(false);
   const retry = async () => {

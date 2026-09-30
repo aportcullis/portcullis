@@ -1,7 +1,4 @@
-// Package reqmeta carries per-request metadata (currently the resolved client IP)
-// across layers via the context, so the application layer can read it without
-// importing the transport. The transport resolves and injects the values; app
-// and infra only read them. It mirrors logging.RequestID.
+// Package reqmeta carries per-request metadata (currently the resolved client IP) across layers via the context, so the application layer can read it without importing the transport. The transport resolves and injects the values; app and infra only read them. It mirrors logging.RequestID.
 package reqmeta
 
 import "context"

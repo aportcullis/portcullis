@@ -5,10 +5,7 @@ import type { EnvironmentValue } from "@/entities/connection/model";
 import { ENVIRONMENTS, parseEnvironment } from "@/entities/connection/model";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
-// DescriptorFields is the shared environment + description form body used by
-// the create and edit dialogs (the display name stays with each dialog — its
-// ids and requiredness differ). A raw styled <select> follows the TLS-mode
-// precedent (no vendored Select).
+// DescriptorFields is the shared environment + description form body used by the create and edit dialogs (the display name stays with each dialog — its ids and requiredness differ). A raw styled <select> follows the TLS-mode precedent (no vendored Select).
 export const DescriptorFields: Component<{
   idPrefix: string;
   environment: EnvironmentValue;

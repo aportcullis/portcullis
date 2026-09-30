@@ -2,11 +2,7 @@ package crypto
 
 import "context"
 
-// White-box (code.md): the cancellation/slot race in acquire cannot be steered
-// through the public API — Hash occupies a slot only for the (uncontrollable)
-// duration of a real hash — so these shims let the black-box tests fill and
-// release the semaphore directly. Exports only, no test logic (the stdlib
-// export_test idiom under this repo's *_internal_test.go naming).
+// White-box shims control hashing slots because the public API cannot schedule the cancellation/acquisition race.
 
 func (h *Argon2Hasher) TestAcquire(ctx context.Context) error { return h.acquire(ctx) }
 

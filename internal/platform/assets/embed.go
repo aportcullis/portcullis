@@ -1,7 +1,4 @@
-// Package assets embeds the built frontend into the single binary.
-//
-// The frontend (web/) builds into this package's dist/ directory; go:embed then
-// bundles it. "all:dist" includes dotfiles so the directory is never empty.
+// Package assets embeds the built frontend into the single binary. The frontend (web/) builds into this package's dist/ directory; go:embed then bundles it. "all:dist" includes dotfiles so the directory is never empty.
 package assets
 
 import (

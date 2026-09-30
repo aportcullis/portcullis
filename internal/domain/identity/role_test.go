@@ -8,10 +8,9 @@ import (
 
 func TestRoleHas(t *testing.T) {
 	t.Parallel()
-	// A custom role with an arbitrary name is authorized purely by its permissions
-	// (Google-IAM-style resource.verb keys), never by its name.
+
 	custom := identity.Role{
-		Name:        "auditor", // not a seeded system role
+		Name:        "auditor",
 		Permissions: []identity.Permission{"audit.list", "audit.get"},
 	}
 	if !custom.Has("audit.get") {

@@ -7,11 +7,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/setting"
 )
 
-// The log_level vocabulary exists twice by construction: this package owns
-// the runtime mapping (ADR-0010) and the domain settings registry declares it
-// for descriptor validation (ADR-0017) — the domain imports nothing outward,
-// so it cannot reference the map. This white-box test pins the two lists
-// together; the map is unexported, so no black-box surface exists.
 func TestLevelVocabularyMatchesSettingRegistry(t *testing.T) {
 	t.Parallel()
 	here := make([]string, 0, len(levels))

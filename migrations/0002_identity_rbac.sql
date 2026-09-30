@@ -1,7 +1,4 @@
--- 0002_identity_rbac: RBAC (permission catalog, roles, role_permissions),
--- external OIDC identities, and switch memberships from a role enum to role_id.
--- The permission catalog and the seeded system roles live here in SQL (the
--- source of truth), loaded at startup; nothing is hardcoded in Go (ADR-0008).
+-- 0002_identity_rbac: RBAC (permission catalog, roles, role_permissions), external OIDC identities, and switch memberships from a role enum to role_id. The permission catalog and the seeded system roles live here in SQL (the source of truth), loaded at startup; nothing is hardcoded in Go (ADR-0008).
 
 -- Fine-grained permission catalog (Google-IAM style resource.verb).
 create table if not exists permissions (
@@ -9,9 +6,7 @@ create table if not exists permissions (
     description  text not null default ''
 );
 
--- Roles: org-scoped bundles of permissions. Seeded system roles are defaults,
--- not a closed set; admins create custom roles. is_bootstrap_default marks the
--- role bootstrap assigns (resolved by flag, never by a hardcoded name).
+-- Roles: org-scoped bundles of permissions. Seeded system roles are defaults, not a closed set; admins create custom roles. is_bootstrap_default marks the role bootstrap assigns (resolved by flag, never by a hardcoded name).
 create table if not exists roles (
     id                   uuid primary key default gen_random_uuid(),
     organization_id      uuid not null references organizations (id) on delete restrict,
@@ -19,13 +14,10 @@ create table if not exists roles (
     is_system            boolean not null default false,
     is_bootstrap_default boolean not null default false,
     created_at           timestamptz not null default now(),
-    deleted_at           timestamptz, -- soft delete; never hard-deleted
-    -- FK target for memberships: lets a membership require its role to be in the
-    -- same org (a role can't be assigned across organizations).
+    deleted_at           timestamptz, -- soft delete; never hard-deleted FK target for memberships: lets a membership require its role to be in the same org (a role can't be assigned across organizations).
     unique (id, organization_id)
 );
--- Unique role name per org, and a single bootstrap-default per org — both ignore
--- soft-deleted rows, so deleting a role frees its name for reuse.
+-- Unique role name per org, and a single bootstrap-default per org — both ignore soft-deleted rows, so deleting a role frees its name for reuse.
 create unique index if not exists roles_org_name
     on roles (organization_id, name) where deleted_at is null;
 create unique index if not exists roles_one_bootstrap_default
@@ -39,14 +31,10 @@ create table if not exists role_permissions (
 -- reverse lookups (which roles grant a permission) and FK checks.
 create index if not exists role_permissions_permission_idx on role_permissions (permission_key);
 
--- Switch memberships to role_id. This *assumes* organization_memberships has no
--- rows (true on a fresh install; 0001 is unreleased) — add + NOT NULL would fail
--- on a populated table. If 0001 ever ships with data, replace this with a
--- nullable-add -> backfill -> set-not-null sequence, or fold role_id into 0001.
+-- Switch memberships to role_id. This *assumes* organization_memberships has no rows (true on a fresh install; 0001 is unreleased) — add + NOT NULL would fail on a populated table. If 0001 ever ships with data, replace this with a nullable-add -> backfill -> set-not-null sequence, or fold role_id into 0001.
 alter table organization_memberships drop column role;
 alter table organization_memberships add column role_id uuid not null;
--- Composite FK: the assigned role must belong to the membership's own org, so a
--- user can never be granted a role from a different organization (ADR-0004).
+-- Composite FK: the assigned role must belong to the membership's own org, so a user can never be granted a role from a different organization (ADR-0004).
 alter table organization_memberships
     add constraint organization_memberships_role_in_org
     foreign key (role_id, organization_id) references roles (id, organization_id) on delete restrict;

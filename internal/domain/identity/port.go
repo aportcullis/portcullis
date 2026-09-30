@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// UserRepository persists users, their password credential, memberships, and
-// resolves a user's effective permissions. Lookups miss with ErrUserNotFound.
+// UserRepository persists users, their password credential, memberships, and resolves a user's effective permissions. Lookups miss with ErrUserNotFound.
 type UserRepository interface {
 	CountUsers(ctx context.Context) (int64, error)
 	DefaultOrganizationID(ctx context.Context) (OrganizationID, error)
@@ -16,14 +15,11 @@ type UserRepository interface {
 	SetPassword(ctx context.Context, id UserID, phc string) error
 	GetPasswordHash(ctx context.Context, id UserID) (string, error)
 	AddMembership(ctx context.Context, org OrganizationID, user UserID, role RoleID) error
-	// PermissionsForUser returns the union of the user's roles' permissions within
-	// one organization (org-scoped per ADR-0004).
+	// PermissionsForUser returns the union of the user's roles' permissions within one organization (org-scoped per ADR-0004).
 	PermissionsForUser(ctx context.Context, org OrganizationID, id UserID) ([]Permission, error)
 }
 
-// RoleRepository resolves roles. Roles are referenced by id, never by a hardcoded
-// name; BootstrapRoleID resolves the seeded default role via its DB flag. Custom
-// role CRUD is added with the role-management feature.
+// RoleRepository resolves roles. Roles are referenced by id, never by a hardcoded name; BootstrapRoleID resolves the seeded default role via its DB flag. Custom role CRUD is added with the role-management feature.
 type RoleRepository interface {
 	BootstrapRoleID(ctx context.Context, org OrganizationID) (RoleID, error)
 }
@@ -33,24 +29,17 @@ type PermissionCatalog interface {
 	ListPermissions(ctx context.Context) ([]Permission, error)
 }
 
-// OIDCRepository resolves external OIDC identities to local users. Linking is
-// deliberately absent: it must be combined atomically with session rotation and
-// audit evidence by the auth application's consumer-defined port.
+// OIDCRepository resolves external OIDC identities to local users. Linking is deliberately absent: it must be combined atomically with session rotation and audit evidence by the auth application's consumer-defined port.
 type OIDCRepository interface {
 	FindUserBySubject(ctx context.Context, issuer, subject string) (User, error)
 }
 
-// SessionRepository persists server-side sessions keyed by token hash.
-// Single-session revocation lives on the auth application port (auth.Repository)
-// instead: it is always audited, and audit.Event already imports this package,
-// so declaring it here would create a domain-level import cycle.
+// SessionRepository persists server-side sessions keyed by token hash. Single-session revocation lives on the auth application port (auth.Repository) instead: it is always audited, and audit.Event already imports this package, so declaring it here would create a domain-level import cycle.
 type SessionRepository interface {
 	CreateSession(ctx context.Context, s Session, tokenHash []byte) (Session, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
-	// RevokeUserSessions invalidates all of a user's active sessions (a new login
-	// or a privilege change rotates them out — ADR-0006).
+	// RevokeUserSessions invalidates all of a user's active sessions (a new login or a privilege change rotates them out — ADR-0006).
 	RevokeUserSessions(ctx context.Context, user UserID) error
-	// ExtendSessionIdle slides the idle expiry forward on activity (capped at the
-	// absolute expiry by the store); a no-op on revoked sessions.
+	// ExtendSessionIdle slides the idle expiry forward on activity (capped at the absolute expiry by the store); a no-op on revoked sessions.
 	ExtendSessionIdle(ctx context.Context, id SessionID, idle time.Time) error
 }

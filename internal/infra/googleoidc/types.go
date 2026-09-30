@@ -5,9 +5,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Client is the Google OIDC adapter behind the auth service's OIDCProvider
-// port. Its constructor and methods live in googleoidc.go (file-split
-// convention).
+// Client is the Google OIDC adapter behind the auth service's OIDCProvider port. Its constructor and methods live in googleoidc.go (file-split convention).
 type Client struct {
 	oauth    *oauth2.Config
 	verifier *oidc.IDTokenVerifier

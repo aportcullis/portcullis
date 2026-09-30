@@ -7,9 +7,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/setting"
 )
 
-// Every descriptor's compiled default must validate against its own rules —
-// the default is the last fallback in the ADR-0017 precedence chain, so an
-// invalid default would leave a key with no safe value at all.
 func TestDefaultsAreValid(t *testing.T) {
 	t.Parallel()
 	for _, d := range setting.All() {
@@ -19,9 +16,6 @@ func TestDefaultsAreValid(t *testing.T) {
 	}
 }
 
-// The default pair must satisfy the cross-key backoff rule: Resolve's last
-// repair lands on the defaults, so an inconsistent default pair would leave
-// no consistent value at all.
 func TestDefaultBackoffPairConsistent(t *testing.T) {
 	t.Parallel()
 	snap, invalid := setting.Resolve(nil, nil)
@@ -44,8 +38,6 @@ func TestLookup(t *testing.T) {
 	}
 }
 
-// Validate enforces the ADR-0010/0014/0006 bounds for each key; the same
-// descriptor backs env bootstrap and the DB store (ADR-0017 no-drift).
 func TestValidateBounds(t *testing.T) {
 	t.Parallel()
 
@@ -57,11 +49,11 @@ func TestValidateBounds(t *testing.T) {
 		{setting.KeyConnectionTestTimeout, "10s", true},
 		{setting.KeyConnectionTestTimeout, "1s", true},
 		{setting.KeyConnectionTestTimeout, "1m", true},
-		{setting.KeyConnectionTestTimeout, "500ms", false}, // below ADR-0014 floor
-		{setting.KeyConnectionTestTimeout, "61s", false},   // above ADR-0014 ceiling
+		{setting.KeyConnectionTestTimeout, "500ms", false},
+		{setting.KeyConnectionTestTimeout, "61s", false},
 		{setting.KeyConnectionTestTimeout, "-5s", false},
 		{setting.KeyConnectionTestTimeout, "abc", false},
-		{setting.KeyConnectionTestTimeout, "10", false}, // bare number is not a duration
+		{setting.KeyConnectionTestTimeout, "10", false},
 
 		{setting.KeyLoginBackoffThreshold, "5", true},
 		{setting.KeyLoginBackoffThreshold, "1", true},
@@ -84,7 +76,7 @@ func TestValidateBounds(t *testing.T) {
 		{setting.KeyLogLevel, "warn", true},
 		{setting.KeyLogLevel, "error", true},
 		{setting.KeyLogLevel, "verbose", false},
-		{setting.KeyLogLevel, "INFO", false}, // vocabulary is lowercase, exact
+		{setting.KeyLogLevel, "INFO", false},
 	}
 	for _, tt := range tests {
 		d, ok := setting.Lookup(tt.key)

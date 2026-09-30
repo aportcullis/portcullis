@@ -30,11 +30,6 @@ const (
 	oidcAdminEmail = "admin@example.com"
 )
 
-// oidcTestEnv drives the full redirect flow end-to-end: a migrated fresh
-// database, the real store/codec/keyring, the googleoidc adapter pointed at a
-// fake issuer, and a TLS httptest server mounting the two plain-HTTP routes
-// plus the Auth RPCs. The client never follows redirects, so each 302 is
-// asserted explicitly.
 type oidcTestEnv struct {
 	pool       *pgxpool.Pool
 	issuer     *oidctest.Issuer
@@ -117,7 +112,6 @@ func (e *oidcTestEnv) bootstrapAdmin(t *testing.T) {
 	}
 }
 
-// get issues a redirect-suppressed GET and returns the response.
 func (e *oidcTestEnv) get(t *testing.T, path string) *http.Response {
 	t.Helper()
 	resp, err := e.client.Get(e.serverURL.String() + path)
@@ -128,8 +122,6 @@ func (e *oidcTestEnv) get(t *testing.T, path string) *http.Response {
 	return resp
 }
 
-// startFlow GETs /auth/google/start, asserts the redirect shape, and returns
-// the authorization URL's query (state, nonce, code_challenge, …).
 func (e *oidcTestEnv) startFlow(t *testing.T) url.Values {
 	t.Helper()
 	resp := e.get(t, "/auth/google/start")
@@ -149,8 +141,6 @@ func (e *oidcTestEnv) startFlow(t *testing.T) url.Values {
 	return loc.Query()
 }
 
-// mintCode registers a verified-email code at the fake issuer for the flow
-// captured by q (the unverified-email rejection is covered at the app layer).
 func (e *oidcTestEnv) mintCode(q url.Values, subject, email string) string {
 	return e.issuer.MintCode(oidctest.CodeOptions{
 		Challenge:     q.Get("code_challenge"),
@@ -167,8 +157,6 @@ func (e *oidcTestEnv) callback(t *testing.T, state, code string) *http.Response 
 	return e.get(t, "/auth/google/callback?state="+url.QueryEscape(state)+"&code="+url.QueryEscape(code))
 }
 
-// assertFailureRedirect pins the generic failure shape: 302 to the login page
-// with no detail, and no session cookie issued.
 func (e *oidcTestEnv) assertFailureRedirect(t *testing.T, resp *http.Response) {
 	t.Helper()
 	if resp.StatusCode != http.StatusFound {
@@ -182,8 +170,6 @@ func (e *oidcTestEnv) assertFailureRedirect(t *testing.T, resp *http.Response) {
 	}
 }
 
-// countLoginAudit returns the AUTH_LOGIN rows with the outcome whose metadata
-// tags method=google.
 func (e *oidcTestEnv) countLoginAudit(t *testing.T, outcome string) int {
 	t.Helper()
 	var n int
@@ -201,7 +187,7 @@ func TestOIDCLoginHappyPath(t *testing.T) {
 	env.bootstrapAdmin(t)
 
 	q := env.startFlow(t)
-	// The authorization redirect carries the pinned flow shape (ADR-0007).
+
 	if q.Get("client_id") != oidcClientID || q.Get("response_type") != "code" {
 		t.Errorf("client_id/response_type = %q/%q", q.Get("client_id"), q.Get("response_type"))
 	}
@@ -223,7 +209,7 @@ func TestOIDCLoginHappyPath(t *testing.T) {
 	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/" {
 		t.Fatalf("callback = %d → %q, want 302 → /", resp.StatusCode, resp.Header.Get("Location"))
 	}
-	// Session established: both __Host- cookies set, pending cookie cleared.
+
 	if cookieFromJar(env.jar, env.serverURL, "__Host-portcullis_session") == "" {
 		t.Error("no session cookie after Google login")
 	}
@@ -233,15 +219,14 @@ func TestOIDCLoginHappyPath(t *testing.T) {
 	if cookieFromJar(env.jar, env.serverURL, "__Host-portcullis_oidc") != "" {
 		t.Error("pending cookie survived the callback; it must be single-use")
 	}
-	// The session works against the API — with the CSRF double-submit header the
-	// SPA echoes from the readable cookie (ADR-0006).
+
 	meReq := connect.NewRequest(&portcullisv1.MeRequest{})
 	meReq.Header().Set("X-CSRF-Token", csrfFromJar(env.jar, env.serverURL))
 	me, err := env.authClient.Me(context.Background(), meReq)
 	if err != nil || me.Msg.GetUser().GetEmail() != oidcAdminEmail {
 		t.Errorf("Me after Google login = %v, %v", me, err)
 	}
-	// First login linked the subject to the admin-created user.
+
 	var linked int
 	if err := env.pool.QueryRow(context.Background(),
 		`select count(*) from oidc_identities where subject = 'google-sub-1'`).Scan(&linked); err != nil || linked != 1 {
@@ -267,7 +252,7 @@ func TestOIDCCallbackRejectsWrongState(t *testing.T) {
 func TestOIDCCallbackRejectsMissingPendingCookie(t *testing.T) {
 	env := newOIDCTestEnv(t)
 	env.bootstrapAdmin(t)
-	// No /start: the browser arrives at the callback with no pending cookie.
+
 	env.assertFailureRedirect(t, env.callback(t, "some-state", "some-code"))
 	if n := env.countLoginAudit(t, "FAILED"); n != 1 {
 		t.Errorf("AUTH_LOGIN/FAILED method=google audit rows = %d, want 1", n)
@@ -284,8 +269,7 @@ func TestOIDCCallbackReplayFails(t *testing.T) {
 	if first.Header.Get("Location") != "/" {
 		t.Fatalf("first callback failed: → %q", first.Header.Get("Location"))
 	}
-	// The identical request again: the pending cookie was cleared (and the code
-	// consumed), so the replay is refused.
+
 	replay := env.callback(t, q.Get("state"), code)
 	if replay.Header.Get("Location") != "/login?error=oidc" {
 		t.Errorf("replayed callback → %q, want /login?error=oidc", replay.Header.Get("Location"))
@@ -299,7 +283,7 @@ func TestOIDCCallbackRejectsUnknownEmail(t *testing.T) {
 	code := env.mintCode(q, "google-sub-9", "stranger@example.com")
 
 	env.assertFailureRedirect(t, env.callback(t, q.Get("state"), code))
-	// No auto-signup: still exactly the bootstrap admin.
+
 	var users int
 	if err := env.pool.QueryRow(context.Background(), `select count(*) from users`).Scan(&users); err != nil || users != 1 {
 		t.Errorf("users = %d (%v), want 1", users, err)
@@ -311,7 +295,6 @@ func TestOIDCCallbackRejectsProviderError(t *testing.T) {
 	env.bootstrapAdmin(t)
 	q := env.startFlow(t)
 
-	// The user denied consent: Google redirects back with error= and no code.
 	resp := env.get(t, "/auth/google/callback?state="+url.QueryEscape(q.Get("state"))+"&error=access_denied")
 	env.assertFailureRedirect(t, resp)
 }
@@ -319,8 +302,6 @@ func TestOIDCCallbackRejectsProviderError(t *testing.T) {
 func TestOIDCStartRateLimited(t *testing.T) {
 	env := newOIDCTestEnv(t)
 
-	// The routes are public: past the login-tier burst, requests get a plain 429
-	// (not a redirect, so throttling is never mistaken for a login failure).
 	var throttled bool
 	for i := 0; i < 30; i++ {
 		resp := env.get(t, "/auth/google/start")

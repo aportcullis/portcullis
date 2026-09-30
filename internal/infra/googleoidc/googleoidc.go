@@ -1,6 +1,4 @@
-// Package googleoidc adapts Google sign-in (OIDC Authorization Code + PKCE,
-// ADR-0007) to the auth service's OIDCProvider port. It is the only package
-// that touches x/oauth2 and go-oidc; the app layer sees verified claims only.
+// Package googleoidc adapts Google sign-in (OIDC Authorization Code + PKCE, ADR-0007) to the auth service's OIDCProvider port. It is the only package that touches x/oauth2 and go-oidc; the app layer sees verified claims only.
 package googleoidc
 
 import (
@@ -14,11 +12,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// New discovers the issuer and builds the adapter. Discovery runs at
-// construction so a misconfigured or unreachable provider fails the boot,
-// not the first login (fail-fast, as with the keyring). The issuer is a
-// parameter so tests can substitute a fake provider; production passes
-// GoogleIssuer.
+// New discovers the issuer and builds the adapter. Discovery runs at construction so a misconfigured or unreachable provider fails the boot, not the first login (fail-fast, as with the keyring). The issuer is a parameter so tests can substitute a fake provider; production passes GoogleIssuer.
 func New(ctx context.Context, issuerURL, clientID, clientSecret, redirectURL string) (*Client, error) {
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
@@ -30,25 +24,19 @@ func New(ctx context.Context, issuerURL, clientID, clientSecret, redirectURL str
 			ClientSecret: clientSecret,
 			RedirectURL:  redirectURL,
 			Endpoint:     provider.Endpoint(),
-			// Exactly the sign-in scopes (ADR-0007). No offline access is ever
-			// requested — sign-in needs the ID token once, never a refresh token.
+			// Exactly the sign-in scopes (ADR-0007). No offline access is ever requested — sign-in needs the ID token once, never a refresh token.
 			Scopes: []string{oidc.ScopeOpenID, "email", "profile"},
 		},
 		verifier: provider.Verifier(&oidc.Config{ClientID: clientID}),
 	}, nil
 }
 
-// AuthCodeURL builds the authorization URL for one flow: the S256 challenge
-// derived from verifier (plain is prohibited — RFC 7636 / ADR-0007) plus the
-// state and nonce minted by the service.
+// AuthCodeURL builds the authorization URL for one flow: the S256 challenge derived from verifier (plain is prohibited — RFC 7636 / ADR-0007) plus the state and nonce minted by the service.
 func (c *Client) AuthCodeURL(state, nonce, verifier string) string {
 	return c.oauth.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce))
 }
 
-// Exchange redeems the code with the PKCE verifier and verifies the ID token
-// (signature against the issuer's JWKS, iss, aud, exp). The nonce is returned
-// unverified for the service to compare. Error messages never embed the code,
-// verifier, or token material.
+// Exchange redeems the code with the PKCE verifier and verifies the ID token (signature against the issuer's JWKS, iss, aud, exp). The nonce is returned unverified for the service to compare. Error messages never embed the code, verifier, or token material.
 func (c *Client) Exchange(ctx context.Context, code, verifier string) (identity.OIDCClaims, error) {
 	token, err := c.oauth.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
@@ -78,11 +66,7 @@ func (c *Client) Exchange(ctx context.Context, code, verifier string) (identity.
 	}, nil
 }
 
-// redactOAuthError strips the provider's response body from an exchange
-// failure: oauth2.RetrieveError echoes it verbatim, and while it should never
-// carry our code or verifier, the transcript of an auth failure is not ours to
-// log (conventions/security.md). The status code alone identifies the failure
-// class.
+// redactOAuthError strips the provider's response body from an exchange failure: oauth2.RetrieveError echoes it verbatim, and while it should never carry our code or verifier, the transcript of an auth failure is not ours to log (conventions/security.md). The status code alone identifies the failure class.
 func redactOAuthError(err error) error {
 	var rerr *oauth2.RetrieveError
 	if errors.As(err, &rerr) {

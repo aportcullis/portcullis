@@ -14,8 +14,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 )
 
-// pgCoords extracts the throwaway container's dial coordinates from the shared
-// pool so the validator exercises a real PostgreSQL.
 func pgCoords(t *testing.T) (target connection.Target, cred connection.Credential) {
 	t.Helper()
 	cc := dbtest.Postgres(t).Config().ConnConfig
@@ -30,9 +28,6 @@ func pgCoords(t *testing.T) (target connection.Target, cred connection.Credentia
 	return target, cred
 }
 
-// assertBucket verifies the classified bucket AND the redaction invariant: the
-// returned error text is exactly the bucket message — no driver text, and
-// never the password (PRD §8.1).
 func assertBucket(t *testing.T, err error, want connection.TestBucket, password string) {
 	t.Helper()
 	var te *connection.TestError
@@ -54,20 +49,12 @@ func TestValidateConnectionSucceedsAgainstRealTarget(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
 	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
-	// The throwaway container has no TLS, so this also exercises the relaxed
-	// "disable" path end-to-end.
+
 	if err := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
 		t.Fatalf("Test: %v", err)
 	}
 }
 
-// A connection test must depend on nothing but the stored descriptor and
-// credential (ADR-0014): PG* variables in the server process's environment must
-// change neither the outcome nor whether the config parses. Each case pollutes
-// ONE variable to prove it is pinned independently — several (PGSSLROOTCERT
-// dangling path, PGCHANNELBINDING=require) flip a good "disable" test to a
-// failure without the pinning. t.Setenv forbids t.Parallel, so these run as
-// subtests of one serial parent.
 func TestValidateConnectionIgnoresProcessEnvironment(t *testing.T) {
 	cases := []struct{ env, val string }{
 		{"PGSSLROOTCERT", "/nonexistent/portcullis-test-ca.pem"},
@@ -82,10 +69,7 @@ func TestValidateConnectionIgnoresProcessEnvironment(t *testing.T) {
 		{"PGREQUIREAUTH", "scram-sha-256"},
 		{"PGMINPROTOCOLVERSION", "3.2"},
 		{"PGMAXPROTOCOLVERSION", "3.2"},
-		// ParseConfig itself must not fail from the environment either: an
-		// invalid PGCONNECT_TIMEOUT or a dangling PGSERVICE/PGSERVICEFILE would
-		// otherwise misclassify every test as a config parse failure
-		// (external review).
+		// ParseConfig itself must not fail from the environment either: an invalid PGCONNECT_TIMEOUT or a dangling PGSERVICE/PGSERVICEFILE would otherwise misclassify every test as a config parse failure.
 		{"PGCONNECT_TIMEOUT", "not-a-duration"},
 		{"PGSERVICE", "portcullis-nonexistent-service"},
 		{"PGSERVICEFILE", "/nonexistent/portcullis-service.conf"},
@@ -127,8 +111,6 @@ func TestValidateConnectionClassifiesUnknownDatabase(t *testing.T) {
 	assertBucket(t, got, connection.TestBucketUnknownDatabase, cred.Password)
 }
 
-// The certificate-verifying default against a server with no TLS at all must
-// classify as a TLS failure (the server answers 'N' to the SSLRequest).
 func TestValidateConnectionClassifiesTLSFailure(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
@@ -139,7 +121,7 @@ func TestValidateConnectionClassifiesTLSFailure(t *testing.T) {
 
 func TestValidateConnectionClassifiesUnreachable(t *testing.T) {
 	t.Parallel()
-	// Grab a port that is closed: listen, note the port, close the listener.
+
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -163,8 +145,6 @@ func TestValidateConnectionClassifiesUnreachable(t *testing.T) {
 	assertBucket(t, got, connection.TestBucketUnreachable, "pw-unreachable")
 }
 
-// A server that accepts TCP but never answers the startup message must hit the
-// configured timeout, not hang.
 func TestValidateConnectionHonorsTimeout(t *testing.T) {
 	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -178,8 +158,7 @@ func TestValidateConnectionHonorsTimeout(t *testing.T) {
 			if err != nil {
 				return
 			}
-			// Hold the connection open and never respond; the goroutine (and the
-			// connection) dies with the listener at test end.
+
 			defer conn.Close() //nolint:errcheck // held-open test connection
 		}
 	}()

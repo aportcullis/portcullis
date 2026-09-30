@@ -1,6 +1,4 @@
-# Git hooks (install with `make hooks`). These are fast local guards that mirror
-# CI; the unbypassable gate is GitHub Actions, since local hooks can be skipped
-# with `git commit/push --no-verify`.
+# Install with `make hooks`; CI remains the required gate because local hooks can be bypassed.
 pre-commit:
   commands:
     gofmt:

@@ -13,12 +13,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// NewRecoverOption returns a handler option that converts a panic in any handler
-// or interceptor into a clean CodeInternal error and logs it through the structured
-// logger — so it goes through the redaction-controlled pipeline instead of
-// net/http's default stack-trace dump to stderr, and the client gets a proper RPC
-// error instead of a reset connection. Wire it FIRST so it wraps the whole chain.
-// The recovered value is logged by TYPE only: its contents may carry sensitive data.
 func NewRecoverOption(logger *slog.Logger) connect.HandlerOption {
 	return connect.WithRecover(func(ctx context.Context, spec connect.Spec, _ http.Header, r any) error {
 		logger.ErrorContext(ctx, "recovered from panic in RPC handler",
@@ -37,14 +31,7 @@ func sessionTokenFromContext(ctx context.Context) string {
 	return t
 }
 
-// sessionAndCSRFCookies reads both the session and CSRF cookie values from a
-// SINGLE parse of the Cookie header. Browsers send every cookie for the host in one
-// header, so reading each separately would tokenize the whole (potentially large)
-// header twice per authenticated request. Parsing is lenient per PAIR, not per line:
-// a strict parser (http.ParseCookie errors out the whole line) would let one
-// malformed sibling cookie — set by any other app on the same host — hide the
-// session cookie and lock the user out. The stdlib request path (Cookies/readCookies)
-// skips only the invalid pairs.
+// Parse session and CSRF cookies once, skipping invalid sibling pairs so another same-host application cannot hide a valid session.
 func sessionAndCSRFCookies(h http.Header) (session, csrf string) {
 	for _, c := range (&http.Request{Header: h}).Cookies() {
 		switch c.Name {
@@ -64,37 +51,27 @@ var publicProcedures = map[string]bool{
 	portcullisv1connect.AuthGetConfigProcedure: true,
 }
 
-// credentialProcedures carry a password and cost an Argon2 hash to answer, so
-// the rate limiter gives them the tight per-IP/per-email login bucket. The
-// remaining public procedure (GetConfig) is a cheap constant read the SPA
-// calls on every page load — it shares the generous authenticated bucket
-// instead, so page refreshes cannot starve a legitimate login (ADR-0010).
+// Credential procedures use tight limits before Argon2 hashing; the cheap public GetConfig read shares the broader non-credential bucket.
 var credentialProcedures = map[string]bool{
 	portcullisv1connect.AuthBootstrapProcedure: true,
 	portcullisv1connect.AuthLoginProcedure:     true,
 }
 
-// isAuthFailure reports whether an Authenticate error means the session itself
-// is invalid (missing/expired/revoked session, gone or disabled user) — as
-// opposed to an infrastructure failure looking the session up.
+// isAuthFailure reports whether an Authenticate error means the session itself is invalid (missing/expired/revoked session, gone or disabled user) — as opposed to an infrastructure failure looking the session up.
 func isAuthFailure(err error) bool {
 	return errors.Is(err, identity.ErrSessionNotFound) ||
 		errors.Is(err, identity.ErrUserNotFound) ||
 		errors.Is(err, identity.ErrUserDisabled)
 }
 
-// sessionAuthenticator is the slice of the auth service the interceptor
-// consumes (DIP/ISP).
+// sessionAuthenticator is the slice of the auth service the interceptor consumes (DIP/ISP).
 type sessionAuthenticator interface {
 	Authenticate(ctx context.Context, token string) (identity.User, identity.Session, error)
 	VerifyCSRF(sessionToken, csrfToken string) bool
 	SlideIdle(ctx context.Context, sess identity.Session) error
 }
 
-// NewAuthInterceptor authenticates the session cookie and enforces HMAC
-// double-submit CSRF on every non-public unary RPC, injecting the user and raw
-// session token into the context (ADR-0006). Errors are generic so they reveal
-// nothing about why authentication failed.
+// NewAuthInterceptor authenticates the session cookie and enforces HMAC double-submit CSRF on every non-public unary RPC, injecting the user and raw session token into the context (ADR-0006). Errors are generic so they reveal nothing about why authentication failed.
 func NewAuthInterceptor(svc sessionAuthenticator) connect.UnaryInterceptorFunc {
 	unauthenticated := connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	unavailable := connect.NewError(connect.CodeUnavailable, errors.New("temporarily unavailable"))
@@ -110,24 +87,18 @@ func NewAuthInterceptor(svc sessionAuthenticator) connect.UnaryInterceptorFunc {
 			}
 			user, sess, err := svc.Authenticate(ctx, sessionTok)
 			if err != nil {
-				// An infra failure during the lookup is not an invalid session — a DB
-				// blip must not read as a logout (same rule as the idle slide below).
+				// An infra failure during the lookup is not an invalid session — a DB blip must not read as a logout (same rule as the idle slide below).
 				if !isAuthFailure(err) {
 					return nil, unavailable
 				}
 				return nil, unauthenticated
 			}
-			// CSRF: the readable cookie must equal the X-CSRF-Token header and verify
-			// against the session token (a header==cookie match alone is bypassable).
+			// CSRF: the readable cookie must equal the X-CSRF-Token header and verify against the session token (a header==cookie match alone is bypassable).
 			header := req.Header().Get(csrfHeader)
 			if csrfTok == "" || header == "" || csrfTok != header || !svc.VerifyCSRF(sessionTok, header) {
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
 			}
-			// Slide the idle window only now that the request is authorized, so a
-			// CSRF-rejected request can't keep the session alive. The conditional
-			// write is also the final server-side expiry/revocation check: zero rows
-			// means the session died after Authenticate and must reject this request.
-			// Other write failures remain retryable infrastructure faults.
+			// Slide the idle window only now that the request is authorized, so a CSRF-rejected request can't keep the session alive. The conditional write is also the final server-side expiry/revocation check: zero rows means the session died after Authenticate and must reject this request. Other write failures remain retryable infrastructure faults.
 			if err := svc.SlideIdle(ctx, sess); err != nil {
 				if isAuthFailure(err) {
 					return nil, unauthenticated

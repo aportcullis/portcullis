@@ -16,12 +16,12 @@ func TestParseEnvironment(t *testing.T) {
 		want    connection.Environment
 		wantErr bool
 	}{
-		{"", connection.EnvironmentDevelopment, false}, // wire default: omitted = development
+		{"", connection.EnvironmentDevelopment, false},
 		{"development", connection.EnvironmentDevelopment, false},
 		{"production", connection.EnvironmentProduction, false},
 		{"staging", "", true},
 		{"prod", "", true},
-		{"PRODUCTION", "", true}, // enum is exact, like tls_mode
+		{"PRODUCTION", "", true},
 	}
 	for _, tt := range cases {
 		got, err := connection.ParseEnvironment(tt.in)
@@ -37,8 +37,6 @@ func TestParseEnvironment(t *testing.T) {
 	}
 }
 
-// New takes an already-parsed Environment, so a raw or empty value that
-// skipped ParseEnvironment must still be rejected there.
 func TestNewValidatesEnvironmentAndDescription(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
@@ -60,7 +58,7 @@ func TestValidateDescription(t *testing.T) {
 	ok := []string{
 		"",
 		"read replica for analytics",
-		"line one\nline two", // a description is multi-line text
+		"line one\nline two",
 		strings.Repeat("한", 500),
 	}
 	for _, d := range ok {
@@ -73,7 +71,7 @@ func TestValidateDescription(t *testing.T) {
 		strings.Repeat("a", 501),
 		"nul\x00byte",
 		"esc\x1b[31mape",
-		"zero\u200bwidth", // Cf (zero-width space) spoofing, same class the display name rejects
+		"zero\u200bwidth",
 	}
 	for _, d := range bad {
 		if err := connection.ValidateDescription(d); !errors.Is(err, connection.ErrInvalidDescription) {

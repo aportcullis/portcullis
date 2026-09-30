@@ -12,16 +12,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// Progressive-backoff scenarios (ADR-0006 Parameters): after 5 consecutive
-// password failures the account locks for 1 min, doubling per further failure
-// to a 15 min cap, ±20% jitter on the expiry; the counter resets on success,
-// expiry, or staleness, and a locked account is indistinguishable from a
-// wrong password.
-
-// newBackoffFixture builds a service whose clock and jitter are pinned and
-// SHARED with the fake repo (the real store evaluates expiry on the database
-// clock, so both must advance together). Move time via *clock. A nil hasher
-// gets the plain fake.
+// newBackoffFixture builds a service whose clock and jitter are pinned and SHARED with the fake repo (the real store evaluates expiry on the database clock, so both must advance together). Move time via *clock. A nil hasher gets the plain fake.
 func newBackoffFixture(t *testing.T, jitter float64, hasher auth.PasswordHasher) (*fakeRepo, *auth.Service, *capturingRecorder, *time.Time) {
 	t.Helper()
 	if hasher == nil {
@@ -40,8 +31,7 @@ func newBackoffFixture(t *testing.T, jitter float64, hasher auth.PasswordHasher)
 	return repo, svc, rec, clock
 }
 
-// failLogins performs n wrong-password attempts, each of which must get the
-// generic credential rejection.
+// failLogins performs n wrong-password attempts, each of which must get the generic credential rejection.
 func failLogins(t *testing.T, svc *auth.Service, email string, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
@@ -51,9 +41,6 @@ func failLogins(t *testing.T, svc *auth.Service, email string, n int) {
 	}
 }
 
-// recordingHasher captures the encoded hash each Verify ran against, so a test
-// can pin that a locked attempt verified the timing-equalizer dummy and NEVER
-// the real stored hash.
 type recordingHasher struct {
 	fakeHasher
 	encoded []string
@@ -64,9 +51,6 @@ func (h *recordingHasher) Verify(ctx context.Context, password, encoded string) 
 	return h.fakeHasher.Verify(ctx, password, encoded)
 }
 
-// After the 5th consecutive failure the account is locked: even the CORRECT
-// password gets the same generic rejection, no session is issued, and the real
-// hash is never verified (so the lockout leaks nothing through timing either).
 func TestLoginLocksAfterFiveConsecutiveFailures(t *testing.T) {
 	t.Parallel()
 	hasher := &recordingHasher{}
@@ -83,7 +67,7 @@ func TestLoginLocksAfterFiveConsecutiveFailures(t *testing.T) {
 	if sess.Token != "" {
 		t.Error("locked login must not issue a session")
 	}
-	// Exactly one (timing-equalizing) verify ran, and not against the real hash.
+
 	stored := repo.passwords[u.ID]
 	verified := hasher.encoded[before:]
 	if len(verified) != 1 {
@@ -92,14 +76,12 @@ func TestLoginLocksAfterFiveConsecutiveFailures(t *testing.T) {
 	if verified[0] == stored {
 		t.Error("locked attempt verified the REAL stored hash; it must use the dummy so a correct password is unobservable")
 	}
-	// The locked attempt still counts (doubling pressure while hammered).
+
 	if got := repo.backoff[u.ID].FailureCount; got != 6 {
 		t.Errorf("failure count after locked attempt = %d, want 6", got)
 	}
 }
 
-// The first lockout window is 1 minute, spread ±20% by the injected jitter:
-// factor = 0.8 + 0.4·j.
 func TestLockoutWindowStartsAtOneMinuteWithJitter(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -130,21 +112,19 @@ func TestLockoutWindowStartsAtOneMinuteWithJitter(t *testing.T) {
 	}
 }
 
-// Failures during a lockout keep doubling the window — 2m, 4m, 8m, then capped
-// at 15m — and the expiry never moves backward.
 func TestLockoutDoublesPerFailureDuringLockoutUpToCap(t *testing.T) {
 	t.Parallel()
-	repo, svc, _, clock := newBackoffFixture(t, 0.5, nil) // factor 1.0: exact windows
+	repo, svc, _, clock := newBackoffFixture(t, 0.5, nil)
 	u := bootstrapUser(t, svc)
 
 	failLogins(t, svc, u.Email, 5)
 
 	wants := []time.Duration{
-		2 * time.Minute,  // failure 6
-		4 * time.Minute,  // failure 7
-		8 * time.Minute,  // failure 8
-		15 * time.Minute, // failure 9: 16m capped at 15m
-		15 * time.Minute, // failure 10: stays at the cap
+		2 * time.Minute,
+		4 * time.Minute,
+		8 * time.Minute,
+		15 * time.Minute,
+		15 * time.Minute,
 	}
 	prev := *repo.backoff[u.ID].LockedUntil
 	for i, want := range wants {
@@ -163,8 +143,6 @@ func TestLockoutDoublesPerFailureDuringLockoutUpToCap(t *testing.T) {
 	}
 }
 
-// Once the lockout expires the slate is clean: the next failure restarts the
-// counter at 1 (no immediate re-lock), and the correct password signs in.
 func TestLockoutExpiryResetsCounter(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, clock := newBackoffFixture(t, 0.5, nil)
@@ -175,7 +153,7 @@ func TestLockoutExpiryResetsCounter(t *testing.T) {
 		t.Fatal("no lockout after 5 failures")
 	}
 
-	*clock = clock.Add(2 * time.Minute) // past the 1m window
+	*clock = clock.Add(2 * time.Minute)
 
 	failLogins(t, svc, u.Email, 1)
 	b := repo.backoff[u.ID]
@@ -190,16 +168,14 @@ func TestLockoutExpiryResetsCounter(t *testing.T) {
 	}
 }
 
-// A sub-threshold counter goes stale after the staleness window (= the cap):
-// months-old typos must not count toward a fresh lockout (ADR-0006 amendment).
 func TestStaleSubThresholdCounterResets(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, clock := newBackoffFixture(t, 0.5, nil)
 	u := bootstrapUser(t, svc)
 
-	failLogins(t, svc, u.Email, 4) // one short of the threshold, no lockout
+	failLogins(t, svc, u.Email, 4)
 
-	*clock = clock.Add(16 * time.Minute) // past the 15m staleness window
+	*clock = clock.Add(16 * time.Minute)
 
 	failLogins(t, svc, u.Email, 1)
 	b := repo.backoff[u.ID]
@@ -211,8 +187,6 @@ func TestStaleSubThresholdCounterResets(t *testing.T) {
 	}
 }
 
-// A successful login resets the counter: failures before and after it never
-// add up to a lockout.
 func TestSuccessResetsCounter(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, _ := newBackoffFixture(t, 0.5, nil)
@@ -236,8 +210,6 @@ func TestSuccessResetsCounter(t *testing.T) {
 	}
 }
 
-// A clean successful login (no prior failures) must not pay a backoff row
-// write — the reset statement's WHERE leaves clean rows unwritten.
 func TestSuccessfulLoginSkipsBackoffWriteWhenClean(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, _ := newBackoffFixture(t, 0.5, nil)
@@ -251,9 +223,6 @@ func TestSuccessfulLoginSkipsBackoffWriteWhenClean(t *testing.T) {
 	}
 }
 
-// A locked account and a wrong password are indistinguishable: the same
-// sentinel and exactly one hasher.Verify per attempt (no extra or missing
-// hashing work to time).
 func TestLockedResponseIndistinguishableFromWrongPassword(t *testing.T) {
 	t.Parallel()
 	hasher := &countingHasher{}
@@ -264,7 +233,7 @@ func TestLockedResponseIndistinguishableFromWrongPassword(t *testing.T) {
 	_, wrongErr := svc.Login(context.Background(), u.Email, "wrong-password-xx")
 	unlockedVerifies := hasher.verifies.Load()
 
-	failLogins(t, svc, u.Email, 4) // now at 5 failures: locked
+	failLogins(t, svc, u.Email, 4)
 
 	hasher.verifies.Store(0)
 	_, lockedErr := svc.Login(context.Background(), u.Email, "wrong-password-xx")
@@ -278,8 +247,6 @@ func TestLockedResponseIndistinguishableFromWrongPassword(t *testing.T) {
 	}
 }
 
-// Unknown emails have no account and therefore no counter — attempted emails
-// are never persisted (ADR-0006: the backoff is per-account).
 func TestUnknownEmailDoesNotTouchCounter(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, _ := newBackoffFixture(t, 0.5, nil)
@@ -295,8 +262,6 @@ func TestUnknownEmailDoesNotTouchCounter(t *testing.T) {
 	}
 }
 
-// Password probes against an OIDC-only account (no password credential) are
-// failed password attempts of a known account: they count and eventually lock.
 func TestOIDCOnlyAccountFailuresCount(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, _ := newBackoffFixture(t, 0.5, nil)
@@ -315,9 +280,6 @@ func TestOIDCOnlyAccountFailuresCount(t *testing.T) {
 	}
 }
 
-// The backoff writes are best-effort: a counter-store outage degrades the
-// backoff, never the login response — and a failure that could not be counted
-// must not be audit-tagged as a lockout (the trail records only real state).
 func TestBackoffWriteFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
 	repo, svc, rec, _ := newBackoffFixture(t, 0.5, nil)
@@ -332,15 +294,14 @@ func TestBackoffWriteFailureIsBestEffort(t *testing.T) {
 			t.Errorf("failure event with a failed counter write carries metadata %v, want none", e.Metadata)
 		}
 	}
-	// Seed prior failures so the success path attempts (and fails) the reset.
+
 	repo.backoff[u.ID] = identity.LoginBackoff{FailureCount: 2}
 	if _, err := svc.Login(context.Background(), u.Email, "hunter2-secretz"); err != nil {
 		t.Errorf("correct login with failing reset = %v, want success", err)
 	}
 }
 
-// ctxAwareBackoffRepo propagates request-context cancellation into the counter
-// write, the way the real pgx-backed store would.
+// ctxAwareBackoffRepo propagates request-context cancellation into the counter write, the way the real pgx-backed store would.
 type ctxAwareBackoffRepo struct{ *fakeRepo }
 
 func (r ctxAwareBackoffRepo) RecordLoginFailure(ctx context.Context, id identity.UserID, p identity.FailureParams) (identity.LoginBackoff, error) {
@@ -350,8 +311,6 @@ func (r ctxAwareBackoffRepo) RecordLoginFailure(ctx context.Context, id identity
 	return r.fakeRepo.RecordLoginFailure(ctx, id, p)
 }
 
-// The counter write detaches from the request context: an attacker must not be
-// able to skip the counter by disconnecting the moment the verify completes.
 func TestFailureCountSurvivesCancelledContext(t *testing.T) {
 	t.Parallel()
 	repo := newFake()
@@ -363,8 +322,7 @@ func TestFailureCountSurvivesCancelledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	// The plain fake ignores ctx on the lookup and the verify, so the flow reaches
-	// the counter write with a dead request context.
+
 	if _, err := svc.Login(ctx, u.Email, "wrong-password-xx"); !errors.Is(err, identity.ErrInvalidCredentials) {
 		t.Fatalf("Login = %v, want ErrInvalidCredentials", err)
 	}
@@ -373,9 +331,6 @@ func TestFailureCountSurvivesCancelledContext(t *testing.T) {
 	}
 }
 
-// Once the threshold is crossed the failure audit event is tagged from the
-// RETURNED state, so lockouts stay queryable without a client-visible signal
-// (ADR-0009 metadata) and the trail never claims a lockout that doesn't exist.
 func TestLockoutTaggedInFailureAudit(t *testing.T) {
 	t.Parallel()
 	_, svc, rec, _ := newBackoffFixture(t, 0.5, nil)
@@ -409,7 +364,6 @@ func TestLockoutTaggedInFailureAudit(t *testing.T) {
 	}
 }
 
-// Zero config takes the ADR defaults; a nonsensical config refuses construction.
 func TestNewValidatesBackoffConfig(t *testing.T) {
 	t.Parallel()
 	if _, err := auth.New(newFake(), fakeHasher{}, fakeCSRF{}, &capturingRecorder{}, auth.Config{}); err != nil {
@@ -427,8 +381,6 @@ func TestNewValidatesBackoffConfig(t *testing.T) {
 	}
 }
 
-// Guard: the backoff caps must not interfere with an unrelated oversized-input
-// rejection (which exits before the user is even resolved).
 func TestOversizedInputStillSkipsCounter(t *testing.T) {
 	t.Parallel()
 	repo, svc, _, _ := newBackoffFixture(t, 0.5, nil)

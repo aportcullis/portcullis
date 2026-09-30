@@ -8,9 +8,7 @@ import (
 	"connectrpc.com/connect"
 )
 
-// isServerFault reports whether a Connect code denotes a server-side failure worth
-// logging. Client-fault codes (Unauthenticated, PermissionDenied, InvalidArgument,
-// ResourceExhausted, …) are expected outcomes and would only be noise.
+// isServerFault reports whether a Connect code denotes a server-side failure worth logging. Client-fault codes (Unauthenticated, PermissionDenied, InvalidArgument, ResourceExhausted, …) are expected outcomes and would only be noise.
 func isServerFault(code connect.Code) bool {
 	switch code {
 	case connect.CodeInternal, connect.CodeUnavailable, connect.CodeUnknown, connect.CodeDataLoss:
@@ -20,13 +18,7 @@ func isServerFault(code connect.Code) bool {
 	}
 }
 
-// NewErrorLogInterceptor logs any RPC that fails with a server-fault code, by
-// procedure, code, and error TYPE only — never the message body, which may carry
-// sensitive detail. Returned errors are otherwise invisible server-side
-// (NewRecoverOption only fires on panics), so without this an internal authz error
-// (a typo'd permission key) or a DB blip leaves no trace to diagnose (ADR-0008/0010).
-// Wire it outermost of the interceptors so it observes errors from every inner
-// interceptor and the handler.
+// NewErrorLogInterceptor logs server-fault procedure, code, and error type without sensitive messages. Wire it outermost to observe all interceptor failures.
 func NewErrorLogInterceptor(logger *slog.Logger) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {

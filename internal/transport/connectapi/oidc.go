@@ -1,10 +1,6 @@
 package connectapi
 
-// The Google login routes are plain HTTP handlers, not Connect RPCs: the flow
-// is a browser redirect dance (302 out to Google, 302 back), which doesn't fit
-// a unary RPC. They live in this package to share the cookie helpers, client-IP
-// resolution, and rate limiter with the Connect handlers instead of exporting
-// those internals (ADR-0007).
+// The Google login routes are plain HTTP handlers, not Connect RPCs: the flow is a browser redirect dance (302 out to Google, 302 back), which doesn't fit a unary RPC. They live in this package to share the cookie helpers, client-IP resolution, and rate limiter with the Connect handlers instead of exporting those internals (ADR-0007).
 
 import (
 	"context"
@@ -19,18 +15,13 @@ import (
 	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 )
 
-// PendingCodec seals and opens the OIDC pending cookie payload — the
-// transport's consumer-defined port onto the AEAD cookie codec (infra/crypto
-// provides the keyring-backed adapter; Open fails closed on any malformation).
+// PendingCodec seals and opens the OIDC pending cookie payload — the transport's consumer-defined port onto the AEAD cookie codec (infra/crypto provides the keyring-backed adapter; Open fails closed on any malformation).
 type PendingCodec interface {
 	Seal(plaintext []byte) (string, error)
 	Open(value string) ([]byte, error)
 }
 
-// OIDCHandler serves the two Google login routes. Both are unauthenticated
-// public endpoints, so each is wrapped with client-IP resolution (for the
-// audit trail's source_ip) and the tight login-tier per-IP rate limit — the
-// callback in particular triggers an outbound code exchange per hit.
+// OIDCHandler serves the two Google login routes. Both are unauthenticated public endpoints, so each is wrapped with client-IP resolution (for the audit trail's source_ip) and the tight login-tier per-IP rate limit — the callback in particular triggers an outbound code exchange per hit.
 type OIDCHandler struct {
 	svc     oidcLogin
 	codec   PendingCodec
@@ -39,9 +30,7 @@ type OIDCHandler struct {
 	logger  *slog.Logger
 }
 
-// oidcPendingPayload is the wire format inside the sealed pending cookie. The
-// expiry rides INSIDE the ciphertext so the client-controlled cookie Max-Age is
-// never the only check (ADR-0007).
+// oidcPendingPayload is the wire format inside the sealed pending cookie. The expiry rides INSIDE the ciphertext so the client-controlled cookie Max-Age is never the only check (ADR-0007).
 type oidcPendingPayload struct {
 	State    string `json:"state"`
 	Nonce    string `json:"nonce"`
@@ -49,8 +38,7 @@ type oidcPendingPayload struct {
 	Exp      int64  `json:"exp"` // unix seconds
 }
 
-// oidcLogin is the slice of the auth service the Google login routes consume
-// (DIP/ISP).
+// oidcLogin is the slice of the auth service the Google login routes consume (DIP/ISP).
 type oidcLogin interface {
 	StartGoogleLogin(ctx context.Context) (string, auth.OIDCPending, error)
 	LoginWithGoogle(ctx context.Context, state, code string, pending auth.OIDCPending) (auth.Session, error)
@@ -70,18 +58,13 @@ func NewOIDCHandler(svc oidcLogin, codec PendingCodec, trustedProxies []*net.IPN
 	}
 }
 
-// Start handles OIDCStartPattern: mint the per-flow secrets, seal them into
-// the pending cookie, and redirect to Google.
+// Start handles OIDCStartPattern: mint the per-flow secrets, seal them into the pending cookie, and redirect to Google.
 func (h *OIDCHandler) Start() http.Handler { return h.wrap(h.start) }
 
-// Callback handles OIDCCallbackPattern: complete the login and redirect to the
-// SPA — "/" with the session cookies on success, the login page on any failure.
+// Callback handles OIDCCallbackPattern: complete the login and redirect to the SPA — "/" with the session cookies on success, the login page on any failure.
 func (h *OIDCHandler) Callback() http.Handler { return h.wrap(h.callback) }
 
-// wrap mirrors the Connect chain's ordering for a plain route: resolve the
-// client IP into the context first (rate-limit key + audit source_ip), then
-// shed over-limit requests with a plain 429 — not a redirect, so throttling is
-// never masked as a login failure and can't loop through /login.
+// wrap mirrors the Connect chain's ordering for a plain route: resolve the client IP into the context first (rate-limit key + audit source_ip), then shed over-limit requests with a plain 429 — not a redirect, so throttling is never masked as a login failure and can't loop through /login.
 func (h *OIDCHandler) wrap(next func(http.ResponseWriter, *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := canonicalIP(clientIP(r.RemoteAddr, r.Header, h.trusted))
@@ -132,13 +115,10 @@ func (h *OIDCHandler) start(w http.ResponseWriter, r *http.Request) {
 func (h *OIDCHandler) callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	noStore(w.Header())
-	// The pending cookie is single-use: clear it whatever happens next, so a
-	// replayed callback can't reuse the flow.
+	// The pending cookie is single-use: clear it whatever happens next, so a replayed callback can't reuse the flow.
 	clearCookie(w.Header(), oidcPendingCookie, true)
 
-	// A missing or unopenable cookie decodes to the zero pending, which the
-	// service rejects AND audits — one failure path for every malformed callback,
-	// including Google's error= responses (no code fails the same way).
+	// A missing or unopenable cookie decodes to the zero pending, which the service rejects AND audits — one failure path for every malformed callback, including Google's error= responses (no code fails the same way).
 	var pending auth.OIDCPending
 	if c, err := r.Cookie(oidcPendingCookie); err == nil {
 		if plaintext, err := h.codec.Open(c.Value); err == nil {
@@ -160,9 +140,7 @@ func (h *OIDCHandler) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, oidcSuccessRedirect, http.StatusFound)
 }
 
-// failLogin logs the failure (error type only — never the code, tokens, state,
-// or claim values) and sends the browser to the login page with a generic
-// error marker.
+// failLogin logs the failure (error type only — never the code, tokens, state, or claim values) and sends the browser to the login page with a generic error marker.
 func (h *OIDCHandler) failLogin(w http.ResponseWriter, r *http.Request, step string, err error) {
 	h.logger.WarnContext(r.Context(), "google login failed", "step", step, "error_type", fmt.Sprintf("%T", err))
 	http.Redirect(w, r, oidcFailureRedirect, http.StatusFound)

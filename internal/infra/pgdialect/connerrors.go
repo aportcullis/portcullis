@@ -21,9 +21,7 @@ const (
 	sqlstateInsufficientPrivilege = "42501" // e.g. CONNECT revoked
 )
 
-// classify maps a dial/auth error onto the caller-safe test buckets
-// (ADR-0014). The raw error — which can embed driver text and, in principle,
-// credential material — never crosses this function (PRD §8.1).
+// classify maps a dial/auth error onto the caller-safe test buckets (ADR-0014). The raw error — which can embed driver text and, in principle, credential material — never crosses this function (PRD §8.1).
 func classify(err error) *connection.TestError {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return &connection.TestError{Bucket: connection.TestBucketTimeout}
@@ -55,8 +53,7 @@ func classify(err error) *connection.TestError {
 	return &connection.TestError{Bucket: connection.TestBucketFailed}
 }
 
-// isTLSFailure recognizes certificate-validation and TLS-negotiation
-// failures.
+// isTLSFailure recognizes certificate-validation and TLS-negotiation failures.
 func isTLSFailure(err error) bool {
 	var (
 		certVerify *tls.CertificateVerificationError
@@ -69,9 +66,6 @@ func isTLSFailure(err error) bool {
 		errors.As(err, &hostname) || errors.As(err, &unknownCA) || errors.As(err, &invalid) {
 		return true
 	}
-	// pgconn reports a server that answers 'N' to the SSLRequest with a plain,
-	// unexported error ("server refused TLS connection" — pgconn v5 source);
-	// message matching is fragile but contained here and pinned by an
-	// integration test against a non-TLS server.
+	// pgconn reports a server that answers 'N' to the SSLRequest with a plain, unexported error ("server refused TLS connection" — pgconn v5 source); message matching is fragile but contained here and pinned by an integration test against a non-TLS server.
 	return strings.Contains(err.Error(), "refused TLS")
 }

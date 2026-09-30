@@ -4,14 +4,7 @@ import type { ConfigDraft, TestResult } from "@/entities/connection/model";
 import { emptyDraft } from "@/entities/connection/model";
 import { errorMessage, testDraft } from "@/entities/connection/store";
 
-// createDraftController owns a connection-config draft and its pre-save test,
-// shared by the create and edit dialogs. A monotonic revision fences the test
-// against edits: the inputs stay enabled while a test runs, so a user can
-// change a value before the test resolves — a stale success from the OLD
-// config must not then reappear against the NEW one. patch()/reset() bump the
-// revision; runTest() captures it at the start and only shows a result if the
-// draft has not changed since (the server re-tests on save regardless, so this
-// is a UX guard, not a security one — ADR-0014).
+// createDraftController fences pre-save tests by draft revision so input changes invalidate old results. The server tests again on save.
 export function createDraftController() {
   const [draft, setDraft] = createSignal<ConfigDraft>(emptyDraft());
   const [testResult, setTestResult] = createSignal<TestResult | null>(null);

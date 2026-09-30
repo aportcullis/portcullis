@@ -1,7 +1,4 @@
-/* Tailwind v4 + the solid-ui theme tokens (ADR-0013). Adapted from
- * stefan-karger/solid-ui apps/docs/src/styles/app.css (MIT): system font
- * stack instead of Geist, and the tw-animate-css / @kobalte/tailwindcss
- * plugins are omitted until a vendored component needs them. */
+/* Theme adapted from stefan-karger/solid-ui apps/docs/src/styles/app.css (MIT, ADR-0013). */
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *, [data-kb-theme=dark], [data-kb-theme=dark] *));

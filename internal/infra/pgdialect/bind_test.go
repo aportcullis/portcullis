@@ -14,8 +14,6 @@ func param(name string, typ query.ParamType, text string) query.Parameter {
 	return query.Parameter{Name: name, Value: query.TypedValue{Type: typ, Text: text}}
 }
 
-// BindNamed replaces :name with $N in first-appearance order, splicing the
-// original bytes everywhere else (ADR-0016).
 func TestBindNamedSubstitutes(t *testing.T) {
 	t.Parallel()
 
@@ -154,7 +152,6 @@ func TestBindNamedSubstitutes(t *testing.T) {
 	}
 }
 
-// Every misuse fails closed with its dedicated sentinel.
 func TestBindNamedErrors(t *testing.T) {
 	t.Parallel()
 
@@ -247,8 +244,6 @@ func TestBindNamedErrors(t *testing.T) {
 	}
 }
 
-// The unknown-parameter error names the parameter (names are part of the SQL,
-// not sensitive) but never the parameter values.
 func TestBindNamedErrorHygiene(t *testing.T) {
 	t.Parallel()
 	d := pgdialect.New(pgdialect.Options{})

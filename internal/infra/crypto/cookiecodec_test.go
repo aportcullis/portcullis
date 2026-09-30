@@ -13,8 +13,7 @@ const testOrgID = "0b0d8f7e-3c1a-4d2b-9e5f-6a7b8c9d0e1f"
 
 func TestAADCanonicalLayout(t *testing.T) {
 	t.Parallel()
-	// ADR-0003 pins one layout for every envelope; a drift here silently breaks
-	// every previously sealed record of that type.
+
 	got := crypto.AAD("oidc_pending", testOrgID, "11111111-2222-3333-4444-555555555555")
 	want := "portcullis/aad/v1|oidc_pending|" + testOrgID + "|11111111-2222-3333-4444-555555555555"
 	if string(got) != want {
@@ -31,8 +30,7 @@ func TestCookieCodecRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Seal: %v", err)
 	}
-	// The value must be cookie-safe: one dot separator, no characters a Set-Cookie
-	// value can't carry.
+	// The value must be cookie-safe: one dot separator, no characters a Set-Cookie value can't carry.
 	if strings.Count(value, ".") != 1 || strings.ContainsAny(value, " ;,\"\\") {
 		t.Errorf("sealed value is not cookie-safe: %q", value)
 	}
@@ -44,8 +42,7 @@ func TestCookieCodecRoundTrips(t *testing.T) {
 		t.Errorf("round trip = %q, want %q", got, plaintext)
 	}
 
-	// Each Seal mints a fresh flow id + DEK — two seals of the same plaintext
-	// must not produce the same value.
+	// Each Seal mints a fresh flow id + DEK — two seals of the same plaintext must not produce the same value.
 	again, err := codec.Seal(plaintext)
 	if err != nil {
 		t.Fatalf("second Seal: %v", err)
@@ -79,10 +76,9 @@ func TestCookieCodecFailsClosed(t *testing.T) {
 		{"no separator", flowID + body},
 		{"non-uuid flow id", "not-a-uuid." + body},
 		{"garbage body", flowID + ".!!!not-base64!!!"},
-		{"body not json", flowID + ".aGVsbG8"}, // base64("hello")
+		{"body not json", flowID + ".aGVsbG8"},
 		{"tampered ciphertext", flowID + "." + tamperLastByte(t, body)},
-		// Swapping the flow id re-points the AAD: authentication must fail even
-		// though both halves are individually valid.
+		// Swapping the flow id re-points the AAD: authentication must fail even though both halves are individually valid.
 		{"flow id swap", otherFlowID + "." + body},
 		{"body swap", flowID + "." + otherBody},
 	}
@@ -95,8 +91,7 @@ func TestCookieCodecFailsClosed(t *testing.T) {
 		})
 	}
 
-	// A codec bound to a different org must not open the value (the org id is in
-	// the AAD), and neither may a different keyring.
+	// A codec bound to a different org must not open the value (the org id is in the AAD), and neither may a different keyring.
 	t.Run("wrong org", func(t *testing.T) {
 		t.Parallel()
 		wrongOrg := crypto.NewOIDCPendingCodec(kr, "ffffffff-ffff-4fff-8fff-ffffffffffff")
@@ -113,16 +108,14 @@ func TestCookieCodecFailsClosed(t *testing.T) {
 	})
 }
 
-// tamperLastByte flips a bit near the end of the base64url body (inside the
-// ciphertext/tag), keeping the value structurally valid.
 func tamperLastByte(t *testing.T, body string) string {
 	t.Helper()
 	b := []byte(body)
-	i := len(b) - 2
-	if b[i] == 'A' {
-		b[i] = 'B'
+	idx := len(b) - 2
+	if b[idx] == 'A' {
+		b[idx] = 'B'
 	} else {
-		b[i] = 'A'
+		b[idx] = 'A'
 	}
 	return string(b)
 }

@@ -22,8 +22,7 @@ const LoginPage: Component = () => {
   const [params] = useSearchParams();
 
   return (
-    // Check the resource's error BEFORE reading loginConfig() — reading an
-    // errored resource throws, which would break the page with no recovery.
+    // Check the resource's error BEFORE reading loginConfig() — reading an errored resource throws, which would break the page with no recovery.
     <Show when={!loginConfig.error} fallback={<ConfigErrorCard />}>
       <Show when={session().status !== "authenticated"} fallback={<Navigate href="/" />}>
         <Show when={!loginConfig()?.needsBootstrap} fallback={<Navigate href="/bootstrap" />}>

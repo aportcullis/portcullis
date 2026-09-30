@@ -4,10 +4,7 @@ import { Show, createSignal } from "solid-js";
 import { logout } from "@/entities/session/store";
 import { Button } from "@/shared/ui/button";
 
-// Logout revokes the server session; the reactive session store flips to
-// anonymous and the route guard redirects — no navigation logic here. When the
-// server cannot be reached the store keeps the session (the cookie is still
-// alive server-side), so the failure is surfaced instead of faking a sign-out.
+// Logout revokes the server session; the reactive session store flips to anonymous and the route guard redirects — no navigation logic here. When the server cannot be reached the store keeps the session (the cookie is still alive server-side), so the failure is surfaced instead of faking a sign-out.
 export const LogoutButton: Component = () => {
   const [pending, setPending] = createSignal(false);
   const [error, setError] = createSignal("");

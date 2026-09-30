@@ -6,10 +6,7 @@ import { TLS_MODES, isRelaxedTlsMode, parseTlsMode } from "@/entities/connection
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// ConfigFields is the PG connection form body (PRD §7.2 — host/port/database/
-// user/password/TLS mode), shared by the create and edit dialogs. There is no
-// partial credential edit by design (ADR-0014): every use of these fields is a
-// full config entry.
+// ConfigFields is the PG connection form body (PRD §7.2 — host/port/database/ user/password/TLS mode), shared by the create and edit dialogs. There is no partial credential edit by design (ADR-0014): every use of these fields is a full config entry.
 export const ConfigFields: Component<{
   draft: () => ConfigDraft;
   onPatch: (p: Partial<ConfigDraft>) => void;

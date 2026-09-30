@@ -17,8 +17,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 )
 
-// freshExec provisions an isolated database with the fixture table and
-// returns its dial material — Execute mutates state, so nothing is shared.
 func freshExec(t *testing.T) (*pgxpool.Pool, connection.Target, connection.Credential) {
 	t.Helper()
 	pool := dbtest.FreshPostgres(t)
@@ -37,8 +35,6 @@ func freshExec(t *testing.T) (*pgxpool.Pool, connection.Target, connection.Crede
 	return pool, target, cred
 }
 
-// runExec drains a full execution and closes the stream, normalizing where
-// the error surfaced (Execute call or stream) into one value.
 func runExec(ctx context.Context, t *testing.T, target connection.Target, cred connection.Credential, exec query.Execution) (cols []query.Column, rows [][]query.CellValue, rowsAffected int64, err error) {
 	t.Helper()
 	d := pgdialect.New(pgdialect.Options{})
@@ -61,9 +57,6 @@ func runExec(ctx context.Context, t *testing.T, target connection.Target, cred c
 	return cols, rows, rowsAffected, err
 }
 
-// Close abandons the stream: a Next() after Close must never surface the
-// buffered read-ahead row — the connection is gone and the transaction was
-// rolled back server-side (ResultStream contract).
 func TestExecuteCloseStopsNext(t *testing.T) {
 	t.Parallel()
 	_, target, cred := freshExec(t)
@@ -88,8 +81,6 @@ func TestExecuteCloseStopsNext(t *testing.T) {
 	}
 }
 
-// PRD §8.2: a read-class execution runs inside a genuine read-only
-// transaction — a smuggled write fails with SQLSTATE 25006 and leaves no row.
 func TestExecuteReadOnlyRejectsWrite(t *testing.T) {
 	t.Parallel()
 	pool, target, cred := freshExec(t)
@@ -139,8 +130,6 @@ func TestExecuteWriteCommits(t *testing.T) {
 	}
 }
 
-// A failing write leaves no partial state, and the surfaced error drops the
-// PG Detail field — it embeds row data (ADR-0016).
 func TestExecuteWriteRollsBackOnFailure(t *testing.T) {
 	t.Parallel()
 	pool, target, cred := freshExec(t)
@@ -193,8 +182,6 @@ func TestExecuteDDLCommits(t *testing.T) {
 	}
 }
 
-// Cancellation attempts a driver cancel and returns promptly — it must not
-// wait out the query (PRD §8.2).
 func TestExecuteCancelStopsQuery(t *testing.T) {
 	t.Parallel()
 	_, target, cred := freshExec(t)
@@ -221,7 +208,52 @@ func TestExecuteCancelStopsQuery(t *testing.T) {
 	}
 }
 
-// Typed argument values bind as PG parameters (never string interpolation).
+func TestExecutePreservesDeclaredParameterTypes(t *testing.T) {
+	t.Parallel()
+	_, target, cred := freshExec(t)
+	cols, rows, _, err := runExec(context.Background(), t, target, cred, query.Execution{
+		SQL: "SELECT $1 AS n, $2 AS d, $3 AS b, $4 AS ts, $5 AS u, $6 AS dec, $7 AS s, $8::text IS NULL AS is_null",
+		Args: []query.TypedValue{
+			{Type: query.ParamInteger, Text: "41"},
+			{Type: query.ParamDate, Text: "2026-09-30"},
+			{Type: query.ParamBoolean, Text: "true"},
+			{Type: query.ParamTimestamp, Text: "2026-09-30T12:00:00+09:00"},
+			{Type: query.ParamUUID, Text: "3b241101-e2bb-4255-8caf-4136c566a962"},
+			{Type: query.ParamDecimal, Text: "12.34"},
+			{Type: query.ParamString, Text: "value"},
+			{Type: query.ParamNull},
+		},
+		Class: query.ClassRead,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	want := []query.LogicalType{query.LogicalInt, query.LogicalDate, query.LogicalBool, query.LogicalTimestamptz, query.LogicalUUID, query.LogicalDecimal, query.LogicalString, query.LogicalBool}
+	if len(cols) != len(want) || len(rows) != 1 {
+		t.Fatalf("columns=%d rows=%d, want %d columns and one row", len(cols), len(rows), len(want))
+	}
+	for idx, logical := range want {
+		if cols[idx].Logical != logical {
+			t.Errorf("column %d type=%s, want %s", idx, cols[idx].Logical, logical)
+		}
+	}
+	if rows[0][3].Text != "2026-09-30T03:00:00Z" || !rows[0][7].Bool {
+		t.Fatalf("timestamp/null result = %+v", rows[0])
+	}
+	// Null must infer its type from the integer operand.
+	_, nullableRows, _, err := runExec(context.Background(), t, target, cred, query.Execution{
+		SQL:   "SELECT 42::bigint = $1 AS comparison",
+		Args:  []query.TypedValue{{Type: query.ParamNull}},
+		Class: query.ClassRead,
+	})
+	if err != nil {
+		t.Fatalf("contextual null: %v", err)
+	}
+	if len(nullableRows) != 1 || len(nullableRows[0]) != 1 || nullableRows[0][0].Kind != query.CellNull {
+		t.Fatalf("contextual null result = %+v", nullableRows)
+	}
+}
+
 func TestExecuteBindsTypedArgs(t *testing.T) {
 	t.Parallel()
 	_, target, cred := freshExec(t)
@@ -261,8 +293,6 @@ func TestExecuteBindsTypedArgs(t *testing.T) {
 	}
 }
 
-// The ADR-0005 PG mapping table, pinned end-to-end: logical types, cell
-// kinds, and canonical text renderings.
 func TestExecuteCellValueMapping(t *testing.T) {
 	t.Parallel()
 	_, target, cred := freshExec(t)
@@ -313,9 +343,9 @@ func TestExecuteCellValueMapping(t *testing.T) {
 	if len(cols) != len(wantCols) {
 		t.Fatalf("columns = %d, want %d", len(cols), len(wantCols))
 	}
-	for i, want := range wantCols {
-		if cols[i].Name != want.name || cols[i].Logical != want.logical || cols[i].DBTypeName != want.dbType {
-			t.Errorf("column %d = %+v, want name=%s logical=%s db=%s", i, cols[i], want.name, want.logical, want.dbType)
+	for idx, want := range wantCols {
+		if cols[idx].Name != want.name || cols[idx].Logical != want.logical || cols[idx].DBTypeName != want.dbType {
+			t.Errorf("column %d = %+v, want name=%s logical=%s db=%s", idx, cols[idx], want.name, want.logical, want.dbType)
 		}
 	}
 
@@ -339,36 +369,34 @@ func TestExecuteCellValueMapping(t *testing.T) {
 		{Kind: query.CellString, Text: "1 day"},
 		{Kind: query.CellNull},
 	}
-	for i, want := range wantCells {
-		got := row[i]
+	for idx, want := range wantCells {
+		got := row[idx]
 		if got.Kind != want.Kind {
-			t.Errorf("cell %d (%s) kind = %d, want %d", i, wantCols[i].name, got.Kind, want.Kind)
+			t.Errorf("cell %d (%s) kind = %d, want %d", idx, wantCols[idx].name, got.Kind, want.Kind)
 			continue
 		}
 		switch want.Kind {
 		case query.CellBool:
 			if got.Bool != want.Bool {
-				t.Errorf("cell %d (%s) bool = %v", i, wantCols[i].name, got.Bool)
+				t.Errorf("cell %d (%s) bool = %v", idx, wantCols[idx].name, got.Bool)
 			}
 		case query.CellFloat:
 			if got.Float != want.Float {
-				t.Errorf("cell %d (%s) float = %v", i, wantCols[i].name, got.Float)
+				t.Errorf("cell %d (%s) float = %v", idx, wantCols[idx].name, got.Float)
 			}
 		case query.CellBytes:
 			if string(got.Bytes) != string(want.Bytes) {
-				t.Errorf("cell %d (%s) bytes = %x", i, wantCols[i].name, got.Bytes)
+				t.Errorf("cell %d (%s) bytes = %x", idx, wantCols[idx].name, got.Bytes)
 			}
 		case query.CellNull:
 		default:
 			if got.Text != want.Text {
-				t.Errorf("cell %d (%s) text = %q, want %q", i, wantCols[i].name, got.Text, want.Text)
+				t.Errorf("cell %d (%s) text = %q, want %q", idx, wantCols[idx].name, got.Text, want.Text)
 			}
 		}
 	}
 }
 
-// Connection-phase failures reuse the 6-bucket redaction — Execute leaks no
-// more than a connection test does (ADR-0014).
 func TestExecuteConnectionFailuresUseBuckets(t *testing.T) {
 	t.Parallel()
 

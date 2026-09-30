@@ -1,5 +1,4 @@
-// Package postgres is the metadata-store infrastructure: connection pool and
-// schema migrations. It implements (or backs) the domain repository ports.
+// Package postgres is the metadata-store infrastructure: connection pool and schema migrations. It implements (or backs) the domain repository ports.
 package postgres
 
 import (

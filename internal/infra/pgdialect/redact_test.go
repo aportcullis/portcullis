@@ -10,9 +10,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 )
 
-// Token-rebuild redaction (ADR-0016): comments dropped, literals → typed
-// placeholders, $N preserved, identifiers re-quoted, keywords lowercase,
-// single-space joined.
 func TestRedactRewrites(t *testing.T) {
 	t.Parallel()
 
@@ -135,11 +132,6 @@ func TestRedactRewrites(t *testing.T) {
 	}
 }
 
-// Fail-closed: Redact only accepts this dialect's parse handle — malformed
-// input (unterminated strings, multi-statements, comment-only) can never
-// reach it because ParseSingle refuses to produce a Statement for it; a
-// Statement minted elsewhere (classify_test's foreignStatement) is rejected
-// with no partial output (PRD §8.4).
 func TestRedactFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -157,8 +149,6 @@ func TestRedactFailsClosed(t *testing.T) {
 	}
 }
 
-// Property (ADR-0016): no literal byte sequence from the input survives into
-// redacted output.
 func TestRedactNeverLeaksLiterals(t *testing.T) {
 	t.Parallel()
 

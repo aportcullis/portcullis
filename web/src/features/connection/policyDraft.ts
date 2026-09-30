@@ -11,9 +11,7 @@ export const STATEMENT_CLASSES: readonly { key: StatementClassKey; label: string
 
 export type ClassRuleDraft = { allowed: boolean; requiredApprovals: number };
 
-// PolicyDraft is the form's shape of one policy version (ADR-0015): per-class
-// gates plus one execution-limit set. expectedVersion pins the version the
-// form was loaded from — the optimistic token the update sends back.
+// PolicyDraft is the form's shape of one policy version (ADR-0015): per-class gates plus one execution-limit set. expectedVersion pins the version the form was loaded from — the optimistic token the update sends back.
 export type PolicyDraft = {
   expectedVersion: bigint;
   read: ClassRuleDraft;
@@ -24,8 +22,7 @@ export type PolicyDraft = {
   maxResultBytes: bigint;
 };
 
-// Bounds mirror the server's CHECK constraints (ADR-0015); the server stays
-// authoritative — these exist for inline form validation only.
+// Bounds mirror the server's CHECK constraints (ADR-0015); the server stays authoritative — these exist for inline form validation only.
 export const POLICY_BOUNDS = {
   approvals: { min: 0, max: 100 },
   timeoutSeconds: { min: 1, max: 300 },
@@ -49,23 +46,19 @@ export function rule(draft: PolicyDraft, key: StatementClassKey): ClassRuleDraft
   return draft[key];
 }
 
-// newlyEnabledClasses lists risk classes the draft turns ON relative to the
-// loaded policy — the trigger for the destructive warning (enabling write/DDL
-// is an audited admin decision, PRD §4.3). Read is not a risk class.
+// newlyEnabledClasses lists risk classes the draft turns ON relative to the loaded policy — the trigger for the destructive warning (enabling write/DDL is an audited admin decision, PRD §4.3). Read is not a risk class.
 export function newlyEnabledClasses(loaded: PolicyDraft, draft: PolicyDraft): StatementClassKey[] {
   return (["write", "ddl"] as const).filter((key) => !loaded[key].allowed && draft[key].allowed);
 }
 
-// autoApproveClasses lists enabled classes with a zero quorum — submit is
-// allowed (§4.3 small-team deadlock relief) but the form surfaces it.
+// autoApproveClasses lists enabled classes with a zero quorum — submit is allowed (§4.3 small-team deadlock relief) but the form surfaces it.
 export function autoApproveClasses(draft: PolicyDraft): StatementClassKey[] {
   return (["read", "write", "ddl"] as const).filter(
     (key) => draft[key].allowed && draft[key].requiredApprovals === 0,
   );
 }
 
-// validate returns the first human-readable problem, or "" when the draft is
-// inside the ADR-0015 bounds.
+// validate returns the first human-readable problem, or "" when the draft is inside the ADR-0015 bounds.
 export function validate(draft: PolicyDraft): string {
   for (const { key, label } of STATEMENT_CLASSES) {
     const approvals = draft[key].requiredApprovals;

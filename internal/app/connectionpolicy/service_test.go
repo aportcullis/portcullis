@@ -13,9 +13,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// fakeRepo is the in-memory Repository: one current policy per connection id,
-// archived ids fail updates, and every mutation records the events it was
-// asked to commit (they would ride the same transaction — ADR-0009).
+// fakeRepo is the in-memory Repository: one current policy per connection id, archived ids fail updates, and every mutation records the events it was asked to commit (they would ride the same transaction — ADR-0009).
 type fakeRepo struct {
 	org         identity.OrganizationID
 	policies    map[connection.ConnectionID]connection.Policy
@@ -61,9 +59,6 @@ func (r *fakeRepo) UpdatePolicy(_ context.Context, next connection.Policy, expec
 	return next, nil
 }
 
-// seed installs one connection's v1 default policy — as the connection store
-// does on create — and returns its id, the single source tests use instead of
-// sprinkling a literal around.
 func (r *fakeRepo) seed() connection.ConnectionID {
 	const id connection.ConnectionID = "c1"
 	p := connection.DefaultPolicy()
@@ -213,8 +208,6 @@ func TestUpdateDisablingEmitsNoCompanion(t *testing.T) {
 	f := newFixture(t)
 	id := f.repo.seed()
 
-	// Enable write first, then disable it again: only the ENABLE gets a
-	// companion; the disable is visible via disabled_classes on UPDATED.
 	p := defaultUpdate(1)
 	p.Write = appolicy.ClassRuleInput{Allowed: true, RequiredApprovals: 1}
 	if _, err := f.svc.Update(t.Context(), "admin1", id, p); err != nil {
@@ -235,8 +228,6 @@ func TestUpdateDisablingEmitsNoCompanion(t *testing.T) {
 	}
 }
 
-// A write class that stays enabled across an update is not "newly enabled" —
-// no companion event.
 func TestUpdateKeepingWriteEnabledEmitsNoCompanion(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -265,7 +256,7 @@ func TestUpdateStaleVersionFailsWithPolicyConflict(t *testing.T) {
 	if _, err := f.svc.Update(t.Context(), "admin1", id, defaultUpdate(1)); err != nil {
 		t.Fatal(err)
 	}
-	// The first update moved current to v2; expecting v1 is stale.
+
 	if _, err := f.svc.Update(t.Context(), "admin1", id, defaultUpdate(1)); !errors.Is(err, connection.ErrPolicyConflict) {
 		t.Fatalf("stale update = %v, want ErrPolicyConflict", err)
 	}
@@ -280,7 +271,7 @@ func TestUpdateArchivedConnectionFails(t *testing.T) {
 	if _, err := f.svc.Update(t.Context(), "admin1", id, defaultUpdate(1)); !errors.Is(err, connection.ErrArchived) {
 		t.Fatalf("archived update = %v, want ErrArchived", err)
 	}
-	// Get keeps answering: the policy is part of the historical snapshot.
+
 	if _, err := f.svc.Get(t.Context(), id); err != nil {
 		t.Errorf("Get on archived = %v, want nil", err)
 	}

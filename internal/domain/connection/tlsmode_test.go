@@ -20,7 +20,7 @@ func TestParseTLSMode(t *testing.T) {
 		{"require", "require", connection.TLSModeRequire, nil},
 		{"disable", "disable", connection.TLSModeDisable, nil},
 		{"empty means the certificate-verifying default", "", connection.TLSModeVerifyFull, nil},
-		// prefer/allow silently downgrade to plaintext — rejected (ADR-0014).
+
 		{"prefer rejected", "prefer", "", connection.ErrInvalidTLSMode},
 		{"allow rejected", "allow", "", connection.ErrInvalidTLSMode},
 		{"garbage rejected", "verifyfull", "", connection.ErrInvalidTLSMode},
@@ -49,8 +49,7 @@ func TestDefaultTLSModeIsCertificateVerifying(t *testing.T) {
 
 func TestTLSModeRelaxed(t *testing.T) {
 	t.Parallel()
-	// Relaxed = no certificate-chain validation at all; choosing one requires an
-	// explicit admin choice plus a CONNECTION_TLS_RELAXED audit event (PRD §8.1).
+
 	relaxed := map[connection.TLSMode]bool{
 		connection.TLSModeVerifyFull: false,
 		connection.TLSModeVerifyCA:   false,

@@ -5,9 +5,7 @@ import (
 	"unicode/utf8"
 )
 
-// Environment labels what a connection points at so the UI can make production
-// unmistakable (badge, stronger warnings). A fixed domain enum like TLSMode —
-// mirrors the connections.environment check constraint.
+// Environment labels what a connection points at so the UI can make production unmistakable (badge, stronger warnings). A fixed domain enum like TLSMode — mirrors the connections.environment check constraint.
 type Environment string
 
 // Supported environments.
@@ -16,9 +14,7 @@ const (
 	EnvironmentProduction  Environment = "production"
 )
 
-// ParseEnvironment maps the wire string to the enum. Empty means the caller
-// omitted it and gets the safe default (development); anything else must match
-// exactly, like ParseTLSMode.
+// ParseEnvironment maps the wire string to the enum. Empty means the caller omitted it and gets the safe default (development); anything else must match exactly, like ParseTLSMode.
 func ParseEnvironment(s string) (Environment, error) {
 	switch Environment(s) {
 	case "":
@@ -31,14 +27,10 @@ func ParseEnvironment(s string) (Environment, error) {
 	return "", ErrInvalidEnvironment
 }
 
-// maxDescriptionLength bounds the free-text description in Unicode code points
-// (matches the connections.description check constraint).
+// maxDescriptionLength bounds the free-text description in Unicode code points (matches the connections.description check constraint).
 const maxDescriptionLength = 500
 
-// ValidateDescription accepts empty or multi-line free text within the length
-// bound. Newlines are legitimate here (unlike display names), but the same
-// spoofing classes are rejected: other control (Cc), format (Cf), and
-// line/paragraph separator (Zl/Zp) characters.
+// ValidateDescription accepts empty or multi-line free text within the length bound. Newlines are legitimate here (unlike display names), but the same spoofing classes are rejected: other control (Cc), format (Cf), and line/paragraph separator (Zl/Zp) characters.
 func ValidateDescription(s string) error {
 	if utf8.RuneCountInString(s) > maxDescriptionLength {
 		return ErrInvalidDescription

@@ -4,31 +4,18 @@ import "time"
 
 // Credential policy for bootstrap and password changes.
 const (
-	// minPasswordLength is the floor for a new password in Unicode code points.
-	// NIST SP 800-63B-4 sets 15 as the minimum when a password is the sole
-	// authenticator (as local login is here), above its 8-character floor.
+	// minPasswordLength is the floor for a new password in Unicode code points. NIST SP 800-63B-4 sets 15 as the minimum when a password is the sole authenticator (as local login is here), above its 8-character floor.
 	minPasswordLength = 15
-	// maxPasswordLength bounds the Argon2 input so an oversized password can't be
-	// used to amplify hashing cost.
+	// maxPasswordLength bounds the Argon2 input so an oversized password can't be used to amplify hashing cost.
 	maxPasswordLength = 1024
-	// maxDisplayNameLength bounds the stored display name (Unicode code points) so
-	// an unbounded value can't bloat rows, logs, or UI. Generous for any real name.
+	// maxDisplayNameLength bounds the stored display name (Unicode code points) so an unbounded value can't bloat rows, logs, or UI. Generous for any real name.
 	maxDisplayNameLength = 256
 )
 
-// detachedWriteTimeout bounds the best-effort writes that detach from the
-// request context — audit events (ADR-0009) and the backoff failure counter
-// (ADR-0006, so an attacker can't skip the counter by disconnecting
-// mid-attempt). Detached writes need their own bound or a stuck store would
-// leak goroutines.
+// detachedWriteTimeout bounds the best-effort writes that detach from the request context — audit events (ADR-0009) and the backoff failure counter (ADR-0006, so an attacker can't skip the counter by disconnecting mid-attempt). Detached writes need their own bound or a stuck store would leak goroutines.
 const detachedWriteTimeout = 5 * time.Second
 
-// Progressive-backoff defaults (ADR-0006 Parameters): 5 consecutive failures
-// lock the account for 1 minute, doubling per further failure to a 15-minute
-// cap. They back the config knobs (Config.Backoff*), so operators can retune
-// without a rebuild; the jitter fraction is a shape parameter of the scheme
-// (±20% so the exact unlock time can't be probed), not an ops knob, so it
-// stays a constant.
+// Backoff starts at five failures, doubles from one minute to fifteen minutes, and applies ±20% jitter (ADR-0006). Configuration may override timing and threshold.
 const (
 	defaultBackoffThreshold = 5
 	defaultBackoffBase      = time.Minute
@@ -36,12 +23,8 @@ const (
 	backoffJitterFraction   = 0.2
 )
 
-// oidcPendingTTL bounds the window between /auth/google/start and the callback.
-// ADR-0007 pins it at exactly 10 minutes; the service enforces it inside the
-// sealed payload in addition to the cookie's Max-Age.
+// oidcPendingTTL bounds the window between /auth/google/start and the callback. ADR-0007 pins it at exactly 10 minutes; the service enforces it inside the sealed payload in addition to the cookie's Max-Age.
 const oidcPendingTTL = 10 * time.Minute
 
-// oidcMethodMetadata tags login audit events (success and failure) that came
-// through Google, so one AUTH_LOGIN action covers every sign-in method and the
-// method stays queryable (ADR-0009: metadata carries supplemental dimensions).
+// oidcMethodMetadata tags login audit events (success and failure) that came through Google, so one AUTH_LOGIN action covers every sign-in method and the method stays queryable (ADR-0009: metadata carries supplemental dimensions).
 const oidcMethodMetadata = "google"
