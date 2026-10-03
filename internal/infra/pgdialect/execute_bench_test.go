@@ -39,7 +39,7 @@ func BenchmarkQueryWorkloads(b *testing.B) {
 		}
 		seedRows = parsed
 	}
-	pool := dbtest.FreshPostgres(b)
+	pool := dbtest.FreshTargetPostgres(b)
 	ctx := context.Background()
 	seedSQL := fmt.Sprintf(`
 CREATE TABLE bench_customers (id integer PRIMARY KEY, name text NOT NULL);

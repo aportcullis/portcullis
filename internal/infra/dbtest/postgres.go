@@ -19,74 +19,105 @@ import (
 )
 
 // PostgresImage pins the disposable database used by Go and browser integration tests.
-const PostgresImage = "postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
+const PostgresImage = "postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
 
-var (
-	pgOnce  sync.Once
-	pgPool  *pgxpool.Pool
-	pgDSN   string
-	pgErr   error
+type postgresFixture struct {
+	once    sync.Once
+	pool    *pgxpool.Pool
+	dsn     string
+	err     error
 	freshDB atomic.Int64
-)
-
-// Postgres returns a connection pool to a shared test Postgres. It uses PORTCULLIS_TEST_DATABASE_URL when set, otherwise a throwaway container. When neither Docker nor an external DB is available, the calling test is skipped.
-func Postgres(t testing.TB) *pgxpool.Pool {
-	t.Helper()
-	pgOnce.Do(startPostgres)
-	if pgErr != nil {
-		t.Skipf("postgres unavailable: %v", pgErr)
-	}
-	return pgPool
 }
 
-func startPostgres() {
-	ctx := context.Background()
+var metadataPostgres, targetPostgres postgresFixture
 
-	dsn := os.Getenv("PORTCULLIS_TEST_DATABASE_URL")
+// Postgres returns the PostgreSQL 18 metadata fixture, independently of target-family selection.
+func Postgres(t testing.TB) *pgxpool.Pool {
+	t.Helper()
+	return metadataPostgres.connect(t, "PORTCULLIS_TEST_DATABASE_URL", func() (string, error) { return PostgresImage, nil })
+}
+
+// TargetPostgres returns the managed-target database selected for compatibility tests.
+func TargetPostgres(t testing.TB) *pgxpool.Pool {
+	t.Helper()
+	return targetPostgres.connect(t, "PORTCULLIS_TEST_TARGET_DATABASE_URL", PostgresTestImage)
+}
+
+func (f *postgresFixture) connect(t testing.TB, externalURL string, image func() (string, error)) *pgxpool.Pool {
+	t.Helper()
+	f.once.Do(func() { f.start(externalURL, image) })
+	if f.err != nil {
+		if os.Getenv("PORTCULLIS_TEST_DATABASE_REQUIRED") == "1" {
+			t.Fatalf("required postgres unavailable: %v", f.err)
+		}
+		t.Skipf("postgres unavailable: %v", f.err)
+	}
+	return f.pool
+}
+
+func (f *postgresFixture) start(externalURL string, selectImage func() (string, error)) {
+	ctx := context.Background()
+	image, err := selectImage()
+	if err != nil {
+		f.err = err
+		return
+	}
+	dsn := os.Getenv(externalURL)
 	if dsn == "" {
-		// Route testcontainers output through our standardized slog stream.
 		tcLogger := logging.NewPrintfLogger(logging.New("debug", "json"), slog.LevelDebug, "testcontainers")
-		// Renovate keeps the test image aligned with Compose.
-		container, err := tcpostgres.Run(ctx, PostgresImage,
+		container, err := tcpostgres.Run(ctx, image,
 			tcpostgres.WithDatabase("portcullis"),
 			tcpostgres.WithUsername("portcullis"),
 			tcpostgres.WithPassword("portcullis"),
 			testcontainers.WithLogger(tcLogger),
-			// Port-only readiness races both the postgres entrypoint (it starts a temporary server during initdb, then restarts) and docker-proxy (which listens before the container-side process does), yielding "connection reset by peer" on slow CI. The module's canonical strategy waits for the readiness log line twice, then the port.
+			// Wait for both entrypoint server phases before accepting connections.
 			tcpostgres.BasicWaitStrategies(),
 		)
 		if err != nil {
-			pgErr = err
+			f.err = err
 			return
 		}
 		if dsn, err = container.ConnectionString(ctx, "sslmode=disable"); err != nil {
-			pgErr = err
+			f.err = err
 			return
 		}
 	}
-
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		pgErr = err
+		f.err = err
 		return
 	}
-	pgPool = pool
-	pgDSN = dsn
+	f.pool, f.dsn = pool, dsn
 }
 
 // FreshPostgres creates a brand-new, empty database in the shared container and returns a pool to it (migrations NOT applied — the caller migrates). Use it for tests that need global isolation, e.g. first-run bootstrap which asserts on the whole users table. The database is dropped at test end.
 func FreshPostgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
-	admin := Postgres(t) // ensures the container/DSN are up
+	admin := Postgres(t)
+	return metadataPostgres.fresh(t, admin)
+}
+
+// FreshTargetPostgres creates a brand-new database on the selected managed-target family.
+func FreshTargetPostgres(t testing.TB) *pgxpool.Pool {
+	t.Helper()
+	admin := TargetPostgres(t)
+	return targetPostgres.fresh(t, admin)
+}
+
+func (f *postgresFixture) fresh(t testing.TB, admin *pgxpool.Pool) *pgxpool.Pool {
+	t.Helper()
 	ctx := context.Background()
 
-	name := fmt.Sprintf("pc_fresh_%d", freshDB.Add(1))
+	name := fmt.Sprintf("pc_fresh_%d", f.freshDB.Add(1))
 	if _, err := admin.Exec(ctx, "create database "+name); err != nil {
+		if os.Getenv("PORTCULLIS_TEST_DATABASE_REQUIRED") == "1" {
+			t.Fatalf("required fresh postgres needs CREATEDB privilege: %v", err)
+		}
 		// An external test DB (PORTCULLIS_TEST_DATABASE_URL) may connect as a non-superuser without CREATEDB; skip rather than fail there.
 		t.Skipf("FreshPostgres needs CREATEDB privilege: %v", err)
 	}
 
-	u, err := url.Parse(pgDSN)
+	u, err := url.Parse(f.dsn)
 	if err != nil {
 		t.Fatalf("parse dsn: %v", err)
 	}

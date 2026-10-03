@@ -19,6 +19,8 @@ For each family, require real-engine Testcontainers scenarios plus real-binary b
 
 Metadata storage has a separate deployment contract: PostgreSQL 18 remains its current baseline. Managed-target qualification does not automatically certify metadata migrations/upgrades on all target families. Capacity evidence is also separate and must identify its actual baseline.
 
+Go integration fixtures keep separate metadata and target pools. `Postgres`/`FreshPostgres` use the pinned PostgreSQL 18 metadata image; `TargetPostgres`/`FreshTargetPostgres` alone use the reviewed family catalog. External installations use separate `PORTCULLIS_TEST_DATABASE_URL` and `PORTCULLIS_TEST_TARGET_DATABASE_URL` settings. Qualification requires both the actual metadata baseline and requested target family checks, with unavailable databases failing when `PORTCULLIS_TEST_DATABASE_REQUIRED=1`. Reject unknown families rather than interpolating an unreviewed image. This fixes the PG16 `MAINTAIN` privilege regression without expanding the metadata deployment contract; that privilege exists in [PostgreSQL 17](https://www.postgresql.org/docs/17/ddl-priv.html) but not [16](https://www.postgresql.org/docs/16/ddl-priv.html).
+
 This supersedes ADR-0001's open-ended PostgreSQL ≥14 / MySQL ≥8.0 support floor; it preserves its parser/driver choices and safety model. Amend both PRD translations and publish candidate versus verified status in the database feature matrix.
 
 ## Consequences

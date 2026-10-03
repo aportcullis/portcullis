@@ -16,7 +16,7 @@ import (
 
 func pgCoords(t *testing.T) (target connection.Target, cred connection.Credential) {
 	t.Helper()
-	cc := dbtest.Postgres(t).Config().ConnConfig
+	cc := dbtest.TargetPostgres(t).Config().ConnConfig
 	target, err := connection.NewTarget(cc.Host, int(cc.Port), cc.Database)
 	if err != nil {
 		t.Fatal(err)

@@ -19,7 +19,7 @@ import (
 
 func freshExec(t *testing.T) (*pgxpool.Pool, connection.Target, connection.Credential) {
 	t.Helper()
-	pool := dbtest.FreshPostgres(t)
+	pool := dbtest.FreshTargetPostgres(t)
 	if _, err := pool.Exec(context.Background(), "CREATE TABLE exec_t (id int PRIMARY KEY, v text)"); err != nil {
 		t.Fatal(err)
 	}
