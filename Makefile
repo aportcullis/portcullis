@@ -37,7 +37,7 @@ endif
 endif
 
 # Build the linter with the project's Go toolchain to match its type checker.
-GOLANGCI_LINT_VERSION := v2.12.2
+GOLANGCI_LINT_VERSION := v2.14.0
 lint:
 	@drift="$$(gofmt -l internal cmd)"; \
 		if [ -n "$$drift" ]; then echo "gofmt needed (run 'gofmt -w'):"; echo "$$drift"; exit 1; fi

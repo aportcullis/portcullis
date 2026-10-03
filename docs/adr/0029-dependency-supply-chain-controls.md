@@ -39,6 +39,18 @@ Verification: `make supply-chain` passes on Go 1.27.1 with zero reachable or imp
 
 A newly released security fix can need a narrowly scoped, documented version exception to the age policy after review. Delay and provenance checks reduce exposure and do not prove a package is benign. Third-party code can still run when an explicitly invoked compiler, bundler or test runner starts. CI must enforce the same policy on fresh installations, not just an existing local node_modules directory.
 
+### Go 1.27 Linux lint compatibility (2026-10-03)
+
+The Linux CI gate subsequently exposed a compatibility failure missed by the macOS validation above: golangci-lint v2.12.2 embeds Staticcheck v0.7.0, whose IR builder panics on Go 1.27 standard-library struct initializers in `internal/poll` (`unexpected expr: *ast.KeyValueExpr`). Building the old linter with the new compiler does not update its analyzers. Pin golangci-lint v2.14.0, which depends on Staticcheck v0.8.1 and x/tools v0.50.0. Staticcheck 2026.2 introduced support for Go 1.27 generic methods and direct references to embedded fields in struct initializers. Keep all existing lint checks and the Go 1.27.1 compiler; no product requirements change is needed.
+
+When changing the Go compiler or analyzer version on macOS, also analyze the Linux target with `GOOS=linux GOARCH=amd64 make lint`. This exercises Linux-specific standard-library source; it supplements the actual Linux CI gate and does not execute Linux tests on macOS. Validate the regression with the real lint command rather than a test that only asserts a version string.
+
+Validation: the reported Linux CI command is the observed failing regression. The upgraded command, with the same enabled checks, completes with zero issues inside the repository-pinned Go 1.27.1 Linux Docker image. Host `go build ./...` and `go vet ./...` also pass. Full `make verify` and a new GitHub Actions run have not been repeated for this analyzer-only change.
+
+- [Staticcheck 2026.2 release and Go 1.27 support](https://github.com/dominikh/go-tools/releases/tag/2026.2).
+- [golangci-lint v2.14.0 release](https://github.com/golangci/golangci-lint/releases/tag/v2.14.0).
+- [golangci-lint v2.14.0 analyzer dependency pins](https://github.com/golangci/golangci-lint/blob/v2.14.0/go.mod).
+
 No TypeScript 6 compatibility dependency remains. No product requirements change is needed: these controls concern development and delivery.
 
 ## Sources (checked 2026-10-03)
