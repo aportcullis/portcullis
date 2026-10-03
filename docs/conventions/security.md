@@ -4,6 +4,7 @@
   - Use [`internal/infra/crypto`](../../internal/infra/crypto) for AES-256-GCM envelopes, HKDF sub-keys, keyed-HMAC digests, and Argon2id.
   - Follow ADR-0003 for canonical AAD and storage format.
   - Refuse startup without a valid master key.
+- Exclude local secrets, test fixtures, traces and caches from Docker build contexts before transfer (ADR-0029); keep required committed generated source and migrations available.
 - Encrypt at rest: connection credentials, request SQL + parameters (including inline literals), and result snapshots.
 - **Never log** SQL, parameters, credentials, or result rows.
 - Treat correlation headers as untrusted input: accept an `X-Request-Id` only when non-empty, **≤ 128 bytes**, and matching `[A-Za-z0-9._:/-]` exactly; anything else is **replaced** with a fresh generated id (never truncated) before echoing, logging, or persisting it in audit metadata (ADR-0010).

@@ -1,15 +1,34 @@
 .git
 bin
 web/node_modules
-node_modules
+**/node_modules
+.test-docker
+.codex-review
+.pnpm-store
+**/.vite
+**/test-results
+**/playwright-report
+**/coverage
+tests/load/*.local.json
+tests/load/results
+tests/load/dist
+web/dist
+**/*.local
+*.test
+*.out
+coverage.*
+*.tsbuildinfo
+*.log
+**/*.key
+**/*.pem
 # The frontend build output is produced by the web build stage; excluding the
 # local copy avoids merging stale hashed assets into the image.
 internal/platform/assets/dist
 prd.md
 todo.md
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 # NOTE: gen/ (generated Go), internal/infra/postgres/db (sqlc), and web/src/gen
 # (Connect TS client) are committed and required by the Go and web builds, so
 # they are intentionally NOT ignored here (the web stage runs pnpm, not buf).

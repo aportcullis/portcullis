@@ -53,6 +53,12 @@ Validation: the reported Linux CI command is the observed failing regression. Th
 
 No TypeScript 6 compatibility dependency remains. No product requirements change is needed: these controls concern development and delivery.
 
+### Local build-context exclusion (2026-10-03)
+
+Exclude local test/runtime artifacts before sending a Docker build context: `.test-docker`, dependency and bundler caches, browser traces/reports, load credentials/manifests/results/bundles, environment secrets and local key files. Keep committed generated clients/sqlc code, migrations and `.env.example` available. `.gitignore` is not a Docker boundary, and removing secrets in a later image layer does not undo their inclusion in an earlier build layer. Do not supply credentials through build arguments.
+
+A small synthetic context using the actual `.dockerignore` reproduced the cache-marker inclusion before the fix. The real Docker `COPY`/`RUN` check then passed for excluded cache/load/browser/environment markers and retained Go/TypeScript generated sources, sqlc files, migrations and `.env.example`. No real credentials or repository cache contents were sent. This packaging regression does not constitute a complete image build or image scan.
+
 ## Sources (checked 2026-10-03)
 
 - [pnpm 10 settings](https://pnpm.io/10.x/settings).
@@ -63,3 +69,5 @@ No TypeScript 6 compatibility dependency remains. No product requirements change
 - [typescript-eslint supported dependency versions](https://typescript-eslint.io/users/dependency-versions/).
 
 - [pnpm 10.34.6 security patch](https://github.com/pnpm/pnpm/releases/tag/v10.34.6).
+
+- [Docker build context and dockerignore semantics](https://docs.docker.com/build/concepts/context/#dockerignore-files).
