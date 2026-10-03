@@ -59,14 +59,23 @@ func run() error {
 			finish()
 		}
 	}()
-	for _, name := range []string{"metadata", "target"} {
-		database, err := tcpostgres.Run(startup, dbtest.PostgresImage, tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("owner"), tcpostgres.WithPassword("synthetic-owner-password"), testcontainers.WithLabels(map[string]string{"portcullis.test": "load", "portcullis.database": name}), tcpostgres.BasicWaitStrategies())
+	startDatabase := func(role string) (*tcpostgres.PostgresContainer, error) {
+		database, err := tcpostgres.Run(startup, dbtest.PostgresImage, tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("owner"), tcpostgres.WithPassword("synthetic-owner-password"), testcontainers.WithLabels(map[string]string{"portcullis.test": "load", "portcullis.database": role}), tcpostgres.BasicWaitStrategies())
 		if err != nil {
-			return errors.New("cannot start disposable database")
+			return nil, errors.New("cannot start disposable database")
 		}
 		databases = append(databases, database)
+		return database, nil
 	}
-	metadataDSN, err := databases[0].ConnectionString(startup, "sslmode=disable")
+	metadataDatabase, err := startDatabase("metadata")
+	if err != nil {
+		return err
+	}
+	targetDatabase, err := startDatabase("target")
+	if err != nil {
+		return err
+	}
+	metadataDSN, err := metadataDatabase.ConnectionString(startup, "sslmode=disable")
 	if err != nil {
 		return err
 	}
@@ -86,7 +95,7 @@ func run() error {
 		return err
 	}
 	runtimeURL.User = url.UserPassword("load_app", "synthetic-runtime-password")
-	targetDSN, err := databases[1].ConnectionString(startup, "sslmode=disable")
+	targetDSN, err := targetDatabase.ConnectionString(startup, "sslmode=disable")
 	if err != nil {
 		return err
 	}
@@ -192,11 +201,11 @@ func run() error {
 		err = json.NewDecoder(response.Body).Decode(&result)
 		return result, err
 	}
-	host, err := databases[1].Host(startup)
+	host, err := targetDatabase.Host(startup)
 	if err != nil {
 		return err
 	}
-	port, err := databases[1].MappedPort(startup, "5432/tcp")
+	port, err := targetDatabase.MappedPort(startup, "5432/tcp")
 	if err != nil {
 		return err
 	}
@@ -238,7 +247,7 @@ func run() error {
 		return err
 	}
 	defer func() { _ = os.Remove("tests/load/fixtures.local.json") }()
-	manifest, err := json.Marshal(map[string]any{"pid": server.Process.Pid, "harnessPid": os.Getpid(), "runLabel": os.Getenv("LOAD_RUN_LABEL"), "appOS": runtime.GOOS, "appArch": runtime.GOARCH, "logicalCPUs": runtime.NumCPU(), "metadataContainer": databases[0].GetContainerID(), "targetContainer": databases[1].GetContainerID(), "baseURL": "http://127.0.0.1:18082", "targetRows": 100000, "requesters": 100, "runtimePrivileged": false})
+	manifest, err := json.Marshal(map[string]any{"pid": server.Process.Pid, "harnessPid": os.Getpid(), "runLabel": os.Getenv("LOAD_RUN_LABEL"), "appOS": runtime.GOOS, "appArch": runtime.GOARCH, "logicalCPUs": runtime.NumCPU(), "metadataContainer": metadataDatabase.GetContainerID(), "targetContainer": targetDatabase.GetContainerID(), "baseURL": "http://127.0.0.1:18082", "targetRows": 100000, "requesters": 100, "runtimePrivileged": false})
 	if err != nil {
 		return err
 	}

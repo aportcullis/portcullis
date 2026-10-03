@@ -47,7 +47,7 @@ func run() error {
 	defer func() { _ = targetListener.Close() }()
 	startupCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	database, err := tcpostgres.Run(startupCtx, dbtest.PostgresImage,
+	metadataDatabase, err := tcpostgres.Run(startupCtx, dbtest.PostgresImage,
 		tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("portcullis"), tcpostgres.WithPassword("portcullis"),
 		testcontainers.WithLabels(map[string]string{"portcullis.test": "browser"}), tcpostgres.BasicWaitStrategies())
 	if err != nil {
@@ -56,19 +56,20 @@ func run() error {
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanupCancel()
-		if err := database.Terminate(cleanupCtx); err != nil {
+		if err := metadataDatabase.Terminate(cleanupCtx); err != nil {
 			fmt.Fprintln(os.Stderr, "browser database cleanup:", err)
 		}
 	}()
-	dsn, err := database.ConnectionString(startupCtx, "sslmode=disable")
+	dsn, err := metadataDatabase.ConnectionString(startupCtx, "sslmode=disable")
 	if err != nil {
 		return err
 	}
-	host, err := database.Host(startupCtx)
+	targetDatabase := metadataDatabase
+	host, err := targetDatabase.Host(startupCtx)
 	if err != nil {
 		return err
 	}
-	port, err := database.MappedPort(startupCtx, "5432/tcp")
+	port, err := targetDatabase.MappedPort(startupCtx, "5432/tcp")
 	if err != nil {
 		return err
 	}
