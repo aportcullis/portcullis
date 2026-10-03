@@ -72,7 +72,7 @@ func (f *blockingExecutionFixture) Execute(ctx context.Context, _ connection.Tar
 
 func TestExecutionSaturationAndOwnerCancellationPreserveOtherLeases(t *testing.T) {
 	f := &blockingExecutionFixture{
-		executionFixture: &executionFixture{request: access.Request{OrganizationID: "org", RequesterID: "requester", ConnectionID: "connection", State: access.StateApproved, Class: connection.ClassRead, PolicyVersion: 1, ConnectionConfigVersion: 1}, verify: true},
+		executionFixture: &executionFixture{request: access.Request{OrganizationID: "org", RequesterID: "requester", ConnectionID: "connection", State: access.StateApproved, Class: connection.ClassRead, PolicyVersion: 1, ConnectionConfigVersion: 1, ConnectionDBType: "postgresql"}, verify: true},
 		leases:           make(map[access.RequestID]bool), started: make(chan struct{}, 2), release: make(chan struct{}),
 	}
 	svc, err := execution.New(f, f, f, f, credentialCodec{}, f, f, "server", 2)
@@ -153,10 +153,10 @@ func (f *executionFixture) GetSealed(context.Context, identity.OrganizationID, a
 	return f.request, access.SealedPayload{}, nil
 }
 func (f *executionFixture) CurrentTarget(context.Context, identity.OrganizationID, connection.ConnectionID) (access.SubmitTarget, error) {
-	return access.SubmitTarget{Policy: connection.DefaultPolicy(), ConfigVersion: 1}, nil
+	return access.SubmitTarget{Policy: connection.DefaultPolicy(), ConfigVersion: 1, DBType: "postgresql"}, nil
 }
 func (f *executionFixture) TestMaterial(context.Context, identity.OrganizationID, connection.ConnectionID) (connection.Connection, connection.SealedCredential, error) {
-	return connection.Connection{ConfigVersion: 1}, connection.SealedCredential{}, nil
+	return connection.Connection{ConfigVersion: 1, DBType: connection.DBTypePostgreSQL}, connection.SealedCredential{}, nil
 }
 func (f *executionFixture) Open(identity.OrganizationID, access.RequestID, access.SealedPayload) (access.Payload, error) {
 	return access.Payload{SQL: "SELECT :value", Params: []query.Parameter{{Name: "value", Value: query.TypedValue{Type: query.ParamInteger, Text: "1"}}}}, nil
@@ -251,7 +251,7 @@ func TestApprovedExecutionRejectsTamperingAndNeverRetriesUnknownOutcomes(t *test
 		{"store full", true, nil, query.ErrResultStoreFull, access.StateSucceeded, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &executionFixture{request: access.Request{ID: "request", OrganizationID: "org", RequesterID: "requester", ConnectionID: "connection", State: access.StateApproved, Class: connection.ClassRead, PolicyVersion: 1, ConnectionConfigVersion: 1}, verify: tc.verify, execErr: tc.execErr, resultErr: tc.resultErr}
+			f := &executionFixture{request: access.Request{ID: "request", OrganizationID: "org", RequesterID: "requester", ConnectionID: "connection", State: access.StateApproved, Class: connection.ClassRead, PolicyVersion: 1, ConnectionConfigVersion: 1, ConnectionDBType: "postgresql"}, verify: tc.verify, execErr: tc.execErr, resultErr: tc.resultErr}
 			svc, err := execution.New(f, f, f, f, credentialCodec{}, f, f, "server", 2)
 			if err != nil {
 				t.Fatal(err)

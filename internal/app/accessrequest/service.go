@@ -25,21 +25,29 @@ type Service struct {
 	repo     Repository
 	targets  RequestTargets
 	codec    PayloadCodec
-	dialect  Dialect
+	dialects DialectResolver
 	validity time.Duration
 	now      func() time.Time
 	newID    func() string
 }
 
-// New builds the service with the required ports and approval-validity window.
+// New builds PostgreSQL-only submission with the required ports.
 func New(repo Repository, targets RequestTargets, codec PayloadCodec, dialect Dialect, validity time.Duration) (*Service, error) {
-	if repo == nil || targets == nil || codec == nil || dialect == nil {
+	if dialect == nil {
+		return nil, errors.New("accessrequest: nil dialect")
+	}
+	return NewWithDialects(repo, targets, codec, postgresDialectResolver{dialect}, validity)
+}
+
+// NewWithDialects builds submission with engine-specific dialect selection.
+func NewWithDialects(repo Repository, targets RequestTargets, codec PayloadCodec, dialects DialectResolver, validity time.Duration) (*Service, error) {
+	if repo == nil || targets == nil || codec == nil || dialects == nil {
 		return nil, errors.New("accessrequest: nil dependency (repo, targets, codec, and dialect are required)")
 	}
 	if validity < setting.MinApprovalValidity || validity > setting.MaxApprovalValidity {
 		return nil, fmt.Errorf("accessrequest: approval validity %s outside [%s, %s]", validity, setting.MinApprovalValidity, setting.MaxApprovalValidity)
 	}
-	return &Service{repo: repo, targets: targets, codec: codec, dialect: dialect, validity: validity, now: time.Now, newID: uuid.NewString}, nil
+	return &Service{repo: repo, targets: targets, codec: codec, dialects: dialects, validity: validity, now: time.Now, newID: uuid.NewString}, nil
 }
 
 // ListRequestableConnections returns active target summaries under requests.create without requiring connection-admin permissions.
@@ -145,18 +153,31 @@ func (s *Service) Submit(ctx context.Context, requester identity.UserID, id acce
 		return access.RequestView{}, fmt.Errorf("open payload: %w", err)
 	}
 
-	// Bind :name to PostgreSQL $N placeholders before parsing. Execution rebinds the sealed payload so approved and executed bytes match (ADR-0018).
-	boundSQL, _, err := s.dialect.BindNamed(payload.SQL, payload.Params)
+	// The target read here IS the pin (ADR-0018): the policy version and quorum are copied onto the request (limits stay reachable through the pinned join), and so is the connection's CONFIG version — the id alone would let this approval outlive a replacement of the very database it names.
+	target, err := s.repo.CurrentTarget(ctx, org, r.ConnectionID)
+	if err != nil {
+		return access.RequestView{}, err
+	}
+	dialect, err := s.dialects.SubmissionDialect(connection.DBType(target.DBType))
+	if err != nil {
+		return access.RequestView{}, err
+	}
+	if dialect == nil {
+		return access.RequestView{}, connection.ErrUnsupportedDBType
+	}
+
+	// Bind named parameters with the stored target engine before parsing. Execution rebinds the sealed payload so approved and executed bytes match (ADR-0018).
+	boundSQL, _, err := dialect.BindNamed(payload.SQL, payload.Params)
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("%w: %w", access.ErrInvalidPayload, err)
 	}
 
 	// Parse → classify → map into the policy vocabulary. Anything the parser or classifier refuses is a submit failure — never a guess (§4.3).
-	st, err := s.dialect.ParseSingle(boundSQL)
+	st, err := dialect.ParseSingle(boundSQL)
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("%w: %w", access.ErrUnclassifiable, err)
 	}
-	parsedStatementClass, err := s.dialect.Classify(st)
+	parsedStatementClass, err := dialect.Classify(st)
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("%w: %w", access.ErrUnclassifiable, err)
 	}
@@ -165,18 +186,13 @@ func (s *Service) Submit(ctx context.Context, requester identity.UserID, id acce
 		return access.RequestView{}, err
 	}
 
-	// The target read here IS the pin (ADR-0018): the policy version and quorum are copied onto the request (limits stay reachable through the pinned join), and so is the connection's CONFIG version — the id alone would let this approval outlive a replacement of the very database it names.
-	target, err := s.repo.CurrentTarget(ctx, org, r.ConnectionID)
-	if err != nil {
-		return access.RequestView{}, err
-	}
 	policy := target.Policy
 	rule := policy.Rule(class)
 	if !rule.Allowed {
 		return access.RequestView{}, fmt.Errorf("%w: %s", access.ErrClassNotAllowed, class)
 	}
 
-	redaction, err := s.dialect.Redact(st)
+	redaction, err := dialect.Redact(st)
 	if err != nil {
 		// Fail-closed is the redactor's contract (ADR-0016); a redaction failure refuses the submit rather than storing an unredactable SQL.
 		return access.RequestView{}, fmt.Errorf("%w: %w", access.ErrInvalidPayload, err)

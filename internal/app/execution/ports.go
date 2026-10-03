@@ -59,3 +59,8 @@ type ResultWriter interface {
 type Admission interface {
 	Allow(connection.ConnectionID) (func(bool), error)
 }
+
+// DialectResolver selects the registered dialect for a stored target engine.
+type DialectResolver interface {
+	ExecutionDialect(connection.DBType) (Dialect, error)
+}

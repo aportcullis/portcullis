@@ -61,3 +61,8 @@ type Dialect interface {
 	BindNamed(sql string, params []query.Parameter) (string, []query.TypedValue, error)
 	Redact(st query.Statement) (query.Redaction, error)
 }
+
+// DialectResolver selects the registered dialect for a stored target engine.
+type DialectResolver interface {
+	SubmissionDialect(connection.DBType) (Dialect, error)
+}

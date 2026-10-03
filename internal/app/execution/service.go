@@ -21,7 +21,7 @@ type Service struct {
 	connections   ConnectionRepository
 	payloads      PayloadCodec
 	credentials   CredentialCodec
-	dialect       Dialect
+	dialects      DialectResolver
 	results       ResultWriter
 	admission     Admission
 	owner         string
@@ -33,10 +33,18 @@ type Service struct {
 
 // New wires governed execution with a bounded number of active workers.
 func New(requests RequestRepository, leases LeaseRepository, connections ConnectionRepository, payloads PayloadCodec, credentials CredentialCodec, dialect Dialect, results ResultWriter, owner string, workers int) (*Service, error) {
-	if requests == nil || leases == nil || connections == nil || payloads == nil || credentials == nil || dialect == nil || results == nil || owner == "" || workers < 1 {
+	if dialect == nil {
+		return nil, errors.New("execution: nil dialect")
+	}
+	return NewWithDialects(requests, leases, connections, payloads, credentials, postgresDialectResolver{dialect}, results, owner, workers)
+}
+
+// NewWithDialects wires execution with registered engine-specific adapters.
+func NewWithDialects(requests RequestRepository, leases LeaseRepository, connections ConnectionRepository, payloads PayloadCodec, credentials CredentialCodec, dialects DialectResolver, results ResultWriter, owner string, workers int) (*Service, error) {
+	if requests == nil || leases == nil || connections == nil || payloads == nil || credentials == nil || dialects == nil || results == nil || owner == "" || workers < 1 {
 		return nil, errors.New("execution: invalid dependencies")
 	}
-	return &Service{requests: requests, leases: leases, connections: connections, payloads: payloads, credentials: credentials, dialect: dialect, results: results, owner: owner, workers: make(chan struct{}, workers), cancellations: make(map[access.RequestID]context.CancelFunc)}, nil
+	return &Service{requests: requests, leases: leases, connections: connections, payloads: payloads, credentials: credentials, dialects: dialects, results: results, owner: owner, workers: make(chan struct{}, workers), cancellations: make(map[access.RequestID]context.CancelFunc)}, nil
 }
 
 // Execute runs only the authenticated stored approval unit, once.
@@ -91,18 +99,6 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	if err != nil || !verified {
 		return access.ExecutionCompletion{}, access.ErrPayloadIntegrity
 	}
-	boundSQL, args, err := s.dialect.BindNamed(payload.SQL, payload.Params)
-	if err != nil {
-		return access.ExecutionCompletion{}, access.ErrPayloadIntegrity
-	}
-	parsed, err := s.dialect.ParseSingle(boundSQL)
-	if err != nil {
-		return access.ExecutionCompletion{}, access.ErrUnclassifiable
-	}
-	class, err := s.dialect.Classify(parsed)
-	if err != nil || connection.StatementClass(class) != r.Class {
-		return access.ExecutionCompletion{}, access.ErrUnclassifiable
-	}
 	target, err := s.requests.CurrentTarget(ctx, org, r.ConnectionID)
 	if err != nil {
 		return access.ExecutionCompletion{}, err
@@ -110,6 +106,28 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	material, credential, err := s.connections.TestMaterial(ctx, org, r.ConnectionID)
 	if err != nil {
 		return access.ExecutionCompletion{}, err
+	}
+	if target.DBType != r.ConnectionDBType || string(material.DBType) != r.ConnectionDBType {
+		return access.ExecutionCompletion{}, access.ErrNotExecutable
+	}
+	dialect, err := s.dialects.ExecutionDialect(connection.DBType(r.ConnectionDBType))
+	if err != nil {
+		return access.ExecutionCompletion{}, err
+	}
+	if dialect == nil {
+		return access.ExecutionCompletion{}, connection.ErrUnsupportedDBType
+	}
+	boundSQL, args, err := dialect.BindNamed(payload.SQL, payload.Params)
+	if err != nil {
+		return access.ExecutionCompletion{}, access.ErrPayloadIntegrity
+	}
+	parsed, err := dialect.ParseSingle(boundSQL)
+	if err != nil {
+		return access.ExecutionCompletion{}, access.ErrUnclassifiable
+	}
+	class, err := dialect.Classify(parsed)
+	if err != nil || connection.StatementClass(class) != r.Class {
+		return access.ExecutionCompletion{}, access.ErrUnclassifiable
 	}
 	if material.ConfigVersion != r.ConnectionConfigVersion || target.ConfigVersion != r.ConnectionConfigVersion || target.Policy.Version != r.PolicyVersion {
 		return access.ExecutionCompletion{}, access.ErrNotExecutable
@@ -146,7 +164,7 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	heartbeatStopped := make(chan struct{})
 	go s.maintainLease(workCtx, org, lease, cancel, heartbeatDone, heartbeatStopped)
 	defer func() { cancel(); close(heartbeatDone); <-heartbeatStopped }()
-	completion = s.runTarget(workCtx, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, Governed: true, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
+	completion = s.runTarget(workCtx, dialect, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, Governed: true, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
 	targetSucceeded = completion.State == access.StateSucceeded
 	completion.DurationMilliseconds = time.Since(started).Milliseconds()
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
@@ -157,9 +175,9 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	return completion, nil
 }
 
-func (s *Service) runTarget(ctx context.Context, r access.Request, material connection.Connection, credential connection.Credential, request query.Execution) access.ExecutionCompletion {
+func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Request, material connection.Connection, credential connection.Credential, request query.Execution) access.ExecutionCompletion {
 	completion := access.ExecutionCompletion{State: access.StateOutcomeUnknown}
-	stream, err := s.dialect.Execute(ctx, material.Target, material.TLSMode, credential, request)
+	stream, err := dialect.Execute(ctx, material.Target, material.TLSMode, credential, request)
 	if err != nil {
 		completion.State = failedExecutionState(err)
 		return completion
