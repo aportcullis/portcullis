@@ -31,7 +31,8 @@ They never carry original SQL, parameters, database errors, or result values.
 ### PostgreSQL catalog gate and bounded processing
 
 The PostgreSQL wire protocol does not expose the analyzed expression tree's selected callable OIDs.
-M1 uses a stricter candidate proof: under pinned `search_path=pg_catalog,public`, every visible function/operator candidate for each explicitly referenced name must have a bootstrap built-in OID below 16384 in pg_catalog, including the operator's implementation function.
+M1 uses a stricter candidate proof: under pinned `search_path=public`, every visible function/operator candidate for each explicitly referenced name must have a bootstrap built-in OID below 16384 in pg_catalog, including the operator's implementation function.
+PostgreSQL searches pg_catalog implicitly before every listed schema, so built-in names still resolve first while unqualified objects created by approved DDL land in `public` (revised 2026-10-04: listing `pg_catalog` first made it the creation schema, so every unqualified governed DDL failed with 42501 after approval).
 Explicit types must also resolve exclusively to built-in catalog types.
 Reject the whole statement when any candidate is untrusted, even if PostgreSQL would select a safe overload for these arguments.
 This intentionally reduces compatibility; it does not claim to reproduce PostgreSQL overload selection.

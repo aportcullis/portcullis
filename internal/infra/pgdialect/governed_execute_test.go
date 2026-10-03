@@ -48,6 +48,22 @@ func TestGovernedExecutionRejectsUserOperatorInSubqueryComparison(t *testing.T) 
 	}
 }
 
+func TestGovernedUnqualifiedDDLCreatesObjectInPublicSchema(t *testing.T) {
+	pool, target, cred := freshExec(t)
+	ctx := context.Background()
+	_, _, _, err := runExec(ctx, t, target, cred, query.Execution{SQL: "CREATE TABLE governed_ddl (x int)", Class: query.ClassDDL, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	if err != nil {
+		t.Fatalf("governed unqualified DDL failed: %v", err)
+	}
+	var createdTable *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.governed_ddl')::text").Scan(&createdTable); err != nil {
+		t.Fatal(err)
+	}
+	if createdTable == nil {
+		t.Fatal("governed DDL did not create public.governed_ddl")
+	}
+}
+
 func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 	_, target, credential := freshExec(t)
 	dialect := pgdialect.New(pgdialect.Options{})

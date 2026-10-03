@@ -131,7 +131,7 @@ Both are corrected here.
    A `ddl` class is a statement of privilege, never a waiver of the effect check.
 2. **The real boundary is the target database account (PRD §8.1).** What ultimately bounds an approved statement is what its login role is *allowed to do* on the target: no `EXECUTE` on `dblink_exec`/admin functions, no `CREATE` in schemas it should not write, no superuser.
    Portcullis's parser is a governance filter on *intent*; the database's own privilege system is the enforcement.
-3. **Execution-time catalog identity verification (implemented M1, ADR-0021).** Resolve explicitly referenced names to visible candidate **OIDs** under pinned `search_path=pg_catalog,public` and require every candidate to be a bootstrap built-in in pg_catalog.
+3. **Execution-time catalog identity verification (implemented M1, ADR-0021).** Resolve explicitly referenced names to visible candidate **OIDs** under pinned `search_path=public`, where PostgreSQL searches pg_catalog implicitly first, and require every candidate to be a bootstrap built-in in pg_catalog.
    This conservative proof refuses any untrusted overload, operator implementation, or explicit type, even where argument resolution would choose a trusted candidate.
    It does not claim to expose the exact selected OID: PostgreSQL's wire protocol does not return analyzed expression identities.
    Catalog changes and indirectly invoked behavior remain subject to trusted target administration and least target privilege.

@@ -58,7 +58,8 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 	}
 
 	if exec.Governed {
-		cfg.RuntimeParams["search_path"] = "pg_catalog,public"
+		// pg_catalog is searched implicitly before every listed schema, so built-ins still resolve first while unqualified objects are created in public.
+		cfg.RuntimeParams["search_path"] = "public"
 		cfg.RuntimeParams["statement_timeout"] = strconv.Itoa(exec.TimeoutSeconds * 1000)
 		cfg.RuntimeParams["idle_in_transaction_session_timeout"] = "60000"
 		cfg.BuildFrontend = func(reader io.Reader, writer io.Writer) *pgproto3.Frontend {
