@@ -83,6 +83,8 @@ Click a request title to see Draft → Review → Ready → Execution below the 
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
 
+Execution summaries show the recorded server duration and affected rows in request details and results. The interval includes DB connection, SQL execution, result collection, and snapshot storage.
+
 Column sorting applies across the cached snapshot and preserves numeric precision. Table/Text and clipboard copy use the current filtered page; CSV exports the complete snapshot in original query order. The walkthrough ends at the prepared download link.
 
 ![Paged results with exact large integers, decimal revenue, and visible-page copy](docs/media/results.png)

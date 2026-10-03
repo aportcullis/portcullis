@@ -14,7 +14,7 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 | `requests.png` | Request list with the inline four-stage progress graph |
 | `results-text.png` | Tab-separated Text view of one server-paged snapshot |
 | `review.png` | A distinct reviewer inspecting submitted SQL |
-| `results.png` | Typed results with exact large integers and decimal amounts |
+| `results.png` | Recorded execution time and typed results with exact integers and decimals |
 | `workflow.gif` | Request → distinct approval → single-use execution |
 | `results.gif` | Page → sort → filter → prepare the whole-snapshot CSV |
 

@@ -16,6 +16,8 @@ Click a request title to expand its current workflow beneath the list row. The g
 
 ## Explore results
 
+The execution summary labels recorded server time and affected rows. This interval includes DB connection/execution, result collection and snapshot storage; approval waiting, browser rendering and later paging/sorting are excluded. The original requester also sees the durable summary in completed request details.
+
 Choose a column and direction to sort the complete cached snapshot using its declared data type. Numeric precision and timezone-aware timestamp ordering are preserved; equal values keep their original order and NULL values stay last. Restore the original query order at any time. Sorting and filtering do not execute SQL again.
 
 ![Paged typed results with exact large integers, decimal revenue and visible-page copy](results.png)
