@@ -12,6 +12,7 @@
 - **Dependency security**
   - `make vuln` runs pinned govulncheck; `make audit` also runs pnpm audit. `make supply-chain` verifies Go modules, audits both npm lockfiles and checks fresh-install script rejection; CI runs it after the functional gate.
 - `make generate` — `buf generate` (Connect Go + TS) and `sqlc generate`.
+- `make load-check` — strict TypeScript, locally bundled k6 scripts and Zod RPC/fixture contract tests; included in `make verify`.
 - `make load-test` — k6 2.3.0 scenario tests against an isolated installation; fixture and sizing instructions in [performance guide](../performance/README.md).
 - `make query-bench` — actual PostgreSQL query workloads through raw pgconn and the execution adapter; three repeats of 20 iterations with allocation metrics.
 

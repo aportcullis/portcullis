@@ -1,12 +1,13 @@
 import { check } from 'k6';
+import { z } from 'zod';
 
 import { rpc, exportCSV } from './client.ts';
-import type { Fixture } from './contracts.ts';
+import type { Fixture, RPCs } from './contracts.ts';
 
 export function browse(fixture: Fixture): void {
   rpc('Auth.Me', {}, fixture.requester);
   const list = rpc('AccessRequests.List', { page: 1, pageSize: 20 }, fixture.requester);
-  if (!check(list, { 'page is bounded': (r) => (r.items || []).length <= 20 })) {
+  if (!check(list, { 'page is bounded': (r) => r.items.length <= 20 })) {
     throw new Error('Invalid request page');
   }
   rpc('AccessRequests.ListRequestableConnections', {}, fixture.requester);
@@ -18,7 +19,6 @@ export function submit(fixture: Fixture, review: boolean): void {
     connectionId: fixture.connectionId, sql: 'SELECT :value AS value',
     params: [{ name: 'value', type: 'integer', value: '42' }],
   }, fixture.requester).request;
-  if (!created?.id || !created.version) throw new Error('Create did not return an id/version');
   try {
     const submitted = rpc('AccessRequests.Submit', {
       id: created.id, expectedVersion: created.version,
@@ -62,13 +62,19 @@ export function executeAndExplore(fixture: Fixture): void {
   const stored = rpc('QueryExecutions.Get', { requestId: created.id }, fixture.requester);
   if (stored.state !== executed.state) throw new Error('Durable execution state differs');
   const first = rpc('QueryExecutions.GetResult', { requestId: created.id, page: 1, pageSize: 20 }, fixture.requester);
-  if (first.totalCount !== '25' || first.rows?.length !== 20 || first.rows[0]?.cells[0]?.intValue !== '9007199254740994') throw new Error('First page lost bounds or integer precision');
+  if (first.totalCount !== '25' || first.rows.length !== 20 || integerAt(first, 0) !== '9007199254740994') throw new Error('First page lost bounds or integer precision');
   const last = rpc('QueryExecutions.GetResult', { requestId: created.id, page: 2, pageSize: 20 }, fixture.requester);
-  if (last.rows?.length !== 5 || last.rows[4]?.cells[0]?.intValue !== '9007199254741018') throw new Error('Second page is incorrect');
+  if (last.rows.length !== 5 || integerAt(last, 4) !== '9007199254741018') throw new Error('Second page is incorrect');
   const sorted = rpc('QueryExecutions.GetResult', { requestId: created.id, page: 1, pageSize: 20, sortColumn: 0, descending: true }, fixture.requester);
-  if (sorted.rows?.[0]?.cells[0]?.intValue !== '9007199254741018') throw new Error('Numeric sort lost exact values');
+  if (integerAt(sorted, 0) !== '9007199254741018') throw new Error('Numeric sort lost exact values');
   const filtered = rpc('QueryExecutions.GetResult', { requestId: created.id, page: 1, pageSize: 20, filterColumn: 0, filter: '9007199254740994' }, fixture.requester);
-  if (filtered.totalCount !== '1' || filtered.rows?.length !== 1) throw new Error('Filtering produced incorrect rows');
+  if (filtered.totalCount !== '1' || filtered.rows.length !== 1) throw new Error('Filtering produced incorrect rows');
   const csv = exportCSV(created.id, fixture.requester);
   if (!csv.includes("9007199254740994,'=formula") || !csv.includes("9007199254741018,'=formula") || csv.trim().split('\n').length !== 26) throw new Error('CSV lost rows, precision or formula escaping');
+}
+
+/** Requires the scenario's requested row and first integer cell before comparing exact values. */
+function integerAt(page: RPCs['QueryExecutions.GetResult']['output'], index: number): string {
+  const row = z.object({ cells: z.array(z.unknown()) }).parse(page.rows[index]);
+  return z.strictObject({ intValue: z.string() }).parse(row.cells[0]).intValue;
 }

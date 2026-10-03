@@ -1,0 +1,10 @@
+{
+  "plugins": ["typescript"],
+  "categories": { "correctness": "off" },
+  "ignorePatterns": ["node_modules/**", "dist/**"],
+  "rules": {
+    "typescript/consistent-type-assertions": ["error", { "assertionStyle": "never" }],
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-explicit-any": "error"
+  }
+}

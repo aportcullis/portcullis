@@ -6,10 +6,12 @@ See [ADR-0020](../adr/0020-scenario-load-testing.md).
 
 ## Run the suite
 
-`k6 run governance.ts` executes TypeScript directly without a bundling step. k6 removes types during execution; `make load-typecheck` separately runs TypeScript 7 `tsc` with strict checking before `make load-test`.
+`make load-check` runs strict TypeScript 7 checking, generates local ESM bundles with pinned esbuild, and runs the Zod contract tests. `make load-test` then runs `tests/load/dist/governance.js` with k6. Test sources remain TypeScript; bundles are ignored build output. k6 does not resolve npm packages, so Zod is bundled locally rather than loaded from a remote CDN.
 
-The suite separates workload configuration (`config.ts`), typed RPC contracts/client (`contracts.ts`, `client.ts`), fixture validation (`fixtures.ts`) and user journeys (`journeys.ts`).
-`governance.ts` schedules journeys and records outcomes.
+The suite separates workload configuration (`config.ts`), Zod RPC schemas/client (`contracts.ts`, `client.ts`), validated JSON codecs and wire routing (`json.ts`, `wire.ts`), fixture validation (`fixtures.ts`) and user journeys (`journeys.ts`).
+`governance.ts` schedules journeys and records outcomes. `rpc` and `rpcAsync` infer input/output from the method name. Unknown input fields and malformed response fields fail schema validation; protobuf-omitted default arrays and scalar values normalize at the boundary. Optional messages and timestamps remain optional where their absence has meaning. Responses project the schema-known fields and tolerate additional fields for forward compatibility. No type assertion or non-null assertion is needed. JSON syntax handling stays inside the codec, and contract errors omit payloads and credentials.
+
+Use an absolute fixture path, such as `LOAD_FIXTURES="$PWD/tests/load/fixtures.local.json"`, when running the bundle directly; k6 otherwise resolves the default fixture next to the bundle. `make load-test` supplies that absolute default and accepts a custom `LOAD_FIXTURES`. For a request-only contract smoke, run `k6 run tests/load/dist/wire.test.js`. The `async-execution.js` bundle exercises typed async create/submit/review/execute, observes the active lease and checks the durable conservative `OUTCOME_UNKNOWN` cancellation outcome without a result snapshot. Supply `JOURNEY=execute`, a distinct approver and the same `LOAD_FIXTURES` path when running it. Earlier load measurements used the prior client; a short integration smoke with Zod does not recertify capacity.
 
 Use k6 **2.3.0**, TypeScript **7.0.2** and an isolated Portcullis installation with synthetic accounts and an active test connection.
 `make load-server` prepares two owned Testcontainers PostgreSQL databases, 100 distinct synthetic requesters, a separate approver and a read-only target account over 100,000 rows. The application listens on loopback port 18082 and uses only the least-privilege metadata runtime role, with startup migrations disabled. Synthetic sessions are issued before measurement through the existing persistence/crypto adapters. The harness writes a private fixture and aggregate resource identity manifest inside `tests/load/`, and removes the private fixture, application and its databases on SIGINT/SIGTERM. Use a new harness for each comparable repeat.
@@ -23,7 +25,7 @@ Log in only once per account because a new login revokes its previous session.
 Requesters need `requests.list/get/create`.
 Reviewers need `requests.get/approve`; their connection must permit read with exactly one required approval.
 A fixture must reference a registered active connection.
-The suite does not create users, change policies, execute SQL or delete audit history.
+The suite does not create users, change policies or delete audit history. The `execute`/`full` journeys execute distinctly approved synthetic queries and verify saved results and CSV.
 
 ```sh
 BASE_URL=http://localhost:8080 MODE=smoke JOURNEY=browse make load-test
@@ -47,19 +49,19 @@ Tokens are sent explicitly as cookies with CSRF headers, including in local HTTP
 Every mode exits nonzero if a threshold fails.
 The smoke mode runs three journeys per VU.
 
-Docker alternative (macOS; use a reachable host address on other platforms):
+Docker alternative after `make load-check` (macOS; use a reachable host address on other platforms):
 
 ```sh
 docker run --rm -v "$PWD:/work:ro" -w /work \
   grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34 \
-  run -e BASE_URL=http://host.docker.internal:8080 -e JOURNEY=browse tests/load/governance.ts
+  run -e BASE_URL=http://host.docker.internal:8080 -e JOURNEY=browse -e LOAD_FIXTURES=/work/tests/load/fixtures.local.json tests/load/dist/governance.js
 ```
 
 To retain aggregate results without payloads:
 
 ```sh
 mkdir -p tests/load/results
-MODE=load JOURNEY=mixed VUS=50 k6 run --summary-export=tests/load/results/summary.json tests/load/governance.ts
+LOAD_FIXTURES="$PWD/tests/load/fixtures.local.json" MODE=load JOURNEY=mixed VUS=50 k6 run --summary-export=tests/load/results/summary.json tests/load/dist/governance.js
 ```
 
 Use a unique output filename per run.

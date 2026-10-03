@@ -1,14 +1,22 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
-.PHONY: load-test load-typecheck load-server query-bench
+.PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
 
 K6 ?= k6
+LOAD_FIXTURES ?= $(CURDIR)/tests/load/fixtures.local.json
 
 load-typecheck:
 	pnpm -C tests/load install --frozen-lockfile
 	pnpm -C tests/load run typecheck
 
-load-test: load-typecheck
-	$(K6) run tests/load/governance.ts
+load-bundle: load-typecheck
+	pnpm -C tests/load bundle
+
+load-check: load-bundle
+	pnpm -C tests/load lint
+	pnpm -C tests/load test
+
+load-test: load-check
+	$(K6) run -e LOAD_FIXTURES="$(LOAD_FIXTURES)" tests/load/dist/governance.js
 
 load-server: web
 	mkdir -p .test-docker/e2e tests/load/results
@@ -111,7 +119,7 @@ verify:
 	$(MAKE) web-typecheck
 	$(MAKE) web-lint
 	$(MAKE) web-test
-	$(MAKE) load-typecheck
+	$(MAKE) load-check
 	$(MAKE) test
 	$(MAKE) e2e
 

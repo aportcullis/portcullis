@@ -47,6 +47,19 @@ Cancellation closes test requests but does not delete their audit history; reset
 Never write session tokens or payloads to reports.
 
 ## Consequences
+
+### Validated RPC boundaries (2026-10-03)
+
+The owner requested generic async RPCs, Zod validation and no type or non-null assertions. Define method-specific input/output schemas with Zod 4.6.5 and infer the load client contracts from them. Share request construction, headers, CSRF, timeouts, metrics and response validation across `rpc` and `rpcAsync`; `executeAsync` delegates to the latter. Requests reject unknown fields; response schemas validate known fields and project them while tolerating additive fields. Normalize protobuf-omitted arrays/scalars, preserve int64 decimal strings and oneof cell types, and retain genuinely optional messages/timestamps. Validate fixtures before workload execution. Generic types provide compile-time checks; Zod validates network data at runtime. Load lint rejects type assertions, non-null assertions and explicit `any`.
+
+Use a local JSON codec for syntax conversion and schema validation. JSON.parse/stringify stay inside that boundary because they implement JSON syntax; neither a generic assertion nor passing an object to k6 replaces validation. Contract errors contain no payload or credential values. Use k6 refined response types and bounded binary reads for CSV framing instead of assertions. Zod’s standard base64 validator calls browser `atob`, which k6 does not supply; use a portable padded-base64 string refinement and verify it inside k6 rather than weakening the schema or adding browser globals.
+
+k6 does not resolve npm imports. Bundle TypeScript sources and Zod locally using pinned esbuild 0.28.2 with ESM/neutral platform, and leave only k6 built-ins external. No remote module imports, direct package implementation paths, install-script approvals or trust-policy exceptions are introduced. Zod has no installation script; esbuild's installation script remains denied, using its integrity-checked optional platform package instead. Node declarations supply shared schema/test types, not Node runtime dependencies in the k6 bundle. Generated bundles are ignored. `make load-check` runs strict checking, contract tests and bundling in the existing verification gate. Product requirements are unchanged.
+
+Existing performance evidence used the preceding client. Contract and real-server smoke tests verify correctness after this change; repeat controlled capacity measurements before applying old load-generator performance conclusions to the new client.
+
+Primary references checked 2026-10-03: [Zod codecs](https://zod.dev/codecs), [k6 asyncRequest JSON/form behavior](https://grafana.com/docs/k6/latest/javascript-api/k6-http/asyncrequest/), [k6 module bundling](https://grafana.com/docs/k6/latest/using-k6/modules/), [esbuild bundling](https://esbuild.github.io/getting-started/#bundling), and [ProtoJSON](https://protobuf.dev/programming-guides/json/).
+
 - Add `make load-test` separately from `make verify`; smoke can become a CI gate once reproducible account provisioning exists.
   Long stress/soak and hardware sizing run on controlled benchmark hosts.
 - Compare candidate combined app/metadata-DB hosts at 2 vCPU/4 GiB, 4 vCPU/8 GiB and 8 vCPU/16 GiB with explicit app/DB resource allocation.

@@ -1,10 +1,12 @@
+import { z } from 'zod';
 import type { Options, Scenario } from 'k6/options';
 import type { RPCName } from './contracts.ts';
 
 function choice<T extends string>(name: string, fallback: T, values: readonly T[]): T {
   const value = __ENV[name] || fallback;
-  if (!values.includes(value as T)) throw new Error(`Unknown ${name}`);
-  return value as T;
+  const parsed = z.enum(values).safeParse(value);
+  if (!parsed.success) throw new Error(`Unknown ${name}`);
+  return parsed.data;
 }
 
 function number(name: string, fallback: number, integer = true): number {
