@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,11 +21,12 @@ import (
 const PostgresImage = "postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
 
 type postgresFixture struct {
-	once    sync.Once
-	pool    *pgxpool.Pool
-	dsn     string
-	err     error
-	freshDB atomic.Int64
+	once     sync.Once
+	pool     *pgxpool.Pool
+	dsn      string
+	err      error
+	required bool
+	freshDB  atomic.Int64
 }
 
 var metadataPostgres, targetPostgres postgresFixture
@@ -34,20 +34,32 @@ var metadataPostgres, targetPostgres postgresFixture
 // Postgres returns the PostgreSQL 18 metadata fixture, independently of target-family selection.
 func Postgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
-	return metadataPostgres.connect(t, "PORTCULLIS_TEST_DATABASE_URL", func() (string, error) { return PostgresImage, nil })
+	settings, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return metadataPostgres.connect(t, settings.MetadataURL, PostgresImage, settings.Required)
 }
 
 // TargetPostgres returns the managed-target database selected for compatibility tests.
 func TargetPostgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
-	return targetPostgres.connect(t, "PORTCULLIS_TEST_TARGET_DATABASE_URL", PostgresTestImage)
+	settings, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := imageForPostgresFamily(settings.PostgresFamily)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return targetPostgres.connect(t, settings.TargetURL, image, settings.Required)
 }
 
-func (f *postgresFixture) connect(t testing.TB, externalURL string, image func() (string, error)) *pgxpool.Pool {
+func (f *postgresFixture) connect(t testing.TB, dsn, image string, required bool) *pgxpool.Pool {
 	t.Helper()
-	f.once.Do(func() { f.start(externalURL, image) })
+	f.once.Do(func() { f.required = required; f.start(dsn, image) })
 	if f.err != nil {
-		if os.Getenv("PORTCULLIS_TEST_DATABASE_REQUIRED") == "1" {
+		if f.required {
 			t.Fatalf("required postgres unavailable: %v", f.err)
 		}
 		t.Skipf("postgres unavailable: %v", f.err)
@@ -55,14 +67,8 @@ func (f *postgresFixture) connect(t testing.TB, externalURL string, image func()
 	return f.pool
 }
 
-func (f *postgresFixture) start(externalURL string, selectImage func() (string, error)) {
+func (f *postgresFixture) start(dsn, image string) {
 	ctx := context.Background()
-	image, err := selectImage()
-	if err != nil {
-		f.err = err
-		return
-	}
-	dsn := os.Getenv(externalURL)
 	if dsn == "" {
 		tcLogger := logging.NewPrintfLogger(logging.New("debug", "json"), slog.LevelDebug, "testcontainers")
 		container, err := tcpostgres.Run(ctx, image,
@@ -110,7 +116,7 @@ func (f *postgresFixture) fresh(t testing.TB, admin *pgxpool.Pool) *pgxpool.Pool
 
 	name := fmt.Sprintf("pc_fresh_%d", f.freshDB.Add(1))
 	if _, err := admin.Exec(ctx, "create database "+name); err != nil {
-		if os.Getenv("PORTCULLIS_TEST_DATABASE_REQUIRED") == "1" {
+		if f.required {
 			t.Fatalf("required fresh postgres needs CREATEDB privilege: %v", err)
 		}
 		// An external test DB (PORTCULLIS_TEST_DATABASE_URL) may connect as a non-superuser without CREATEDB; skip rather than fail there.

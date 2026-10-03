@@ -2,7 +2,6 @@ package dbtest_test
 
 import (
 	"context"
-	"os"
 	"strconv"
 	"testing"
 
@@ -11,11 +10,11 @@ import (
 
 // TestPostgresRunsRequestedFamily refuses evidence from a different server family.
 func TestPostgresRunsRequestedFamily(t *testing.T) {
-	family := os.Getenv("PORTCULLIS_TEST_POSTGRES_FAMILY")
-	if family == "" {
-		family = "18"
+	settings, err := dbtest.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
 	}
-	want, err := strconv.Atoi(family)
+	want, err := strconv.Atoi(string(settings.PostgresFamily))
 	if err != nil {
 		t.Fatal(err)
 	}
