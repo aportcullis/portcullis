@@ -23,6 +23,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
+	"github.com/aportcullis/portcullis/tests/load/server/loadconfig"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -37,6 +38,10 @@ func main() {
 
 // run prepares an isolated least-privilege installation and removes its resources at shutdown.
 func run() error {
+	settings, err := loadconfig.Load()
+	if err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if _, err := os.Stat("tests/load/fixtures.local.json"); err == nil {
@@ -143,7 +148,7 @@ func run() error {
 		return err
 	}
 	defer func() { _ = logFile.Close() }()
-	server := exec.Command(".test-docker/e2e/portcullis")
+	server := exec.Command(settings.ApplicationBinary)
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(value, "PORTCULLIS_") {
 			server.Env = append(server.Env, value)
@@ -247,7 +252,7 @@ func run() error {
 		return err
 	}
 	defer func() { _ = os.Remove("tests/load/fixtures.local.json") }()
-	manifest, err := json.Marshal(map[string]any{"pid": server.Process.Pid, "harnessPid": os.Getpid(), "runLabel": os.Getenv("LOAD_RUN_LABEL"), "appOS": runtime.GOOS, "appArch": runtime.GOARCH, "logicalCPUs": runtime.NumCPU(), "metadataContainer": metadataDatabase.GetContainerID(), "targetContainer": targetDatabase.GetContainerID(), "baseURL": "http://127.0.0.1:18082", "targetRows": 100000, "requesters": 100, "runtimePrivileged": false})
+	manifest, err := json.Marshal(map[string]any{"pid": server.Process.Pid, "harnessPid": os.Getpid(), "runLabel": settings.RunLabel, "appOS": runtime.GOOS, "appArch": runtime.GOARCH, "logicalCPUs": runtime.NumCPU(), "metadataContainer": metadataDatabase.GetContainerID(), "targetContainer": targetDatabase.GetContainerID(), "baseURL": "http://127.0.0.1:18082", "targetRows": 100000, "requesters": 100, "runtimePrivileged": false})
 	if err != nil {
 		return err
 	}
