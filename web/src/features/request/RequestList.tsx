@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Show, createSignal, onMount } from "solid-js";
+import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
 
 import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
 
@@ -21,6 +21,7 @@ import {
 } from "@/entities/request/store";
 import { RequestDetailsDialog } from "@/features/request/RequestDetailsDialog";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
+import { ResultDialog } from "@/features/request/ResultDialog";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -39,12 +40,24 @@ const selectClass =
 const actorLabel = (a?: { displayName: string; email: string }): string =>
   a ? a.displayName || a.email : "—";
 
-// The state filter offers the lifecycle states this slice produces; the executing/terminal-execution family arrives with the execution slice.
-const filterStates = ["draft", "pending", "approved", "rejected", "expired", "cancelled"];
+// The state filter covers request review and execution outcomes.
+const filterStates = ["draft", "pending", "approved", "executing", "succeeded", "failed", "outcome_unknown", "rejected", "expired", "cancelled"];
 
 // RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details dialog carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
-  onMount(() => void loadAccessRequests());
+  onMount(() => {
+    void loadAccessRequests();
+    const refresh = () => { if (!document.hidden) void loadAccessRequests(); };
+    const timer = setInterval(refresh, 30_000);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    onCleanup(() => {
+      clearInterval(timer);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    });
+  });
+  const [resultId, setResultId] = createSignal<string>();
   // Own the draft dialog outside keyed rows and resolve its target by ID so refreshes update data without destroying input.
   const [showing, setShowing] = createSignal<AccessRequest | undefined>();
   const shown = () => {
@@ -127,7 +140,7 @@ export const RequestList: Component = () => {
                           Details
                         </Button>
                       </Show>
-                      <RequestRowActions request={r} />
+                      <RequestRowActions request={r} onResult={() => setResultId(r.id)} />
                     </span>
                   </TableCell>
                 </TableRow>
@@ -161,6 +174,7 @@ export const RequestList: Component = () => {
 
       {/* Mounted outside the table — see the note on `showing` above. */}
       <RequestDetailsDialog target={shown()} onClose={() => setShowing(undefined)} />
+      <ResultDialog requestId={resultId()} onClose={() => setResultId(undefined)} />
     </>
   );
 };
