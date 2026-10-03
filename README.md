@@ -2,54 +2,36 @@
 
 ![Portcullis logo](docs/media/logo.png)
 
-**Self-hosted, open-source database governance and result exploration.**
+**Self-hosted database governance. Request, review, execute once, and explore results.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml/badge.svg)](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml)
 
-[Getting started](#getting-started) · [Documentation](#documentation) · [Demo](#request-review-execute-once) · [Community](#community) · [Contributing](CONTRIBUTING.md)
+[Quickstart](#getting-started) · [Demo](#see-it-in-action) · [Docs](#documentation) · [Community](#community) · [Contribute](#contributing)
 
-Portcullis brings SQL requests, review, execution, and audit into one application. Teams define connection policies, review the exact SQL and parameters, and explore the results of an approved execution. A Go server embeds the web interface; PostgreSQL stores metadata.
+Portcullis brings SQL requests, approval, execution, and audit into one application. Review the exact SQL and parameters, apply connection policies, and explore an approved execution's results in your own infrastructure. One Go binary includes the web UI; PostgreSQL stores metadata.
 
-**Project status:** development alpha with a verified PostgreSQL governance workflow. MySQL is the next target; the full MVP is still ahead. See the [support matrix](docs/product/database-support.md), [validation record](docs/operations/m1-validation.md), and [license](#license).
+**Development alpha:** the PostgreSQL governance workflow is verified. MySQL is next; the full MVP is still ahead. Check the [database support matrix](docs/product/database-support.md) and [validation record](docs/operations/m1-validation.md) before adopting it.
 
-## Why Portcullis?
+## What you can do
 
-Database access decisions need context and evidence. Portcullis connects a request's purpose, approval inputs, execution outcome, and results so teams can review and investigate the same workflow in their own infrastructure.
-
-### Features
-
-- **Policy-controlled access:** per-connection Read / Write / DDL permissions, approval quorums, and time, row, and result-size limits.
-- **Reviewable requests:** titles, explanatory bodies, SQL formatting, typed parameters, drafts, and frozen submissions with distinct reviewers.
-- **Single-use execution:** revalidate approvals and policies before execution; report uncertain outcomes without automatically rerunning SQL.
-- **Typed results:** preserve numeric precision, sort the complete snapshot, filter, inspect full cells, and export CSV without re-execution.
-- **Authorization and evidence:** server-side permissions, encrypted credentials and payloads, expiring encrypted results, and append-only audit records.
-- **Self-hosted operation:** Docker Compose, an embedded web UI, local authentication, and optional Google OIDC.
-
-## Request, review, execute once
-
-A requester submits SQL and its context. A distinct reviewer approves or rejects it. The requester executes an approved statement once and explores its result.
-
-![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
-
-![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
-
-These walkthroughs show the actual application with synthetic data. The reviewer is fixture-provisioned; user-management screens are planned. The CSV walkthrough ends at the prepared download link. Request composition groups context and SQL, review actions have their own panel, and request rows expand into inline progress graphs. Results offer Table/Text views and visible-page clipboard copy; server paging and bounded skeletons keep loading manageable. Explore the [screenshots and product tour](docs/media/product-tour.md) for request composition, current sorting controls, connection policies, and authentication.
+- **Govern access:** configure Read / Write / DDL permissions, reviewer quorums, and execution limits per connection.
+- **Review with context:** compose a title, body, SQL, and typed parameters; follow progress inline and review frozen submissions.
+- **Execute once:** revalidate approvals and policies, then report the outcome without automatically replaying uncertain executions.
+- **Explore results:** sort by column, filter, inspect cells, switch Table/Text views, copy visible rows, or export CSV without rerunning SQL.
 
 <details>
-<summary>View request composition and result sorting screenshots</summary>
+<summary>Security and self-hosting details</summary>
 
-![A request row expanded into Draft, Review, Ready and Execution stages](docs/media/requests.png)
+Authorization is enforced on the server. Credentials and request payloads are encrypted; encrypted result snapshots expire, and audit records are append-only. Connection policies bound execution time, row count, and result size.
 
-![Request composition grouped into context and SQL, with inline review guidance](docs/media/request.png)
-
-![Paged results with exact large integers, decimal revenue, Table/Text views and visible-page copy](docs/media/results.png)
+Run with Docker Compose and the embedded web UI. Local authentication is included; Google OIDC is optional. See the [architecture](docs/ARCHITECTURE.md) and [operations quickstart](docs/operations/pg-alpha-quickstart.md) for boundaries and operating requirements.
 
 </details>
 
 ## Getting started
 
-To try Portcullis locally, install Git and Docker with Docker Compose:
+Install Git and Docker with Docker Compose, then run:
 
 ```sh
 git clone https://github.com/aportcullis/portcullis.git
@@ -57,32 +39,80 @@ cd portcullis
 docker compose up --build
 ```
 
-Open [localhost:8080](http://localhost:8080), create the first administrator, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and run your first request. The default policy requires one distinct reviewer; for a disposable single-user demo, set Read approvals to `0`.
+Open [localhost:8080](http://localhost:8080), create the first administrator, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and submit your first request.
 
-Compose preserves metadata and master keys in volumes. Its sample credentials and disabled database TLS are for local demonstrations. See the quickstart for operating requirements, backup considerations, and execution limitations.
+<details>
+<summary>Local demo settings and persistence</summary>
+
+The default policy requires one distinct reviewer. For a disposable single-user demo, set **Read approvals** to `0`.
+
+Compose preserves metadata and master keys in volumes. Sample credentials and disabled database TLS are for local demonstrations. Consult the quickstart for operating requirements, backup considerations, and execution limitations.
+
+</details>
+
+## See it in action
+
+Submit SQL with context → get a distinct review → execute once → explore the result. These captures show the actual application with synthetic data.
+
+<details>
+<summary>Request and review — walkthrough, composition, and approval controls</summary>
+
+![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
+
+Request context and SQL have separate sections. Reviewers inspect the evidence beside a dedicated approval panel.
+
+![Request composition grouped into context and SQL, with inline review guidance](docs/media/request.png)
+
+![A distinct reviewer inspecting SQL beside approval and rejection controls](docs/media/review.png)
+
+The demo reviewer is fixture-provisioned; user-management screens are planned.
+
+</details>
+
+<details>
+<summary>Request progress — expand a row to see its workflow</summary>
+
+Click a request title to see Draft → Review → Ready → Execution below the row. Unavailable history and uncertain outcomes are labeled explicitly.
+
+![A pending request expanded into its four-stage workflow](docs/media/requests.png)
+
+</details>
+
+<details>
+<summary>Results — sorting, Table/Text, clipboard copy, and CSV</summary>
+
+![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
+
+Column sorting applies across the cached snapshot and preserves numeric precision. Table/Text and clipboard copy use the current filtered page; CSV exports the complete snapshot in original query order. The walkthrough ends at the prepared download link.
+
+![Paged results with exact large integers, decimal revenue, and visible-page copy](docs/media/results.png)
+
+![Tab-separated Text view of the same result page](docs/media/results-text.png)
+
+</details>
+
+More screenshots and workflow explanations: [product tour](docs/media/product-tour.md).
 
 ## Documentation
 
-| Start here | Reference |
+| I want to… | Start here |
 | --- | --- |
-| Try the application | [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) · [Product tour](docs/media/product-tour.md) |
-| Check compatibility | [Database features and version evidence](docs/product/database-support.md) |
-| Understand operation | [Architecture](docs/ARCHITECTURE.md) · [Key rotation](docs/operations/key-rotation.md) · [Validation](docs/operations/m1-validation.md) |
-| Explore the direction | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
-| Work on the project | [Contributing](CONTRIBUTING.md) · [Development guide](docs/development.md) |
+| Try Portcullis | [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) |
+| Check database support | [Features and version evidence](docs/product/database-support.md) |
+| Understand the system | [Architecture](docs/ARCHITECTURE.md) · [Operations validation](docs/operations/m1-validation.md) |
+| Explore what's next | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
+| Develop or customize the UI | [Development guide](docs/development.md) · [UI customization](docs/conventions/frontend.md#changing-the-ui) |
 
-For UI contributors, the [customization guide](docs/conventions/frontend.md#changing-the-ui) identifies theme, layout and shared-component boundaries. The [documentation index](docs/README.md) contains the complete repository documentation. The next sequence is MySQL parity → Kubernetes through Helm/Kustomize and CloudNativePG integration → SQL review/EXPLAIN → saved queries with schema preview. Sensitive-data masking precedes later agent integration. Deployment and integration plans, including Helm/Kustomize, are tracked in the roadmap.
+Browse the [documentation index](docs/README.md) for the full reference.
 
 ## Community
 
-Join by trying the application, sharing workflow feedback, improving documentation, or contributing a small change. [COMMUNITY.md](COMMUNITY.md) explains the participation paths and our GitHub-centered model.
-
-We have chosen Discussions for introductions, Q&A, ideas, and experience reports, and Issues for bugs and accepted work. Discussions setup is not yet verified; use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions and feedback in the meantime.
+Try the application, share workflow feedback, or help improve it. [COMMUNITY.md](COMMUNITY.md) explains how to participate. Use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for bugs, questions, and feedback; Discussions setup is not yet verified.
 
 ## Contributing
 
-Contributions can start with documentation, bug reproduction, tests, or implementation. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and links to development requirements. Discuss substantial changes in an issue before implementation so they can be aligned with the product scope.
+Documentation, bug reproductions, tests, and small fixes are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and discuss substantial changes in an issue before implementation.
 
 ## License
 
-Portcullis is licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE) for project attribution. Third-party components retain their respective licenses.
+[Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution; third-party components retain their own licenses.
