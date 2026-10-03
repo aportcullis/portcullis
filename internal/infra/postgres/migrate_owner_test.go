@@ -177,6 +177,8 @@ func TestRuntimeRoleRotationRunbook(t *testing.T) {
 		`revoke temporary on database ` + ident + ` from public`,
 		`grant connect on database ` + ident + ` to pc_rot_new`,
 		`grant usage on schema public to pc_rot_new`,
+		`grant usage on schema result_cache to pc_rot_new`,
+		`grant select, insert, update, delete on all tables in schema result_cache to pc_rot_new`,
 		`grant select, insert, update on all tables in schema public to pc_rot_new`,
 		`grant usage on all sequences in schema public to pc_rot_new`,
 		`grant delete on public.settings to pc_rot_new`,
@@ -202,6 +204,8 @@ func TestRuntimeRoleRotationRunbook(t *testing.T) {
 		`revoke all on all tables in schema public from pc_rot_new`,
 		`revoke usage on all sequences in schema public from pc_rot_new`,
 		`revoke usage on schema public from pc_rot_new`,
+		`revoke all on all tables in schema result_cache from pc_rot_new`,
+		`revoke usage on schema result_cache from pc_rot_new`,
 		`revoke connect on database ` + ident + ` from pc_rot_new`,
 		`drop role pc_rot_new`,
 	} {

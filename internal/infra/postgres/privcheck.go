@@ -111,6 +111,14 @@ var tablePolicies = map[string]tablePolicy{
 		required:  []string{"SELECT", "INSERT", "UPDATE", "DELETE"},
 		forbidden: []string{"TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
+	"result_cache.result_sets": {
+		required:  []string{"SELECT", "INSERT", "UPDATE", "DELETE"},
+		forbidden: []string{"TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
+	"result_cache.result_chunks": {
+		required:  []string{"SELECT", "INSERT", "UPDATE", "DELETE"},
+		forbidden: []string{"TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
+	},
 }
 
 // querier is the multi-row query surface verifyTablePrivileges needs; both *pgxpool.Conn (migration postflight) and *pgxpool.Pool (runtime boot check) satisfy it.
@@ -121,7 +129,7 @@ type querier interface {
 // verifyTablePrivileges separates missing required grants from excess grants on public base tables and sequences; only excess grants may be downgraded in development.
 func verifyTablePrivileges(ctx context.Context, q querier, role, subject string) (missing, forbidden error, _ error) {
 	rows, err := q.Query(ctx, `
-		select c.relname,
+		select case when n.nspname='public' then c.relname else n.nspname||'.'||c.relname end,
 		       has_table_privilege($1, c.oid, 'SELECT'),
 		       has_table_privilege($1, c.oid, 'INSERT'),
 		       has_table_privilege($1, c.oid, 'UPDATE'),
@@ -132,7 +140,7 @@ func verifyTablePrivileges(ctx context.Context, q querier, role, subject string)
 		       has_table_privilege($1, c.oid, 'MAINTAIN')
 		from pg_class c
 		join pg_namespace n on n.oid = c.relnamespace
-		where n.nspname = 'public' and c.relkind in ('r', 'p')
+		where n.nspname in ('public','result_cache') and c.relkind in ('r', 'p')
 		order by c.relname`, role)
 	if err != nil {
 		return nil, nil, err
@@ -165,6 +173,27 @@ func verifyTablePrivileges(ctx context.Context, q querier, role, subject string)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
+	}
+	schemas, err := q.Query(ctx, `select has_schema_privilege($1,'result_cache','USAGE'),has_schema_privilege($1,'result_cache','CREATE')`, role)
+	if err != nil {
+		return nil, nil, err
+	}
+	var usage, create bool
+	if schemas.Next() {
+		err = schemas.Scan(&usage, &create)
+	}
+	if err == nil {
+		err = schemas.Err()
+	}
+	schemas.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+	if missing == nil && !usage {
+		missing = safeErrorf("%s lacks result_cache schema USAGE", subject)
+	}
+	if forbidden == nil && create {
+		forbidden = safeErrorf("%s holds result_cache schema CREATE", subject)
 	}
 
 	// Sequences share the bug class (0005 noted the coverage gap): the runtime needs USAGE for identity/serial columns, and UPDATE (setval — a rewind is a duplicate-key denial of service) is over-privilege.

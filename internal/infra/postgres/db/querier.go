@@ -30,6 +30,8 @@ type Querier interface {
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (OrganizationMembership, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteResultChunks(ctx context.Context, arg DeleteResultChunksParams) error
+	DeleteResultSet(ctx context.Context, arg DeleteResultSetParams) error
 	// The archive guard (§4.3): refuse while an execution is in flight. The state is unreachable until the execution slice; the guard is inherited (ADR-0018).
 	ExistsExecutingForConnection(ctx context.Context, arg ExistsExecutingForConnectionParams) (bool, error)
 	// Expire pending/approved requests and append derived audit events in the policy/archive transaction, using the post-lock observed instant (ADR-0018).
@@ -54,6 +56,8 @@ type Querier interface {
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error)
 	GetQueryExecution(ctx context.Context, arg GetQueryExecutionParams) (QueryExecution, error)
+	GetResultChunk(ctx context.Context, arg GetResultChunkParams) (ResultCacheResultChunk, error)
+	GetResultSet(ctx context.Context, arg GetResultSetParams) (ResultCacheResultSet, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
@@ -71,6 +75,8 @@ type Querier interface {
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
 	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
+	InsertResultChunk(ctx context.Context, arg InsertResultChunkParams) error
+	InsertResultSet(ctx context.Context, arg InsertResultSetParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
 	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
 	ListAccessRequestsAsc(ctx context.Context, arg ListAccessRequestsAscParams) ([]ListAccessRequestsAscRow, error)
@@ -87,6 +93,7 @@ type Querier interface {
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// Return active target summaries under requests.create without connection-admin permissions (ADR-0008).
 	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
+	ListResultAccounting(ctx context.Context, organizationID pgtype.UUID) ([]ResultCacheResultSet, error)
 	// Lock membership FOR SHARE before checking eligibility. Concurrent revocation serializes only once the future role-management path takes FOR UPDATE on the same row (ADR-0018).
 	LockApproverMembership(ctx context.Context, arg LockApproverMembershipParams) ([]int32, error)
 	// Guard state transitions and draft versions. Keep the active, permitted, non-requester approval predicate aligned across counts and views (ADR-0018).
@@ -97,6 +104,7 @@ type Querier interface {
 	// The config-replacement cascade's half of LockSweptRequestsForConnection: it touches pending/approved only, so it locks only those. Drafts survive a config change — the connection is still there and a draft carries no approval, so it can simply be submitted against the new configuration (unlike archive, which takes the connection away entirely).
 	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
 	LockQueryExecution(ctx context.Context, arg LockQueryExecutionParams) (QueryExecution, error)
+	LockResultAdmission(ctx context.Context) error
 	// Lock cascade request rows before observing time. The caller’s exclusive connection lock prevents new requests from appearing behind the sweep.
 	LockSweptRequestsForConnection(ctx context.Context, arg LockSweptRequestsForConnectionParams) ([]pgtype.UUID, error)
 	// Observe time in a separate statement after all locks; an inline UPDATE timestamp may be evaluated before its lock wait.
@@ -117,6 +125,7 @@ type Querier interface {
 	RoleNameForUser(ctx context.Context, arg RoleNameForUserParams) (string, error)
 	// Stamp submission, updated_at, and quorum-zero approval expiry from one post-lock database instant; reuse it in derived audit evidence.
 	SubmitAccessRequest(ctx context.Context, arg SubmitAccessRequestParams) (AccessRequest, error)
+	TouchResultSet(ctx context.Context, arg TouchResultSetParams) error
 	// Use the decision’s observed instant for transition and approval expiry; otherwise clock_timestamp() avoids dating writes before lock waits.
 	TransitionAccessRequest(ctx context.Context, arg TransitionAccessRequestParams) (AccessRequest, error)
 	UpdateAccessRequestDraftPayload(ctx context.Context, arg UpdateAccessRequestDraftPayloadParams) (AccessRequest, error)

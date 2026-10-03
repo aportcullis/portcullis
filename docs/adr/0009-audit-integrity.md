@@ -73,6 +73,8 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
   revoke temporary on database <db> from public;
   grant connect on database <db> to <new>;
   grant usage on schema public to <new>;
+  grant usage on schema result_cache to <new>;
+  grant select, insert, update, delete on all tables in schema result_cache to <new>;
   -- No DELETE anywhere except settings: hard delete is revoked for the runtime
   -- (0010, amendment below) — a rotation must not resurrect it, or boot
   -- verification fails on every start with no migration left to self-repair.
@@ -101,6 +103,8 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
       revoke usage on sequences from <old>;
   revoke all on all tables in schema public from <old>;
   revoke usage on all sequences in schema public from <old>;
+  revoke all on all tables in schema result_cache from <old>;
+  revoke usage on schema result_cache from <old>;
   revoke usage on schema public from <old>;
   revoke connect on database <db> from <old>;
   revoke <old> from <login user>;

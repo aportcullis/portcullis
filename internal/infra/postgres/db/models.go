@@ -176,6 +176,28 @@ type QueryExecution struct {
 	Truncated       bool
 }
 
+type ResultCacheResultChunk struct {
+	ResultID       pgtype.UUID
+	OrganizationID pgtype.UUID
+	ChunkIndex     int32
+	Nonce          []byte
+	Ciphertext     []byte
+}
+
+type ResultCacheResultSet struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	OwnerUserID    pgtype.UUID
+	RowCount       int64
+	ByteSize       int64
+	Truncated      bool
+	CreatedAt      pgtype.Timestamptz
+	ExpiresAt      pgtype.Timestamptz
+	LastAccessedAt pgtype.Timestamptz
+	KeyVersion     int32
+	WrappedDek     []byte
+}
+
 type Role struct {
 	ID                 pgtype.UUID
 	OrganizationID     pgtype.UUID
