@@ -1,0 +1,13 @@
+# Encryption key rotation
+
+M1 supports resumable eager rotation through `portcullis key rotate`. Use the restricted runtime database login; migrations are a separate owner operation. Back up metadata and all retained master keys before changing configuration.
+
+1. Stop all serving instances and wait for admitted executions to finish. An interrupted execution is recovered as `outcome_unknown`; check the target before submitting another request.
+2. Generate a fresh 32-byte master key in your secret manager. Supply it through `PORTCULLIS_MASTER_KEY_FILE` (base64 file) or `PORTCULLIS_MASTER_KEY`.
+3. Keep the former active key in `PORTCULLIS_MASTER_KEY_PREVIOUS_FILE` as `1:<base64>`. On subsequent rotations retain every earlier version in ascending consecutive order, one entry per line, including the former active version. The inline alternative is `PORTCULLIS_MASTER_KEY_PREVIOUS=1:<base64>,2:<base64>`. Use exactly one active source and one historical source; never put keys into command arguments or logs.
+4. Run `portcullis key rotate` with the new keyring and runtime DB configuration. It locks batches of at most 100 credentials, 100 request payloads, and 100 result wrappers; all updates and one audit event per affected organization commit together. Credentials and payloads receive fresh encryption envelopes; result DEKs are rewrapped without rewriting chunks. A failed batch rolls back and the next invocation resumes from old encryption versions.
+5. Start the server with the same keyring after the command reports `rows_on_old_encryption_versions=0`. Users must log in again because active-key CSRF tokens changed.
+
+**Retain historical keys.** Zero old encryption rows does not mean old integrity keys can be destroyed. Approved requests and immutable audit evidence retain their original HMAC key version. The M1 format therefore keeps all previous KEKs for historical digest verification; the CLI never rewrites approval digests or audit records. New writes use the highest version, `max(previous)+1`. Do not restart a writer using the old active-key configuration during rotation.
+
+If a key is lost without a backup, its ciphertext and digest verification are unrecoverable. Result-cache loss is expected after PostgreSQL crash/failover; execution history survives and SQL is never automatically rerun.
