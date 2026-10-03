@@ -43,10 +43,22 @@ Verified does not mean every SQL statement, extension or engine version is accep
 
 ## Version and evidence boundaries
 
-| Engine | Current evidence | Version scope |
+[ADR-0030](../adr/0030-database-version-qualification-window.md) sets PostgreSQL compatibility maintenance to **16/17/18/19**, preserving current Portcullis behavior without promising engine-specific feature expansion. PostgreSQL has an explicit four-family exception to the initial three-family proposal; MySQL retains at most three candidate families. Later expansion requires a scope decision and acceptance evidence. Candidates are not supported-version claims. The metadata deployment baseline remains PostgreSQL 18, independently of managed-target coverage.
+
+| Engine | Family | Product evidence / qualification status |
 | --- | --- | --- |
-| PostgreSQL | [Full M1 verification](../operations/m1-validation.md), including actual CSV saving/readback | PostgreSQL 18 in the tested stack; ADR-0001's ≥14 design floor is not an all-version certification |
-| MySQL | Native CLI engine experiments only; product adapter pending | MySQL 8.4 LTS is the primary planned CI target; measured experiment was 8.4.10, not a production-version recommendation |
+| PostgreSQL | 16 (current upstream patch: 16.15) | GA qualification target; full family gate pending |
+| PostgreSQL | 17 (17.11) | GA qualification target; full family gate pending |
+| PostgreSQL | 18 (18.6) | [M1 correctness evidence](../operations/m1-validation.md) on the recorded 18 stack; latest-patch requalification pending |
+| PostgreSQL | 19 Beta 4 | Included in the maintenance window; preview qualification until planned GA 2026-10-29, then GA requalification; full gate pending |
+| MySQL | 8.4 LTS | Priority qualification target; product driver pending. CLI experiment on 8.4.10 is not product acceptance |
+| MySQL | 9.7 LTS | Priority qualification target; product driver and full gate pending |
+| MySQL | 26.7 Innovation | Third qualification candidate; product driver and full gate pending |
+| MySQL | 8.0 | Outside target window; upstream Sustaining Support since 2026-04-21 |
+
+Use current security patches in each qualified family and pin test images by digest. Engine version, patch, test results and skips must accompany support evidence. Parser coverage remains an explicit allow-list; newer server versions do not authorize unclassified SQL. PostgreSQL 19 does not remove 16 from scope. Qualification status is separate from the maintenance window; no new syntax/extension support is promised. Family retirement or wider coverage requires an explicit scope decision and announced migration guidance.
+
+Primary sources checked 2026-10-03: [PostgreSQL versions](https://www.postgresql.org/support/versioning/), [19 schedule](https://wiki.postgresql.org/wiki/PostgreSQL_19_Open_Items), [MySQL release tracks](https://dev.mysql.com/doc/refman/9.7/en/mysql-releases.html), [26.7 notes](https://dev.mysql.com/doc/relnotes/mysql/26.7/en/) and [8.0 lifecycle](https://www.mysql.com/support/eol-notice.html).
 
 The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. MCP Gateway/WebMCP are excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
 

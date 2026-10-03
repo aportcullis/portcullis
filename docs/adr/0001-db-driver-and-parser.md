@@ -91,3 +91,7 @@ Two directions:
 - `modernc.org/sqlite/lib` exposes `Xsqlite3_stmt_readonly` / authorizer: https://pkg.go.dev/modernc.org/sqlite/lib
 - PostgreSQL support windows (13 EOL 2025-11; 14 EOL 2026-11): https://endoflife.date/postgresql
 - MySQL support (8.0 sustaining, 8.4 LTS): https://endoflife.date/mysql
+
+## Version-window amendment (2026-10-03)
+
+[ADR-0030](0030-database-version-qualification-window.md) supersedes the open-ended PostgreSQL ≥14 / MySQL ≥8.0 support floor with PostgreSQL 16/17/18/19 compatibility maintenance without version-specific feature expansion. PostgreSQL 19 remains preview until GA qualification, and MySQL 8.4/9.7 LTS plus 26.7 Innovation are candidates. Existing driver/parser choices and fail-closed behavior remain binding; this policy does not certify pending versions or the unimplemented MySQL executor.

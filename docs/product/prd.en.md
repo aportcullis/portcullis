@@ -232,6 +232,7 @@ Current implementation status is tracked separately in the [DB feature support m
 | Request → approval → execution → audit | Required | Required |
 
 - Do not label a DB supported in the UI until it passes these common acceptance tests.
+- ADR-0030 sets PostgreSQL compatibility maintenance to 16/17/18/19: preserve existing Portcullis behavior and fix regressions rather than expand engine-specific features or syntax. Keep 16 when adding 19. Version 19 remains preview until GA and final qualification. PostgreSQL explicitly uses four families; MySQL initially has at most three candidates (8.4 LTS/9.7 LTS/26.7 Innovation), excluding 8.0. Publish verified versus pending status, actual patches/digests, failures and skips. Metadata PostgreSQL 18 and capacity qualification remain separate; expansion or retirement requires an explicit scope decision.
 - Reject transaction control, session mutation, native file/network I/O, multiple statements, and unclassified statements in MVP.
 - Permit implicit-commit statements such as MySQL DDL only under allowed DDL policy and warn approvers that rollback may be impossible.
 
@@ -857,7 +858,7 @@ Resolved items; their ADRs are binding specifications.
 
 | Item | Resolution |
 |---|---|
-| DB versions/drivers/parsers | ADR-0001: pgx/go-sql-driver; PG pgplex/pgparser, MySQL tidb pkg/parser; SQLite scope removed by ADR-0025; PG ≥14, MySQL ≥8.0 with 8.4 LTS target |
+| DB versions/drivers/parsers | ADR-0001: pgx/go-sql-driver; PG pgplex/pgparser, MySQL tidb pkg/parser; SQLite scope removed by ADR-0025; ADR-0030 supersedes the open-ended version floor: PG 16/17/18/19 compatibility maintenance (19 preview until GA qualification); MySQL 8.4/9.7 LTS and 26.7 Innovation candidates |
 | Statement classes/edge fixtures | ADR-0002: 27 literal fixtures and structural CTE-DML/SELECT INTO detection |
 | Master-key format/rotation/loss | ADR-0003: single base64 file, `_PREVIOUS` versions, eager batch rotation, unrecoverable key loss; envelope/AAD/Argon2 parameters |
 | Metadata RLS | ADR-0004: excluded in MVP, RLS-ready schema, mandatory cross-org tests |

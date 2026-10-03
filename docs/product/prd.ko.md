@@ -214,6 +214,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 | request→approval→execution→audit | 필수 | 필수 |
 
 - 위 공통 인수 테스트를 통과하지 못한 DB는 UI에서 “지원”으로 표시하지 않는다.
+- ADR-0030에 따라 PostgreSQL 16/17/18/19에서 기존 Portcullis 기능의 호환성과 회귀 수정만 유지하며, DB 버전별 신규 기능·문법 확장을 약속하지 않는다. 19를 추가해도 16은 제외하지 않으며, 19는 GA와 최종 검증 전까지 preview로 구분한다. PostgreSQL은 명시적으로 4개 family를 유지하고, MySQL 초기 후보는 최대 3개(8.4 LTS/9.7 LTS/26.7 Innovation), 8.0은 제외한다. 검증 완료·대기, 실제 patch/digest, 실패·skip을 지원 표에 기록한다. Metadata PostgreSQL 18과 성능 검증은 별도 계약이며 범위 확대·축소는 명시적 결정 후 진행한다.
 - transaction control, session mutation, DB-native file/network I/O, 여러 statement, parser가 분류하지 못한 statement는 MVP에서 거부한다.
 - MySQL DDL처럼 implicit commit이 발생하는 문장은 DDL 허용 정책 아래에서만 실행하고, 승인 화면에 rollback 불가 가능성을 표시한다.
 
@@ -822,7 +823,7 @@ UX가 차별점이므로 API와 화면을 동시에 맞춘다.
 
 | 항목 | 해소 |
 |---|---|
-| DB 최소 버전·driver/parser 라이브러리 | **ADR-0001** (pgx / go-sql-driver; PG=pgplex/pgparser, MySQL=tidb pkg/parser; SQLite는 ADR-0025로 제외; PG≥14, MySQL≥8.0·8.4 LTS 타깃) |
+| DB 최소 버전·driver/parser 라이브러리 | **ADR-0001** (pgx / go-sql-driver; PG=pgplex/pgparser, MySQL=tidb pkg/parser; SQLite는 ADR-0025로 제외; ADR-0030으로 최소 버전 범위를 대체: PG 16/17/18/19 호환성 유지(19는 GA 검증 전 preview); MySQL 8.4/9.7 LTS·26.7 Innovation 후보) |
 | statement 분류표·edge fixture | **ADR-0002** (리터럴 fixture 27종, CTE-DML/`SELECT INTO` 구조 검출 확정) |
 | master key 파일 형식·rotation·key 유실 정책 | **ADR-0003** (base64 단일 파일, `_PREVIOUS` 다중 버전 형식, eager batch rotation, 유실 시 복구 불가 명시; envelope/AAD/Argon2 전체 파라미터 포함) |
 | metadata RLS | **ADR-0004** (MVP 미적용, RLS-ready 유지, cross-org 테스트 필수) |
