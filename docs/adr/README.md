@@ -54,6 +54,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0037](0037-page-hierarchy-and-responsive-ux.md) | Page hierarchy and responsive request workflows | Accepted |
 | [0038](0038-inline-request-workflow.md) | Inline request workflow from authorized summary facts | Accepted |
 | [0039](0039-result-views-and-clipboard.md) | Bounded result views, clipboard export and loading | Accepted |
+| [0040](0040-recorded-execution-time.md) | Recorded execution time in request and result views | Accepted |
 
 ## Template
 ```markdown

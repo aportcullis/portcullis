@@ -9,6 +9,7 @@ import { LogicalType } from "@/gen/portcullis/v1/query_executions_pb";
 import { errorMessage } from "@/entities/request/store";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
+import { ExecutionSummary } from "@/features/request/ExecutionSummary";
 import { cellText, resultText, resultClipboard } from "@/features/request/resultPresentation";
 import { cycleResultSorting } from "@/features/request/sorting";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
@@ -103,9 +104,8 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   };
   return <section aria-label="Query results" class="flex min-w-0 flex-col gap-6">
       <header><A href={`/requests/${props.requestId}`} class="text-sm underline">Back to request</A>
-      <h1 class="mt-3 text-2xl font-semibold">Query result</h1><p class="text-sm text-muted-foreground">
-        <Show when={execution()}>{e => <span>{e().rowsAffected.toString()} rows affected · {e().durationMs.toString()} ms</span>}</Show>
-      </p></header>
+      <h1 class="mt-3 text-2xl font-semibold">Query result</h1></header>
+      <Show when={execution()}>{e => <ExecutionSummary execution={e()} />}</Show>
       <Show when={read.loading()}><LoadingSkeleton label="Loading result…" /></Show>
       <Show when={read.error()}><p role="alert" class="text-destructive">{read.error()} Results may have expired or been evicted.</p></Show>
       <Show when={execution()?.state === AccessRequestState.OUTCOME_UNKNOWN}><p role="alert">Outcome unknown. Check the target database and audit history before creating another request. This execution will not retry.</p></Show>

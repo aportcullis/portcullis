@@ -35,6 +35,8 @@ import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
+import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
+import { RequestExecutionSummary } from "@/features/request/RequestExecutionSummary";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
@@ -182,6 +184,9 @@ export const RequestDetailsPanel: Component<{
               </form>
             }
           >
+          <Show when={isOwner() && hasPermission("requests.get") && [AccessRequestState.SUCCEEDED, AccessRequestState.FAILED, AccessRequestState.OUTCOME_UNKNOWN].includes(current().effectiveState)}>
+            <RequestExecutionSummary requestId={props.requestId} />
+          </Show>
           <div class="request-review-layout">
           <div class="content-surface request-evidence">
             <h2 class="text-base font-semibold">Request evidence</h2>
