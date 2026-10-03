@@ -1,0 +1,99 @@
+syntax = "proto3";
+package portcullis.v1;
+
+import "google/protobuf/timestamp.proto";
+import "portcullis/v1/access_requests.proto";
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// QueryExecutions accepts only a stored request ID; execution payloads cannot be replaced.
+service QueryExecutions {
+  rpc Execute(ExecuteQueryRequest) returns (QueryExecution) {}
+  rpc Get(GetQueryExecutionRequest) returns (QueryExecution) {}
+  rpc Cancel(CancelQueryExecutionRequest) returns (CancelQueryExecutionResponse) {}
+  rpc GetResult(GetQueryResultRequest) returns (QueryResultPage) {}
+  rpc ExportCSV(ExportQueryCSVRequest) returns (stream QueryCSVChunk) {}
+}
+message ExecuteQueryRequest {
+  string request_id = 1;
+}
+message GetQueryExecutionRequest {
+  string request_id = 1;
+}
+message CancelQueryExecutionRequest {
+  string request_id = 1;
+}
+message CancelQueryExecutionResponse {}
+message QueryExecution {
+  AccessRequestState state = 1;
+  int64 rows_affected = 2;
+  int64 duration_ms = 3;
+  bool result_available = 4;
+  google.protobuf.Timestamp result_expires_at = 5;
+  int64 row_count = 6;
+  int64 byte_count = 7;
+  bool truncated = 8;
+}
+message GetQueryResultRequest {
+  string request_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  optional int32 sort_column = 4;
+  bool descending = 5;
+  optional int32 filter_column = 6;
+  string filter = 7;
+}
+message ExportQueryCSVRequest {
+  string request_id = 1;
+}
+message QueryCSVChunk {
+  bytes data = 1;
+}
+enum LogicalType {
+  LOGICAL_TYPE_UNSPECIFIED = 0;
+  LOGICAL_TYPE_STRING = 1;
+  LOGICAL_TYPE_BOOL = 2;
+  LOGICAL_TYPE_INT = 3;
+  LOGICAL_TYPE_DECIMAL = 4;
+  LOGICAL_TYPE_FLOAT = 5;
+  LOGICAL_TYPE_BYTES = 6;
+  LOGICAL_TYPE_DATE = 7;
+  LOGICAL_TYPE_TIME = 8;
+  LOGICAL_TYPE_TIMESTAMP = 9;
+  LOGICAL_TYPE_TIMESTAMPTZ = 10;
+  LOGICAL_TYPE_JSON = 11;
+  LOGICAL_TYPE_UUID = 12;
+  LOGICAL_TYPE_ARRAY = 13;
+  LOGICAL_TYPE_UNKNOWN = 14;
+}
+message ColumnMeta {
+  string name = 1;
+  LogicalType logical_type = 2;
+  string db_type_name = 3;
+  bool nullable = 4;
+}
+message CellValue {
+  oneof kind {
+    bool is_null = 1;
+    string string_value = 2;
+    bool bool_value = 3;
+    string int_value = 4;
+    string decimal_value = 5;
+    double double_value = 6;
+    bytes bytes_value = 7;
+    string temporal_value = 8;
+  }
+}
+message QueryResultRow {
+  repeated CellValue cells = 1;
+}
+message QueryResultPage {
+  repeated ColumnMeta columns = 1;
+  repeated QueryResultRow rows = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int64 total_count = 5;
+  int32 total_pages = 6;
+  bool truncated = 7;
+  google.protobuf.Timestamp expires_at = 8;
+}
