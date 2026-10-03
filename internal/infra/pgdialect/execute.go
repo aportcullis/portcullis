@@ -50,10 +50,11 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 	}
 	// Deterministic renderings for the ADR-0005 canonical cell texts; buildConfig cleared RuntimeParams, so these are the only session knobs. client_encoding is pinned to UTF8 so text values are UTF-8 regardless of the target database's server encoding (PG transcodes on the wire) — the result grid and CSV/JSON export (ADR-0005) assume UTF-8.
 	cfg.RuntimeParams = map[string]string{
-		"client_encoding": "UTF8",
-		"TimeZone":        "UTC",
-		"DateStyle":       "ISO",
-		"bytea_output":    "hex",
+		"client_encoding":             "UTF8",
+		"standard_conforming_strings": "on",
+		"TimeZone":                    "UTC",
+		"DateStyle":                   "ISO",
+		"bytea_output":                "hex",
 	}
 
 	if exec.Governed {
@@ -72,6 +73,11 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 	if err != nil {
 		// Connection-phase failures leak no more than a connection test does.
 		return nil, classify(err)
+	}
+
+	if conn.ParameterStatus("standard_conforming_strings") != "on" {
+		closeConn(ctx, conn)
+		return nil, &query.Rejection{Reason: query.RejectSessionMutation}
 	}
 
 	begin := "BEGIN"

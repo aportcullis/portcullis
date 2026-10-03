@@ -7,6 +7,7 @@
 - Encrypt at rest: connection credentials, request SQL + parameters (including inline literals), and result snapshots.
 - **Never log** SQL, parameters, credentials, or result rows.
 - Treat correlation headers as untrusted input: accept an `X-Request-Id` only when non-empty, **≤ 128 bytes**, and matching `[A-Za-z0-9._:/-]` exactly; anything else is **replaced** with a fresh generated id (never truncated) before echoing, logging, or persisting it in audit metadata (ADR-0010).
+- Pin PostgreSQL execution string interpretation to `standard_conforming_strings=on` and verify the server report before issuing SQL (ADR-0044); never rely on inherited database/role defaults.
 - **Audit evidence**
   - Store redacted SQL with comments removed and literals replaced by typed placeholders.
   - On parse failure, retain only digest and statement type.

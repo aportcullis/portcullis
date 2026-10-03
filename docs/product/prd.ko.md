@@ -682,6 +682,7 @@ audit_events
 ### 8.2 SQL 실행 안전성
 - DB dialect parser로 정확히 하나의 statement인지 검증하고 statement 종류를 connection policy와 대조.
   단순 keyword/정규식만으로 권한을 판단하지 않음.
+- PostgreSQL 실행 연결은 시작 시 `standard_conforming_strings=on`을 고정하고 statement 실행 전에 서버 보고값을 확인한다. 값이 없거나 다르면 거부한다(ADR-0044). parser·binder·redactor·대상 DB의 일반 문자열 해석을 일치시킨다.
 - 명명된 파라미터는 각 native driver의 bind parameter로 변환.
   값은 SQL 문자열에 직접 삽입하지 않음.
 - PostgreSQL 실행은 선언된 파라미터 타입을 native OID로 전달한다(ADR-0016).

@@ -719,6 +719,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 ### 8.2 SQL execution safety
 
 - Parse exactly one statement per dialect and check its class against policy; never authorize by keywords/regex alone.
+- PostgreSQL execution pins `standard_conforming_strings=on` at connection startup and verifies the server report before any statement; missing or mismatched reports fail closed (ADR-0044). Parser, binder, redactor and target must share ordinary-string interpretation.
 - Convert named parameters into native binds without interpolating values.
 - PostgreSQL sends declared parameter types as native OIDs, ADR-0016.
   - RFC 3339 `timestamp` maps to `timestamptz`; untyped null relies on SQL context and ambiguous expressions require explicit casts.
