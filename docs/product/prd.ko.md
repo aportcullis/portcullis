@@ -457,6 +457,8 @@ Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만�
 | UI 라이브러리 | Kobalte + Tailwind + TanStack Table | 데이터 그리드가 제품 핵심 |
 | Schema 엔진 | Atlas Community CLI subprocess | 버전·checksum을 고정하고 `SchemaEngine` 인터페이스로 격리 |
 
+UI 변경 기반(ADR-0036): 개발자가 세션·인가·요청·결과 로직과 독립적으로 공통 디자인 토큰(밝은/어두운 색상, 글꼴, radius, 화면 폭·간격), 브랜딩 asset과 화면 배치 slot을 변경할 수 있게 한다. 기존 기본값과 페이지 중심 흐름을 유지하며 사용자 설정 화면이나 조직별 브랜딩 저장 기능을 약속하지 않는다.
+
 ### 5.2 메타데이터 저장소 원칙
 **"어디서 돌든 메타데이터는 PostgreSQL."** compose든 Helm이든 동일 스키마·쿼리·sqlc 코드가 동작.
 환경별로 저장소가 갈리면 코드가 두 벌이 되므로 금지.

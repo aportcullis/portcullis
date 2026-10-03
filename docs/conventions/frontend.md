@@ -73,3 +73,13 @@ When shared logic needs a caller-specific piece (an error formatter, a label), *
 ## Page-first workflows
 
 Routine create/edit/detail/review/settings/results workflows use pages with direct URLs and visible navigation (ADR-0022). Reserve modal confirmation for risky or destructive actions. Read-only expansion, full cells and validation errors stay inline. Fence asynchronous reads/mutations on route unmount and session changes; background refresh must preserve active SQL edits and decision reasons.
+
+## Changing the UI
+
+Design values live in [`web/src/app/theme.css`](../../web/src/app/theme.css): light/dark semantic colors, `--ui-font`, `--code-font`, `--radius`, `--content-width`, `--page-padding`, `--section-gap` and `--header-padding`. The defaults preserve the existing appearance. Global Tailwind mappings stay in `index.css`; use semantic utilities such as `bg-background`, `text-muted-foreground` and `font-mono` so overrides reach components.
+
+Change application layout in [`layout.css`](../../web/src/app/layout.css) and [`ApplicationFrame`](../../web/src/shared/ui/ApplicationFrame.tsx). The frame accepts brand/navigation/account/content slots and has no session, permission or RPC knowledge. AppShell owns those decisions and supplies the slots. For a sidebar layout, rearrange the frame rather than duplicating authorization or navigation logic.
+
+Restyle owned primitives in `shared/ui`; assemble features in `pages`. Branding is centralized through `BrandLogo` and `web/public/brand/` assets. UI asset changes should update README media when they alter the documented appearance. This is a source customization guide; a runtime theme picker and organization branding are separate product work (ADR-0036).
+
+For example, edit `--content-width: 80rem` and `--page-padding: 2rem` in `theme.css` to widen the application and add space. Set `--radius: 0.75rem` to adjust shared rounded controls. Edit the light and dark semantic colors together and check text, errors and focus visibility in both. Run `pnpm -C web typecheck`, `lint`, `test`, `build`, and the relevant browser workflows before committing.

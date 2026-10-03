@@ -1,0 +1,17 @@
+/* Application layout uses project theme values; features own their local layouts. */
+@layer components {
+  .application-frame { display: flex; min-height: 100vh; flex-direction: column; }
+  .application-header { border-bottom: 1px solid var(--border); }
+  .application-header-content {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: var(--content-width); margin-inline: auto;
+    gap: var(--section-gap); padding: var(--header-padding) var(--page-padding);
+  }
+  .application-navigation { display: flex; align-items: center; gap: var(--section-gap); }
+  .application-account { display: flex; align-items: center; gap: 0.75rem; }
+  .application-content {
+    display: flex; flex: 1; flex-direction: column; width: 100%;
+    max-width: var(--content-width); margin-inline: auto;
+    gap: var(--section-gap); padding: var(--page-padding);
+  }
+}

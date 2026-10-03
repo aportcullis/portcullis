@@ -489,6 +489,8 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | UI | Kobalte/Tailwind/TanStack Table | Data grid is central to the product |
 | Schema engine | Atlas Community CLI subprocess | Pin version/checksum and isolate behind `SchemaEngine` |
 
+UI customization (ADR-0036): developers can change project-owned design tokens (light/dark colors, typography, radius, application width/spacing), branding assets and presentational layout slots independently of session, authorization and request/result logic. Preserve current defaults and page-first workflows. This foundation does not promise runtime user settings or organization-specific branding.
+
 ### 5.2 Metadata storage
 
 **Metadata always uses PostgreSQL**, with the same schema, queries, and sqlc code in Compose or Helm.

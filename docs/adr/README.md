@@ -50,6 +50,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Accepted |
 | [0034](0034-apache-two-project-license.md) | Apache License 2.0 for Portcullis | Accepted |
 | [0035](0035-kubernetes-cnpg-after-mysql.md) | Kubernetes/CNPG immediately after MySQL parity | Accepted |
+| [0036](0036-ui-customization-boundaries.md) | UI design values and layout independent of governance | Accepted |
 
 ## Template
 ```markdown
