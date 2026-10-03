@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.7 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Shared revision:** v0.8 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
 > **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
-> **Status:** Draft v0.7 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Status:** Draft v0.8 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -34,7 +34,7 @@ The current product hypothesis is that existing tools favor one side.
 Validate **free OSS self-hosting + integrated governance and enablement + lightweight, clear UX** as the product hypothesis.
 Portcullis combines governance, associated with kviklet, and query enablement, associated with redash, on one audit timeline and data model.
 Since kviklet already offers free self-hosting and stored results, these alone do not establish differentiation.
-Portcullis licensing and paid-feature boundaries remain pre-publication decisions in §12.2.
+Portcullis uses Apache-2.0 (ADR-0034). Separate contributor agreements, trademark policy, and paid-feature boundaries remain owner decisions in §12.2.
 
 ### 1.3 Positioning
 
@@ -854,7 +854,7 @@ Before implementation, update PRD scope, acceptance criteria, and required ADRs;
   - Native DB proxy credentials remain Later pending demand.
   - Terminal-style UI, default stateless per statement; later connection-opted multi-statement transactions are read-only with hard idle timeout/automatic rollback (§4.6).
 
-### 12.2 Decision status (2026-07-04; only licensing unresolved)
+### 12.2 Decision status (2026-10-03)
 
 Resolved items; their ADRs are binding specifications.
 
@@ -872,9 +872,9 @@ Resolved items; their ADRs are binding specifications.
 | Runtime defaults | ADR-0010: timeouts, request limits, rate limiting, startup sequence |
 | Cache-loss runbook before Helm | Model settled in §6/§12.1: no retry, result_unavailable; only runbook documentation remains when writing Helm |
 
-**Only unresolved decision, owner approval before OSS publication:** Portcullis license, e.g. Apache-2.0/AGPL, CLA, trademarks, and paid-feature boundaries.
-These directly affect the free-OSS positioning (§10) and are business decisions that documentation/implementation cannot substitute for the owner.
-Resolve before publication; hosted AI Review (§4.8) is a likely monetization candidate.
+**License decided by the owner (2026-10-03):** Portcullis uses Apache License 2.0 (ADR-0034), with the official text in the repository LICENSE and project attribution in NOTICE. Contributions intentionally submitted for inclusion follow section 5 of that license unless explicitly stated otherwise. Third-party components retain their respective licenses and notices.
+
+**Remaining owner decisions:** Any separate CLA/DCO process, trademark policy, and paid-feature boundaries. This license decision does not introduce those policies, transfer copyright, promise foundation affiliation, or change feature scope. Hosted AI Review (§4.8) remains a possible monetization direction, not a decided paid feature.
 
 ---
 

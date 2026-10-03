@@ -46,10 +46,9 @@ These must be `Accepted` before Core 1 coding begins.
 | [0029](0029-dependency-supply-chain-controls.md) | Dependency installation, provenance and immutable tooling controls | Accepted |
 | [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted |
 | [0031](0031-typescript-seven-native-tooling.md) | TypeScript 7 and native lint enforcement without the classic compiler API | Accepted |
-
 | [0032](0032-request-title-and-body.md) | Access request titles and explanatory bodies | Accepted |
-
 | [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Accepted |
+| [0034](0034-apache-two-project-license.md) | Apache License 2.0 for Portcullis | Accepted |
 
 ## Template
 ```markdown

@@ -2,15 +2,16 @@
 
 ![Portcullis logo](docs/media/logo.png)
 
-**Self-hosted database governance and result exploration.**
+**Self-hosted, open-source database governance and result exploration.**
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml/badge.svg)](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml)
 
 [Getting started](#getting-started) · [Documentation](#documentation) · [Demo](#request-review-execute-once) · [Community](#community) · [Contributing](CONTRIBUTING.md)
 
 Portcullis brings SQL requests, review, execution, and audit into one application. Teams define connection policies, review the exact SQL and parameters, and explore the results of an approved execution. A Go server embeds the web interface; PostgreSQL stores metadata.
 
-**Project status:** development alpha with a verified PostgreSQL governance workflow. MySQL is the next target; the full MVP and an open-source license are still pending. See the [support matrix](docs/product/database-support.md), [validation record](docs/operations/m1-validation.md), and [license status](#license).
+**Project status:** development alpha with a verified PostgreSQL governance workflow. MySQL is the next target; the full MVP is still ahead. See the [support matrix](docs/product/database-support.md), [validation record](docs/operations/m1-validation.md), and [license](#license).
 
 ## Why Portcullis?
 
@@ -82,4 +83,4 @@ Contributions can start with documentation, bug reproduction, tests, or implemen
 
 ## License
 
-The project license and contribution terms are [pending a pre-publication decision](docs/product/prd.en.md#122-decision-status-2026-07-04-only-licensing-unresolved). No project license has been added to this repository yet.
+Portcullis is licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE) for project attribution. Third-party components retain their respective licenses.

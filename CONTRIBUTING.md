@@ -1,12 +1,16 @@
 # Contributing to Portcullis
 
-Portcullis is in development alpha. Documentation improvements, reproducible bug reports, scenario tests, and workflow feedback are useful starting points. Project licensing and contribution terms remain [pending](README.md#license).
+Portcullis is in development alpha. Documentation improvements, reproducible bug reports, scenario tests, and workflow feedback are useful starting points. Portcullis is licensed under [Apache 2.0](LICENSE).
 
 ## Questions and proposals
 
 Use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions, bug reports, and feature proposals. For bugs, include the database and application version or commit, reproduction steps, expected behavior, and observed behavior. Use synthetic SQL and data; remove credentials and private information from logs and screenshots.
 
 For substantial changes, discuss the use case and proposed scope before implementation. The [roadmap](docs/roadmap.md) describes planned outcomes; the [English PRD](docs/product/prd.en.md) and [Korean PRD](docs/product/prd.ko.md) define the shared product contract.
+
+## Contribution licensing
+
+Unless explicitly stated otherwise, contributions intentionally submitted for inclusion are under Apache 2.0, as described in section 5 of [LICENSE](LICENSE). Existing third-party licenses and attribution notices must be preserved. A separate CLA or DCO process is not introduced by this change.
 
 ## Development and pull requests
 
