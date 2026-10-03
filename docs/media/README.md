@@ -10,7 +10,9 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 | `login.png` | Branded local sign-in screen |
 | `connections.png` | Two demo connections with development/production labels |
 | `policy.png` | Default read-only policy and one distinct required reviewer |
-| `request.png` | SQL composition with local auto-format, manual format, undo and typed parameters |
+| `request.png` | Grouped request context and SQL, inline review guidance, local formatting and typed parameters |
+| `requests.png` | Request list with the inline four-stage progress graph |
+| `results-text.png` | Tab-separated Text view of one server-paged snapshot |
 | `review.png` | A distinct reviewer inspecting submitted SQL |
 | `results.png` | Typed results with exact large integers and decimal amounts |
 | `workflow.gif` | Request → distinct approval → single-use execution |

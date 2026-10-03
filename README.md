@@ -34,14 +34,16 @@ A requester submits SQL and its context. A distinct reviewer approves or rejects
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
 
-These walkthroughs show the actual application with synthetic data. The reviewer is fixture-provisioned; user-management screens are planned. The CSV walkthrough ends at the prepared download link. Explore the [screenshots and product tour](docs/media/product-tour.md) for request composition, current sorting controls, connection policies, and authentication.
+These walkthroughs show the actual application with synthetic data. The reviewer is fixture-provisioned; user-management screens are planned. The CSV walkthrough ends at the prepared download link. Request composition groups context and SQL, review actions have their own panel, and request rows expand into inline progress graphs. Results offer Table/Text views and visible-page clipboard copy; server paging and bounded skeletons keep loading manageable. Explore the [screenshots and product tour](docs/media/product-tour.md) for request composition, current sorting controls, connection policies, and authentication.
 
 <details>
 <summary>View request composition and result sorting screenshots</summary>
 
-![Request composition with a title, explanatory body, SQL and typed parameters](docs/media/request.png)
+![A request row expanded into Draft, Review, Ready and Execution stages](docs/media/requests.png)
 
-![Result sorting controls with exact large integers and descending timestamps](docs/media/results.png)
+![Request composition grouped into context and SQL, with inline review guidance](docs/media/request.png)
+
+![Paged results with exact large integers, decimal revenue, Table/Text views and visible-page copy](docs/media/results.png)
 
 </details>
 
@@ -69,7 +71,7 @@ Compose preserves metadata and master keys in volumes. Its sample credentials an
 | Explore the direction | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
 | Work on the project | [Contributing](CONTRIBUTING.md) · [Development guide](docs/development.md) |
 
-The [documentation index](docs/README.md) contains the complete repository documentation. The next sequence is MySQL parity → Kubernetes through Helm/Kustomize and CloudNativePG integration → SQL review/EXPLAIN → saved queries with schema preview. Sensitive-data masking precedes later agent integration. Deployment and integration plans, including Helm/Kustomize, are tracked in the roadmap.
+For UI contributors, the [customization guide](docs/conventions/frontend.md#changing-the-ui) identifies theme, layout and shared-component boundaries. The [documentation index](docs/README.md) contains the complete repository documentation. The next sequence is MySQL parity → Kubernetes through Helm/Kustomize and CloudNativePG integration → SQL review/EXPLAIN → saved queries with schema preview. Sensitive-data masking precedes later agent integration. Deployment and integration plans, including Helm/Kustomize, are tracked in the roadmap.
 
 ## Community
 

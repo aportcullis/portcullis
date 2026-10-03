@@ -49,7 +49,9 @@ try {
     await wait(1000);
   }
   if (!ready) throw new Error("Demo server did not become ready");
-  browser = await chromium.launch();
+  browser = process.env.PW_TEST_CONNECT_WS_ENDPOINT
+    ? await chromium.connect(process.env.PW_TEST_CONNECT_WS_ENDPOINT, { exposeNetwork: "<loopback>" })
+    : await chromium.launch();
   const contextOptions = { baseURL, viewport: { width: 1280, height: 1000 }, deviceScaleFactor: 1, colorScheme: "light", reducedMotion: "reduce" };
   const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
@@ -128,6 +130,8 @@ try {
        (ARRAY['APAC', 'EMEA', 'AMER'])[1 + ((g - 1) % 3)] AS region,
        (g * 19.95)::numeric(12,2) AS revenue_usd
 FROM generate_series(1, 30) AS g`;
+  await page.getByLabel("Title", { exact: true }).fill("Review monthly revenue");
+  await page.getByLabel("Body (optional)").fill("Check the revenue totals before publishing the monthly report.\nPlease review the selected connection and SQL.");
   await page.getByLabel("SQL", { exact: true }).fill(sql);
   await page.getByLabel("Connection").click();
   await expect(page.getByLabel("SQL", { exact: true })).not.toHaveValue(sql);
@@ -139,6 +143,13 @@ FROM generate_series(1, 30) AS g`;
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   const requestRow = target => target.getByRole("row", { name: /Analytics warehouse/ });
   const requestDetail = target => target.getByRole("region", { name: "Request details" });
+  await expect(requestDetail(page).getByText("Pending", { exact: true })).toBeVisible();
+  const detailURL = page.url();
+  await page.getByRole("link", { name: "Back to requests", exact: true }).click();
+  await page.getByRole("button", { name: "Review monthly revenue", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Workflow for Review monthly revenue" })).toBeVisible();
+  await shot("requests");
+  await page.goto(detailURL);
   await expect(requestDetail(page).getByText("Pending", { exact: true })).toBeVisible();
   await frame("workflow", "3 / 6  ·  Pending: execution waits for a distinct reviewer", 2400);
   const reviewerContext = await browser.newContext(contextOptions);
@@ -168,6 +179,10 @@ FROM generate_series(1, 30) AS g`;
   await dialog.getByLabel("Rows per page").selectOption("10");
   await expect(dialog.getByText(/30 rows · Page 1 of 3/)).toBeVisible();
   await shot("results");
+  await dialog.getByRole("button", { name: "Text", exact: true }).click();
+  await expect(dialog.getByLabel("Text results")).toContainText("9007199254740994");
+  await shot("results-text");
+  await dialog.getByRole("button", { name: "Table", exact: true }).click();
   await frame("results", "1 / 5  ·  Explore exact integers, decimals and typed columns", 2600);
   await dialog.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(dialog.getByText(/Page 2 of 3/)).toBeVisible();
@@ -189,7 +204,7 @@ FROM generate_series(1, 30) AS g`;
   await frame("results", "5 / 5  ·  Prepare CSV for the whole snapshot, including other regions", 2600);
   // Deliberately do not claim native file saving: the release gate records its environment failure.
   await writeFile(work + "frames.json", JSON.stringify(frames, null, 2));
-  console.log("Captured 7 screenshots and 2 walkthrough frame sequences from the real application.");
+  console.log("Captured 9 screenshots and 2 walkthrough frame sequences from the real application.");
 } finally {
   if (browser) await browser.close();
   if (server && server.exitCode === null) {

@@ -10,13 +10,21 @@ Compose a request on its own page, including a title, optional explanation, SQL,
 
 ![Request composition with a title, explanatory body, SQL and typed parameters](request.png)
 
+Click a request title to expand its current workflow beneath the list row. The graph uses authorized summary facts and marks unavailable history explicitly.
+
+![A pending request with its inline Draft, Review, Ready and Execution graph](requests.png)
+
 ## Explore results
 
 Choose a column and direction to sort the complete cached snapshot using its declared data type. Numeric precision and timezone-aware timestamp ordering are preserved; equal values keep their original order and NULL values stay last. Restore the original query order at any time. Sorting and filtering do not execute SQL again.
 
-![Actual result sorting controls with exact large integers and descending timestamps](results.png)
+![Paged typed results with exact large integers, decimal revenue and visible-page copy](results.png)
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](results.gif)
+
+Switch between Table and Text without rerunning SQL. Copy visible rows includes headers and only the current sorted/filtered page, escaping formula-like text for spreadsheet paste. Clipboard denial stays inline and leaves Text/CSV available.
+
+![Tab-separated Text view of the same bounded result page](results-text.png)
 
 CSV exports the complete snapshot in original query order, independently of the current page, sort, or filter. Results expire after 15 minutes and may be evicted earlier under quota pressure. The GIF stops at the prepared download link; actual file saving and readback are covered by the browser validation gate.
 
