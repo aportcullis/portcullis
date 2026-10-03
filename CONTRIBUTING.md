@@ -34,3 +34,7 @@ Follow the [development guide](docs/development.md), [AGENTS.md](AGENTS.md), and
 5. Open a pull request describing the user-visible problem, resulting behavior, and validation. Keep generated files aligned with their sources when changing APIs or database queries.
 
 See [tooling](docs/conventions/tooling.md) for commands and dependency requirements, and [frontend conventions](docs/conventions/frontend.md) for web changes. Technical scope decisions belong in [ADRs](docs/adr/README.md); changes to the product contract update both PRD translations.
+
+## Change history
+
+Use Conventional Commit subjects (`feat`, `fix`, `docs`, `test`, `ci`, and other appropriate types) with an optional scope. Mark incompatible changes with `!` and a `BREAKING CHANGE:` footer that explains migration. Keep the existing small-commit process. Maintainers run `make changelog RELEASE_TAG=vX.Y.Z` and review [CHANGELOG.md](CHANGELOG.md) before tagging a release; contributors do not need a separate changeset file or a generated snapshot for every commit. See the [release guide](docs/operations/container-releases.md).

@@ -18,6 +18,17 @@
         "\"(?<depName>postgres):(?<currentValue>[0-9][^\"@]*)@(?<currentDigest>sha256:[a-f0-9]{64})\""
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Pinned offline changelog generator",
+      "managerFilePatterns": [
+        "/^\\.github/scripts/git-cliff\\.sh$/"
+      ],
+      "matchStrings": [
+        "image='(?<depName>ghcr.io/orhun/git-cliff/git-cliff):(?<currentValue>[0-9.]+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
+      ],
+      "datasourceTemplate": "docker"
     }
   ],
   "packageRules": [

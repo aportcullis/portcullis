@@ -9,6 +9,9 @@
   - `make lint` checks gofmt and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also run `GOOS=linux GOARCH=amd64 make lint` to check Linux-specific source before relying on Linux CI (ADR-0029).
 - **Frontend verification**
   - `make web-lint`, `make web-typecheck`, and `make web-test` run Oxlint, TypeScript 7 native `tsc`, and Vitest.
+- **Release history**
+  - `make changelog` generates the reviewed English `CHANGELOG.md` snapshot with digest-pinned git-cliff in Docker; run before release tagging and review the diff.
+  - `make changelog-check` exercises real Git history and release boundaries; included in `make verify`. `make release-notes` renders only the current tag for the GHCR publication summary.
 - **Dependency security**
   - `make vuln` runs pinned govulncheck; `make audit` also runs pnpm audit. `make supply-chain` verifies Go modules, audits both npm lockfiles and checks fresh-install script rejection; CI runs it after the functional gate.
 - `make generate` — `buf generate` (Connect Go + TS) and `sqlc generate`.

@@ -62,6 +62,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted |
 | [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted |
 | [0047](0047-tagged-container-publication.md) | Verified tag releases to GHCR | Accepted |
+| [0048](0048-commit-based-changelog.md) | Reviewed Conventional Commit changelogs with offline git-cliff | Accepted |
 
 ## Template
 ```markdown

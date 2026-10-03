@@ -1,10 +1,10 @@
 # Container releases
 
-The [container release workflow](../../.github/workflows/container-release.yml) publishes the repository's single embedded-SPA server image to `ghcr.io/aportcullis/portcullis`. It runs on pushed `v*` tags, validates the name, and reuses CI from the tagged commit. Publication requires all `make verify` and `make supply-chain` gates to pass. It does not deploy the application or create a GitHub Release.
+The [container release workflow](../../.github/workflows/container-release.yml) publishes the repository's single embedded-SPA server image to `ghcr.io/aportcullis/portcullis`. It runs on pushed `v*` tags, validates the name, and reuses CI from the tagged commit. Publication requires all `make verify` and `make supply-chain` gates to pass. The publication job checks out full Git history and records current-tag git-cliff release notes in its Actions summary before registry login. It does not deploy the application or create a GitHub Release.
 
 ## Prepare and publish
 
-Merge the workflow and release changes before tagging. Set repository rules to restrict release-tag creation, updates and deletion to release maintainers; do not retarget released versions. Use `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer prerelease such as `-rc.1`. Leading zeroes in numeric identifiers, build metadata (`+build`) and version tags longer than 128 characters after `v` are rejected.
+Run `make changelog RELEASE_TAG=v0.1.0` for the intended version, review and commit the generated `CHANGELOG.md`, then merge release changes before tagging. `RELEASE_TAG` labels the preview without creating a Git tag; omit it for an Unreleased snapshot. Generation failure preserves the existing file. git-cliff reads existing Conventional Commits; incompatible changes should include `!` and a `BREAKING CHANGE:` migration explanation. Set repository rules to restrict release-tag creation, updates and deletion to release maintainers; do not retarget released versions. Use `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer prerelease such as `-rc.1`. Leading zeroes in numeric identifiers, build metadata (`+build`) and version tags longer than 128 characters after `v` are rejected.
 
 When ready to publish, a maintainer creates and pushes the intended release tag, for example:
 
@@ -30,6 +30,6 @@ BuildKit publishes OCI SBOM and maximum provenance attestations with the image. 
 
 ## Verification
 
-`make release-check` exercises valid stable/prerelease tags and refusal of malformed, unsafe, ambiguous and oversized names; `make verify` includes it. Workflow validation uses actionlint. A local check does not prove registry permissions, hosted build success or package visibility: confirm these on the first authorized release run.
+`make release-check` exercises valid stable/prerelease tags and refusal of malformed, unsafe, ambiguous and oversized names; `make verify` includes it. `make changelog-check` tests real stable/prerelease history, grouping, breaking notes and current-tag boundaries in a disposable Git repository. `make verify` includes both scenario targets. The Docker generator is digest-pinned, reads only the mounted repository and runs without network or external template commands. Workflow validation uses actionlint. A local check does not prove registry permissions, hosted build success or package visibility: confirm these on the first authorized release run.
 
 References: [GHCR permissions and visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), [Docker metadata](https://github.com/docker/metadata-action#semver), [OCI build attestations](https://docs.docker.com/build/ci/github-actions/attestations/), [ADR-0047](../adr/0047-tagged-container-publication.md).

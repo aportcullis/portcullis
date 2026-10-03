@@ -7,7 +7,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml/badge.svg)](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml)
 
-[Quickstart](#getting-started) · [Demo](#see-it-in-action) · [Docs](#documentation) · [Community](#community) · [Contribute](#contributing)
+[Quickstart](#getting-started) · [Demo](#see-it-in-action) · [Docs](#documentation) · [Changelog](CHANGELOG.md) · [Community](#community) · [Contribute](#contributing)
 
 Portcullis brings SQL requests, approval, execution, and audit into one application. Review the exact SQL and parameters, apply connection policies, and explore an approved execution's results in your own infrastructure. One Go binary includes the web UI; PostgreSQL stores metadata.
 
