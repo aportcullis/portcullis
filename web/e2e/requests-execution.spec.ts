@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 import { signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
-test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({ page }) => {
+test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   let executionCalls = 0;
   page.on("request", request => { if (request.url().endsWith(".QueryExecutions/Execute")) executionCalls++; });
   await page.goto("/login");
@@ -66,6 +67,22 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute("aria-sort", "ascending");
   await dialog.getByRole("button", { name: "Restore query order", exact: true }).click();
   await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Text", exact: true }).click();
+  await expect(dialog.getByLabel("Text results")).toContainText("9007199254740994\t=formula");
+  await expect(dialog.getByLabel("Text results")).not.toContainText("9007199254741018");
+  await dialog.getByRole("button", { name: "Copy visible rows", exact: true }).click();
+  await expect(dialog.getByText("Copied 1 visible rows with column headers.")).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toContain("exact_value\tnote\trecorded_at");
+  expect(copied).toContain("9007199254740994\t'=formula");
+  expect(copied).not.toContain("9007199254741018");
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", {
+    configurable: true, value: async () => { throw new DOMException("Denied", "NotAllowedError"); },
+  }));
+  await dialog.getByRole("button", { name: "Copy visible rows", exact: true }).click();
+  await expect(dialog.getByText(/Clipboard access was denied or unavailable/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Table", exact: true }).click();
+  await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
   await dialog.getByRole("button", { name: "Export CSV", exact: true }).click();
   const downloadLink = dialog.getByRole("link", { name: "Download CSV", exact: true });
   await expect(downloadLink).toBeVisible();

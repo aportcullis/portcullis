@@ -3,23 +3,17 @@ import type { Component } from "solid-js";
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import { createSolidTable, getCoreRowModel } from "@tanstack/solid-table";
 
-import type { CellValue, QueryExecution, QueryResultPage, QueryResultRow } from "@/gen/portcullis/v1/query_executions_pb";
+import type { QueryExecution, QueryResultPage, QueryResultRow } from "@/gen/portcullis/v1/query_executions_pb";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { LogicalType } from "@/gen/portcullis/v1/query_executions_pb";
 import { errorMessage } from "@/entities/request/store";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
+import { cellText, resultText, resultClipboard } from "@/features/request/resultPresentation";
 import { cycleResultSorting } from "@/features/request/sorting";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
-
-/** Formats one wire cell without coercing exact integers or decimals to JavaScript numbers. */
-export function cellText(cell?: CellValue): string {
-  if (!cell || cell.kind.case === "isNull" || cell.kind.case === undefined) return "NULL";
-  if (cell.kind.case === "bytesValue") return "\\x" + Array.from(cell.kind.value, b => b.toString(16).padStart(2, "0")).join("");
-  return String(cell.kind.value);
-}
 
 /** Displays an owner-scoped result snapshot with server paging, sorting, filtering, and streamed export. */
 export const ResultPanel: Component<{ requestId: string }> = (props) => {
@@ -32,6 +26,9 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   const [filter, setFilter] = createSignal("");
   const [filterDraft, setFilterDraft] = createSignal("");
   const [fullCell, setFullCell] = createSignal<string>();
+  const [view, setView] = createSignal<"table" | "text">("table");
+  const [copying, setCopying] = createSignal(false);
+  const [copyMessage, setCopyMessage] = createSignal("");
   const [exporting, setExporting] = createSignal(false);
   const [downloadURL, setDownloadURL] = createSignal<string>();
   const discardDownload = () => {
@@ -53,11 +50,11 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
     revision++;
     discardDownload();
     read.handleOpenChange(false);
-    setExecution(); setResult(); setFullCell(); setExporting(false);
+    setExecution(); setResult(); setFullCell(); setExporting(false); setView("table"); setCopying(false); setCopyMessage("");
     setPage(1); setPageSize(20); setSortColumn(); setDescending(false); setFilter(""); setFilterDraft("");
     if (next !== undefined) read.handleOpenChange(true);
   }));
-  const reload = () => { revision++; setResult(); setFullCell(); read.handleOpenChange(true); };
+  const reload = () => { revision++; setCopyMessage(""); setCopying(false); setResult(); setFullCell(); read.handleOpenChange(true); };
   const applySorting = (column: number | undefined, sortDescending: boolean) => {
     setSortColumn(column);
     setDescending(sortDescending);
@@ -74,6 +71,20 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
     get columns() { return (result()?.columns ?? []).map((c, i) => ({ id: String(i), accessorFn: (row: QueryResultRow) => cellText(row.cells[i]), header: c.name })); },
     getCoreRowModel: getCoreRowModel(), manualPagination: true, manualSorting: true, manualFiltering: true,
   });
+  const copyVisibleRows = async () => {
+    const snapshot = result();
+    if (!snapshot || copying()) return;
+    const captured = revision;
+    const same = read.captureSession();
+    setCopying(true); setCopyMessage("");
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(resultClipboard(snapshot));
+      if (same() && captured === revision) setCopyMessage(`Copied ${snapshot.rows.length} visible rows with column headers.`);
+    } catch {
+      if (same() && captured === revision) setCopyMessage("Clipboard access was denied or unavailable. Select text in Text view or export CSV instead.");
+    } finally { if (same() && captured === revision) setCopying(false); }
+  };
   const exportCSV = async () => {
     const captured = revision;
     const same = read.captureSession();
@@ -103,9 +114,10 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       <Show when={result()}>{snapshot => <>
         <Show when={snapshot().truncated}><p role="status">Result truncated by the row or byte limit. CSV contains only this cached snapshot.</p></Show>
         <p class="text-xs text-muted-foreground">Results expire after 15 minutes and may be evicted earlier.</p>
-        <form class="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); setFilter(filterDraft()); setPage(1); reload(); }}>
+        <form class="content-surface flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); setFilter(filterDraft()); setPage(1); reload(); }}>
           <input aria-label="Filter results" class="rounded-md border px-3 text-sm" value={filterDraft()} maxLength={1000} onInput={e => setFilterDraft(e.currentTarget.value)} placeholder="Contains text in any column" />
           <Button variant="outline" type="submit">Filter results</Button>
+          <Button type="button" variant="outline" disabled={copying()} onClick={() => void copyVisibleRows()}>Copy visible rows</Button>
           <Button type="button" variant="outline" disabled={exporting()} onClick={() => void exportCSV()}>Export CSV</Button>
           <Show when={downloadURL()}>{url => <a class="inline-flex items-center rounded-md border px-4 text-sm" href={url()} download="query-result.csv">Download CSV</a>}</Show>
         </form>
@@ -131,10 +143,19 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
           </Show>
         </p>
         <p class="text-xs text-muted-foreground">Sorting uses each column's data type across all cached rows. CSV exports the complete snapshot in original query order, including rows hidden by filters.</p>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div role="group" aria-label="Result view" class="inline-flex gap-1 rounded-lg border bg-card p-1">
+            <Button type="button" size="sm" variant={view() === "table" ? "default" : "ghost"} aria-pressed={view() === "table"} onClick={() => setView("table")}>Table</Button>
+            <Button type="button" size="sm" variant={view() === "text" ? "default" : "ghost"} aria-pressed={view() === "text"} onClick={() => setView("text")}>Text</Button>
+          </div>
+          <p class="text-xs text-muted-foreground">Copy includes this page only; formula-like text is escaped for spreadsheet paste.</p>
+        </div>
+        <Show when={copyMessage()}><p role="status" class="text-sm text-muted-foreground">{copyMessage()}</p></Show>
+        <Show when={view() === "table"} fallback={<pre aria-label="Text results" class="max-h-[36rem] overflow-auto rounded-lg border bg-card p-4 font-mono text-sm">{resultText(snapshot())}</pre>}>
         <div class="overflow-x-auto"><Table>
           <TableHeader><TableRow><For each={snapshot().columns}>{(column, index) => <TableHead aria-sort={sortColumn() === index() ? descending() ? "descending" : "ascending" : undefined}>
-            <button class="text-left" onClick={() => cycleColumnSorting(index())}>
-              {column.name} {sortColumn() === index() ? descending() ? "↓" : "↑" : ""}
+            <button class="text-left" title={sortColumn() !== index() ? "Sort ascending" : descending() ? "Restore query order" : "Sort descending"} onClick={() => cycleColumnSorting(index())}>
+              {column.name} {sortColumn() === index() ? descending() ? "↓" : "↑" : "↕"}
               <span class="block text-xs text-muted-foreground">{LogicalType[column.logicalType]} · {column.dbTypeName}</span>
             </button>
           </TableHead>}</For></TableRow></TableHeader>
@@ -142,8 +163,9 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
             <button class="max-w-64 truncate text-left font-mono text-sm" onClick={() => setFullCell(String(cell.getValue()))} title="View full cell">{String(cell.getValue())}</button>
           </TableCell>}</For></TableRow>}</For></TableBody>
         </Table></div>
+        </Show>
         <Show when={fullCell() !== undefined}><div><Button variant="ghost" onClick={() => setFullCell()}>Close cell</Button><pre aria-label="Full cell" class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded border p-3">{fullCell()}</pre></div></Show>
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="text-sm">{snapshot().totalCount.toString()} rows · Page {snapshot().page} of {Math.max(snapshot().totalPages, 1)}</span>
           <select aria-label="Rows per page" value={pageSize()} onChange={e => { setPageSize(Number(e.currentTarget.value)); setPage(1); reload(); }}><For each={[10, 20, 50, 100]}>{size => <option value={size}>{size}</option>}</For></select>
           <Button variant="outline" disabled={page() <= 1} onClick={() => { setPage(page() - 1); reload(); }}>Previous page</Button>
