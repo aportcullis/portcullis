@@ -148,6 +148,8 @@ type auditListRow struct {
 	PayloadDigest           []byte
 	PayloadDigestKeyVersion *int32
 	Metadata                []byte
+	RowsAffected            *int64
+	DurationMs              *int64
 	// TotalCount is the page's total, computed by the SAME query as the rows (count(*) over ()) so the two cannot come from different snapshots. On the detail path the expression is literally 1 and the field goes unused.
 	TotalCount int64
 }
@@ -155,13 +157,15 @@ type auditListRow struct {
 // auditEventFromRow maps a read row back onto the domain event — the inverse of auditEventParams. The source IP is recovered from the metadata JSONB and removed from the remaining supplemental map, so callers see the same SourceIP/Metadata split they wrote.
 func auditEventFromRow(r auditListRow, org identity.OrganizationID) (audit.Event, error) {
 	e := audit.Event{
-		ID:             uuidToString(r.ID),
-		OccurredAt:     tsToTime(r.OccurredAt),
-		OrganizationID: org,
-		ActorType:      audit.ActorType(r.ActorType),
-		Action:         audit.Action(r.Action),
-		TargetType:     r.TargetType,
-		Outcome:        audit.Outcome(r.Outcome),
+		ID:                   uuidToString(r.ID),
+		OccurredAt:           tsToTime(r.OccurredAt),
+		OrganizationID:       org,
+		ActorType:            audit.ActorType(r.ActorType),
+		Action:               audit.Action(r.Action),
+		TargetType:           r.TargetType,
+		Outcome:              audit.Outcome(r.Outcome),
+		RowsAffected:         r.RowsAffected,
+		DurationMilliseconds: r.DurationMs,
 	}
 	if id := uuidToString(r.ActorUserID); id != "" {
 		uid := identity.UserID(id)
@@ -236,6 +240,8 @@ func auditEventParams(e audit.Event) (db.InsertAuditEventParams, error) {
 		Action:         string(e.Action),
 		TargetType:     e.TargetType,
 		Outcome:        string(e.Outcome),
+		RowsAffected:   e.RowsAffected,
+		DurationMs:     e.DurationMilliseconds,
 	}
 	if e.ActorUserID != nil {
 		if p.ActorUserID, err = stringToUUID(string(*e.ActorUserID)); err != nil {

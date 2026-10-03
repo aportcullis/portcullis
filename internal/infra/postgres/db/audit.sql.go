@@ -29,7 +29,7 @@ select
     id, occurred_at, actor_type, actor_user_id, actor_service,
     action, target_type, target_id, outcome, request_id,
     previous_state, next_state, connection_id, query_type,
-    payload_digest, payload_digest_key_version, metadata,
+    payload_digest, payload_digest_key_version, metadata, rows_affected, duration_ms,
     1::bigint as total_count
 from public.audit_events
 where id = $1 and organization_id = $2
@@ -58,6 +58,8 @@ type GetAuditEventRow struct {
 	PayloadDigest           []byte
 	PayloadDigestKeyVersion *int32
 	Metadata                []byte
+	RowsAffected            *int64
+	DurationMs              *int64
 	TotalCount              int64
 }
 
@@ -83,6 +85,8 @@ func (q *Queries) GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (G
 		&i.PayloadDigest,
 		&i.PayloadDigestKeyVersion,
 		&i.Metadata,
+		&i.RowsAffected,
+		&i.DurationMs,
 		&i.TotalCount,
 	)
 	return i, err
@@ -93,8 +97,8 @@ insert into public.audit_events (
     organization_id, occurred_at, actor_type, actor_user_id, actor_service,
     action, target_type, target_id, outcome, request_id,
     previous_state, next_state, connection_id, query_type,
-    payload_digest, payload_digest_key_version, metadata
-) values ($1, coalesce($17::timestamptz, now()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    payload_digest, payload_digest_key_version, metadata, rows_affected, duration_ms
+) values ($1, coalesce($19::timestamptz, now()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 `
 
 type InsertAuditEventParams struct {
@@ -114,6 +118,8 @@ type InsertAuditEventParams struct {
 	PayloadDigest           []byte
 	PayloadDigestKeyVersion *int32
 	Metadata                []byte
+	RowsAffected            *int64
+	DurationMs              *int64
 	OccurredAt              pgtype.Timestamptz
 }
 
@@ -136,6 +142,8 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.PayloadDigest,
 		arg.PayloadDigestKeyVersion,
 		arg.Metadata,
+		arg.RowsAffected,
+		arg.DurationMs,
 		arg.OccurredAt,
 	)
 	return err
@@ -146,7 +154,7 @@ select
     id, occurred_at, actor_type, actor_user_id, actor_service,
     action, target_type, target_id, outcome, request_id,
     previous_state, next_state, connection_id, query_type,
-    payload_digest, payload_digest_key_version, metadata,
+    payload_digest, payload_digest_key_version, metadata, rows_affected, duration_ms,
     count(*) over ()::bigint as total_count
 from public.audit_events
 where organization_id = $1
@@ -178,6 +186,8 @@ type ListAuditEventsAscRow struct {
 	PayloadDigest           []byte
 	PayloadDigestKeyVersion *int32
 	Metadata                []byte
+	RowsAffected            *int64
+	DurationMs              *int64
 	TotalCount              int64
 }
 
@@ -209,6 +219,8 @@ func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAsc
 			&i.PayloadDigest,
 			&i.PayloadDigestKeyVersion,
 			&i.Metadata,
+			&i.RowsAffected,
+			&i.DurationMs,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -226,7 +238,7 @@ select
     id, occurred_at, actor_type, actor_user_id, actor_service,
     action, target_type, target_id, outcome, request_id,
     previous_state, next_state, connection_id, query_type,
-    payload_digest, payload_digest_key_version, metadata,
+    payload_digest, payload_digest_key_version, metadata, rows_affected, duration_ms,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.audit_events
@@ -259,6 +271,8 @@ type ListAuditEventsDescRow struct {
 	PayloadDigest           []byte
 	PayloadDigestKeyVersion *int32
 	Metadata                []byte
+	RowsAffected            *int64
+	DurationMs              *int64
 	TotalCount              int64
 }
 
@@ -290,6 +304,8 @@ func (q *Queries) ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDe
 			&i.PayloadDigest,
 			&i.PayloadDigestKeyVersion,
 			&i.Metadata,
+			&i.RowsAffected,
+			&i.DurationMs,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

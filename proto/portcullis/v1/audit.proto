@@ -66,7 +66,8 @@ message AuditEvent {
   // Keyed MAC over the approved payload, with the key version that verifies it (ADR-0003). Opaque bytes: the trail never carries SQL or parameter values.
   bytes payload_digest = 17;
   uint32 payload_digest_key_version = 18;
-  // Execution metrics (rows_affected, duration_ms, risk_score) are columns the executor slice fills; they join this message when that slice lands.
+  optional int64 rows_affected = 19;
+  optional int64 duration_ms = 20;
 }
 
 // AuditEventSummary is deliberately safe for audit.list. Correlation data, network addresses, and supplemental metadata are available only through audit.get, preserving ADR-0008's collection/detail permission boundary.

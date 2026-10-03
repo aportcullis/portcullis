@@ -174,7 +174,9 @@ type AuditEvent struct {
 	QueryType string `protobuf:"bytes,16,opt,name=query_type,json=queryType,proto3" json:"query_type,omitempty"`
 	// Keyed MAC over the approved payload, with the key version that verifies it (ADR-0003). Opaque bytes: the trail never carries SQL or parameter values.
 	PayloadDigest           []byte `protobuf:"bytes,17,opt,name=payload_digest,json=payloadDigest,proto3" json:"payload_digest,omitempty"`
-	PayloadDigestKeyVersion uint32 `protobuf:"varint,18,opt,name=payload_digest_key_version,json=payloadDigestKeyVersion,proto3" json:"payload_digest_key_version,omitempty"` // Execution metrics (rows_affected, duration_ms, risk_score) are columns the executor slice fills; they join this message when that slice lands.
+	PayloadDigestKeyVersion uint32 `protobuf:"varint,18,opt,name=payload_digest_key_version,json=payloadDigestKeyVersion,proto3" json:"payload_digest_key_version,omitempty"`
+	RowsAffected            *int64 `protobuf:"varint,19,opt,name=rows_affected,json=rowsAffected,proto3,oneof" json:"rows_affected,omitempty"`
+	DurationMs              *int64 `protobuf:"varint,20,opt,name=duration_ms,json=durationMs,proto3,oneof" json:"duration_ms,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -331,6 +333,20 @@ func (x *AuditEvent) GetPayloadDigest() []byte {
 func (x *AuditEvent) GetPayloadDigestKeyVersion() uint32 {
 	if x != nil {
 		return x.PayloadDigestKeyVersion
+	}
+	return 0
+}
+
+func (x *AuditEvent) GetRowsAffected() int64 {
+	if x != nil && x.RowsAffected != nil {
+		return *x.RowsAffected
+	}
+	return 0
+}
+
+func (x *AuditEvent) GetDurationMs() int64 {
+	if x != nil && x.DurationMs != nil {
+		return *x.DurationMs
 	}
 	return 0
 }
@@ -609,7 +625,7 @@ const file_portcullis_v1_audit_proto_rawDesc = "" +
 	"\n" +
 	"descending\x18\x02 \x01(\bH\x00R\n" +
 	"descending\x88\x01\x01B\r\n" +
-	"\v_descending\"\x90\x05\n" +
+	"\v_descending\"\x82\x06\n" +
 	"\n" +
 	"AuditEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
@@ -636,7 +652,12 @@ const file_portcullis_v1_audit_proto_rawDesc = "" +
 	"\n" +
 	"query_type\x18\x10 \x01(\tR\tqueryType\x12%\n" +
 	"\x0epayload_digest\x18\x11 \x01(\fR\rpayloadDigest\x12;\n" +
-	"\x1apayload_digest_key_version\x18\x12 \x01(\rR\x17payloadDigestKeyVersion\"\xef\x01\n" +
+	"\x1apayload_digest_key_version\x18\x12 \x01(\rR\x17payloadDigestKeyVersion\x12(\n" +
+	"\rrows_affected\x18\x13 \x01(\x03H\x00R\frowsAffected\x88\x01\x01\x12$\n" +
+	"\vduration_ms\x18\x14 \x01(\x03H\x01R\n" +
+	"durationMs\x88\x01\x01B\x10\n" +
+	"\x0e_rows_affectedB\x0e\n" +
+	"\f_duration_ms\"\xef\x01\n" +
 	"\x11AuditEventSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -712,6 +733,7 @@ func file_portcullis_v1_audit_proto_init() {
 		return
 	}
 	file_portcullis_v1_audit_proto_msgTypes[1].OneofWrappers = []any{}
+	file_portcullis_v1_audit_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

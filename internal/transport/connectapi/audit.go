@@ -129,6 +129,8 @@ func toProtoAuditEvent(e domainaudit.Event) *portcullisv1.AuditEvent {
 		QueryType:               e.QueryType,
 		PayloadDigest:           e.PayloadDigest,
 		PayloadDigestKeyVersion: e.PayloadDigestKeyVersion,
+		RowsAffected:            e.RowsAffected,
+		DurationMs:              e.DurationMilliseconds,
 	}
 	if e.ActorUserID != nil {
 		pe.ActorUserId = string(*e.ActorUserID)

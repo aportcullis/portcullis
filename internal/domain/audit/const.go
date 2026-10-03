@@ -35,6 +35,10 @@ const (
 
 	// Runtime settings (ADR-0017). SettingUpdated commits in the same transaction as the settings row change (set AND reset), recording key and old→new value verbatim — setting values are operational numbers, never secrets (PRD §8.4: every admin settings change is audited).
 	ActionSettingUpdated Action = "SETTING_UPDATED"
+
+	ActionExecutionStarted       Action = "EXECUTION_STARTED"
+	ActionExecutionFinished      Action = "EXECUTION_FINISHED"
+	ActionLateCompletionObserved Action = "LATE_COMPLETION_OBSERVED"
 )
 
 // outcome values — the terminal result of an action.

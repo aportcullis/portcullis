@@ -41,6 +41,9 @@ type Event struct {
 	QueryType               string
 	PayloadDigest           []byte
 	PayloadDigestKeyVersion uint32
+	// RowsAffected and DurationMilliseconds retain optional execution metrics.
+	RowsAffected         *int64
+	DurationMilliseconds *int64
 	// Metadata carries non-sensitive supplemental fields (never secrets, tokens, or result rows) and is stored as JSONB.
 	Metadata map[string]any
 }
