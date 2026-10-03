@@ -98,6 +98,8 @@ Avoid line-number references and pointers into private, gitignored notes such as
 Keep paired translations consistent according to the [documentation policy](../README.md#language-policy).
 
 ## Minimize hardcoding
+Read application and test-harness settings through isolated Viper loaders and typed structs, then validate before use. Reuse `config.NewEnvironmentLoader` for struct binding, environment key replacement and decode hooks; keep consumer-specific defaults and validation with the consumer. Direct process-environment inspection is reserved for low-level driver-environment isolation, not configuration reads.
+
 Select resources by their domain role or identity, not a fixed collection position. Use named fields/variables for fixed roles (such as metadata and target databases) and typed keyed collections for identity-based assignments. Keep indices when order is the actual contract, such as result paging, and translate external positional formats once at the boundary.
 
 Catalogs, roles, and configuration load from the **database/config at startup**, not Go constants (e.g. the permission catalog and role assignments are seeded in SQL).

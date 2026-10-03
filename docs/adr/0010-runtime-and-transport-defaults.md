@@ -124,6 +124,8 @@ Execution reports target availability separately from SQL completion. Confirmed 
 - Max stream lifetime **30 min** (client silently re-subscribes; unary re-fetch on reconnect per PRD §5.1); server re-validates the session every **60s** and force-closes on revoke/disable; notification fallback polling every **30s**.
 
 ## Consequences
+Runtime and test harness configuration share an isolated `config.NewEnvironmentLoader` factory (2026-10-03). It retains Viper experimental struct binding, dot-to-underscore environment replacement and TextUnmarshaller/duration/comma-slice hooks. Each consumer uses its own typed struct, prefix, defaults and validation, rather than importing application defaults into a test harness or reading individual settings with `os.Getenv`. This is a configuration-boundary correction; product requirements and runtime defaults are unchanged. [Viper options and environment decoding](https://pkg.go.dev/github.com/spf13/viper).
+
 - Every operational default above is normative: a change requires editing this ADR in the same PR.
   `.env.example` mirrors the (config) values.
 - Compile-time constants stay constants until an operator need is demonstrated — promoting one to config is a small change but must update this table.

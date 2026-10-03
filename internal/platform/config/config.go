@@ -9,27 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-viper/mapstructure/v2"
-	"github.com/spf13/viper"
-
 	"github.com/aportcullis/portcullis/internal/domain/setting"
 	"github.com/aportcullis/portcullis/internal/platform/logging"
 )
 
 // Load reads configuration from the environment and applies defaults.
 func Load() (Config, error) {
-	v := viper.NewWithOptions(
-		viper.ExperimentalBindStruct(),
-		viper.EnvKeyReplacer(strings.NewReplacer(".", "_")),
-		viper.WithDecodeHook(mapstructure.ComposeDecodeHookFunc(
-			mapstructure.TextUnmarshallerHookFunc(),
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.StringToSliceHookFunc(","),
-		)),
-	)
-
-	v.SetEnvPrefix("PORTCULLIS")
-	v.AutomaticEnv()
+	v := NewEnvironmentLoader("PORTCULLIS")
 
 	v.SetDefault("addr", ":8080")
 	v.SetDefault("drain_delay", time.Duration(0))
