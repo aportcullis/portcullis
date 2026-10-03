@@ -7,6 +7,7 @@ The participation model is adopted locally. This checklist separates repository 
 ## Remote setup
 
 - [ ] Confirm the intended repository and maintainer access without changing its visibility implicitly.
+- [ ] Enable private vulnerability reporting: repository Settings → Advanced Security → Private vulnerability reporting → Enable. GitHub requires a public repository and owner/admin access. After the separately authorized public transition, confirm the Security tab offers Report a vulnerability. Do not submit a fake vulnerability report.
 - [ ] Enable Discussions and create Welcome (announcement), Q&A (question/answer), Ideas (open discussion), and Show and tell (open discussion).
 - [ ] Publish and pin a Welcome post linking the quickstart, participation paths, and contributor guide. Invite introductions and workflow feedback.
 - [ ] Create or verify `help wanted` and `good first issue` labels.
@@ -34,3 +35,4 @@ Triage questions, reproduction reports, and PRs regularly. Keep accepted tasks a
 
 - [GitHub discussion categories](https://docs.github.com/en/discussions/managing-discussions-for-your-community/managing-categories-for-discussions)
 - [Kubernetes first-issue criteria](https://www.kubernetes.dev/docs/guide/help-wanted/)
+- [GitHub private vulnerability reporting configuration](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository)

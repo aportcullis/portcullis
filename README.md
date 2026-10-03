@@ -113,6 +113,8 @@ Browse the [documentation index](docs/README.md) for the full reference.
 
 Try the application, share workflow feedback, or help improve it. [COMMUNITY.md](COMMUNITY.md) explains how to participate. Use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for bugs, questions, and feedback; Discussions setup is not yet verified.
 
+Suspected vulnerabilities belong in the private reporting process described in [SECURITY.md](SECURITY.md), rather than public issues.
+
 ## Contributing
 
 Documentation, bug reproductions, tests, and small fixes are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and discuss substantial changes in an issue before implementation.

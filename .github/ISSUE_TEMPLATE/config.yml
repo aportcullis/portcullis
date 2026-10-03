@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/aportcullis/portcullis/blob/main/SECURITY.md
+    about: Follow the private reporting policy; do not disclose vulnerability details in public issues.
   - name: Participation and community channels
     url: https://github.com/aportcullis/portcullis/blob/main/COMMUNITY.md
     about: Find participation paths, channel rollout status, and first-contribution guidance.

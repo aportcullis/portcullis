@@ -13,6 +13,8 @@ See [COMMUNITY.md](COMMUNITY.md) for channels, first-issue readiness, and contin
 
 ## Questions and proposals
 
+For suspected security vulnerabilities, follow [SECURITY.md](SECURITY.md). Do not include vulnerability details in public issues or pull requests.
+
 For bugs, include the database and application version or commit, reproduction steps, expected behavior, and observed behavior. Use synthetic SQL and data; remove credentials and private information from logs and screenshots.
 
 For substantial changes, discuss the use case and proposed scope first. Ideas become implementation issues after maintainers agree on acceptance criteria. The [roadmap](docs/roadmap.md) describes planned outcomes; the [English PRD](docs/product/prd.en.md) and [Korean PRD](docs/product/prd.ko.md) define the shared product contract.

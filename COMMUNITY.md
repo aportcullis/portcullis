@@ -30,6 +30,8 @@ GitHub is our initial home for community discussion and development records. Red
 
 A separate Slack or Discord and recurring meetings can follow when participants need real-time discussion and someone can maintain them. Important decisions still belong in GitHub and project documents.
 
+Security reports use the private process in [SECURITY.md](SECURITY.md), rather than community channels.
+
 ## First-contribution issues
 
 Maintainers use `help wanted` for useful, agreed, bounded work. Add `good first issue` only when all of the following are ready:
