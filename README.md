@@ -2,53 +2,51 @@
 
 ![Portcullis logo](docs/media/logo.png)
 
-**Govern database access. Keep the evidence. Make results useful.**
-
-Portcullis is a self-hosted database governance tool that brings SQL requests, human review, controlled execution, and result exploration into one workflow. It ships as a Go binary with an embedded web interface, backed by PostgreSQL for metadata.
-
-[Quickstart](#quickstart) · [See it in action](#request-review-execute-once) · [Database support](docs/product/database-support.md) · [Documentation](docs/README.md) · [Roadmap](docs/roadmap.md) · [Contribute](#contributing)
+**Self-hosted database governance and result exploration.**
 
 [![CI](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml/badge.svg)](https://github.com/aportcullis/portcullis/actions/workflows/ci.yml)
 
-**Development alpha:** the PostgreSQL governance workflow has passed its correctness gate. MySQL and saved queries are planned; the complete MVP is still ahead. See [validation evidence](docs/operations/m1-validation.md) for the tested environment. Capacity and soak qualification are tracked separately. The project's open-source license is [not yet selected](#license).
+[Getting started](#getting-started) · [Documentation](#documentation) · [Demo](#request-review-execute-once) · [Community](#community) · [Contributing](CONTRIBUTING.md)
+
+Portcullis brings SQL requests, review, execution, and audit into one application. Teams define connection policies, review the exact SQL and parameters, and explore the results of an approved execution. A Go server embeds the web interface; PostgreSQL stores metadata.
+
+**Project status:** development alpha with a verified PostgreSQL governance workflow. MySQL is the next target; the full MVP and an open-source license are still pending. See the [support matrix](docs/product/database-support.md), [validation record](docs/operations/m1-validation.md), and [license status](#license).
 
 ## Why Portcullis?
 
-A database question often starts with a SQL snippet and ends with a copied result. The approval, exact inputs, execution outcome, and useful analysis can end up scattered across chat, tickets, and database clients.
+Database access decisions need context and evidence. Portcullis connects a request's purpose, approval inputs, execution outcome, and results so teams can review and investigate the same workflow in their own infrastructure.
 
-Portcullis gives developers, reviewers, and operators a shared workflow: explain the request, review the submitted SQL and parameters, execute the approved statement once, and inspect the result alongside its execution history. The longer-term direction is to turn useful queries into reusable team assets while keeping the same governance rules.
+### Features
 
-| What your team needs | What Portcullis provides today |
-| --- | --- |
-| Context before approval | Request titles and explanatory bodies, SQL, typed parameters, and a dedicated review page |
-| Explicit access rules | Per-connection Read / Write / DDL policies, distinct reviewers, approval quorums, and execution limits |
-| Execution tied to the decision | Frozen submissions, approval and policy revalidation, and single-use execution without automatic SQL retries |
-| Results that remain useful | Exact large integers and decimals, typed sorting, pagination, filtering, full-cell inspection, and CSV export |
-| Evidence in your infrastructure | Encrypted credentials, request payloads and temporary results, server-side authorization, and append-only audit records |
+- **Policy-controlled access:** per-connection Read / Write / DDL permissions, approval quorums, and time, row, and result-size limits.
+- **Reviewable requests:** titles, explanatory bodies, SQL formatting, typed parameters, drafts, and frozen submissions with distinct reviewers.
+- **Single-use execution:** revalidate approvals and policies before execution; report uncertain outcomes without automatically rerunning SQL.
+- **Typed results:** preserve numeric precision, sort the complete snapshot, filter, inspect full cells, and export CSV without re-execution.
+- **Authorization and evidence:** server-side permissions, encrypted credentials and payloads, expiring encrypted results, and append-only audit records.
+- **Self-hosted operation:** Docker Compose, an embedded web UI, local authentication, and optional Google OIDC.
 
 ## Request, review, execute once
 
-Compose a request on its own page, including a title, optional explanation, SQL, and typed parameters. SQL formatting is automatic, reversible, and configurable. Save a draft or submit it to freeze the approval inputs. A distinct reviewer approves or rejects the request; the original requester executes an approved statement once.
+A requester submits SQL and its context. A distinct reviewer approves or rejects it. The requester executes an approved statement once and explores its result.
 
 ![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
 
-![Request composition with a title, explanatory body, SQL and typed parameters](docs/media/request.png)
-
-## Explore results
-
-Choose a column and direction to sort the complete cached snapshot using its declared data type. Numeric precision and timezone-aware timestamp ordering are preserved; equal values keep their original order and NULL values stay last. Restore the original query order at any time. Sorting and filtering do not execute SQL again.
-
-![Actual result sorting controls with exact large integers and descending timestamps](docs/media/results.png)
-
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
 
-CSV exports the complete snapshot in original query order, independently of the current page, sort, or filter. Results expire after 15 minutes and may be evicted earlier under quota pressure. The GIF stops at the prepared download link; actual file saving and readback are covered by the browser validation gate.
+These walkthroughs show the actual application with synthetic data. The reviewer is fixture-provisioned; user-management screens are planned. The CSV walkthrough ends at the prepared download link. Explore the [screenshots and product tour](docs/media/product-tour.md) for request composition, current sorting controls, connection policies, and authentication.
 
-All screenshots and GIFs show the real application with synthetic data. Alex is the requester and Sam the reviewer; the demo reviewer is provisioned through a fixture because user-management screens are not yet available.
+<details>
+<summary>View request composition and result sorting screenshots</summary>
 
-## Quickstart
+![Request composition with a title, explanatory body, SQL and typed parameters](docs/media/request.png)
 
-**Prerequisites:** Git and Docker with Docker Compose.
+![Result sorting controls with exact large integers and descending timestamps](docs/media/results.png)
+
+</details>
+
+## Getting started
+
+To try Portcullis locally, install Git and Docker with Docker Compose:
 
 ```sh
 git clone https://github.com/aportcullis/portcullis.git
@@ -56,68 +54,32 @@ cd portcullis
 docker compose up --build
 ```
 
-1. Open [localhost:8080](http://localhost:8080) and create the first administrator.
-2. Register a PostgreSQL target and test the connection.
-3. Review its execution policy, create a request, and submit it for approval.
-4. Have a separately provisioned reviewer approve it, then execute it as the requester and explore the result.
+Open [localhost:8080](http://localhost:8080), create the first administrator, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and run your first request. The default policy requires one distinct reviewer; for a disposable single-user demo, set Read approvals to `0`.
 
-For a disposable single-user demo, set Read approvals to `0`; automatic approval is still audited. The [PostgreSQL alpha quickstart](docs/operations/pg-alpha-quickstart.md) supplies local connection settings and a first query. Compose uses persistent database and key volumes; its sample credentials and disabled database TLS are intended for local demonstrations.
-
-## Current scope
-
-| Area | Status |
-| --- | --- |
-| PostgreSQL governance and result exploration | Available in the development alpha; see the [feature and version evidence](docs/product/database-support.md) |
-| Authentication | First-administrator setup, email/password sessions, and configured Google OIDC |
-| Deployment | Docker Compose; one serving process with PostgreSQL metadata |
-| MySQL | Next committed database target; product adapter pending |
-| SQL review facts and basic EXPLAIN | Planned after MySQL parity |
-| Saved queries and schema dry-run preview | Planned; completes the MVP together with the preceding work |
-| Sensitive-data masking, agent integration, Helm/Kustomize | Later milestones, with masking before agent access |
-
-PostgreSQL target-version qualification and the metadata database baseline are separate. The [support matrix](docs/product/database-support.md) records their exact boundaries. SQLite is excluded from product scope.
-
-The alpha accepts explicitly supported single-statement SQL forms. Cancellation is best effort, and an uncertain execution is reported as `outcome_unknown`; it is never automatically rerun. Operators own backups, master-key preservation, and deployment configuration. See the [operating guide](docs/operations/pg-alpha-quickstart.md) and [architecture](docs/ARCHITECTURE.md) before evaluating a deployment.
-
-## More of the application
-
-<details>
-<summary>Connection management, execution policies, review, and sign-in</summary>
-
-### Connections and policies
-
-Register and test targets, label their environment, and archive connections. Policy settings control statement classes, review requirements, timeouts, row limits, and result sizes. Reads are enabled by default with one distinct reviewer; writes and DDL require explicit enablement.
-
-![PostgreSQL connections labeled as development and production](docs/media/connections.png)
-
-![Read, Write, and DDL permissions, approval counts, and execution limits](docs/media/policy.png)
-
-### Review and authentication
-
-Reviewers inspect the request context, SQL, target snapshot, and approval status before deciding. Requests and results support direct links, reload, and browser history. First-run setup creates the initial administrator; Google sign-in appears when configured.
-
-![A distinct reviewer inspecting submitted SQL and choosing approval or rejection](docs/media/review.png)
-
-![Portcullis-branded email and password sign-in screen](docs/media/login.png)
-
-![Portcullis-branded first-administrator setup screen](docs/media/bootstrap.png)
-
-The environment labels in these captures are illustrative; both targets use an isolated demo database.
-
-</details>
-
-## Contributing
-
-Useful contributions include reproducible bug reports, documentation improvements, and feedback from trying the request → review → execution workflow. Share your use case and expected behavior in an [issue](https://github.com/aportcullis/portcullis/issues); use synthetic SQL and remove credentials and private data from examples.
-
-For implementation changes, start with the [development guide](docs/development.md) and [product requirements](docs/product/prd.en.md). Discuss substantial scope changes before opening a pull request. The project uses scenario-based TDD, DDD, and Clean Architecture, with small reviewed commits and a complete `make verify` gate. Testcontainers and real-browser tests exercise the actual application.
-
-The [roadmap](docs/roadmap.md) explains planned outcomes and prerequisites. It is a direction of travel, not a delivery-date commitment. Experience reports from teams evaluating database governance will help shape those priorities.
+Compose preserves metadata and master keys in volumes. Its sample credentials and disabled database TLS are for local demonstrations. See the quickstart for operating requirements, backup considerations, and execution limitations.
 
 ## Documentation
 
-[Documentation index](docs/README.md) · [Quickstart](docs/operations/pg-alpha-quickstart.md) · [Database support](docs/product/database-support.md) · [Roadmap](docs/roadmap.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/development.md) · [Brand assets](docs/branding.md)
+| Start here | Reference |
+| --- | --- |
+| Try the application | [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) · [Product tour](docs/media/product-tour.md) |
+| Check compatibility | [Database features and version evidence](docs/product/database-support.md) |
+| Understand operation | [Architecture](docs/ARCHITECTURE.md) · [Key rotation](docs/operations/key-rotation.md) · [Validation](docs/operations/m1-validation.md) |
+| Explore the direction | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
+| Work on the project | [Contributing](CONTRIBUTING.md) · [Development guide](docs/development.md) |
+
+The [documentation index](docs/README.md) contains the complete repository documentation. MySQL parity, SQL review/EXPLAIN, and saved queries with schema preview are the next milestones. Sensitive-data masking precedes later agent integration. Deployment and integration plans, including Helm/Kustomize, are tracked in the roadmap.
+
+## Community
+
+Use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions, reproducible bug reports, feature proposals, and feedback from evaluating Portcullis. Include the database version, expected behavior, and minimal synthetic examples where relevant.
+
+If you are trying Portcullis with your team, share the workflow you need and where the current experience falls short. These reports help prioritize the roadmap.
+
+## Contributing
+
+Contributions can start with documentation, bug reproduction, tests, or implementation. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and links to development requirements. Discuss substantial changes in an issue before implementation so they can be aligned with the product scope.
 
 ## License
 
-Portcullis is being developed toward an open-source release. A project license has not yet been selected or added to this repository; licensing and contribution terms remain a [pre-publication decision](docs/product/prd.en.md#122-decision-status-2026-07-04-only-licensing-unresolved). This README does not grant a license.
+The project license and contribution terms are [pending a pre-publication decision](docs/product/prd.en.md#122-decision-status-2026-07-04-only-licensing-unresolved). No project license has been added to this repository yet.
