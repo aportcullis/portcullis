@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 128" role="img" aria-labelledby="title">
+  <title id="title">Portcullis</title>
+  <g id="frame" fill="#102A36">
+    <path d="M28 78V55a36 36 0 0 1 72 0v23l-12 8V55a24 24 0 0 0-48 0v31Z"/>
+  </g>
+  <g id="gate" fill="#147D82">
+    <path d="M45 48h10v57H45Z M60 39h10v66H60Z M75 48h10v57H75Z"/>
+  </g>
+  <g id="wings" fill="#102A36">
+    <path d="m4 65 25 17c7 4 12 11 12 19v13L13 96C8 92 5 88 4 82l17 7L9 78C5 75 4 71 4 65Z"/>
+    <path transform="translate(128) scale(-1 1)" d="m4 65 25 17c7 4 12 11 12 19v13L13 96C8 92 5 88 4 82l17 7L9 78C5 75 4 71 4 65Z"/>
+  </g>
+  <text id="wordmark" x="144" y="86" fill="#102A36" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="60" font-weight="750" letter-spacing="-2">Portcullis</text>
+</svg>

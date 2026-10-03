@@ -8,6 +8,7 @@ import { visibleSections } from "@/app/navigation";
 import { UnreachableCard } from "@/entities/session/UnreachableCard";
 import { hasPermission, session } from "@/entities/session/store";
 import { LogoutButton } from "@/features/auth/LogoutButton";
+import { BrandLogo } from "@/shared/ui/BrandLogo";
 import { Badge } from "@/shared/ui/badge";
 
 // AppShell owns the session guard and capability-based navigation; the server still authorizes every RPC.
@@ -24,7 +25,7 @@ const AppShell: Component<RouteSectionProps> = (props) => (
         <header class="border-b">
           <div class="mx-auto flex w-full max-w-4xl items-center justify-between gap-6 px-6 py-3">
             <div class="flex items-center gap-6">
-              <span class="text-base font-semibold tracking-tight">Portcullis</span>
+              <BrandLogo class="h-8" />
               <nav aria-label="Main" class="flex items-center gap-4">
                 <For each={visibleSections(hasPermission)}>
                   {(section) => (

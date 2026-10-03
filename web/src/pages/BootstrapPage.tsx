@@ -6,6 +6,7 @@ import { Navigate, useNavigate } from "@solidjs/router";
 import { ConfigErrorCard } from "@/entities/instance/ConfigErrorCard";
 import { loginConfig, refetchLoginConfig } from "@/entities/instance/config";
 import { BootstrapForm } from "@/features/auth/BootstrapForm";
+import { BrandLogo } from "@/shared/ui/BrandLogo";
 import {
   Card,
   CardContent,
@@ -26,6 +27,7 @@ const BootstrapPage: Component = () => {
           <main class="flex min-h-screen items-center justify-center p-4">
             <Card class="w-full max-w-sm">
               <CardHeader>
+                <BrandLogo class="mb-2 h-12" />
                 <CardTitle>Set up Portcullis</CardTitle>
                 <CardDescription>Create the first administrator account</CardDescription>
               </CardHeader>

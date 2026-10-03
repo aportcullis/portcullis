@@ -8,6 +8,7 @@ import { loginConfig } from "@/entities/instance/config";
 import { session } from "@/entities/session/store";
 import { GoogleLoginButton } from "@/features/auth/GoogleLoginButton";
 import { LoginForm } from "@/features/auth/LoginForm";
+import { BrandLogo } from "@/shared/ui/BrandLogo";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import {
   Card,
@@ -29,7 +30,7 @@ const LoginPage: Component = () => {
         <main class="flex min-h-screen items-center justify-center p-4">
           <Card class="w-full max-w-sm">
             <CardHeader>
-              <CardTitle>Portcullis</CardTitle>
+              <CardTitle><BrandLogo class="h-12" /></CardTitle>
               <CardDescription>Sign in to your account</CardDescription>
             </CardHeader>
             <CardContent class="flex flex-col gap-4">
