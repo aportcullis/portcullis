@@ -129,6 +129,9 @@ try {
        (g * 19.95)::numeric(12,2) AS revenue_usd
 FROM generate_series(1, 30) AS g`;
   await page.getByLabel("SQL", { exact: true }).fill(sql);
+  await expect(page).toHaveURL(/\/requests\/new$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await shot("request");
   await frame("workflow", "2 / 6  ·  Choose the connection and submit the exact SQL", 2400);
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   const requestRow = target => target.getByRole("row", { name: /Analytics warehouse/ });
@@ -183,7 +186,7 @@ FROM generate_series(1, 30) AS g`;
   await frame("results", "5 / 5  ·  Prepare CSV for the whole snapshot, including other regions", 2600);
   // Deliberately do not claim native file saving: the release gate records its environment failure.
   await writeFile(work + "frames.json", JSON.stringify(frames, null, 2));
-  console.log("Captured 6 screenshots and 2 walkthrough frame sequences from the real application.");
+  console.log("Captured 7 screenshots and 2 walkthrough frame sequences from the real application.");
 } finally {
   if (browser) await browser.close();
   if (server && server.exitCode === null) {

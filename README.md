@@ -8,7 +8,9 @@ Self-hosted database governance and result exploration. Control access and chang
 
 ## Request, review, execute once
 
-Choose a connection and submit SQL for approval. Submission freezes the request payload and policy version. A distinct reviewer inspects the request, then the original requester executes it once. An executed request cannot be replayed.
+Compose SQL on a dedicated request page with room for the statement and typed parameters. Save a draft to continue editing, or submit it for approval. Submission freezes the request payload and policy version. A distinct reviewer inspects the request, then the original requester executes it once. An executed request cannot be replayed.
+
+![SQL composition on the dedicated request page](docs/media/request.png)
 
 ![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
 
@@ -44,13 +46,13 @@ Both connections use an isolated demo database. The `production` label illustrat
 
 ### Execution policies
 
-The default policy allows reads and requires one distinct reviewer. An administrator must explicitly enable writes and DDL.
+Policy settings open within the connections page. The default policy allows reads and requires one distinct reviewer. An administrator must explicitly enable writes and DDL.
 
 ![Read, Write, and DDL permissions, approval counts, and execution limits](docs/media/policy.png)
 
 ### Request review
 
-Reviewers inspect the submitted SQL, target connection snapshot, and approval status before approving or rejecting with a reason.
+Reviewers inspect the submitted SQL, target connection snapshot, and approval status on the request detail page before approving or rejecting with a reason. Requests and results support direct links, reload, and browser history.
 
 ![A distinct reviewer inspecting submitted SQL and choosing approval or rejection](docs/media/review.png)
 

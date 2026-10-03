@@ -10,6 +10,7 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 | `login.png` | Branded local sign-in screen |
 | `connections.png` | Two demo connections with development/production labels |
 | `policy.png` | Default read-only policy and one distinct required reviewer |
+| `request.png` | SQL composition on a dedicated page with typed parameters |
 | `review.png` | A distinct reviewer inspecting submitted SQL |
 | `results.png` | Typed results with exact large integers and decimal amounts |
 | `workflow.gif` | Request → distinct approval → single-use execution |
