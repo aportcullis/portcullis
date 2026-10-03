@@ -57,8 +57,18 @@ type ResultWriter interface {
 
 // Admission sheds unhealthy target load before a request consumes its lease.
 type Admission interface {
-	Allow(connection.ConnectionID) (func(bool), error)
+	Allow(connection.ConnectionID) (func(TargetOutcome), error)
 }
+
+// TargetOutcome distinguishes target availability from an unattempted execution.
+type TargetOutcome uint8
+
+// Target outcomes report availability without treating an unused reservation as success.
+const (
+	TargetNotAttempted TargetOutcome = iota
+	TargetHealthy
+	TargetUnhealthy
+)
 
 // DialectResolver selects the registered dialect for a stored target engine.
 type DialectResolver interface {

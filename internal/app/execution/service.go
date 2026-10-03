@@ -140,13 +140,13 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 		return access.ExecutionCompletion{}, err
 	}
 	event := auditevent.NewUser(ctx, requester, audit.ActionExecutionStarted, audit.TargetTypeAccessRequest, audit.OutcomeSucceeded)
-	targetSucceeded := true
+	targetOutcome := TargetNotAttempted
 	if s.admission != nil {
 		done, err := s.admission.Allow(r.ConnectionID)
 		if err != nil {
 			return access.ExecutionCompletion{}, err
 		}
-		defer func() { done(targetSucceeded) }()
+		defer func() { done(targetOutcome) }()
 	}
 	lease, err := s.leases.AcquireExecution(ctx, org, id, requester, s.owner, uuid.NewString(), r.Digest, event)
 	if err != nil {
@@ -164,8 +164,8 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	heartbeatStopped := make(chan struct{})
 	go s.maintainLease(workCtx, org, lease, cancel, heartbeatDone, heartbeatStopped)
 	defer func() { cancel(); close(heartbeatDone); <-heartbeatStopped }()
-	completion = s.runTarget(workCtx, dialect, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, Governed: true, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
-	targetSucceeded = completion.State == access.StateSucceeded
+	targetOutcome = TargetUnhealthy
+	completion, targetOutcome = s.runTarget(workCtx, dialect, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, Governed: true, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
 	completion.DurationMilliseconds = time.Since(started).Milliseconds()
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer finishCancel()
@@ -175,12 +175,12 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	return completion, nil
 }
 
-func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Request, material connection.Connection, credential connection.Credential, request query.Execution) access.ExecutionCompletion {
+func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Request, material connection.Connection, credential connection.Credential, request query.Execution) (access.ExecutionCompletion, TargetOutcome) {
 	completion := access.ExecutionCompletion{State: access.StateOutcomeUnknown}
 	stream, err := dialect.Execute(ctx, material.Target, material.TLSMode, credential, request)
 	if err != nil {
 		completion.State = failedExecutionState(err)
-		return completion
+		return completion, targetHealthAfterFailure(err)
 	}
 	defer func() { _ = stream.Close() }()
 	rows := make([][]query.CellValue, 0, min(request.MaxRows, 100))
@@ -189,7 +189,7 @@ func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Reque
 	}
 	if err := stream.Err(); err != nil {
 		completion.State = failedExecutionState(err)
-		return completion
+		return completion, targetHealthAfterFailure(err)
 	}
 	completion.State = access.StateSucceeded
 	completion.RowsAffected = stream.RowsAffected()
@@ -204,7 +204,15 @@ func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Reque
 		completion.ByteCount = stored.ByteCount
 		completion.Truncated = stored.Truncated
 	}
-	return completion
+	return completion, TargetHealthy
+}
+
+func targetHealthAfterFailure(err error) TargetOutcome {
+	var connectionFailure *connection.TestError
+	if errors.As(err, &connectionFailure) || failedExecutionState(err) == access.StateOutcomeUnknown {
+		return TargetUnhealthy
+	}
+	return TargetHealthy
 }
 
 func failedExecutionState(err error) access.State {
