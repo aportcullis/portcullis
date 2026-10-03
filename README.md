@@ -1,4 +1,6 @@
-<h1><picture><source media="(prefers-color-scheme: dark)" srcset="web/public/brand/logo-dark.svg" /><img src="web/public/brand/logo.svg" alt="Portcullis" width="360" /></picture></h1>
+# Portcullis
+
+![Portcullis logo](docs/media/logo.png)
 
 Self-hosted database governance and result exploration. Control access and changes, review SQL before execution, and explore the results in one application. Portcullis ships as a Go binary with an embedded SolidJS web interface.
 

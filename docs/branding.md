@@ -4,8 +4,9 @@ The logo combines a gate with three teal bars and two abstract crow wings. The i
 
 ## Assets and placement
 
-- [Wordmark](../web/public/brand/logo.svg): README, application header, login and bootstrap screens.
-- [Dark wordmark](../web/public/brand/logo-dark.svg): light ink for the README's dark background.
+- [Wordmark](../web/public/brand/logo.svg): Application header, login and bootstrap screens.
+- [Dark wordmark](../web/public/brand/logo-dark.svg): light ink for dark backgrounds.
+- [README logo](media/logo.png): PNG with a warm background for Markdown previews; its editable source is [logo.svg](media/logo.svg).
 - [Icon](../web/public/brand/icon.svg): browser favicon. Its warm background keeps the navy silhouette visible in both light and dark browser chrome.
 - `shared/ui/BrandLogo.tsx`: the common application image with an accessible name and intrinsic dimensions.
 
