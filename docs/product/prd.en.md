@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.5 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Shared revision:** v0.6 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
 > **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 WebMCP (ADR-0026).
-> **Status:** Draft v0.5 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Status:** Draft v0.6 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -429,7 +429,7 @@ This section replaces the separate PRD previously required to start M4.
 
 ### 4.10 WebMCP query assistance (M6 / Reach)
 
-Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. HTTP MCP gateways and remote/headless machine clients remain Later.
+Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. HTTP MCP gateways and remote/headless machine clients remain Later. WebMCP activation additionally requires M4 masking acceptance and M6 authenticated agent registration/grants (ADR-0027); registration precedes integration.
 
 - Expose connection discovery, visible SQL/typed-parameter composition, explicit draft save/submit, request/approval-state inspection, requester-only approved execution and bounded result-page retrieval as separate tools. Start with read queries; filling a form must not automatically persist or execute it.
 - Add schema discovery only through a bounded, authorized and audited catalog use case. Discover/reuse saved queries when Library supplies those assets. Neither path grants arbitrary SQL execution.
@@ -444,6 +444,16 @@ ADR-0026 advances review tools before agent integration. In M2, after MySQL pari
 M3 adds the §4.5/ADR-0012 schema status → dry-run → deterministic review slice over a pinned immutable Git/Atlas artifact. Enforce the per-DB object matrix, permissions, audit and bounded subprocess/catalog operations. Display fact sources, observation time, estimates and unknowns. No migration apply endpoint is exposed until M5; preview does not simulate changes or guarantee rollback/lock safety. Actual apply must revalidate artifact and target state.
 
 EXPLAIN ANALYZE, execute-then-rollback query dry-run, AI review and index recommendations remain deferred. Basic review facts do not promise exact affected rows or a risk score.
+
+### 4.12 Sensitive-data masking and registered agents (M4 → M6)
+
+Deliver server-side masking/withholding in M4 before registering or connecting agents in M6 (ADR-0027). Existing SQL audit redaction is not result-data masking. Admins manage versioned organization/connection disclosure rules; apply them before serialization across APIs, cells, CSV, SQL/catalog/plan/review metadata and future tools. Start with full redaction/omission. Requester ownership does not bypass masking; any human raw-view exception requires separate explicit permission and audit. Agents have no raw-view exception initially. Preserve approved SQL/parameters, execution semantics, encrypted originals and existing retention.
+
+Agent output is default-deny and releases only approved protected fields. Never send secrets, credentials, raw SQL/parameters or raw sensitive cells. Withhold unknown lineage/aliases/expressions, unqualified free-text/JSON or unsupported encodings; masking errors refuse safely. Recheck current policy on every read/export/response and invalidate stale exports/transformed caches after rule changes. Restrict sorting/filtering/search that could disclose hidden values. Audit policy versions/decisions without sensitive values. Automatic detection assists policy setup, not authorization. Acceptance includes UI/API/CSV/full-cell parity, metadata/plan/error leaks, derived values, stale caches, failures, org isolation and canary-secret tests against both DBs.
+
+After masking passes, org admins register agents with stable ID, owner, integration kind, pending/disabled/active/revoked state, allowed tools/connections, protected-output policy and expiring user delegation. Registration starts without grants; activation is explicit. Audit changes and use. Effective access intersects authenticated user, verified agent grant, org/connection and masking policies. Claimed names/IDs are untrusted. Revocation/expiry/logout prevents later calls and fences pending responses. Retain explicit user execution intent, distinct review, quorum, payload integrity and single-use execution; no automatic approval/rejection tools.
+
+Before integration, a transport ADR must prove caller binding to an active registration/delegation. Native WebMCP alone is not agent authentication; refuse protected capabilities when identity cannot be verified. Registration neither installs executable plugins nor fetches arbitrary endpoints. Remote/headless MCP authorization remains a separate Later transport, without browser-token passthrough. Acceptance includes forged IDs, cross-org access, revoked/expired grants, permission intersection and protected output. This governs Portcullis-mediated disclosure; it cannot constrain an external agent's independent browser/DOM access.
 
 ---
 
@@ -802,9 +812,9 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 2  Bridge       PostgreSQL/MySQL parity; deterministic SQL review and basic read EXPLAIN
 3  Core 2       Saved queries/reuse across both DBs; schema status/dry-run/impact preview (no apply)
    ── MVP ──
-4  Access       Sequential validation of temporary web console, multistage approval, OIDC/LDAP
+4  Access       Sensitive-data masking first; temporary web console, multistage approval, OIDC/LDAP
 5  Schema       Complete pinned schema approval/apply/recovery/verify using M3 preview contracts
-6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability; browser WebMCP after M5
+6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability; agent registration/grants then WebMCP after M5 and masking
 7  Later        BI analysis/sharing (charts/dashboards), declarative GitOps, CNPG discovery, SIEM, ML/AI Review (§4.8), Agent Gateway integration (§4.7)
 ```
 

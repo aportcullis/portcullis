@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.5 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **동기화 기준:** v0.6 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
 > **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 WebMCP는 M6로 미룬다(ADR-0026).
-> **상태:** Draft v0.5 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
+> **상태:** Draft v0.6 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -397,7 +397,7 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 
 ### 4.10 WebMCP 쿼리 보조 (M6 / Reach)
 
-브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다.
+브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다. WebMCP 활성화에는 M4 마스킹 인수 통과와 M6의 인증된 에이전트 등록·권한 부여가 추가로 필요하다(ADR-0027). 등록을 연동보다 먼저 제공한다.
 
 - 연결 탐색, 화면에 보이는 SQL·타입 파라미터 작성, 명시적 초안 저장·제출, 요청·승인 상태 조회, 요청자만의 승인된 실행, 제한된 결과 페이지 조회를 각각 도구로 제공한다. Read 쿼리부터 시작하며, 폼을 채우는 것만으로 자동 저장·실행하지 않는다.
 - 스키마 탐색은 제한·인가·감사를 갖춘 catalog use case를 정의한 뒤 추가한다. 저장 쿼리 탐색·재사용은 Library가 해당 자산을 제공할 때 연동한다. 어느 경로도 임의 SQL 실행 권한을 부여하지 않는다.
@@ -412,6 +412,16 @@ ADR-0026으로 에이전트 연동보다 검토 도구를 앞당긴다. M2는 My
 M3는 4.5/ADR-0012의 고정된 불변 Git/Atlas artifact로 schema status → dry-run → 결정론 review만 제공한다. DB별 object matrix, 인가, audit, 제한된 subprocess·catalog 작업을 강제한다. fact 산출원·관측 시각·추정·unknown을 표시한다. M5 전에는 migration apply endpoint를 제공하지 않으며 미리보기는 변경 시뮬레이션이나 rollback·lock 안전성 보장이 아니다. 실제 apply 전 artifact와 target 상태를 재검증한다.
 
 EXPLAIN ANALYZE, 실행 후 rollback하는 일반 쿼리 dry-run, AI review, 인덱스 추천은 후속 범위로 유지한다. 기본 검토 정보는 정확한 영향 row 수나 위험 점수를 약속하지 않는다.
+
+### 4.12 민감정보 마스킹과 등록된 에이전트 (M4 → M6)
+
+M4에서 서버 마스킹·출력 보류를 먼저 제공하고 M6에서 에이전트 등록 후 연동한다(ADR-0027). 기존 SQL audit redaction은 결과 데이터 마스킹이 아니다. admin이 버전별 조직·connection 공개 규칙을 관리하고 API·cell·CSV·SQL/catalog/plan/review metadata·후속 tool 출력 직렬화 전에 적용한다. 처음에는 값 전체 가리기·필드 제외부터 제공한다. 요청자 소유권은 마스킹을 우회하지 않으며 사람의 원문 예외는 별도 명시 권한과 audit가 필요하다. 초기 에이전트에는 원문 예외가 없다. 승인 SQL·parameter, 실행 의미, 암호화 원본과 기존 보존 정책은 유지한다.
+
+에이전트 출력은 기본 거부하며 명시 허용된 보호 필드만 제공한다. secret·credential·원문 SQL/parameter·민감 cell 원문은 보내지 않는다. 출처 불명·alias·expression, 검증되지 않은 free-text/JSON·미지원 encoding은 보류하고 마스킹 오류는 안전하게 거부한다. 매 조회·export·응답에서 현재 정책을 재검증하고 규칙 변경 시 준비된 export·오래된 변환 cache를 무효화한다. 숨긴 값을 유추할 수 있는 sort/filter/search는 제한한다. audit에는 정책 버전·판단만 남기고 민감 값은 남기지 않는다. 자동 탐지는 정책 설정 보조이며 인가 근거가 아니다. UI/API/CSV/full-cell 일치, metadata/plan/error 누출, 파생 값, 오래된 cache, 실패, 조직 격리와 두 DB의 canary-secret 시나리오를 인수 조건으로 둔다.
+
+마스킹 통과 후 조직 admin이 stable ID·owner·연동 종류·pending/disabled/active/revoked 상태·허용 tool/connection·보호 출력 정책·만료가 있는 사용자 위임을 가진 에이전트를 등록한다. 등록 시 권한은 없고 활성화는 명시적이다. 변경·사용을 audit한다. 실제 권한은 인증 사용자·검증된 agent grant·조직/connection·마스킹 정책의 교집합이다. 제출한 이름/ID는 신뢰하지 않는다. 회수·만료·로그아웃 시 후속 호출을 거부하고 진행 응답도 fence한다. 명시적 사용자 실행 요청·별도 검토·quorum·payload 무결성·1회 실행을 유지하며 자동 승인/반려 tool은 제공하지 않는다.
+
+연동 전 transport ADR로 호출자를 활성 등록·위임에 결합하는 방법을 입증한다. native WebMCP만으로 에이전트를 인증할 수 없으며 신원을 확인하지 못하면 보호 기능을 거부한다. 등록은 실행 plugin 설치나 임의 endpoint fetch가 아니다. 원격/headless MCP 인가는 browser token 전달 없이 별도 Later transport로 다룬다. 위조 ID·타 조직·회수/만료 grant·권한 교집합·보호 출력이 인수 조건이다. 이는 Portcullis 경유 공개를 통제하며 외부 에이전트의 독립적인 browser/DOM 접근을 통제한다고 약속하지 않는다.
 
 ---
 
@@ -762,9 +772,9 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 2  Bridge       PostgreSQL/MySQL parity → 결정론 SQL 검토·기본 Read EXPLAIN
 3  Core 2       두 DB 쿼리 저장·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
    ── MVP ──
-4  access 확장  임시 접근(웹 console session)·다단계 승인·OIDC/LDAP 순차 검증
+4  access 확장  민감정보 마스킹 우선 → 임시 접근·다단계 승인·OIDC/LDAP
 5  schema       M3 미리보기 계약 기반 schema 승인·apply·복구·verify 완성
-6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider; M5 이후 브라우저 WebMCP
+6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider; M5·마스킹 이후 에이전트 등록·권한 → 브라우저 WebMCP
 7  later        BI 분석·공유(차트·대시보드), declarative GitOps, CNPG 자동발견, SIEM, ML/AI Review(4.8), Agent Gateway 연동(4.7)
 ```
 
