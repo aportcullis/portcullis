@@ -108,7 +108,10 @@ Both are corrected here.
    A `ddl` class is a statement of privilege, never a waiver of the effect check.
 2. **The real boundary is the target database account (PRD §8.1).** What ultimately bounds an approved statement is what its login role is *allowed to do* on the target: no `EXECUTE` on `dblink_exec`/admin functions, no `CREATE` in schemas it should not write, no superuser.
    Portcullis's parser is a governance filter on *intent*; the database's own privilege system is the enforcement.
-3. **Execution-time OID resolution (the executor slice's contract, hook only).** When the executor lands it must resolve each referenced function/operator to an **OID** under a pinned `search_path` and match it against a trusted catalog, rather than trusting the spelling layer 1 saw.
+3. **Execution-time catalog identity verification (implemented M1, ADR-0021).** Resolve explicitly referenced names to visible candidate **OIDs** under pinned `search_path=pg_catalog,public` and require every candidate to be a bootstrap built-in in pg_catalog.
+   This conservative proof refuses any untrusted overload, operator implementation, or explicit type, even where argument resolution would choose a trusted candidate.
+   It does not claim to expose the exact selected OID: PostgreSQL's wire protocol does not return analyzed expression identities.
+   Catalog changes and indirectly invoked behavior remain subject to trusted target administration and least target privilege.
    Name equality is not identity: PostgreSQL resolves calls by *argument types* and `search_path` order, so `lower(some_custom_type)` can bind a user-defined overload whose name is on the list.
 
 **`provolatile` is NOT part of that boundary.** PostgreSQL states the volatility category is *"a promise to the optimizer about the behavior of the function"*, and that filtering on it is *"not a completely bulletproof test, since such functions could still call `VOLATILE` functions that modify the database"*.

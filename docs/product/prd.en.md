@@ -1,7 +1,7 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.3 / 2026-09-30. Update requirements and section numbers in both languages in the same change.
+> **Shared revision:** v0.3 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
 > **Status:** Draft v0.3 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
@@ -573,9 +573,10 @@ audit_events
 - **Runtime permissions:** Audit INSERT/SELECT only, no UPDATE/DELETE; separate from the schema migration owner.
 - **Actors:** Automatic approval, reconciler, AI review, and late completions use `actor_type=system|service`.
   - User ID is nullable; nonhuman actors carry a stable `actor_service`, e.g. `system:reconciler`, `service:ai-review`.
-- **Per-statement invariant:** Every attempt on every execution path, including direct web execution and later temporary sessions, has `EXECUTION_STARTED`.
+- **Per-statement invariant:** Every attempt admitted to target execution, including direct web execution and later temporary sessions, has `EXECUTION_STARTED`.
   - Confirmed outcomes record terminal `EXECUTION_FINISHED`; unconfirmed outcomes record `outcome_unknown`.
-  - Crashes can prevent proof of reaching the DB; the guarantee is a STARTED event per attempt.
+  - Crashes can prevent proof of reaching the DB; the guarantee is a STARTED event per admitted attempt.
+  - Preflight refusals of owner-verified requests, including integrity/state/policy failures, saturation, and draining, record `EXECUTION_REJECTED` without consuming a lease (ADR-0021).
   - Record comment-free, typed-literal-placeholder, bind-preserving redacted SQL plus digest, class, affected rows, and duration.
   - Never record raw SQL, plaintext parameters/literals/comments, or result rows; encrypt originals under §8.4, and fall back to digest/type only if redaction fails.
   - No temporary session can execute without history, matching kviklet `Connection.kt` per-execute `saveEvent`, code verified 2026-06-27.
@@ -601,7 +602,9 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - Tie-breakers such as `ORDER BY created_at DESC, id DESC` stabilize boundaries.
   - Locally adopt keyset pagination for high-growth tables if needed, behind the shared list-helper interface.
 - **Query snapshots:** Execute once, store AEAD chunks in PostgreSQL UNLOGGED storage for 15 minutes, and paginate/sort/filter without rerunning.
-  - Stop at the first of 10,000 rows or 25MiB; mark `truncated=true`.
+  - Stop at the first snapshot ceiling of 10,000 rows or 25MiB; mark `truncated=true`.
+    Apply any lower connection-policy limit first (new policies default to 16MiB, ADR-0015/0021).
+    Separate pre-decode cell/row memory admission can truncate wide NULL results earlier even when value payloads are small (ADR-0021).
   - Default global storage 512MiB with expiry/LRU, per-user 64MiB and eviction/rejection order in ADR-0011; display expiry/eviction.
   - Original-order pages/CSV decrypt only required chunks; stream CSV without loading the whole snapshot.
   - Sort/filter through bounded server workers, not PostgreSQL ciphertext queries; decrypt at most 25MiB temporarily and return the requested page.
@@ -670,7 +673,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - PG `READ ONLY` blocks specified commands, not all disk writes; `SELECT` can invoke `dblink_exec`, `pg_notify`, `set_config`, advisory-lock, and server-file functions.
   - Enforce a classification-time function/operator allowlist, rejecting unknown, user-defined, and schema-qualified names.
   - Apply it to **every class, including DDL**, added 2026-07-25; CTAS, expression indexes, and column defaults can invoke functions.
-  - Resolve referenced functions/operators to OIDs during execution using fixed `search_path` and trusted catalogs, alongside least target privilege (§8.1).
+  - Verify all visible candidate OIDs for explicitly referenced functions/operators during execution using fixed `search_path` and trusted catalogs, alongside least target privilege (§8.1). M1 conservatively rejects any untrusted overload rather than reproducing selected-OID resolution (ADR-0021).
   - `pg_proc.provolatile` is an optimizer promise, not enforcement, corrected 2026-07-25; authors can declare side-effecting bodies STABLE and call volatile functions.
   - Use volatility only as hygiene for honestly declared builtins; read-only transactions are supplemental protection.
 - **Size/storage:** Enforce byte and row caps against large-cell exhaustion.

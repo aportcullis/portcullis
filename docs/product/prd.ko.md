@@ -1,7 +1,7 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.3 / 2026-09-30. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **동기화 기준:** v0.3 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
 > **상태:** Draft v0.3 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
@@ -540,7 +540,8 @@ audit_events
 - runtime DB role은 `audit_events`에 `INSERT/SELECT`만 가능하고 `UPDATE/DELETE`할 수 없음. schema migration용 owner role과 분리.
 - **actor 모델:** 사람이 아닌 행위자(자동 승인 `required_approvals=0`, reconciler, AI review, late-completion)는 `actor_type=system|service`로 기록한다.
   `actor_user_id`는 nullable이고, system/service actor는 `actor_service`에 **안정적인 식별자**(예: `system:reconciler`, `service:ai-review`)를 남긴다.
-- **statement 단위 로깅(불변식):** 실행 경로가 무엇이든 — web 직접 실행, 향후 임시 접근 session(4.6) — **모든 실행 시도에는 `EXECUTION_STARTED` audit event가 존재**하고, 결과 확인 시 `EXECUTION_FINISHED`(terminal), 결과 미확인 시 `outcome_unknown`이 기록된다(crash 구간에 "DB 도달" 자체는 증명할 수 없으므로 "시도에는 STARTED가 있다"가 보장 단위).
+- **statement 단위 로깅(불변식):** 실행 경로가 무엇이든 — web 직접 실행, 향후 임시 접근 session(4.6) — **대상 실행에 진입하는 모든 시도에는 `EXECUTION_STARTED` audit event가 존재**하고, 결과 확인 시 `EXECUTION_FINISHED`(terminal), 결과 미확인 시 `outcome_unknown`이 기록된다(crash 구간에 "DB 도달" 자체는 증명할 수 없으므로 "진입한 시도에는 STARTED가 있다"가 보장 단위).
+  소유자가 확인된 요청의 실행 전 거부(무결성·상태·정책·포화·종료 중 포함)는 `EXECUTION_REJECTED`로 기록하며 lease를 소비하지 않는다(ADR-0021).
   기록되는 쿼리 텍스트는 **comment 제거 + inline literal→typed placeholder + bind placeholder 유지로 만든 redacted SQL + payload digest**이며(원문 SQL은 8.4대로 암호화 저장, audit엔 미기록, redaction 실패 시 fail-closed로 digest+type만) 평문 파라미터 값·literal·comment·결과 row는 남기지 않고 query_type·rows_affected·duration만 남긴다.
   임시 접근을 도입하더라도 "세션은 열어주되 실행 내역은 안 남는" 경로를 만들지 않는다.
   (kviklet proxy `Connection.kt`가 per-execute로 `saveEvent`하는 것과 동일 보장 — 코드 검증 2026-06-27)
@@ -566,7 +567,9 @@ audit_events
   - 정렬은 **tie-breaker 포함**(`ORDER BY created_at DESC, id DESC`)으로 페이지 경계 안정성 보장.
   - audit_event 등 폭증 테이블은 추후 필요 시 keyset으로 국소 전환(공통 list 헬퍼를 인터페이스로).
 - **쿼리 결과:** 실행 1회 후 서버가 snapshot을 **PostgreSQL UNLOGGED result store(AEAD 암호화 chunk)**에 15분 TTL로 보관하고 그 위에서 페이징/정렬/필터(DB 재실행 없음).
-  - 기본 최대 10,000행과 25MiB 중 먼저 도달한 상한에서 중단하고 `truncated=true` 표시.
+  - 최대 10,000행과 25MiB 중 먼저 도달한 snapshot 상한에서 중단하고 `truncated=true` 표시.
+    connection 정책의 더 낮은 상한을 우선 적용한다(신규 정책 기본 byte 상한 16MiB, ADR-0015/0021).
+    디코드 전에 셀·행 구조체 메모리를 별도로 제한하므로 값 바이트가 작은 넓은 NULL 결과도 더 일찍 truncate될 수 있다(ADR-0021).
   - 전체 result store 상한은 기본 512MiB이며 LRU로 만료.
     사용자별 quota(기본 64MiB)와 축출→거부 우선순위는 ADR-0011로 확정.
     TTL 만료·상한 축출 시 UI에 만료 상태 표시.
@@ -632,7 +635,7 @@ audit_events
   PostgreSQL/MySQL/SQLite의 implicit commit, timeout, cancel 차이는 adapter contract와 승인 UI에 명시.
 - **read-only 트랜잭션은 함수 부작용을 막지 못한다 (2026-07-24 증보, ADR-0002):** PostgreSQL의 `READ ONLY`는 문서상 "a high-level notion of read-only that does not prevent all writes to disk"로, 금지 대상은 명령(INSERT/UPDATE/DELETE/MERGE/COPY FROM/DDL/GRANT/TRUNCATE)뿐이다.
   따라서 `dblink_exec`·`pg_notify`·`set_config`·advisory lock·서버 파일 함수는 `SELECT` 안에서 통과한다.
-  방어는 ① 분류 시점 **함수·연산자 allow-list** — 목록 밖·사용자 정의·스키마 수식 이름은 fail-closed 거부이고, **클래스와 무관하게 ddl 포함 모든 문장에 적용**한다(2026-07-25 증보: ddl은 등급만 최종이고 부작용 검사를 면제하지 않는다 — CTAS·표현식 인덱스·컬럼 DEFAULT가 함수를 품는다) ② 실행 시 참조된 함수·연산자를 **OID로 해석**(고정 `search_path` + 신뢰 카탈로그 대조) ③ 대상 DB 계정 최소권한(§8.1)이다.
+  방어는 ① 분류 시점 **함수·연산자 allow-list** — 목록 밖·사용자 정의·스키마 수식 이름은 fail-closed 거부이고, **클래스와 무관하게 ddl 포함 모든 문장에 적용**한다(2026-07-25 증보: ddl은 등급만 최종이고 부작용 검사를 면제하지 않는다 — CTAS·표현식 인덱스·컬럼 DEFAULT가 함수를 품는다) ② 실행 시 명시적으로 참조된 함수·연산자의 **후보 OID 전체를 검증**(고정 `search_path` + 신뢰 카탈로그 대조; 사용자 overload가 하나라도 있으면 거부하는 보수적 대안, ADR-0021) ③ 대상 DB 계정 최소권한(§8.1)이다.
   `pg_proc.provolatile`은 **경계가 아니다**(2026-07-25 정정): PG 문서는 volatility를 *"a promise to the optimizer"* 로 규정하고 *"not a completely bulletproof test, since such functions could still call VOLATILE functions that modify the database"* 라고 명시한다 — 서버가 강제하지 않으므로 함수 생성 권한자는 부작용 있는 본문을 STABLE로 선언할 수 있다.
   정직하게 선언된 volatile builtin을 걸러내는 **위생 검사**로만 남긴다. read-only 트랜잭션도 경계가 아니라 보조 수단이다.
 - row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 → 전역 LRU 축출(사용자별 최소 1개 보존) → 그래도 부족하면 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
