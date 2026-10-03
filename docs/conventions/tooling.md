@@ -8,7 +8,7 @@
   - `make test` runs uncached shuffled tests; `make test-race` adds the race detector.
   - `make lint` checks gofmt and runs pinned golangci-lint with the project’s Go toolchain.
 - **Frontend verification**
-  - `make web-lint`, `make web-typecheck`, and `make web-test` run ESLint, tsgo, and Vitest.
+  - `make web-lint`, `make web-typecheck`, and `make web-test` run Oxlint, TypeScript 7 native `tsc`, and Vitest.
 - **Dependency security**
   - `make vuln` runs govulncheck; `make audit` also runs pnpm audit.
 - `make generate` — `buf generate` (Connect Go + TS) and `sqlc generate`.
@@ -16,7 +16,7 @@
 - `make query-bench` — actual PostgreSQL query workloads through raw pgconn and the execution adapter; three repeats of 20 iterations with allocation metrics.
 
 ## Codegen
-Generated code is **committed** — Go (`gen/`, `internal/infra/postgres/db/`) so `go build` works without the codegen tools, and the TS client (`web/src/gen/`) so `pnpm`/`tsgo` and CI work without running `buf`.
+Generated code is **committed** — Go (`gen/`, `internal/infra/postgres/db/`) so `go build` works without the codegen tools, and the TS client (`web/src/gen/`) so `pnpm`/`tsc` and CI work without running `buf`.
 Regenerate by editing `proto/*.proto` and the `*.sql` queries, then `make generate`; never hand-edit the generated files.
 Pin remote plugin versions in `buf.gen.yaml` to the corresponding Go/TypeScript runtime versions; update pins and generated output together.
 

@@ -8,7 +8,7 @@ Portcullis: self-hosted OSS **DevSecOps database governance and BI** — govern 
 MVP establishes saved queries and result exploration; charts, dashboards, and agent integration follow the PRD roadmap.
 Ships as one Go binary with the SolidJS SPA embedded.
 
-**Stack:** Go (connect-go, pgx, sqlc, viper, slog, argon2) · SolidJS + Vite (tsgo) · PostgreSQL 18 · Docker · buf + sqlc codegen.
+**Stack:** Go (connect-go, pgx, sqlc, viper, slog, argon2) · SolidJS + Vite (TypeScript 7) · PostgreSQL 18 · Docker · buf + sqlc codegen.
 
 ## Process — non-negotiable
 1. Start from the **PRD** ([한국어](docs/product/prd.ko.md) · [English](docs/product/prd.en.md)) — it is the agreement; conform to it.
