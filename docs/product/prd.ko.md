@@ -670,7 +670,7 @@ audit_events
 
 ### 8.1 Secret과 connection 보호
 - connection credential과 access request parameter values는 versioned envelope format의 AES-256-GCM으로 암호화해 저장한다. record마다 CSPRNG nonce를 생성하고 **canonical AAD `portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]`**(ADR-0003)를 associated data로 인증해 ciphertext 교체를 막는다. key version은 AAD에 넣지 않고 HKDF 파생 wrap key 선택으로 묶인다(버전 변조 = 복호 실패). 32-byte master key가 없거나 형식이 잘못되면 서버 시작을 거부.
-- production에서는 master key를 환경변수 평문보다 mounted secret으로 주입하도록 문서와 Compose 예제를 제공. key ID를 함께 저장해 재암호화 기반 rotation이 가능해야 함. 로컬 initializer는 동시 시작에도 기존 유효 키를 보존하고 잘못된 기존 키를 교체 없이 거부하며, 키 파일 접근을 비루트 runtime으로 제한한다(ADR-0003). 키 회전 완료는 모든 조직에서 비활성 버전의 암호화 envelope가 남지 않았다는 성공한 집계를 요구한다. 미처리 행이 있으면 완료를 거부하고 기존 무결성 검증 키는 계속 보존한다(ADR-0003/0004).
+- production에서는 master key를 환경변수 평문보다 mounted secret으로 주입하도록 문서와 Compose 예제를 제공. key ID를 함께 저장해 재암호화 기반 rotation이 가능해야 함. 로컬 initializer는 동시 시작에도 기존 유효 키를 보존하고 잘못된 기존 키를 교체 없이 거부하며, 키 파일 접근을 비루트 runtime으로 제한한다(ADR-0003). 키 회전은 오래된 envelope가 있는 조직을 순회하되 조직별 잠금 조회·갱신·audit를 유지하며 관리용 발견 쿼리는 조직 식별자만 반환한다. 키 회전 완료는 모든 조직에서 비활성 버전의 암호화 envelope가 남지 않았다는 성공한 집계를 요구한다. 미처리 행이 있으면 완료를 거부하고 기존 무결성 검증 키는 계속 보존한다(ADR-0003/0004).
 - 새 PostgreSQL/MySQL connection은 인증서를 검증하는 TLS mode가 기본.
   완화된 TLS 설정은 admin의 명시적 선택과 audit event가 필요.
 - API·로그·audit에서 password, 원문 DSN, session token, 암호화 전 parameter values, result row를 노출하지 않음.

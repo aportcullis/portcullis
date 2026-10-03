@@ -19,7 +19,23 @@ import (
 )
 
 func TestKeyRotationPreservesCredentialsPayloadsResultsAndDigestEvidence(t *testing.T) {
+	for _, scenario := range []struct {
+		name       string
+		nondefault bool
+	}{{"default organization", false}, {"nondefault organization", true}} {
+		t.Run(scenario.name, func(t *testing.T) { testKeyRotationPreservesOrgEnvelopes(t, scenario.nondefault) })
+	}
+}
+
+func testKeyRotationPreservesOrgEnvelopes(t *testing.T, nondefault bool) {
+	t.Helper()
 	f := newReqFixtureFresh(t)
+	if nondefault {
+		f.org = identity.OrganizationID(uuid.NewString())
+		if _, err := f.pool.Exec(context.Background(), `insert into organizations(id,name,slug) values ($1,'Rotation fixture',$2)`, string(f.org), uuid.NewString()); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ctx := context.Background()
 	oldKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
 	newKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
@@ -99,7 +115,7 @@ func TestKeyRotationPreservesCredentialsPayloadsResultsAndDigestEvidence(t *test
 		t.Fatalf("rotated result: %v", err)
 	}
 	var batches int
-	if err = f.pool.QueryRow(ctx, `select count(*) from public.audit_events where action='KEY_ROTATION_BATCH'`).Scan(&batches); err != nil {
+	if err = f.pool.QueryRow(ctx, `select count(*) from public.audit_events where action='KEY_ROTATION_BATCH' and organization_id=$1`, string(f.org)).Scan(&batches); err != nil {
 		t.Fatal(err)
 	}
 	if batches != 1 {
@@ -107,7 +123,7 @@ func TestKeyRotationPreservesCredentialsPayloadsResultsAndDigestEvidence(t *test
 	}
 }
 
-func TestRotationDoesNotClaimCompletionForAnotherOrganizationsEncryptedRows(t *testing.T) {
+func TestRotationRefusesFutureEncryptionVersionsAfterOtherOrganizationRotation(t *testing.T) {
 	f := newReqFixtureFresh(t)
 	ctx := context.Background()
 	org := identity.OrganizationID(uuid.NewString())
@@ -129,6 +145,14 @@ func TestRotationDoesNotClaimCompletionForAnotherOrganizationsEncryptedRows(t *t
 	if err := f.store.Create(ctx, connectionRecord, sealed, connEvent("CONNECTION_CREATED", connectionRecord.ID)); err != nil {
 		t.Fatal(err)
 	}
+	defaultConnection := f.newConn(t, unique("default-org-rotation"))
+	defaultEnvelope, err := crypto.NewConnectionCredentialCodec(old).Seal(f.org, defaultConnection.ID, connection.Credential{User: "fixture", Password: "fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Create(ctx, defaultConnection, defaultEnvelope); err != nil {
+		t.Fatal(err)
+	}
 	ring, err := crypto.LoadVersionedKeyring(newKey, "", "1:"+oldKey, "")
 	if err != nil {
 		t.Fatal(err)
@@ -139,11 +163,20 @@ func TestRotationDoesNotClaimCompletionForAnotherOrganizationsEncryptedRows(t *t
 		t.Fatal(err)
 	}
 	count, err := service.Rotate(ctx)
-	if count != 0 || !errors.Is(err, keyrotation.ErrIncomplete) {
-		t.Fatalf("unrotated foreign org was reported complete: count=%d err=%v", count, err)
+	if count != 2 || err != nil {
+		t.Fatalf("both organizations were not rotated: count=%d err=%v", count, err)
+	}
+	for _, organization := range []identity.OrganizationID{f.org, org} {
+		var batches int
+		if err := f.pool.QueryRow(ctx, `select count(*) from public.audit_events where action='KEY_ROTATION_BATCH' and organization_id=$1`, string(organization)).Scan(&batches); err != nil {
+			t.Fatal(err)
+		}
+		if batches != 1 {
+			t.Fatalf("organization %s has %d rotation events", organization, batches)
+		}
 	}
 	remaining, err := store.RemainingEncryptionRows(ctx, ring.ActiveVersion())
-	if err != nil || remaining != 1 {
+	if err != nil || remaining != 0 {
 		t.Fatalf("remaining=%d err=%v", remaining, err)
 	}
 	if _, err := f.pool.Exec(ctx, `update connections set credential_key_version=3 where id=$1`, string(connectionRecord.ID)); err != nil {
@@ -152,5 +185,8 @@ func TestRotationDoesNotClaimCompletionForAnotherOrganizationsEncryptedRows(t *t
 	remaining, err = store.RemainingEncryptionRows(ctx, ring.ActiveVersion())
 	if err != nil || remaining != 1 {
 		t.Fatalf("future-version row was omitted: remaining=%d err=%v", remaining, err)
+	}
+	if count, err := service.Rotate(ctx); count != 0 || !errors.Is(err, keyrotation.ErrIncomplete) {
+		t.Fatalf("future encryption version was accepted: count=%d err=%v", count, err)
 	}
 }

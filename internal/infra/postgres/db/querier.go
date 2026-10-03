@@ -57,6 +57,8 @@ type Querier interface {
 	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
+	// Administrative identity-only discovery; locked envelope reads remain org-scoped.
+	GetNextRotationOrganization(ctx context.Context, activeVersion int32) (pgtype.UUID, error)
 	GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error)
 	GetQueryExecution(ctx context.Context, arg GetQueryExecutionParams) (QueryExecution, error)
 	GetResultChunk(ctx context.Context, arg GetResultChunkParams) (ResultCacheResultChunk, error)

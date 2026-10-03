@@ -28,6 +28,31 @@ func (q *Queries) CountRemainingEncryptionRows(ctx context.Context, activeVersio
 	return remaining, err
 }
 
+const getNextRotationOrganization = `-- name: GetNextRotationOrganization :one
+select organization_id from (
+    (select organization_id from public.connections
+     where credential_key_version < $1::int
+     order by organization_id limit 1)
+    union all
+    (select organization_id from public.access_requests
+     where payload_key_version < $1::int
+     order by organization_id limit 1)
+    union all
+    (select organization_id from result_cache.result_sets
+     where key_version < $1::int
+     order by organization_id limit 1)
+) as rotation_organizations
+order by organization_id limit 1
+`
+
+// Administrative identity-only discovery; locked envelope reads remain org-scoped.
+func (q *Queries) GetNextRotationOrganization(ctx context.Context, activeVersion int32) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getNextRotationOrganization, activeVersion)
+	var organization_id pgtype.UUID
+	err := row.Scan(&organization_id)
+	return organization_id, err
+}
+
 const lockRotationCredentials = `-- name: LockRotationCredentials :many
 select id,organization_id,credential_key_version,credential_wrapped_dek,credential_nonce,credential_ciphertext
 from public.connections where organization_id=$1 and credential_key_version < $2::int

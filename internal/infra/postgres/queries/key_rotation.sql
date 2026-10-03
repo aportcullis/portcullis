@@ -1,3 +1,20 @@
+-- Administrative identity-only discovery; locked envelope reads remain org-scoped.
+-- name: GetNextRotationOrganization :one
+select organization_id from (
+    (select organization_id from public.connections
+     where credential_key_version < sqlc.arg('active_version')::int
+     order by organization_id limit 1)
+    union all
+    (select organization_id from public.access_requests
+     where payload_key_version < sqlc.arg('active_version')::int
+     order by organization_id limit 1)
+    union all
+    (select organization_id from result_cache.result_sets
+     where key_version < sqlc.arg('active_version')::int
+     order by organization_id limit 1)
+) as rotation_organizations
+order by organization_id limit 1;
+
 -- name: LockRotationCredentials :many
 select id,organization_id,credential_key_version,credential_wrapped_dek,credential_nonce,credential_ciphertext
 from public.connections where organization_id=sqlc.arg('organization_id') and credential_key_version < sqlc.arg('active_version')::int

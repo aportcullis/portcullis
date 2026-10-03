@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"math"
 
 	"github.com/aportcullis/portcullis/internal/domain/audit"
 	"github.com/aportcullis/portcullis/internal/domain/encryption"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,11 +37,14 @@ func (s *KeyRotationStore) RotateBatch(ctx context.Context, active uint32, rotat
 	count := 0
 	err := s.conns.withTx(ctx, func(q *db.Queries) error {
 		organizations := map[string]int{}
-		org, err := q.GetDefaultOrganization(ctx)
+		organizationID, err := q.GetNextRotationOrganization(ctx, int32(active)) //nolint:gosec // checked above
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
-		credentials, err := q.LockRotationCredentials(ctx, db.LockRotationCredentialsParams{ActiveVersion: int32(active), OrganizationID: org.ID}) //nolint:gosec // checked above
+		credentials, err := q.LockRotationCredentials(ctx, db.LockRotationCredentialsParams{ActiveVersion: int32(active), OrganizationID: organizationID}) //nolint:gosec // checked above
 		if err != nil {
 			return err
 		}
@@ -55,7 +60,7 @@ func (s *KeyRotationStore) RotateBatch(ctx context.Context, active uint32, rotat
 			organizations[value.OrganizationID]++
 			count++
 		}
-		payloads, err := q.LockRotationPayloads(ctx, db.LockRotationPayloadsParams{ActiveVersion: int32(active), OrganizationID: org.ID}) //nolint:gosec // checked above
+		payloads, err := q.LockRotationPayloads(ctx, db.LockRotationPayloadsParams{ActiveVersion: int32(active), OrganizationID: organizationID}) //nolint:gosec // checked above
 		if err != nil {
 			return err
 		}
@@ -70,7 +75,7 @@ func (s *KeyRotationStore) RotateBatch(ctx context.Context, active uint32, rotat
 			organizations[value.OrganizationID]++
 			count++
 		}
-		results, err := q.LockRotationResultKeys(ctx, db.LockRotationResultKeysParams{ActiveVersion: int32(active), OrganizationID: org.ID}) //nolint:gosec // checked above
+		results, err := q.LockRotationResultKeys(ctx, db.LockRotationResultKeysParams{ActiveVersion: int32(active), OrganizationID: organizationID}) //nolint:gosec // checked above
 		if err != nil {
 			return err
 		}
