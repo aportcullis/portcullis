@@ -31,3 +31,5 @@ Immediately before each commit, review the staged diff for scope, correctness, d
 ## Definition of done
 `go build ./...`, `go vet ./...`, `make lint` (0 issues), and `make test` all green before calling any work done.
 `make verify` also checks frontend and k6 TypeScript sources and runs browser E2E. The browser harness builds the real embedded application, uses the [Testcontainers PostgreSQL module](https://golang.testcontainers.org/modules/postgres/) with its readiness strategy, and serves its dynamically assigned fixture coordinates at the loopback-only test endpoint `127.0.0.1:18081/target`. It removes its own database and server at shutdown and refuses occupied application or fixture ports. The fixture clears inherited application configuration before supplying its disposable database and key.
+
+For a restricted host browser environment, the [Docker browser E2E guide](../operations/browser-e2e.md) runs Chromium remotely while preserving the same real-binary, Testcontainers and native CSV file-readback assertions.
