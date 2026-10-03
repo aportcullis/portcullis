@@ -157,6 +157,25 @@ type Permission struct {
 	Description string
 }
 
+type QueryExecution struct {
+	RequestID       pgtype.UUID
+	OrganizationID  pgtype.UUID
+	Owner           string
+	AttemptID       pgtype.UUID
+	Heartbeat       pgtype.Timestamptz
+	Deadline        pgtype.Timestamptz
+	StartedAt       pgtype.Timestamptz
+	FinishedAt      pgtype.Timestamptz
+	Outcome         *string
+	RowsAffected    int64
+	DurationMs      int64
+	ResultID        pgtype.UUID
+	ResultExpiresAt pgtype.Timestamptz
+	RowCount        int64
+	ByteCount       int64
+	Truncated       bool
+}
+
 type Role struct {
 	ID                 pgtype.UUID
 	OrganizationID     pgtype.UUID

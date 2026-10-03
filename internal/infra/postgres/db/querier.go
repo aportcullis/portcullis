@@ -39,6 +39,7 @@ type Querier interface {
 	// Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 	ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) (int64, error)
 	FindUserBySubject(ctx context.Context, arg FindUserBySubjectParams) (User, error)
+	FinishQueryExecution(ctx context.Context, arg FinishQueryExecutionParams) (int64, error)
 	GetAccessRequest(ctx context.Context, arg GetAccessRequestParams) (AccessRequest, error)
 	// The row lock every decision path takes first: concurrent approvals then serialize, so the quorum count and its transition are race-free (ADR-0018).
 	GetAccessRequestForUpdate(ctx context.Context, arg GetAccessRequestForUpdateParams) (AccessRequest, error)
@@ -52,11 +53,13 @@ type Querier interface {
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	GetPasswordAuth(ctx context.Context, userID pgtype.UUID) (AuthMethod, error)
+	GetQueryExecution(ctx context.Context, arg GetQueryExecutionParams) (QueryExecution, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	// Read identity, password hash, and lockout together so known and unknown accounts use one lookup. Evaluate lockout on the same database clock as failure writes.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
+	HeartbeatQueryExecution(ctx context.Context, arg HeartbeatQueryExecutionParams) (int64, error)
 	// created_at/updated_at are given explicitly rather than left to the column DEFAULT: this insert runs after a FOR SHARE wait on the connection, and the default is now() — the transaction's start time, which predates the wait (ADR-0009).
 	InsertAccessRequest(ctx context.Context, arg InsertAccessRequestParams) error
 	// Read clock_timestamp() after the request lock and reuse the returned instant for approval, transition, expiry, and audit.
@@ -67,6 +70,7 @@ type Querier interface {
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
+	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
 	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
 	ListAccessRequestsAsc(ctx context.Context, arg ListAccessRequestsAscParams) ([]ListAccessRequestsAscRow, error)
@@ -79,6 +83,7 @@ type Querier interface {
 	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
+	ListOverdueExecutions(ctx context.Context, organizationID pgtype.UUID) ([]pgtype.UUID, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// Return active target summaries under requests.create without connection-admin permissions (ADR-0008).
 	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
@@ -91,6 +96,7 @@ type Querier interface {
 	LockConnectionForWrite(ctx context.Context, arg LockConnectionForWriteParams) (pgtype.UUID, error)
 	// The config-replacement cascade's half of LockSweptRequestsForConnection: it touches pending/approved only, so it locks only those. Drafts survive a config change — the connection is still there and a draft carries no approval, so it can simply be submitted against the new configuration (unlike archive, which takes the connection away entirely).
 	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
+	LockQueryExecution(ctx context.Context, arg LockQueryExecutionParams) (QueryExecution, error)
 	// Lock cascade request rows before observing time. The caller’s exclusive connection lock prevents new requests from appearing behind the sweep.
 	LockSweptRequestsForConnection(ctx context.Context, arg LockSweptRequestsForConnectionParams) ([]pgtype.UUID, error)
 	// Observe time in a separate statement after all locks; an inline UPDATE timestamp may be evaluated before its lock wait.
