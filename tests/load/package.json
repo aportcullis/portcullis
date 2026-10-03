@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.34.6",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "bundle": "mkdir -p dist && esbuild governance.ts async-execution.ts wire.test.ts --bundle --format=esm --platform=neutral --target=es2022 --external:k6 --external:k6/* --outdir=dist",
+    "bundle": "mkdir -p dist && esbuild governance.ts async-execution.ts result-limits.ts wire.test.ts --bundle --format=esm --platform=neutral --target=es2022 --external:k6 --external:k6/* --outdir=dist",
     "test": "node --test tests/*.test.ts",
     "lint": "oxlint --deny-warnings --config oxlint.json ."
   },
