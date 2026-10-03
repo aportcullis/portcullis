@@ -49,6 +49,8 @@ These must be `Accepted` before Core 1 coding begins.
 
 | [0032](0032-request-title-and-body.md) | Access request titles and explanatory bodies | Accepted |
 
+| [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Accepted |
+
 ## Template
 ```markdown
 # ADR-XXXX: <title>

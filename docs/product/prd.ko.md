@@ -623,6 +623,7 @@ audit_events
     TTL 만료·상한 축출 시 UI에 만료 상태 표시.
   - 원래 순서의 페이지 조회와 CSV는 필요한 chunk만 순차 복호화한다.
     CSV는 전체 snapshot을 메모리에 올리지 않고 stream한다.
+  - 타입별 결과 정렬(ADR-0033): 최초에는 쿼리 반환 순서를 유지하고, 컬럼을 선택하면 선언된 logical type으로 전체 snapshot을 정렬한 뒤 페이지를 반환한다. 숫자 정밀도·시간 순서·동일 값의 원래 순서를 보존하며 NULL은 양방향 모두 마지막이다. 파싱할 수 없는 시간 표기는 타입 값 뒤에서 원문 기준으로 정렬한다. 컬럼·방향 표시와 원래 순서 복원을 제공하고 CSV가 원래 snapshot 순서를 내보낸다는 점을 알린다.
   - 정렬·필터는 암호문을 PostgreSQL에서 질의하지 않는다.
     서버의 제한된 processing worker가 최대 25MiB snapshot을 요청 처리 동안만 복호화해 수행하고 결과 page만 반환한다. worker 동시성 기본값은 2이며 포화 시 `429 Retry-After`로 backpressure를 적용한다.
   - **상주 in-process cache 비채택:** 전체 결과를 Go heap에 TTL 동안 보관하지 않는다.

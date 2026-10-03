@@ -5,15 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"errors"
-	"github.com/aportcullis/portcullis/internal/domain/identity"
-	"github.com/aportcullis/portcullis/internal/domain/query"
 	"io"
-	"math"
-	"math/big"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aportcullis/portcullis/internal/domain/identity"
+	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
 // Service processes encrypted snapshots within a bounded worker pool.
@@ -128,23 +127,23 @@ func (s *Service) Page(ctx context.Context, org identity.OrganizationID, owner i
 		}
 		if request.SortColumn >= 0 {
 			column := request.SortColumn
-			sort.SliceStable(rows, func(left, right int) bool {
-				if column >= len(rows[left]) || column >= len(rows[right]) {
-					return false
+			type sortableRow struct {
+				cells []query.CellValue
+				key   query.ResultSortKey
+			}
+			ordered := make([]sortableRow, len(rows))
+			for index, row := range rows {
+				if column >= len(row) {
+					return query.ResultPage{}, query.ErrResultUnavailable
 				}
-				a, b := rows[left][column], rows[right][column]
-				if a.Kind == query.CellNull {
-					return false
-				}
-				if b.Kind == query.CellNull {
-					return true
-				}
-				comparison := compareCells(a, b, columns[column].Logical)
-				if request.Descending {
-					return comparison > 0
-				}
-				return comparison < 0
+				ordered[index] = sortableRow{cells: row, key: query.NewResultSortKey(row[column], columns[column].Logical)}
+			}
+			sort.SliceStable(ordered, func(left, right int) bool {
+				return ordered[left].key.Compare(ordered[right].key, request.Descending) < 0
 			})
+			for index, row := range ordered {
+				rows[index] = row.cells
+			}
 		}
 		count = int64(len(rows))
 	}
@@ -261,67 +260,6 @@ func (s *Service) acquireWorker(ctx context.Context) error {
 	}
 }
 func (s *Service) releaseWorker() { <-s.workers }
-
-func compareCells(left, right query.CellValue, logical query.LogicalType) int {
-	if logical == query.LogicalInt || logical == query.LogicalDecimal {
-		leftRank, rightRank := numericSpecialRank(left.Text), numericSpecialRank(right.Text)
-		if leftRank != rightRank {
-			if leftRank < rightRank {
-				return -1
-			}
-			return 1
-		}
-		a, okA := new(big.Rat).SetString(left.Text)
-		b, okB := new(big.Rat).SetString(right.Text)
-		if okA && okB {
-			return a.Cmp(b)
-		}
-	}
-	if left.Kind == query.CellFloat && right.Kind == query.CellFloat {
-		if math.IsNaN(left.Float) {
-			if math.IsNaN(right.Float) {
-				return 0
-			}
-			return 1
-		}
-		if math.IsNaN(right.Float) {
-			return -1
-		}
-		if left.Float < right.Float {
-			return -1
-		}
-		if left.Float > right.Float {
-			return 1
-		}
-		return 0
-	}
-	if left.Kind == query.CellBool && right.Kind == query.CellBool {
-		if left.Bool == right.Bool {
-			return 0
-		}
-		if !left.Bool {
-			return -1
-		}
-		return 1
-	}
-	if left.Kind == query.CellBytes && right.Kind == query.CellBytes {
-		return strings.Compare(string(left.Bytes), string(right.Bytes))
-	}
-	return strings.Compare(cellText(left), cellText(right))
-}
-
-func numericSpecialRank(value string) int {
-	switch value {
-	case "-Infinity", "-Inf":
-		return -1
-	case "Infinity", "+Infinity", "Inf", "+Inf":
-		return 1
-	case "NaN":
-		return 2
-	default:
-		return 0
-	}
-}
 
 func cellText(cell query.CellValue) string {
 	switch cell.Kind {
