@@ -1,9 +1,9 @@
 import { check, sleep } from 'k6';
 import exec from 'k6/execution';
 
-import { rpcAsync } from './client.ts';
-import { fixturesByVirtualUser, verifyFixtures } from './fixtures.ts';
-import { reviewFixtureForVirtualUser } from './fixture-assignment.ts';
+import { rpcAsync } from '#load/client';
+import { fixturesByVirtualUser, verifyFixtures } from '#load/fixtures';
+import { reviewFixtureForVirtualUser } from '#load/fixture-assignment';
 
 export const setup = verifyFixtures;
 export const options = {

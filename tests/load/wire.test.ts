@@ -1,8 +1,8 @@
 import { check } from 'k6';
 
-import { createRPCRequest } from './wire.ts';
-import { base64Text, rpcSchemas } from './contracts.ts';
-import { decodeJSON } from './json.ts';
+import { createRPCRequest } from '#load/wire';
+import { base64Text, rpcSchemas } from '#load/contracts';
+import { decodeJSON } from '#load/json';
 
 export const options = { vus: 1, iterations: 1, thresholds: { checks: ['rate==1'] } };
 

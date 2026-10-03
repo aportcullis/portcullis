@@ -8,6 +8,8 @@ See [ADR-0020](../adr/0020-scenario-load-testing.md).
 
 `make load-check` runs strict TypeScript 7 checking, generates local ESM bundles with pinned esbuild, and runs the Zod contract tests. `make load-test` then runs `tests/load/dist/governance.js` with k6. Test sources remain TypeScript; bundles are ignored build output. k6 does not resolve npm packages, so Zod is bundled locally rather than loaded from a remote CDN.
 
+Local TypeScript modules use package-root imports such as `#load/contracts` and `#load/client`. The `imports` map in `tests/load/package.json` is shared by TypeScript, the Node contract runner and esbuild; k6 runs the resolved bundles. Relative imports and machine-specific absolute file imports are prohibited by lint. Fixture paths are runtime data paths and retain their separate absolute-path requirement. See [ADR-0043](../adr/0043-load-package-imports.md).
+
 The suite separates workload configuration (`config.ts`), Zod RPC schemas/client (`contracts.ts`, `client.ts`), validated JSON codecs and wire routing (`json.ts`, `wire.ts`), fixture validation (`fixtures.ts`) and user journeys (`journeys.ts`).
 `governance.ts` schedules journeys and records outcomes. `rpc` and `rpcAsync` infer input/output from the method name. Unknown input fields and malformed response fields fail schema validation; protobuf-omitted default arrays and scalar values normalize at the boundary. Optional messages and timestamps remain optional where their absence has meaning. Responses project the schema-known fields and tolerate additional fields for forward compatibility. No type assertion or non-null assertion is needed. JSON syntax handling stays inside the codec, and contract errors omit payloads and credentials.
 

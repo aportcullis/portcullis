@@ -1,6 +1,6 @@
-import { rpc, rpcAsync } from './client.ts';
-import { createRPCRequest, decodeRPCResponse } from './wire.ts';
-import type { Actor, RPCs } from './contracts.ts';
+import { rpc, rpcAsync } from '#load/client';
+import { createRPCRequest, decodeRPCResponse } from '#load/wire';
+import type { Actor, RPCs } from '#load/contracts';
 
 /** Compile-only scenarios require method-specific inputs and inferred response types. */
 export function verifyRPCTypeContracts(actor: Actor): void {

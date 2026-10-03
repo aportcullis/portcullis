@@ -3,10 +3,10 @@ import encoding from 'k6/encoding';
 import { check } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
-import { config } from './config.ts';
-import { base64Text, executionRequest, executionView, type Actor, type RPCName, type RPCs } from './contracts.ts';
-import { createRPCRequest, decodeRPCResponse } from './wire.ts';
-import { decodeJSON, encodeJSON } from './json.ts';
+import { config } from '#load/config';
+import { base64Text, executionRequest, executionView, type Actor, type RPCName, type RPCs } from '#load/contracts';
+import { createRPCRequest, decodeRPCResponse } from '#load/wire';
+import { decodeJSON, encodeJSON } from '#load/json';
 import { z } from 'zod';
 
 const latency = new Trend('control_plane_ms', true);

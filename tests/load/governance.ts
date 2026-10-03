@@ -2,12 +2,12 @@ import { sleep } from 'k6';
 import exec from 'k6/execution';
 import { Counter, Rate } from 'k6/metrics';
 
-import { config, needsReview, vus } from './config.ts';
-import { fixturesByVirtualUser, verifyFixtures } from './fixtures.ts';
-import { fixtureForVirtualUser } from './fixture-assignment.ts';
-import { browse, submit, executeAndExplore } from './journeys.ts';
+import { config, needsReview, vus } from '#load/config';
+import { fixturesByVirtualUser, verifyFixtures } from '#load/fixtures';
+import { fixtureForVirtualUser } from '#load/fixture-assignment';
+import { browse, submit, executeAndExplore } from '#load/journeys';
 
-export { options } from './config.ts';
+export { options } from '#load/config';
 export const setup = verifyFixtures;
 
 const completed = new Counter('journeys_completed');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fixtureForVirtualUser, reviewFixtureForVirtualUser } from '../fixture-assignment.ts';
-import type { Fixture } from '../contracts.ts';
+import { fixtureForVirtualUser, reviewFixtureForVirtualUser } from '#load/fixture-assignment';
+import type { Fixture } from '#load/contracts';
 
 const requesterFixture: Fixture = { connectionId: 'browse-target', requester: { session: 'requester', csrf: 'requester-csrf' } };
 const reviewFixture: Fixture = { connectionId: 'review-target', requester: { session: 'review-requester', csrf: 'review-csrf' }, approver: { session: 'approver', csrf: 'approver-csrf' } };

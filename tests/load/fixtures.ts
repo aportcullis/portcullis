@@ -1,9 +1,9 @@
 import { fail, sleep } from 'k6';
 
-import { config, needsReview, vus } from './config.ts';
-import { rpc } from './client.ts';
-import { fixtureSchema, type Fixture } from './contracts.ts';
-import { decodeJSON } from './json.ts';
+import { config, needsReview, vus } from '#load/config';
+import { rpc } from '#load/client';
+import { fixtureSchema, type Fixture } from '#load/contracts';
+import { decodeJSON } from '#load/json';
 import { z } from 'zod';
 
 const input = decodeJSON(z.array(fixtureSchema).min(vus), open(config.fixturePath));

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { fixtureSchema, type Fixture } from './contracts.ts';
+import { fixtureSchema, type Fixture } from '#load/contracts';
 
 const reviewFixtureSchema = fixtureSchema.required({ approver: true });
 

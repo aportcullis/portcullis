@@ -57,6 +57,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0040](0040-recorded-execution-time.md) | Recorded execution time in request and result views | Accepted |
 | [0041](0041-default-profile-identicons.md) | Stable local default profile images | Accepted |
 | [0042](0042-private-network-deployment.md) | Private-network deployment through WARP or Tailscale | Accepted |
+| [0043](0043-load-package-imports.md) | Portable package-root imports for TypeScript k6 tests | Accepted |
 
 ## Template
 ```markdown

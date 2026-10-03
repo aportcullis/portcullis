@@ -1,5 +1,5 @@
-import { rpcSchemas, type RPCName, type RPCs } from './contracts.ts';
-import { encodeJSON, decodeJSON } from './json.ts';
+import { rpcSchemas, type RPCName, type RPCs } from '#load/contracts';
+import { encodeJSON, decodeJSON } from '#load/json';
 
 const responseParsers: { [K in RPCName]: { parse(value: unknown): RPCs[K]['output'] } } = {
   'Auth.Me': rpcSchemas['Auth.Me'].output,

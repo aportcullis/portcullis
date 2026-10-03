@@ -1,8 +1,8 @@
 import { check } from 'k6';
 import { z } from 'zod';
 
-import { rpc, exportCSV } from './client.ts';
-import type { Fixture, RPCs } from './contracts.ts';
+import { rpc, exportCSV } from '#load/client';
+import type { Fixture, RPCs } from '#load/contracts';
 
 export function browse(fixture: Fixture): void {
   rpc('Auth.Me', {}, fixture.requester);

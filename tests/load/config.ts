@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Options, Scenario } from 'k6/options';
-import type { RPCName } from './contracts.ts';
+import type { RPCName } from '#load/contracts';
 
 function choice<T extends string>(name: string, fallback: T, values: readonly T[]): T {
   const value = __ENV[name] || fallback;

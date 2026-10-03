@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { z } from 'zod';
 
-import { createRPCRequest, decodeRPCResponse } from '../wire.ts';
-import { decodeJSON, encodeJSON } from '../json.ts';
-import { base64Text, fixtureSchema, rpcSchemas } from '../contracts.ts';
+import { createRPCRequest, decodeRPCResponse } from '#load/wire';
+import { decodeJSON, encodeJSON } from '#load/json';
+import { base64Text, fixtureSchema, rpcSchemas } from '#load/contracts';
 
 void test('method-specific request retains Unicode, escaping and exact int64 tokens', () => {
   const sql = 'select "한글", \'line\\path\'\nfrom source';
