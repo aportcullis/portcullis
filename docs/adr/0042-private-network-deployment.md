@@ -11,7 +11,7 @@ The owner requests a separate recommended deployment document using box-and-arro
 
 Recommend a private HTTPS reverse proxy and one Portcullis instance, with private metadata and target databases. Remote access uses either organization-enrolled Cloudflare WARP plus a private-network cloudflared connector, or a Tailscale node/subnet router with explicit grants. Restrict the remote group to the application's HTTPS destination and deny direct metadata/target DB access. Retain Portcullis authentication, authorization, approval and audit controls independently of network membership.
 
-Describe private DNS, browser-trusted TLS, source/proxy attribution and the host/network firewall as operator responsibilities. Keep public app publishing and Tailscale Funnel outside this recommended topology. Show the two connectivity alternatives in one diagram and separate network access from server-to-database traffic. Document currently shipped Compose/single-process behavior and planned Helm/Kustomize/CNPG deployment without implying application HA or tested provider integration.
+Describe private DNS, browser-trusted TLS, source/proxy attribution and the host/network firewall as operator responsibilities. Keep public app publishing and Tailscale Funnel outside this recommended topology. Show one remote-access layer in the diagram, labeled Cloudflare WARP OR Tailscale, and one selected private ingress. Keep provider-specific setup in the comparison table; separate network access from server-to-database traffic. Document currently shipped Compose/single-process behavior and planned Helm/Kustomize/CNPG deployment without implying application HA or tested provider integration.
 
 ## Consequences
 

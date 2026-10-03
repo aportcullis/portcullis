@@ -7,57 +7,55 @@ This is production deployment guidance ([ADR-0042](../adr/0042-private-network-d
 ## Private-network topology
 
 ```text
-                              ┌───────────────────────────────────┐
-                              │ Users / Developers                │
-                              │ Managed device + browser          │
-                              └───────────────────────────────────┘
-                                                │
-                       ┌────────────────────────┴───────────────────────┐
-                       │                                                │
-     ┌───────────────────────────────────┐             ┌───────────────────────────────────┐
-     │ Option A: Cloudflare Zero Trust   │             │ Option B: Tailscale               │
-     │ WARP + scoped Gateway policy      │             │ Enrolled device + explicit grants │
-     │ Encrypted private-network route   │             │ Encrypted direct / relay path     │
-     └───────────────────────────────────┘             └───────────────────────────────────┘
-                       │                                                │
-                       │                                                │
-┌─ Private network ────┼────────────────────────────────────────────────┼───────────────────────┐
-│                      ▼                                                ▼                       │
-│    ┌───────────────────────────────────┐             ┌───────────────────────────────────┐    │
-│    │ cloudflared connector             │             │ Tailscale ingress node            │    │
-│    │ Private IP / hostname route       │             │ or a scoped subnet router         │    │
-│    │ Outbound-initiated tunnel         │             │ No public app publishing          │    │
-│    └───────────────────────────────────┘             └───────────────────────────────────┘    │
-│                      │                                                │                       │
-│                      │                                                │                       │
-│                      └────────────────────────┬───────────────────────┘                       │
-│                                               ▼                                               │
-│                             ┌───────────────────────────────────┐                             │
-│                             │ Private HTTPS reverse proxy       │                             │
-│                             │ Internal DNS + trusted TLS :443   │                             │
-│                             │ Allow remote group to app only    │                             │
-│                             └───────────────────────────────────┘                             │
-│                                               ▼                                               │
-│                             ┌───────────────────────────────────┐                             │
-│                             │ Portcullis / one instance         │                             │
-│                             │ Embedded UI + API + execution     │                             │
-│                             └───────────────────────────────────┘                             │
-│                      ┌────────────────────────┴───────────────────────┐                       │
-│      server-to-DB    │                                                │   server-to-DB        │
-│                      │                                                │                       │
-│                      ▼                                                ▼                       │
-│    ┌───────────────────────────────────┐             ┌───────────────────────────────────┐    │
-│    │ Metadata PostgreSQL 18            │             │ Governed target databases         │    │
-│    │ Restricted runtime DB account     │             │ Least-privilege target accounts   │    │
-│    │ Requests / audit / result storage │             │ Verified database TLS             │    │
-│    └───────────────────────────────────┘             └───────────────────────────────────┘    │
-│                                                                                               │
-│    Secrets + persistent master key / backups / monitoring                                     │
-│    No direct developer route to database ports                                                │
-└───────────────────────────────────────────────────────────────────────────────────────────────┘
+                         ┌───────────────────────────────────────────┐
+                         │ Users / Developers                        │
+                         │ Managed device + browser                  │
+                         └───────────────────────────────────────────┘
+                                               │
+                                               ▼
+                         ┌───────────────────────────────────────────┐
+                         │ Private remote access (choose one)        │
+                         │ Cloudflare WARP OR Tailscale              │
+                         │ Enrolled device + scoped access policy    │
+                         └───────────────────────────────────────────┘
+                                               │
+┌─ Private network ───────────────────────────────────────────────────────────────────────────┐
+│                                              ▼                                              │
+│                        ┌───────────────────────────────────────────┐                        │
+│                        │ Selected private ingress                  │                        │
+│                        │ Connector / node / subnet router          │                        │
+│                        │ App HTTPS only                            │                        │
+│                        └───────────────────────────────────────────┘                        │
+│                                              │                                              │
+│                                              ▼                                              │
+│                        ┌───────────────────────────────────────────┐                        │
+│                        │ Private HTTPS reverse proxy               │                        │
+│                        │ Internal DNS + trusted TLS :443           │                        │
+│                        │ Allow remote group to app only            │                        │
+│                        └───────────────────────────────────────────┘                        │
+│                                              │                                              │
+│                                              ▼                                              │
+│                        ┌───────────────────────────────────────────┐                        │
+│                        │ Portcullis / one instance                 │                        │
+│                        │ Embedded UI + API + execution             │                        │
+│                        └───────────────────────────────────────────┘                        │
+│                                              │                                              │
+│                      ┌───────────────────────┴───────────────────────┐                      │
+│                      │                                               │                      │
+│                      ▼                                               ▼                      │
+│    ┌───────────────────────────────────┐           ┌───────────────────────────────────┐    │
+│    │ Metadata PostgreSQL 18            │           │ Governed target databases         │    │
+│    │ Restricted runtime DB account     │           │ Least-privilege target accounts   │    │
+│    │ Requests / audit / result storage │           │ Verified database TLS             │    │
+│    └───────────────────────────────────┘           └───────────────────────────────────┘    │
+│                                                                                             │
+│    Server-to-DB traffic stays inside the private network                                    │
+│    Secrets + persistent master key / backups / monitoring                                   │
+│    No direct developer route to database ports                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Arrows show application traffic, not connection initiation. In option A, the internal `cloudflared` connector initiates its tunnel outward. Option B carries encrypted peer traffic directly or through a relay; a relay is not a public Portcullis endpoint. Both routes converge on a private HTTPS proxy. Restrict its upstream application connection to the local host/private network, or encrypt and authenticate that hop when crossing a trust boundary.
+The diagram shows one remote-access layer with a choice of provider. Deploy the selected provider’s private ingress: a `cloudflared` connector for Cloudflare WARP, or a Tailscale node/subnet router for Tailscale. Provider-specific setup is compared below. Arrows show application traffic, not connection initiation: `cloudflared` initiates its tunnel outward, while Tailscale carries encrypted peer traffic directly or through a relay. The selected path reaches the private HTTPS proxy. Restrict its upstream application connection to the local host/private network, or encrypt and authenticate that hop when crossing a trust boundary.
 
 The developer path stops at HTTPS. Portcullis separately connects to metadata and governed targets; users do not need direct DB network access to execute approved SQL in the web UI. PostgreSQL is the currently shipped target; see the [database feature matrix](../product/database-support.md) for MySQL implementation and qualification status.
 
