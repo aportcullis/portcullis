@@ -98,7 +98,7 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 			return nil, err
 		}
 	}
-	stream := &resultStream{ctx: ctx, conn: conn, maxRows: exec.MaxRows, maxBytes: exec.MaxResultBytes}
+	stream := &resultStream{ctx: ctx, conn: conn, maxRows: exec.MaxRows, maxBytes: exec.MaxResultBytes, stopAtCeiling: exec.Class == query.ClassRead}
 	stream.rr = conn.ExecParams(ctx, exec.SQL, args, parameterOIDs(exec.Args), nil, nil)
 
 	// Read ahead one row: pgconn learns the row description on the first read, and an immediately failing statement concludes here rather than handing the caller a stream that was never going to produce anything.

@@ -632,6 +632,7 @@ audit_events
   - audit_event 등 폭증 테이블은 추후 필요 시 keyset으로 국소 전환(공통 list 헬퍼를 인터페이스로).
 - **쿼리 결과:** 실행 1회 후 서버가 snapshot을 **PostgreSQL UNLOGGED result store(AEAD 암호화 chunk)**에 15분 TTL로 보관하고 그 위에서 페이징/정렬/필터(DB 재실행 없음).
   - 최대 10,000행과 25MiB 중 먼저 도달한 snapshot 상한에서 중단하고 `truncated=true` 표시.
+    read는 상한에서 대상 DB 읽기를 멈추고 문장의 나머지를 취소하므로 rows affected는 전달된 행 수와 같다. returning write는 여전히 끝까지 읽고 문장 전체를 커밋한다(ADR-0021).
     connection 정책의 더 낮은 상한을 우선 적용한다(신규 정책 기본 byte 상한 16MiB, ADR-0015/0021).
     디코드 전에 셀·행 구조체 메모리를 별도로 제한하므로 값 바이트가 작은 넓은 NULL 결과도 더 일찍 truncate될 수 있다(ADR-0021).
   - 전체 result store 상한은 기본 512MiB이며 LRU로 만료.

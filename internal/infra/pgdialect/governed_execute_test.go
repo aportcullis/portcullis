@@ -6,6 +6,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/query"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"strings"
 	"testing"
 	"time"
@@ -199,6 +200,114 @@ func TestGovernedTruncatedReturningWriteCommitsWholeStatement(t *testing.T) {
 	}
 	if persisted != 5 {
 		t.Fatalf("partial commit: %d", persisted)
+	}
+}
+
+// governedDrain is what a governed execution delivered once its stream was fully consumed.
+type governedDrain struct {
+	rowCount     int
+	truncated    bool
+	rowsAffected int64
+	elapsed      time.Duration
+	err          error
+}
+
+// drainGovernedRead runs one governed read and consumes every row the stream offers.
+func drainGovernedRead(t *testing.T, target connection.Target, cred connection.Credential, sql string, maxRows int, maxResultBytes int64) governedDrain {
+	t.Helper()
+	dialect := pgdialect.New(pgdialect.Options{})
+	started := time.Now()
+	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: maxRows, MaxResultBytes: maxResultBytes, TimeoutSeconds: 30})
+	if err != nil {
+		return governedDrain{elapsed: time.Since(started), err: err}
+	}
+	defer func() { _ = stream.Close() }()
+	drained := governedDrain{}
+	for stream.Next() {
+		drained.rowCount++
+	}
+	drained.err = stream.Err()
+	drained.truncated = stream.Truncated()
+	drained.rowsAffected = stream.RowsAffected()
+	drained.elapsed = time.Since(started)
+	return drained
+}
+
+func TestGovernedTruncatedReadStopsAtSnapshotCeiling(t *testing.T) {
+	pool, target, cred := freshExec(t)
+	for _, scenario := range []struct {
+		name           string
+		sql            string
+		maxRows        int
+		maxResultBytes int64
+	}{
+		// Set-returning functions in the select list stream rows; in FROM they materialize before the first row.
+		{name: "row ceiling on a huge series", sql: "SELECT generate_series(1, 2000000000) AS g", maxRows: 100, maxResultBytes: 1 << 20},
+		{name: "byte ceiling on wide rows", sql: "SELECT repeat('x', 1000), generate_series(1, 2000000000)", maxRows: 10000, maxResultBytes: 8192},
+		{name: "row ceiling before a later division error", sql: "SELECT 1 / (g - 50000000) FROM (SELECT generate_series(1, 100000000) AS g) AS series", maxRows: 100, maxResultBytes: 1 << 20},
+		{name: "row ceiling on a filtered series", sql: "SELECT g FROM (SELECT generate_series(1, 2000000000) AS g) AS series WHERE g % 2 = 0", maxRows: 50, maxResultBytes: 1 << 20},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			drained := drainGovernedRead(t, target, cred, scenario.sql, scenario.maxRows, scenario.maxResultBytes)
+			if drained.err != nil || !drained.truncated || drained.rowCount == 0 || drained.rowCount > scenario.maxRows {
+				t.Fatalf("truncated read rows=%d truncated=%v error=%v", drained.rowCount, drained.truncated, drained.err)
+			}
+			if drained.rowsAffected != int64(drained.rowCount) {
+				t.Fatalf("truncated read reported %d rows affected, want the %d delivered rows", drained.rowsAffected, drained.rowCount)
+			}
+			if drained.elapsed > 10*time.Second {
+				t.Fatalf("truncated read took %s, want it to stop at the ceiling", drained.elapsed)
+			}
+			assertNoActiveTargetQuery(t, pool, scenario.sql)
+		})
+	}
+}
+
+func TestGovernedReadBelowSnapshotCeilingKeepsCompleteOutcome(t *testing.T) {
+	_, target, cred := freshExec(t)
+	for _, scenario := range []struct {
+		name         string
+		sql          string
+		wantRows     int
+		wantSQLState string
+	}{
+		{name: "small result", sql: "SELECT g FROM generate_series(1, 3) g", wantRows: 3},
+		{name: "exactly the row ceiling", sql: "SELECT g FROM generate_series(1, 100) g", wantRows: 100},
+		{name: "empty result", sql: "SELECT g FROM generate_series(1, 0) g", wantRows: 0},
+		{name: "division error before the ceiling", sql: "SELECT 1 / (g - 50) FROM generate_series(1, 200) g", wantSQLState: "22012"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			drained := drainGovernedRead(t, target, cred, scenario.sql, 100, 1<<20)
+			if scenario.wantSQLState != "" {
+				var execErr *query.ExecError
+				if !errors.As(drained.err, &execErr) || execErr.SQLState != scenario.wantSQLState {
+					t.Fatalf("read error = %v, want SQLSTATE %s", drained.err, scenario.wantSQLState)
+				}
+				return
+			}
+			if drained.err != nil || drained.truncated || drained.rowCount != scenario.wantRows || drained.rowsAffected != int64(scenario.wantRows) {
+				t.Fatalf("complete read rows=%d affected=%d truncated=%v error=%v, want %d rows", drained.rowCount, drained.rowsAffected, drained.truncated, drained.err, scenario.wantRows)
+			}
+		})
+	}
+}
+
+// assertNoActiveTargetQuery waits briefly for the target to stop running sql after the stream ended.
+func assertNoActiveTargetQuery(t *testing.T, pool *pgxpool.Pool, sql string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var activeCount int
+		if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND query = $1", sql).Scan(&activeCount); err != nil {
+			t.Fatal(err)
+		}
+		if activeCount == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("target still runs %q after the truncated stream ended", sql)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

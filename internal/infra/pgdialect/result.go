@@ -33,7 +33,9 @@ type resultStream struct {
 	byteCount    int64
 	decodedBytes int64
 	truncated    bool
-	finished     bool // transaction ended, connection closed (or abandoned via Close)
+	// stopAtCeiling ends a read at the snapshot ceiling; writes keep draining so their whole statement commits.
+	stopAtCeiling bool
+	finished      bool // transaction ended, connection closed (or abandoned via Close)
 }
 
 func (s *resultStream) Truncated() bool { return s.truncated }
@@ -52,15 +54,37 @@ func (s *resultStream) Next() bool {
 		s.current, s.pending, s.hasPending = s.pending, nil, false
 		return true
 	}
-	for s.rr.NextRow() {
+	for !s.isReadCeilingReached() && s.rr.NextRow() {
 		if s.acceptRow(s.rr.Values()) {
 			s.current = decodeRow(s.columns, s.rr.Values())
 			return true
 		}
 	}
+	if s.isReadCeilingReached() {
+		s.endTruncatedRead()
+		return false
+	}
 	tag, err := s.rr.Close()
 	s.conclude(tag, err)
 	return false
+}
+
+// isReadCeilingReached reports whether a read hit the snapshot ceiling and must stop reading the target.
+func (s *resultStream) isReadCeilingReached() bool {
+	return s.truncated && s.stopAtCeiling
+}
+
+// endTruncatedRead cancels a read-only statement on the server once the snapshot ceiling is reached; there is nothing to commit, and the delivered rows are the result.
+func (s *resultStream) endTruncatedRead() {
+	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(s.ctx), 2*time.Second)
+	defer cancel()
+	_ = s.conn.CancelRequest(cancelCtx)
+	s.rowsAffected = int64(s.rowCount)
+	if ctxErr := s.ctx.Err(); ctxErr != nil {
+		s.err = redactExecError(s.ctx, ctxErr)
+	}
+	closeConn(s.ctx, s.conn)
+	s.finished = true
 }
 
 // conclude ends the statement's transaction once the result reader is done.

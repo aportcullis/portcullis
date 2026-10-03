@@ -52,6 +52,8 @@ Saturation refuses work before acquiring a lease; result processing responds wit
 Governed target streams check raw row bytes before decoding and limit protocol message allocation to the result byte budget plus 64 KiB framing allowance.
 They separately reserve cell structs and row headers, including the executor's row copy, within the same policy byte budget before decoding. NULL or narrow wide-column rows cannot bypass admission by contributing no payload bytes. These are admission bounds, not a measured bound on total Go heap, allocator overhead, or encryption scratch space; ADR-0020 capacity qualification remains pending.
 Once a returning write exceeds the snapshot budget, drain remaining rows and confirm COMMIT; truncation never commits only part of a statement.
+A read stops at the snapshot ceiling instead (revised 2026-10-04): it sends a cancel request, closes the read-only session without COMMIT, and reports the delivered rows as rows affected, because the total count only arrives with the final command tag.
+Draining a read held the worker, target I/O and network until the statement finished, the statement timeout fired or a later row raised an error that the delivered snapshot never contained.
 A protocol/connection interruption with unconfirmed completion is outcome_unknown.
 Confirmed SQL refusal is failed; a missing or saturated result cache does not change confirmed target success.
 
