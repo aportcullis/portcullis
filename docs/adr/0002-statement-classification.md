@@ -102,6 +102,17 @@ The suite assumes a table `t(id integer, v text)`.
 These fixtures live as a shared table-driven test suite; each engine's adapter runs its rows of the same matrix.
 A statement not explicitly expected in the suite defaults to **reject** — new allow-listed forms enter only with a new fixture row here.
 
+### Subquery comparison operators
+
+| # | Literal input | Engines | Expected |
+|---|---|---|---|
+| 87 | `SELECT id FROM t WHERE id ### ANY (SELECT id FROM t)` | PG | reject (not_allowlisted) |
+| 88 | `SELECT id FROM t WHERE id ### ALL (SELECT id FROM t)` | PG | reject (not_allowlisted) |
+| 89 | `SELECT id FROM t WHERE id ### SOME (SELECT id FROM t)` | PG | reject (not_allowlisted) |
+| 90 | `SELECT id FROM t WHERE id OPERATOR(public.=) ANY (SELECT id FROM t)` | PG | reject (not_allowlisted) |
+| 91 | `SELECT id FROM t WHERE id = ANY (SELECT id FROM t)` | PG | `read` |
+| 92 | `SELECT id FROM t WHERE id IN (SELECT id FROM t)` | PG | `read` |
+
 ### Function effects (revised 2026-07-24 — the earlier premise was wrong)
 The original text here said a `SELECT` that merely *calls functions* stays `read` because "volatile functions are backstopped at execution time by the server-enforced read-only transaction". **That premise is false.** PostgreSQL's `READ ONLY` mode is explicitly *"a high-level notion of read-only that does not prevent all writes to disk"*; it disallows a fixed list of **commands** (`INSERT`/`UPDATE`/`DELETE`/`MERGE`/`COPY FROM` to non-temp tables, all `CREATE`/`ALTER`/`DROP`, `COMMENT`, `GRANT`, `REVOKE`, `TRUNCATE`, and `EXPLAIN ANALYZE`/`EXECUTE` of those) — not function side effects.
 So `SELECT dblink_exec('…','insert …')`, `SELECT pg_notify(…)`, `SELECT set_config(…)`, advisory-lock and server-file/admin functions all pass a read-only transaction, and an approved **read** could write (PRD §4.3/§8.2 promise the class gate is real).
@@ -113,6 +124,8 @@ Both are corrected here.
 1. **Classification-time name allow-list — a coarse pre-filter over EVERY class (fail-closed, this slice).** Each dialect carries an explicit allow-list of pure/standard builtins.
    Any `FuncCall` whose name is not on it — every user-defined function, every unknown builtin, and every **schema-qualified** name (`public.f`, `pg_catalog.f`) — is a `Rejection`, exactly like an unknown statement node.
    The same rule covers **operators**: `A_Expr` names are checked against an operator allow-list, because `CREATE OPERATOR` binds an arbitrary function to a symbol, so an unchecked operator is an unchecked function call.
+   Every place the grammar stores a written operator obeys this gate: `A_Expr.Name`, `SortBy.UseOp` and `SubLink.OperName` for `x op ANY|ALL|SOME (subquery)` (revised 2026-10-04 after a review reproduced `1 OPERATOR(evil.###) ANY (SELECT 1)` executing a user function under a read; fixtures #87–#92).
+   The execution-time catalog check collects the same names, and `IN (subquery)` contributes its implicit `=`.
    This sweep is **class-independent and runs before the class is decided**.
    Earlier text justified skipping DDL subtrees with "`ddl` is already the highest class, so nothing inside can escalate it" — true of *escalation*, false of *effects*: it silently exempted `CREATE TABLE t AS SELECT dblink_exec(…)`, `CREATE INDEX i ON t ((dblink_exec(…)))`, and `ALTER TABLE … SET DEFAULT pg_notify(…)` from the allow-list.
    A `ddl` class is a statement of privilege, never a waiver of the effect check.

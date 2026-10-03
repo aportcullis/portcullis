@@ -32,6 +32,13 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
 			if name, ok := singleCatalogName(value.UseOp); ok {
 				operators = append(operators, name)
 			}
+		case *nodes.SubLink:
+			if name, ok := singleCatalogName(value.OperName); ok {
+				operators = append(operators, name)
+			} else if value.OperName == nil && value.SubLinkType == int(nodes.ANY_SUBLINK) {
+				// IN (subquery) leaves OperName empty but resolves the implicit = operator.
+				operators = append(operators, "=")
+			}
 		case *nodes.TypeName:
 			if value.Names != nil && len(value.Names.Items) > 0 {
 				last, ok := value.Names.Items[len(value.Names.Items)-1].(*nodes.String)

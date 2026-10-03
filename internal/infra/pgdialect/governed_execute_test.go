@@ -28,6 +28,26 @@ func TestGovernedExecutionRejectsUserOverloadBeforeItRuns(t *testing.T) {
 	}
 }
 
+func TestGovernedExecutionRejectsUserOperatorInSubqueryComparison(t *testing.T) {
+	pool, target, cred := freshExec(t)
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `create domain public.custom_int as int; create function public.boom_eq(public.custom_int, int) returns boolean language plpgsql stable as $$ begin raise exception 'operator reached'; end $$; create operator public.= (leftarg = public.custom_int, rightarg = int, function = public.boom_eq); create table public.custom_ids(v public.custom_int); insert into public.custom_ids values (1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := pgdialect.New(pgdialect.Options{})
+	for _, sql := range []string{"SELECT v FROM custom_ids WHERE v = ANY (SELECT 1)", "SELECT v FROM custom_ids WHERE v IN (SELECT 1)"} {
+		stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+		if stream != nil {
+			_ = stream.Close()
+		}
+		var rejection *query.Rejection
+		if !errors.As(err, &rejection) {
+			t.Fatalf("catalog gate did not reject user operator in %q: %v", sql, err)
+		}
+	}
+}
+
 func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 	_, target, credential := freshExec(t)
 	dialect := pgdialect.New(pgdialect.Options{})

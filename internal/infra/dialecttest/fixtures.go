@@ -109,4 +109,11 @@ var fixtures = []Fixture{
 	{N: 54, SQL: "CREATE SCHEMA s CREATE TABLE t (id int) CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION public.f()", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
 	{N: 55, SQL: "CREATE SCHEMA s CREATE TABLE t (id int) CREATE INDEX CONCURRENTLY i ON t (id)", Engines: []Engine{PG}, Expect: reject(query.RejectNonTransactional)},
 	{N: 56, SQL: "CREATE SCHEMA s CREATE TABLE t (id int) CREATE VIEW v AS SELECT id FROM t", Engines: []Engine{PG}, Expect: class(query.ClassDDL)},
+	// #87–#92: a subquery comparison carries its operator in SubLink.OperName, outside A_Expr, so it obeys the same operator gate.
+	{N: 87, SQL: "SELECT id FROM t WHERE id ### ANY (SELECT id FROM t)", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 88, SQL: "SELECT id FROM t WHERE id ### ALL (SELECT id FROM t)", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 89, SQL: "SELECT id FROM t WHERE id ### SOME (SELECT id FROM t)", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 90, SQL: "SELECT id FROM t WHERE id OPERATOR(public.=) ANY (SELECT id FROM t)", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 91, SQL: "SELECT id FROM t WHERE id = ANY (SELECT id FROM t)", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 92, SQL: "SELECT id FROM t WHERE id IN (SELECT id FROM t)", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
 }

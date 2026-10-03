@@ -92,6 +92,11 @@ func sweepEffects(root nodes.Node) error {
 		if err := checkSortBy(root); err != nil {
 			return err
 		}
+	case nodes.T_SubLink:
+		// `x op ANY|ALL|SOME (subquery)` carries its operator in SubLink.OperName, not in an A_Expr (fixtures #87–#92).
+		if err := checkSubLink(root); err != nil {
+			return err
+		}
 	}
 	kids, err := childNodes(root)
 	if err != nil {

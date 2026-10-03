@@ -135,7 +135,19 @@ func checkSortBy(node nodes.Node) error {
 	return checkOperatorName(sort.UseOp)
 }
 
-// checkOperatorName gates a user-written operator name wherever the grammar carries one (A_Expr.Name, SortBy.UseOp). A qualified name — `OPERATOR(public.###)` — rejects for the same reason a qualified function name does: the walker cannot resolve what it binds to. A missing/unreadable name is likewise a rejection, never a pass.
+// checkSubLink gates subquery-comparison operators stored outside A_Expr; IN, EXISTS, scalar and ARRAY subqueries carry no written operator.
+func checkSubLink(node nodes.Node) error {
+	link, ok := node.(*nodes.SubLink)
+	if !ok {
+		return &query.Rejection{Reason: query.RejectNotAllowlisted}
+	}
+	if link.OperName == nil {
+		return nil
+	}
+	return checkOperatorName(link.OperName)
+}
+
+// checkOperatorName gates a user-written operator name wherever the grammar carries one (A_Expr.Name, SortBy.UseOp, SubLink.OperName). A qualified name — `OPERATOR(public.###)` — rejects for the same reason a qualified function name does: the walker cannot resolve what it binds to. A missing/unreadable name is likewise a rejection, never a pass.
 func checkOperatorName(name *nodes.List) error {
 	if name == nil || len(name.Items) != 1 {
 		return &query.Rejection{Reason: query.RejectNotAllowlisted}
