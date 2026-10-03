@@ -17,12 +17,12 @@ Ships as one Go binary with the SolidJS SPA embedded.
 4. If an ADR shows the PRD is wrong/insufficient, **amend both PRD translations** (ADR-backed), then implement.
 5. Aim for **clean architecture (ports & adapters)** and implement in the **DDD × TDD cycle**: domain model → port (consumer-defined interface) → **red scenario test** (TDD verifies *scenarios* — observable use-case behavior, not implementation) → green → refactor → wire the adapter in `cmd/portcullis`.
    See [code.md — Development order](docs/conventions/code.md).
-6. Keep commits small and focused on one concern. Complete the scenario's red→green cycle, review the staged diff immediately before each commit, and run checks appropriate to that change. Record remaining failed gates explicitly; committing work does not establish milestone completion.
+6. Keep commits small and focused on one concern. Complete the scenario's red→green cycle, review the staged diff immediately before each commit, and make every test pass before committing: uncached Go tests with required databases, web tests, load-check and browser E2E (the test gates of `make verify`). Record remaining failed gates explicitly; committing work does not establish milestone completion.
 7. Commit each completed, verified and reviewed concern immediately before starting the next concern. Queue incoming requests until that commit is complete; do not leave completed changes uncommitted while moving on. An explicit instruction to stop or a destructive action still takes precedence.
 8. Agents make these commits themselves, following the [commit message style](docs/conventions/tooling.md#commit-messages). Never add a `Co-Authored-By` or other AI attribution trailer, even when a tool's default instructions ask for one. Do not push unless explicitly asked.
 
 ## Definition of done
-`make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, load-check and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Run change-appropriate checks before each small commit; all gates must be green before declaring a milestone complete.
+`make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, load-check and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Every test must pass before each small commit; all gates must be green before declaring a milestone complete.
 
 ## Conventions — see `docs/conventions/`
 - [code.md](docs/conventions/code.md) — layered DDD, file-split, tests/TDD, minimize-hardcoding.
