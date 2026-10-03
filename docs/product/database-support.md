@@ -4,7 +4,7 @@
 
 ## Committed target feature matrix
 
-**Verified** means covered by the PostgreSQL M1 gate. **Planned** means required for MySQL acceptance, with no product implementation claim. Engine CLI experiments do not count as Portcullis acceptance.
+**Verified** means covered by the PostgreSQL M1 gate. **Planned** identifies future milestone scope, with no product implementation claim. MySQL governance parity requires the shared acceptance gate; later review/preview features have their own gates. Engine CLI experiments do not count as Portcullis acceptance.
 
 | Feature | PostgreSQL | MySQL |
 | --- | --- | --- |
@@ -24,7 +24,12 @@
 | Organization isolation, permissions and append-only audit | Verified | Planned |
 | Real-engine integration tests and real-binary browser E2E | Verified (Testcontainers; Docker Chromium) | Planned (Testcontainers) |
 | Saved queries, versions, favorites and sharing | Planned (M3) | Planned (M3) |
-| Browser WebMCP query assistance | Planned (after MySQL parity) | Planned (after MySQL parity) |
+| Deterministic SQL review facts | Planned (M2 after parity) | Planned (M2 after parity) |
+| Basic EXPLAIN for supported read queries | Planned (M2; no ANALYZE) | Planned (M2; no ANALYZE) |
+| Schema migration status and SQL dry-run preview | Planned (M3; no apply) | Planned (M3; no apply) |
+| Deterministic schema impact facts | Planned (M3; estimates/unknowns) | Planned (M3; estimates/unknowns) |
+| EXPLAIN ANALYZE / execute-then-rollback query dry-run | Deferred; no support claim | Deferred; no support claim |
+| Browser WebMCP query assistance | Deferred to M6 after M5 | Deferred to M6 after M5 |
 | Charts/dashboards | Later candidate | Later candidate |
 | Git-sourced schema migration governance | Planned (M5; object matrix pending) | Planned (M5; object matrix pending) |
 | Native DB client proxy / temporary web SQL console | Proxy deferred; console planned (M4) | Proxy deferred; console planned (M4) |
@@ -38,7 +43,7 @@ Verified does not mean every SQL statement, extension or engine version is accep
 | PostgreSQL | [Full M1 verification](../operations/m1-validation.md), including actual CSV saving/readback | PostgreSQL 18 in the tested stack; ADR-0001's ≥14 design floor is not an all-version certification |
 | MySQL | Native CLI engine experiments only; product adapter pending | MySQL 8.4 LTS is the primary planned CI target; measured experiment was 8.4.10, not a production-version recommendation |
 
-The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL Bridge parity and WebMCP, remains the MVP boundary.
+The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. WebMCP is excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
 
 ## Additional engines and excluded scope
 
