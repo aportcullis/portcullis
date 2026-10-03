@@ -106,11 +106,11 @@ run:
 
 
 test:
-	go test ./... -count=1 -shuffle=on
+	go test -p 1 ./... -count=1 -shuffle=on
 
 
 test-race:
-	go test ./... -count=1 -shuffle=on -race
+	go test -p 1 ./... -count=1 -shuffle=on -race
 
 
 vuln:

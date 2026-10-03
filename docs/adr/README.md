@@ -59,6 +59,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0042](0042-private-network-deployment.md) | Private-network deployment through WARP or Tailscale | Accepted |
 | [0043](0043-load-package-imports.md) | Portable package-root imports for TypeScript k6 tests | Accepted |
 | [0044](0044-postgresql-string-interpretation.md) | Pin execution string interpretation and reject mismatched server reports | Accepted |
+| [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted |
 
 ## Template
 ```markdown

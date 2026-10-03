@@ -5,7 +5,7 @@
   - `make build` produces the optimized static binary; `make run` starts the dev server.
   - `make web` builds the SPA into `internal/platform/assets/dist` for embedding.
 - **Backend verification**
-  - `make test` runs uncached shuffled tests; `make test-race` adds the race detector.
+  - `make test` runs uncached shuffled tests; `make test-race` adds the race detector. Both schedule package processes sequentially (`-p 1`) to avoid the reproduced shared Testcontainers reaper startup race (ADR-0045), while retaining within-package parallel tests and competing-caller scenarios.
   - `make lint` checks gofmt and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also run `GOOS=linux GOARCH=amd64 make lint` to check Linux-specific source before relying on Linux CI (ADR-0029).
 - **Frontend verification**
   - `make web-lint`, `make web-typecheck`, and `make web-test` run Oxlint, TypeScript 7 native `tsc`, and Vitest.
