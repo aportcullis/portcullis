@@ -702,6 +702,8 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 
 ### 8.1 Secrets and connections
 
+- **Browser response hardening (ADR-0010):** Restrict scripts to the embedded SPA's origin, refuse inline/eval scripts and plugin content, and retain frame/base/form restrictions independently of inline style compatibility. Validate normal built-SPA workflows and refused inline/foreign scripts in a real browser; this does not replace output encoding or server authorization.
+
 - **Encryption:** Store credentials and parameter values using versioned AES-256-GCM envelopes with per-record CSPRNG nonces.
   - Authenticate canonical AAD `portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]`, ADR-0003, to prevent ciphertext swapping.
   - Key version is bound through HKDF-derived wrap-key selection, not AAD; tampering causes decryption failure.

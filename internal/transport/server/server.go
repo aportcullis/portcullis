@@ -58,14 +58,14 @@ func (s *Server) Handler() http.Handler { return s.http.Handler }
 // ListenAndServe starts serving and blocks until the server stops.
 func (s *Server) ListenAndServe() error { return s.http.ListenAndServe() }
 
-// Apply security headers to SPA and RPC responses. The TLS proxy owns HSTS; CSP omits script/style restrictions while inline styles remain supported (ADR-0010).
+// securityHeaders limits scripts to the embedded SPA's origin while preserving inline styles.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		h.Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		h.Set("Content-Security-Policy", "script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
 }

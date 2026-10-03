@@ -43,9 +43,9 @@ Values marked **(config)** are operator-tunable env vars; everything else is a c
   This is load-bearing, not incidental: session/CSRF cookies are `__Host-` + `Secure` (ADR-0006), which browsers accept **only over HTTPS** — served over cleartext to the browser, login silently fails because the cookie is never stored.
   Operators must terminate TLS in front of Portcullis.
 - **HSTS is the proxy's responsibility** — it owns the TLS edge — so the app does not emit `Strict-Transport-Security`.
-- Every response carries hardening headers as defense-in-depth (cheap, valid even behind the proxy): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and a **minimal** CSP (`frame-ancestors 'none'; base-uri 'self'; form-action 'self'`).
-  The CSP omits `script-src`/`style-src` on purpose: the embedded SPA and the not-built placeholder use inline `style` attributes that a strict `style-src` would break.
-  Tightening to a script/style CSP is a follow-up once the built bundle is verified against it.
+- Every response carries hardening headers as defense-in-depth (cheap, valid even behind the proxy): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and CSP `script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`.
+  Inline style compatibility does not require omitting script restrictions: `script-src` independently restricts the embedded SPA to same-origin JavaScript and excludes inline/eval scripts; `object-src` refuses plugin content. Keep style handling unchanged while the SPA and placeholder rely on inline style attributes. This is a source allowlist, not a nonce/hash-based strict CSP or complete XSS protection.
+  Validate the production embedded bundle with browser scenarios that retain normal app behavior, refuse a harmless injected inline script and report a foreign script CSP violation. References checked 2026-10-03: [MDN script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src) and [OWASP CSP](https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html).
 
 ### Request correlation (`internal/platform/logging`)
 - Header `X-Request-Id` is accepted only when **non-empty, ≤ 128 bytes**, and matches the charset `[A-Za-z0-9._:/-]` exactly; anything else is **replaced** with a fresh 8-byte-hex id — never truncated, so two attacker-controlled values can't collide by prefix.
