@@ -5,9 +5,9 @@ import { connections, listError, listState, loadConnections } from "@/entities/c
 import { hasPermission } from "@/entities/session/store";
 import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import { ArchiveConnectionDialog } from "@/features/connection/ArchiveConnectionDialog";
-import { ConnectionDetailsDialog } from "@/features/connection/ConnectionDetailsDialog";
-import { EditConnectionDialog } from "@/features/connection/EditConnectionDialog";
-import { EditPolicyDialog } from "@/features/connection/EditPolicyDialog";
+import { ConnectionDetailsPanel } from "@/features/connection/ConnectionDetailsPanel";
+import { EditConnectionPanel } from "@/features/connection/EditConnectionPanel";
+import { EditPolicyPanel } from "@/features/connection/EditPolicyPanel";
 import { resolveEditTarget } from "@/features/connection/editTarget";
 import { TestConnectionButton } from "@/features/connection/TestConnectionButton";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
@@ -26,6 +26,7 @@ import {
 export const ConnectionList: Component = () => {
   onMount(() => void loadConnections());
   // Own draft dialogs outside Solid’s keyed rows so list refreshes preserve typed input.
+  const [viewing, setViewing] = createSignal<ConnectionSummary>();
   const [editing, setEditing] = createSignal<ConnectionSummary | undefined>();
   const [editingPolicy, setEditingPolicy] = createSignal<ConnectionSummary | undefined>();
 
@@ -84,14 +85,14 @@ export const ConnectionList: Component = () => {
                   <TableCell class="text-right">
                     <span class="inline-flex items-center gap-2">
                       <Show when={hasPermission("connections.get")}>
-                        <ConnectionDetailsDialog id={conn.id} displayName={conn.displayName} />
+                        <Button size="sm" variant="outline" onClick={() => setViewing(conn)}>Details</Button>
                       </Show>
                       <Show
                         when={!conn.archivedAt}
                         // An archived row keeps its descriptor editable — name, environment, and description label its history; test, config edit, and re-archive stay hidden.
                         fallback={
                           <Show when={hasPermission("connections.update")}>
-                            <Button size="sm" variant="outline" onClick={() => setEditing(conn)}>
+                            <Button size="sm" variant="outline" disabled={editing() !== undefined} onClick={() => setEditing(conn)}>
                               Edit
                             </Button>
                           </Show>
@@ -99,7 +100,7 @@ export const ConnectionList: Component = () => {
                       >
                         <span class="inline-flex items-center gap-2">
                           <Show when={hasPermission("policies.get")}>
-                            <Button size="sm" variant="outline" onClick={() => setEditingPolicy(conn)}>
+                            <Button size="sm" variant="outline" disabled={editingPolicy() !== undefined} onClick={() => setEditingPolicy(conn)}>
                               Policy
                             </Button>
                           </Show>
@@ -107,7 +108,7 @@ export const ConnectionList: Component = () => {
                             <TestConnectionButton id={conn.id} />
                           </Show>
                           <Show when={hasPermission("connections.update")}>
-                            <Button size="sm" variant="outline" onClick={() => setEditing(conn)}>
+                            <Button size="sm" variant="outline" disabled={editing() !== undefined} onClick={() => setEditing(conn)}>
                               Edit
                             </Button>
                           </Show>
@@ -126,11 +127,12 @@ export const ConnectionList: Component = () => {
       </Show>
 
       {/* Mounted here, not in a row: see the note on `editing` above. Each resolves its target by id against the current list, so a refresh hands the open form a fresh version token instead of destroying it. */}
-      <EditConnectionDialog
+      <ConnectionDetailsPanel target={viewing()} onClose={() => setViewing()} />
+      <EditConnectionPanel
         target={resolveEditTarget(connections(), editing())}
         onClose={() => setEditing(undefined)}
       />
-      <EditPolicyDialog
+      <EditPolicyPanel
         target={resolveEditTarget(connections(), editingPolicy())}
         onClose={() => setEditingPolicy(undefined)}
       />

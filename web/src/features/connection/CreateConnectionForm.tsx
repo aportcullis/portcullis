@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, onCleanup } from "solid-js";
 
 import type { EnvironmentValue } from "@/entities/connection/model";
 import { createConnection, errorMessage } from "@/entities/connection/store";
@@ -9,19 +9,12 @@ import { createDraftController } from "@/features/connection/draft";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/shared/ui/dialog";
+import { InlinePanel } from "@/shared/ui/InlinePanel";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// CreateConnectionDialog is the "New connection" flow: the PG form (PRD §7.2), an in-form pre-save test, and the create submit. The server re-tests regardless — the test button is UX, the enforcement is server-side (ADR-0014).
-export const CreateConnectionDialog: Component = () => {
-  // Closing mid-save must not let the answer land on the next form the user opens: this dialog is reused, so a late success would wipe fields they are already typing (see shared/lib/dialogSession).
+// CreateConnectionForm is the "New connection" flow: the PG form (PRD §7.2), an in-form pre-save test, and the create submit. The server re-tests regardless — the test button is UX, the enforcement is server-side (ADR-0014).
+export const CreateConnectionForm: Component = () => {
+  // Closing mid-save must not let the answer land on the next form the user opens: this panel is reused, so a late success would wipe fields they are already typing (see shared/lib/dialogSession).
   const { discardSession, runInSession } = createDialogSession();
   const [open, setOpen] = createSignal(false);
   const [displayName, setDisplayName] = createSignal("");
@@ -63,17 +56,19 @@ export const CreateConnectionDialog: Component = () => {
     setOpen(false);
   };
 
+  onCleanup(() => discardSession());
   return (
-    <Dialog open={open()} onOpenChange={handleOpenChange}>
-      <DialogTrigger as={Button}>New connection</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New connection</DialogTitle>
-          <DialogDescription>
+    <>
+      <Button class="self-end" onClick={() => handleOpenChange(true)}>New connection</Button>
+    <InlinePanel open={open()} label="New connection" onClose={() => handleOpenChange(false)}>
+
+        <header>
+          <h2 class="text-xl font-semibold">New connection</h2>
+          <p class="text-sm text-muted-foreground">
             The connection is tested before it is saved. The credential is encrypted at rest and
             never shown again.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </header>
         <form class="flex flex-col gap-4" onSubmit={submit}>
           <TextField>
             <TextFieldLabel for="conn-name">Display name</TextFieldLabel>
@@ -104,7 +99,8 @@ export const CreateConnectionDialog: Component = () => {
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+
+    </InlinePanel>
+    </>
   );
 };

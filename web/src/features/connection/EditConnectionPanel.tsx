@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { Show, createEffect, createMemo, createSignal, on } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 
 import type { EnvironmentValue } from "@/entities/connection/model";
 import { parseEnvironment } from "@/entities/connection/model";
@@ -11,11 +11,11 @@ import { Alert, AlertDescription } from "@/shared/ui/alert";
 import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import { InlinePanel } from "@/shared/ui/InlinePanel";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// Descriptor edits prefill from the list without connections.get; config changes require fresh credentials and a server test. The list owns the dialog so refreshes preserve its draft.
-export const EditConnectionDialog: Component<{
+// Descriptor edits prefill from the list without connections.get; config changes require fresh credentials and a server test. The list owns the panel so refreshes preserve its draft.
+export const EditConnectionPanel: Component<{
   target: ConnectionSummary | undefined;
   onClose: () => void;
 }> = (props) => {
@@ -30,7 +30,7 @@ export const EditConnectionDialog: Component<{
 
   const archived = () => props.target?.archivedAt !== undefined;
 
-  // Memoize the target ID so row refreshes do not reset the draft or discard an in-flight dialog session.
+  // Memoize the target ID so row refreshes do not reset the draft or discard an in-flight panel session.
   const editedId = createMemo(() => props.target?.id);
   createEffect(
     on(editedId, (id) => {
@@ -74,19 +74,20 @@ export const EditConnectionDialog: Component<{
     setSaving(false);
     if (outcome.status === "failed") {
       setError(errorMessage(outcome.error));
-      // A refused save may be a conflict: someone else changed this row, so the token is stale. Reload the list — this dialog is not owned by a row, so the refresh reaches it as a new `target` (fresh token) while the operator's edits stay in the local signals, and saving again applies their values on top (the policy dialog's F5 rationale).
+      // A refused save may be a conflict: someone else changed this row, so the token is stale. Reload the list — this panel is not owned by a row, so the refresh reaches it as a new `target` (fresh token) while the operator's edits stay in the local signals, and saving again applies their values on top (the policy panel's F5 rationale).
       void loadConnections();
       return;
     }
     props.onClose();
   };
 
+  onCleanup(() => discardSession());
   return (
-    <Dialog open={props.target !== undefined} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit “{props.target?.displayName ?? ""}”</DialogTitle>
-          <DialogDescription>
+    <InlinePanel open={props.target !== undefined} label="Edit connection" onClose={() => handleOpenChange(false)}>
+
+        <header>
+          <h2 class="text-xl font-semibold">Edit “{props.target?.displayName ?? ""}”</h2>
+          <p class="text-sm text-muted-foreground">
             <Show
               when={archived()}
               fallback="Edit the name, environment, and description, or replace the full configuration. The stored credential is never shown — replacing the configuration means re-entering it, and the connection is re-tested before saving."
@@ -94,8 +95,8 @@ export const EditConnectionDialog: Component<{
               Edit this archived connection's name, environment, and description. They label its
               history; the configuration is no longer editable.
             </Show>
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </header>
         <form class="flex flex-col gap-4" onSubmit={submit}>
           <TextField>
             <TextFieldLabel for="edit-conn-name">Display name</TextFieldLabel>
@@ -139,7 +140,7 @@ export const EditConnectionDialog: Component<{
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+
+    </InlinePanel>
   );
 };

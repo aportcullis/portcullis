@@ -1,40 +1,32 @@
 import type { Component } from "solid-js";
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, createEffect, createMemo, on, onCleanup } from "solid-js";
 
 import type { Connection } from "@/gen/portcullis/v1/connections_pb";
 import { errorMessage, getConnection } from "@/entities/connection/store";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
-import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/shared/ui/dialog";
+import { InlinePanel } from "@/shared/ui/InlinePanel";
 
-// ConnectionDetailsDialog intentionally reads through connections.get only when opened. The list stays safe for list-only principals, while operators with connections.get can inspect the descriptor ADR-0014 requires the UI to expose. Credentials are not part of the response.
-export const ConnectionDetailsDialog: Component<{ id: string; displayName: string }> = (props) => {
+// ConnectionDetailsPanel intentionally reads through connections.get only when opened. The list stays safe for list-only principals, while operators with connections.get can inspect the descriptor ADR-0014 requires the UI to expose. Credentials are not part of the response.
+export const ConnectionDetailsPanel: Component<{ target: { id: string; displayName: string } | undefined; onClose: () => void }> = (props) => {
   const [connection, setConnection] = createSignal<Connection>();
-  const fetch = createOpenFetch(() => getConnection(props.id), setConnection, errorMessage);
+  const fetch = createOpenFetch(() => getConnection(props.target?.id ?? ""), setConnection, errorMessage);
 
   const handleOpenChange = (next: boolean) => {
     if (next) setConnection(); // clear the previous open's data before loading
     fetch.handleOpenChange(next);
+    if (!next) props.onClose();
   };
 
+  createEffect(on(createMemo(() => props.target?.id), id => handleOpenChange(id !== undefined)));
+  onCleanup(() => fetch.handleOpenChange(false));
   return (
-    <Dialog open={fetch.open()} onOpenChange={handleOpenChange}>
-      <DialogTrigger as={Button} size="sm" variant="outline">
-        Details
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Connection details — “{props.displayName}”</DialogTitle>
-          <DialogDescription>Target descriptor only. Credentials are never displayed.</DialogDescription>
-        </DialogHeader>
+    <InlinePanel open={props.target !== undefined} label="Connection details" onClose={() => handleOpenChange(false)}>
+
+        <header>
+          <h2 class="text-xl font-semibold">Connection details — “{props.target?.displayName}”</h2>
+          <p class="text-sm text-muted-foreground">Target descriptor only. Credentials are never displayed.</p>
+        </header>
         <Show when={fetch.loading()}><p class="text-sm text-muted-foreground">Loading…</p></Show>
         <Show when={fetch.error() !== ""}>
           <Alert variant="destructive"><AlertDescription>{fetch.error()}</AlertDescription></Alert>
@@ -55,7 +47,7 @@ export const ConnectionDetailsDialog: Component<{ id: string; displayName: strin
             </dl>
           )}
         </Show>
-      </DialogContent>
-    </Dialog>
+
+    </InlinePanel>
   );
 };

@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
@@ -19,11 +19,11 @@ import { createOpenFetch } from "@/shared/lib/openFetch";
 import { policiesClient } from "@/shared/api/client";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import { InlinePanel } from "@/shared/ui/InlinePanel";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// EditPolicyDialog reads policies independently of connections.get and saves a new immutable version. The list owns its draft across row refreshes.
-export const EditPolicyDialog: Component<{
+// EditPolicyPanel reads policies independently of connections.get and saves a new immutable version. The list owns its draft across row refreshes.
+export const EditPolicyPanel: Component<{
   target: ConnectionSummary | undefined;
   onClose: () => void;
 }> = (props) => {
@@ -48,7 +48,7 @@ export const EditPolicyDialog: Component<{
     errorMessage,
   );
 
-  // Read when the dialog starts editing a DIFFERENT connection — not when the row object changes under a refresh, which would discard the admin's draft. The id goes through createMemo deliberately: an inline accessor re-runs the effect on every list change, which would re-fetch over the draft.
+  // Read when the panel starts editing a DIFFERENT connection — not when the row object changes under a refresh, which would discard the admin's draft. The id goes through createMemo deliberately: an inline accessor re-runs the effect on every list change, which would re-fetch over the draft.
   const editedId = createMemo(() => props.target?.id);
   createEffect(
     on(editedId, (id) => {
@@ -62,7 +62,7 @@ export const EditPolicyDialog: Component<{
 
   const handleOpenChange = (next: boolean) => {
     if (next) return;
-    // Closing ends the session, so a save still in flight will report "superseded" and touch nothing — saving has to be released here or a reopened dialog would sit behind a disabled Save button forever.
+    // Closing ends the session, so a save still in flight will report "superseded" and touch nothing — saving has to be released here or a reopened panel would sit behind a disabled Save button forever.
     setSaving(false);
     policyRead.handleOpenChange(false);
     props.onClose();
@@ -136,16 +136,17 @@ export const EditPolicyDialog: Component<{
     );
   };
 
+  onCleanup(() => policyRead.handleOpenChange(false));
   return (
-    <Dialog open={props.target !== undefined} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Execution policy — “{props.target?.displayName ?? ""}”</DialogTitle>
-          <DialogDescription>
+    <InlinePanel open={props.target !== undefined} label="Execution policy" onClose={() => handleOpenChange(false)}>
+
+        <header>
+          <h2 class="text-xl font-semibold">Execution policy — “{props.target?.displayName ?? ""}”</h2>
+          <p class="text-sm text-muted-foreground">
             Which statement classes may run here and how many approvals each needs. Saving creates a
             new policy version; requests pin the version they were approved under.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </header>
         <Show when={policyRead.loading()}>
           <p class="text-sm text-muted-foreground">Loading policy…</p>
         </Show>
@@ -266,7 +267,7 @@ export const EditPolicyDialog: Component<{
             </form>
           )}
         </Show>
-      </DialogContent>
-    </Dialog>
+
+    </InlinePanel>
   );
 };

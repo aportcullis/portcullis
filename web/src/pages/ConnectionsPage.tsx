@@ -3,7 +3,7 @@ import { Show } from "solid-js";
 
 import { hasPermission } from "@/entities/session/store";
 import { ConnectionList } from "@/features/connection/ConnectionList";
-import { CreateConnectionDialog } from "@/features/connection/CreateConnectionDialog";
+import { CreateConnectionForm } from "@/features/connection/CreateConnectionForm";
 
 // ConnectionsPage is assembly only (frontend.md): the header and the create + list features. The route guard lives in AppShell; affordances are hidden by can() (Me.permissions) while the server keeps enforcing every RPC (ADR-0008 — hiding is UX, not authorization).
 const ConnectionsPage: Component = () => (
@@ -15,8 +15,10 @@ const ConnectionsPage: Component = () => (
           Registered target databases. Credentials are encrypted and never displayed.
         </p>
       </div>
+    </div>
+    <div class="flex flex-col gap-4">
       <Show when={hasPermission("connections.create")}>
-        <CreateConnectionDialog />
+        <CreateConnectionForm />
       </Show>
     </div>
 

@@ -30,6 +30,7 @@ test.describe.serial("connection policies", () => {
 
 
     await row.getByRole("button", { name: "Policy" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByLabel("Read approvals")).toHaveValue("1");
     await expect(page.getByRole("checkbox", { name: "Allow Read" })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: "Allow Write" })).not.toBeChecked();
@@ -51,6 +52,7 @@ test.describe.serial("connection policies", () => {
 
 
     await row.getByRole("button", { name: "Policy" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: "Allow Write" })).toBeChecked();
     await expect(page.getByLabel("Write approvals")).toHaveValue("2");
     await expect(page.getByLabel("Read approvals")).toHaveValue("0");
@@ -58,6 +60,7 @@ test.describe.serial("connection policies", () => {
 
 
     await row.getByRole("button", { name: "Policy" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByLabel("Timeout (s)").fill("0");
     await page.getByRole("button", { name: "Save policy" }).click();
     await expect(page.getByText(/Query timeout must be between/)).toBeVisible();
