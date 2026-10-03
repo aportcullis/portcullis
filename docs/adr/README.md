@@ -56,6 +56,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0039](0039-result-views-and-clipboard.md) | Bounded result views, clipboard export and loading | Accepted |
 | [0040](0040-recorded-execution-time.md) | Recorded execution time in request and result views | Accepted |
 | [0041](0041-default-profile-identicons.md) | Stable local default profile images | Accepted |
+| [0042](0042-private-network-deployment.md) | Private-network deployment through WARP or Tailscale | Accepted |
 
 ## Template
 ```markdown

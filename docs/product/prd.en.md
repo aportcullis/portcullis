@@ -801,6 +801,8 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
 
 ## 9. Deployment
 
+The recommended production topology keeps Portcullis and its databases private. Remote users reach only the application's HTTPS endpoint through organization-enrolled Cloudflare WARP with private-network Tunnel routing, or Tailscale with explicit grants. Network membership does not replace application login, RBAC, approval or audit. Operators enforce private exposure, routing, DNS and TLS; this recommendation does not change the local demo configuration (ADR-0042; [deployment architecture](../operations/recommended-architecture.md)).
+
 | Channel | Scope |
 |---|---|
 | Docker Compose, MVP | Server + PG; separate local quickstart and production mounted-secret examples |

@@ -3,6 +3,8 @@
 Portcullis is a single Go binary (with the SolidJS frontend embedded via `go:embed`) organized as a **layered architecture** with DDD boundaries.
 Source lives under `internal/`.
 
+For the recommended private-network production topology and remote access through Cloudflare WARP or Tailscale, see [Deployment architecture](operations/recommended-architecture.md).
+
 ## Layers
 
 ```mermaid
