@@ -17,6 +17,7 @@ Product requirements are maintained in Korean and English; other documents adopt
 | Operations | [PG alpha quickstart](operations/pg-alpha-quickstart.md) · [M1 validation](operations/m1-validation.md) · [Docker browser E2E](operations/browser-e2e.md) · [Encryption key rotation](operations/key-rotation.md) | English |
 | Branding | [Logo assets and placement](branding.md) · [Product tour](media/product-tour.md) · [UI screenshots and GIFs](media/README.md) | English |
 | Roadmap | [Milestones and product direction](roadmap.md) | English |
+| Community | [Participation paths](../COMMUNITY.md) · [Launch checklist and first-issue drafts](community/launch-checklist.md) | English |
 | Contributors | [Contribution guidelines](../CONTRIBUTING.md) · [Development guide](development.md) | English |
 
 ## Language policy

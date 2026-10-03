@@ -73,9 +73,9 @@ The [documentation index](docs/README.md) contains the complete repository docum
 
 ## Community
 
-Use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions, reproducible bug reports, feature proposals, and feedback from evaluating Portcullis. Include the database version, expected behavior, and minimal synthetic examples where relevant.
+Join by trying the application, sharing workflow feedback, improving documentation, or contributing a small change. [COMMUNITY.md](COMMUNITY.md) explains the participation paths and our GitHub-centered model.
 
-If you are trying Portcullis with your team, share the workflow you need and where the current experience falls short. These reports help prioritize the roadmap.
+We have chosen Discussions for introductions, Q&A, ideas, and experience reports, and Issues for bugs and accepted work. Discussions setup is not yet verified; use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions and feedback in the meantime.
 
 ## Contributing
 
