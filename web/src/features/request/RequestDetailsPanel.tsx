@@ -28,6 +28,7 @@ import {
 } from "@/features/request/actions";
 import type { RequestDraft } from "@/features/request/draft";
 import { createRequestDraftFromPayload, toTypedRequestParameters, validateRequestDraft } from "@/features/request/draft";
+import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
@@ -158,16 +159,7 @@ export const RequestDetailsPanel: Component<{
             fallback={
               // Draft edit form (owner only): change the SQL/parameters and save the SAME draft — no new request is created (§4.4).
               <form class="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-                <TextField>
-                  <TextFieldLabel for="edit-sql">SQL</TextFieldLabel>
-                  <TextFieldTextArea
-                    id="edit-sql"
-                    class="min-h-80 font-mono"
-                    value={editDraft().sql}
-                    disabled={busy()}
-                    onInput={(e) => setEditDraft({ ...editDraft(), sql: e.currentTarget.value })}
-                  />
-                </TextField>
+                <SQLEditor id="edit-sql" sql={editDraft().sql} disabled={busy()} onChange={sql => setEditDraft({ ...editDraft(), sql })} />
                 <ParamEditor draft={editDraft()} onChange={setEditDraft} disabled={busy()} />
                 <Show when={actionError() !== ""}>
                   <Alert variant="destructive"><AlertDescription>{actionError()}</AlertDescription></Alert>

@@ -28,12 +28,12 @@ import {
   toTypedRequestParameters,
   validateRequestDraft,
 } from "@/features/request/draft";
+import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
 import type { SessionOutcome } from "@/shared/lib/dialogSession";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
-import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
 const selectClass =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
@@ -235,16 +235,7 @@ export const CreateRequestForm: Component = () => {
               </p>
             </Show>
           </div>
-          <TextField>
-            <TextFieldLabel for="req-sql">SQL</TextFieldLabel>
-            <TextFieldTextArea
-              id="req-sql"
-              class="min-h-80 font-mono"
-              value={draft().sql}
-              disabled={busy()}
-              onInput={(e) => setDraft({ ...draft(), sql: e.currentTarget.value })}
-            />
-          </TextField>
+          <SQLEditor id="req-sql" sql={draft().sql} disabled={busy()} onChange={sql => setDraft({ ...draft(), sql })} />
           <ParamEditor draft={draft()} onChange={setDraft} disabled={busy()} />
           <Show when={error() !== ""}>
             <Alert variant="destructive">

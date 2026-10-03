@@ -41,7 +41,7 @@ test.describe.serial("access requests", () => {
 
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
-    await page.getByLabel("SQL").fill("select 1");
+    await page.getByLabel("SQL", { exact: true }).fill("select 1");
     await page.getByRole("button", { name: "Submit" }).click();
     const approvedRow = page.getByRole("row", { name: /ReqTarget/ }).filter({ hasText: "Approved" });
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
@@ -52,7 +52,7 @@ test.describe.serial("access requests", () => {
     // A write is refused by the read-only policy. Create always persists a draft; only the subsequent Submit is refused — so the error shows AND a Draft row is left behind (the payload can then be fixed or cancelled).
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
-    await page.getByLabel("SQL").fill("update t set x = 1");
+    await page.getByLabel("SQL", { exact: true }).fill("update t set x = 1");
     await page.getByRole("button", { name: "Submit" }).click();
     await expect(page.getByText(/not allowed/)).toBeVisible();
     await page.getByRole("link", { name: "Back to requests", exact: true }).click();
@@ -63,13 +63,14 @@ test.describe.serial("access requests", () => {
     await draftRow.getByRole("link", { name: "Details" }).click();
     await page.getByRole("button", { name: "Edit draft" }).click();
     // A server payload rejection must preserve typed SQL so the draft remains editable.
+    await page.getByLabel("Auto-format SQL").uncheck();
     const overBudget = `select 1 -- ${"x".repeat(57 * 1024)}`;
-    await page.getByLabel("SQL").fill(overBudget);
+    await page.getByLabel("SQL", { exact: true }).fill(overBudget);
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(page.getByRole("main").getByText(/too large|payload/i)).toBeVisible();
-    await expect(page.getByRole("main").getByLabel("SQL")).toHaveValue(overBudget);
+    await expect(page.getByRole("main").getByLabel("SQL", { exact: true })).toHaveValue(overBudget);
 
-    await page.getByLabel("SQL").fill("select 2");
+    await page.getByLabel("SQL", { exact: true }).fill("select 2");
 
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(page.getByRole("button", { name: "Edit draft" })).toBeVisible();
@@ -83,7 +84,7 @@ test.describe.serial("access requests", () => {
 
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
-    await page.getByLabel("SQL").fill("select 3");
+    await page.getByLabel("SQL", { exact: true }).fill("select 3");
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.getByRole("link", { name: "Back to requests", exact: true }).click();
     const savedRow = page.getByRole("row", { name: /ReqTarget/ }).filter({ hasText: "Draft" });
@@ -96,7 +97,7 @@ test.describe.serial("access requests", () => {
 
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
-    await page.getByLabel("SQL").fill("select 4");
+    await page.getByLabel("SQL", { exact: true }).fill("select 4");
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.getByRole("link", { name: "Back to requests", exact: true }).click();
     const sendableRow = page.getByRole("row", { name: /ReqTarget/ }).filter({ hasText: "Draft" });
@@ -115,8 +116,9 @@ test.describe.serial("access requests", () => {
     await page.getByRole("link", { name: /Requests/ }).click();
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Auto-format SQL").uncheck();
     const sql = `SELECT 2 -- ${"long-sql-".repeat(100)}`;
-    await page.getByLabel("SQL").fill(sql);
+    await page.getByLabel("SQL", { exact: true }).fill(sql);
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     const dialog = page.getByRole("region", { name: "Request details" });
     const submit = dialog.getByRole("button", { name: "Submit", exact: true });
@@ -143,9 +145,10 @@ test.describe.serial("access requests", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "New access request" })).toBeVisible();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Auto-format SQL").uncheck();
     const sql = "SELECT 42 AS page_request";
-    await page.getByLabel("SQL").fill(sql);
-    const editor = await page.getByLabel("SQL").boundingBox();
+    await page.getByLabel("SQL", { exact: true }).fill(sql);
+    const editor = await page.getByLabel("SQL", { exact: true }).boundingBox();
     expect(editor?.height).toBeGreaterThanOrEqual(320);
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(page).toHaveURL(/\/requests\/[0-9a-f-]+$/);
@@ -158,6 +161,41 @@ test.describe.serial("access requests", () => {
     await page.goBack();
     await expect(page).toHaveURL(detailURL);
     await expect(page.locator("pre")).toHaveText(sql);
+  });
+  test("SQL formatting is automatic, reversible and saved only through explicit draft actions", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/connections$/);
+    await page.goto("/requests/new");
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    const original = "select 42 as answer from (select 1) as source where 1 = 1";
+    const editor = page.getByLabel("SQL", { exact: true });
+    await editor.fill(original);
+    await editor.press("Shift+Tab");
+    await expect(editor).toHaveValue(/select\n {2}42 as answer/);
+    const formatted = await editor.inputValue();
+    await page.getByRole("button", { name: "Undo formatting", exact: true }).click();
+    await expect(editor).toHaveValue(original);
+    await expect(page.getByLabel("Auto-format SQL")).not.toBeChecked();
+    await editor.focus();
+    await editor.press("Shift+Tab");
+    await expect(editor).toHaveValue(original);
+    await page.getByRole("button", { name: "Format SQL", exact: true }).click();
+    await expect(editor).toHaveValue(formatted);
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    await expect(page).toHaveURL(/\/requests\/[0-9a-f-]+$/);
+    await expect(page.locator("pre")).toHaveText(formatted);
+    await page.reload();
+    await expect(page.locator("pre")).toHaveText(formatted);
+    await page.getByRole("button", { name: "Edit draft", exact: true }).click();
+    const invalid = "select 'unfinished";
+    await editor.fill(invalid);
+    await editor.press("Shift+Tab");
+    await expect(editor).toHaveValue(invalid);
+    await expect(page.getByText("SQL could not be formatted. Your input is unchanged.")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
 });
