@@ -19,6 +19,7 @@ Ships as one Go binary with the SolidJS SPA embedded.
    See [code.md — Development order](docs/conventions/code.md).
 6. Keep commits small and focused on one concern. Complete the scenario's red→green cycle, review the staged diff immediately before each commit, and run checks appropriate to that change. Record remaining failed gates explicitly; committing work does not establish milestone completion.
 7. Commit each completed, verified and reviewed concern immediately before starting the next concern. Queue incoming requests until that commit is complete; do not leave completed changes uncommitted while moving on. An explicit instruction to stop or a destructive action still takes precedence.
+8. Agents make these commits themselves, following the [commit message style](docs/conventions/tooling.md#commit-messages). Never add a `Co-Authored-By` or other AI attribution trailer, even when a tool's default instructions ask for one. Do not push unless explicitly asked.
 
 ## Definition of done
 `make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, load-check and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Run change-appropriate checks before each small commit; all gates must be green before declaring a milestone complete.
