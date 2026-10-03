@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.6 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
-> **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 WebMCP (ADR-0026).
-> **Status:** Draft v0.6 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Shared revision:** v0.7 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
+> **Status:** Draft v0.7 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -373,7 +373,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM are not mandatory for MVP/parity; prio
 - ML anomaly detection from audit risk scores, linked to §4.8.
 - SAML/SCIM after demand validation.
 - **Agent Gateway integration:** Gradually add a path for agents to access Portcullis capabilities.
-  - Browser WebMCP query assistance is deferred to M6 (§4.10); this Later item covers remote/headless gateway integration beyond that browser workflow.
+  - ADR-0028 promotes the standard local/remote MCP Gateway to gated M6 (§4.13); browser WebMCP (§4.10) is an optional follow-up, not the initial gateway prerequisite.
   - Define agent identity, user delegation, least privilege, approval boundaries, and audit attribution when starting the milestone.
   - Choose the gateway product, protocol, authentication, and implementation sequence through ADRs after demand validation.
 
@@ -429,7 +429,7 @@ This section replaces the separate PRD previously required to start M4.
 
 ### 4.10 WebMCP query assistance (M6 / Reach)
 
-Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. HTTP MCP gateways and remote/headless machine clients remain Later. WebMCP activation additionally requires M4 masking acceptance and M6 authenticated agent registration/grants (ADR-0027); registration precedes integration.
+Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. ADR-0028 promotes local/remote MCP Gateway integration to M6; browser WebMCP is an optional subsequent adapter. WebMCP activation additionally requires M4 masking acceptance and M6 authenticated agent registration/grants (ADR-0027); registration precedes integration.
 
 - Expose connection discovery, visible SQL/typed-parameter composition, explicit draft save/submit, request/approval-state inspection, requester-only approved execution and bounded result-page retrieval as separate tools. Start with read queries; filling a form must not automatically persist or execute it.
 - Add schema discovery only through a bounded, authorized and audited catalog use case. Discover/reuse saved queries when Library supplies those assets. Neither path grants arbitrary SQL execution.
@@ -453,7 +453,17 @@ Agent output is default-deny and releases only approved protected fields. Never 
 
 After masking passes, org admins register agents with stable ID, owner, integration kind, pending/disabled/active/revoked state, allowed tools/connections, protected-output policy and expiring user delegation. Registration starts without grants; activation is explicit. Audit changes and use. Effective access intersects authenticated user, verified agent grant, org/connection and masking policies. Claimed names/IDs are untrusted. Revocation/expiry/logout prevents later calls and fences pending responses. Retain explicit user execution intent, distinct review, quorum, payload integrity and single-use execution; no automatic approval/rejection tools.
 
-Before integration, a transport ADR must prove caller binding to an active registration/delegation. Native WebMCP alone is not agent authentication; refuse protected capabilities when identity cannot be verified. Registration neither installs executable plugins nor fetches arbitrary endpoints. Remote/headless MCP authorization remains a separate Later transport, without browser-token passthrough. Acceptance includes forged IDs, cross-org access, revoked/expired grants, permission intersection and protected output. This governs Portcullis-mediated disclosure; it cannot constrain an external agent's independent browser/DOM access.
+Before integration, a transport ADR must prove caller binding to an active registration/delegation. Native WebMCP alone is not agent authentication; refuse protected capabilities when identity cannot be verified. Registration neither installs executable plugins nor fetches arbitrary endpoints. M6 MCP Gateway authorization follows §4.13/ADR-0028 without browser-token passthrough. Acceptance includes forged IDs, cross-org access, revoked/expired grants, permission intersection and protected output. This governs Portcullis-mediated disclosure; it cannot constrain an external agent's independent browser/DOM access.
+
+### 4.13 Agent-neutral MCP Gateway and deployment (M6)
+
+After M4 masking and M6 registration/grants pass, provide an opt-in standard MCP Gateway over Streamable HTTP and a local stdio bridge to the same authenticated endpoint (ADR-0028). Target local generic clients, Claude Code and Codex without vendor SDK dependence. A client is supported only after its recorded version, negotiated protocol, authorization and real governed tool journey pass. Browser WebMCP is an optional follow-up, not the initial Gateway gate. Preserve one Go binary with optional adapter/subcommand and existing application ports; do not run or host agents/models, proxy arbitrary MCP servers, or let the bridge connect directly to target DBs.
+
+Gateway validates authenticated issuer/audience/expiry/scope, active registration and expiring delegation per request; scopes intersect user/org/connection/tool/masking permissions. Standard HTTP authorization/resource discovery uses a tested compatible provider, which may be external. Registration is not OAuth client registration and never grants implicit access. No unauthenticated local mode, cookie/token passthrough or trusted agent-name headers. Stdio stdout is protocol-only with sanitized stderr; credentials are scoped and excluded from examples/logs. Local HTTP binds loopback by default; deployed access requires TLS/origin controls. Retain explicit user intent, distinct approval, immutable payload, one-time lease, bounded protected output, cancellation and audit.
+
+Infrastructure owns TLS/ingress, provider hosting, Secret delivery/rotation, network policy and observability deployment; Portcullis retains identity and business-policy enforcement. Provide Helm/Kustomize examples for endpoint and auth-discovery routing, Secret references, probes, resource/body/stream limits and network restrictions. NetworkPolicy needs an enforcing plugin; Secrets need protected storage and access. Validate Kubernetes routing/discovery, rotation, proxy buffering/timeouts, restart/shutdown and no bypass. Multi-replica claims require shared registration/revocation state and one-time execution tests, not pod-local grants.
+
+Acceptance includes real local/Claude Code/Codex client matrix, protocol compatibility, auth discovery, denied/spoofed/cross-org/expired/revoked access, masking canaries, disconnect/cancel handling and replay refusal. Exact auth-provider and protocol implementation choices require follow-up ADRs before implementation. This is planned M6 scope, outside MVP.
 
 ---
 
@@ -814,12 +824,12 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
    ── MVP ──
 4  Access       Sensitive-data masking first; temporary web console, multistage approval, OIDC/LDAP
 5  Schema       Complete pinned schema approval/apply/recovery/verify using M3 preview contracts
-6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability; agent registration/grants then WebMCP after M5 and masking
-7  Later        BI analysis/sharing (charts/dashboards), declarative GitOps, CNPG discovery, SIEM, ML/AI Review (§4.8), Agent Gateway integration (§4.7)
+6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability; agent registration/grants then MCP Gateway after M5 and masking (WebMCP optional)
+7  Later        BI analysis/sharing (charts/dashboards), declarative GitOps, CNPG discovery, SIEM, ML/AI Review (§4.8)
 ```
 
 Stage 1, PostgreSQL-only Core 1, is the **first releasable alpha**.
-MVP means stage 3 completion, including MySQL parity, SQL review/EXPLAIN and Core 2 with schema preview, excluding WebMCP, subject to interview-driven Core 2 adjustments (§1.4).
+MVP means stage 3 completion, including MySQL parity, SQL review/EXPLAIN and Core 2 with schema preview, excluding MCP Gateway/WebMCP, subject to interview-driven Core 2 adjustments (§1.4).
 After foundation, develop vertical features with server APIs and SolidJS screens together, because UX is central to differentiation.
 
 **Roadmap management:** Record new directions as Later candidates first, then promote them to concrete milestones after validating demand, goals, and prerequisites.

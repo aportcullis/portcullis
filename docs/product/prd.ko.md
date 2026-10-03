@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.6 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
-> **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 WebMCP는 M6로 미룬다(ADR-0026).
-> **상태:** Draft v0.6 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
+> **동기화 기준:** v0.7 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
+> **상태:** Draft v0.7 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -341,7 +341,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM은 MVP와 parity track의 필수 범�
 - ML 이상 탐지 (audit 기반 위험 점수 → 4.8 AI Review와 연계)
 - SAML/SCIM (수요 검증 후)
 - **Agent Gateway 연동:** 에이전트가 Portcullis의 기능에 접근할 수 있는 연동 경로를 단계적으로 추가한다.
-  - 브라우저 WebMCP 쿼리 보조는 M6(4.10)로 미루며, 이 Later 항목은 브라우저 과업을 넘어서는 원격·headless Gateway 연동을 다룬다.
+  - ADR-0028로 표준 로컬/원격 MCP Gateway를 조건부 M6(4.13)로 상향한다. 브라우저 WebMCP(4.10)는 선택 후속 adapter이며 초기 Gateway 선행 조건이 아니다.
   - 착수 시 에이전트 신원, 사용자 위임, 최소 권한, 승인 경계, 감사 추적을 정의한다.
   - Gateway 제품·프로토콜·인증 방식과 구현 순서는 수요 검증 후 ADR로 결정한다.
 
@@ -397,7 +397,7 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 
 ### 4.10 WebMCP 쿼리 보조 (M6 / Reach)
 
-브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다. WebMCP 활성화에는 M4 마스킹 인수 통과와 M6의 인증된 에이전트 등록·권한 부여가 추가로 필요하다(ADR-0027). 등록을 연동보다 먼저 제공한다.
+브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. ADR-0028로 로컬/원격 MCP Gateway를 M6에 두며 브라우저 WebMCP는 선택 후속 adapter로 둔다. WebMCP 활성화에는 M4 마스킹 인수 통과와 M6의 인증된 에이전트 등록·권한 부여가 추가로 필요하다(ADR-0027). 등록을 연동보다 먼저 제공한다.
 
 - 연결 탐색, 화면에 보이는 SQL·타입 파라미터 작성, 명시적 초안 저장·제출, 요청·승인 상태 조회, 요청자만의 승인된 실행, 제한된 결과 페이지 조회를 각각 도구로 제공한다. Read 쿼리부터 시작하며, 폼을 채우는 것만으로 자동 저장·실행하지 않는다.
 - 스키마 탐색은 제한·인가·감사를 갖춘 catalog use case를 정의한 뒤 추가한다. 저장 쿼리 탐색·재사용은 Library가 해당 자산을 제공할 때 연동한다. 어느 경로도 임의 SQL 실행 권한을 부여하지 않는다.
@@ -421,7 +421,17 @@ M4에서 서버 마스킹·출력 보류를 먼저 제공하고 M6에서 에이�
 
 마스킹 통과 후 조직 admin이 stable ID·owner·연동 종류·pending/disabled/active/revoked 상태·허용 tool/connection·보호 출력 정책·만료가 있는 사용자 위임을 가진 에이전트를 등록한다. 등록 시 권한은 없고 활성화는 명시적이다. 변경·사용을 audit한다. 실제 권한은 인증 사용자·검증된 agent grant·조직/connection·마스킹 정책의 교집합이다. 제출한 이름/ID는 신뢰하지 않는다. 회수·만료·로그아웃 시 후속 호출을 거부하고 진행 응답도 fence한다. 명시적 사용자 실행 요청·별도 검토·quorum·payload 무결성·1회 실행을 유지하며 자동 승인/반려 tool은 제공하지 않는다.
 
-연동 전 transport ADR로 호출자를 활성 등록·위임에 결합하는 방법을 입증한다. native WebMCP만으로 에이전트를 인증할 수 없으며 신원을 확인하지 못하면 보호 기능을 거부한다. 등록은 실행 plugin 설치나 임의 endpoint fetch가 아니다. 원격/headless MCP 인가는 browser token 전달 없이 별도 Later transport로 다룬다. 위조 ID·타 조직·회수/만료 grant·권한 교집합·보호 출력이 인수 조건이다. 이는 Portcullis 경유 공개를 통제하며 외부 에이전트의 독립적인 browser/DOM 접근을 통제한다고 약속하지 않는다.
+연동 전 transport ADR로 호출자를 활성 등록·위임에 결합하는 방법을 입증한다. native WebMCP만으로 에이전트를 인증할 수 없으며 신원을 확인하지 못하면 보호 기능을 거부한다. 등록은 실행 plugin 설치나 임의 endpoint fetch가 아니다. M6 MCP Gateway 인가는 browser token 전달 없이 4.13/ADR-0028을 따른다. 위조 ID·타 조직·회수/만료 grant·권한 교집합·보호 출력이 인수 조건이다. 이는 Portcullis 경유 공개를 통제하며 외부 에이전트의 독립적인 browser/DOM 접근을 통제한다고 약속하지 않는다.
+
+### 4.13 에이전트 중립 MCP Gateway와 배포 (M6)
+
+M4 마스킹과 M6 등록·권한 인수 통과 후 Streamable HTTP 표준 MCP Gateway와 같은 인증 endpoint로 연결하는 로컬 stdio bridge를 opt-in 제공한다(ADR-0028). vendor SDK 종속 없이 로컬 일반 client·Claude Code·Codex를 대상으로 한다. 기록된 client 버전·협상 protocol·인가·실제 거버넌스 tool 과업 통과 후에만 지원으로 표시한다. 브라우저 WebMCP는 선택 후속이며 초기 Gateway 인수 조건이 아니다. Go 단일 binary의 선택 adapter/subcommand와 기존 app port를 유지한다. agent/model 실행·hosting, 임의 MCP server proxy, bridge의 대상 DB 직접 연결은 제공하지 않는다.
+
+Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만료가 있는 위임을 검증하고 사용자/조직/connection/tool/마스킹 권한의 교집합을 적용한다. 표준 HTTP 인가·resource discovery는 검증된 호환 provider를 사용하며 외부 배포할 수 있다. 등록은 OAuth client 등록과 다르며 암묵 권한을 부여하지 않는다. 비인증 local 모드, cookie/token 전달, agent 이름 header 신뢰는 금지한다. stdio stdout은 protocol 전용, stderr는 정제하며 credential은 제한된 범위로 예제·로그에서 제외한다. local HTTP는 기본 loopback, 배포 시 TLS/origin 제어가 필요하다. 명시적 사용자 의도·별도 승인·불변 payload·1회 lease·제한된 보호 출력·취소·audit를 유지한다.
+
+인프라는 TLS/ingress·provider hosting·Secret 전달/rotation·network policy·관측 배포를 맡고 Portcullis는 신원과 업무 정책 검증을 유지한다. endpoint·인가 discovery routing, Secret 참조, probe, resource/body/stream limit과 네트워크 제한의 Helm/Kustomize 예제를 제공한다. NetworkPolicy에는 적용 plugin이, Secret에는 보호된 저장·접근이 필요하다. Kubernetes routing/discovery·rotation·proxy buffering/timeout·재시작/종료·우회 차단을 검증한다. multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와 1회 실행 테스트 통과 후 가능하다.
+
+실제 로컬/Claude Code/Codex client matrix, protocol 호환, auth discovery, 거부/위조/타 조직/만료/회수 접근, masking canary, 연결 끊김/취소·재실행 거부를 인수 조건으로 둔다. 정확한 auth provider와 protocol 구현은 착수 전 후속 ADR로 정한다. 계획된 M6이며 MVP 범위 밖이다.
 
 ---
 
@@ -774,12 +784,12 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
    ── MVP ──
 4  access 확장  민감정보 마스킹 우선 → 임시 접근·다단계 승인·OIDC/LDAP
 5  schema       M3 미리보기 계약 기반 schema 승인·apply·복구·verify 완성
-6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider; M5·마스킹 이후 에이전트 등록·권한 → 브라우저 WebMCP
-7  later        BI 분석·공유(차트·대시보드), declarative GitOps, CNPG 자동발견, SIEM, ML/AI Review(4.8), Agent Gateway 연동(4.7)
+6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider; M5·마스킹 이후 에이전트 등록·권한 → MCP Gateway (WebMCP 선택 후속)
+7  later        BI 분석·공유(차트·대시보드), declarative GitOps, CNPG 자동발견, SIEM, ML/AI Review(4.8)
 ```
 
 **출하 경계:** 단계 1(Core 1-PG, PostgreSQL 단독 거버넌스 루프)을 **first releasable alpha 경계**로 둔다.
-문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity·SQL 검토·EXPLAIN(2)와 schema 미리보기를 포함한 Core 2(3)를 포함하며 WebMCP는 제외한다.
+문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity·SQL 검토·EXPLAIN(2)와 schema 미리보기를 포함한 Core 2(3)를 포함하며 MCP Gateway/WebMCP는 제외한다.
 인터뷰 결과(1.4)에 따라 Core 2 범위를 조정할 여지는 남긴다.
 
 개발 원칙: 토대 이후로는 **기능 단위 수직 개발**(서버 API + SolidJS 화면을 함께).

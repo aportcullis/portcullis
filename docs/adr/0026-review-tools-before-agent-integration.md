@@ -3,6 +3,8 @@
 - **Status:** Accepted (scope and sequence; implementation pending)
 - **Date:** 2026-10-03
 
+> **Gateway amendment:** [ADR-0028](0028-agent-neutral-mcp-gateway.md) promotes local/remote standard MCP Gateway to gated M6; browser WebMCP is an optional follow-up. Masking and registration prerequisites remain binding. Earlier remote/headless Later placement is superseded.
+
 ## Context
 
 The product owner asks to advance EXPLAIN, SQL analysis and dry-run while delaying MCP. ADR-0025 already prioritizes PostgreSQL/MySQL parity and excludes SQLite. Reviewers need visible evidence before execution; agent integration can follow a mature human workflow.

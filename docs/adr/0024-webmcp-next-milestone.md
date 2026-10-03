@@ -4,6 +4,8 @@
 
 > **Sequence amendment:** [ADR-0026](0026-review-tools-before-agent-integration.md) advances M2 SQL review/EXPLAIN and M3 schema preview, defers WebMCP to M6 after M5, and removes WebMCP from MVP acceptance. Earlier sequence text below is historical.
 
+> **Gateway amendment:** [ADR-0028](0028-agent-neutral-mcp-gateway.md) promotes local/remote standard MCP Gateway to gated M6; browser WebMCP is an optional follow-up. Masking and registration prerequisites remain binding. Earlier remote/headless Later placement is superseded.
+
 ## Context
 
 The product owner requests Web MCP query assistance in the next milestone. Bridge (M2) currently covers MySQL/SQLite parity; agent integration was a Later candidate. Promote browser WebMCP query assistance into Bridge, before adapter expansion, while retaining milestone identifiers and the existing alpha/MVP release boundaries. The initial interpretation of "Web MCP" is browser WebMCP; a remote HTTP MCP service is a separate scope decision.
