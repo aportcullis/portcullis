@@ -34,6 +34,7 @@ import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
 import type { SessionOutcome } from "@/shared/lib/dialogSession";
 import { createDialogSession } from "@/shared/lib/dialogSession";
+import { PageHeader } from "@/shared/ui/PageHeader";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 
@@ -194,12 +195,12 @@ export const CreateRequestForm: Component = () => {
 
   return (
     <section aria-label="Request composition" class="flex min-w-0 flex-col gap-6">
-      <header>
-        <A href="/requests" class="text-sm underline">Back to requests</A>
-        <h1 class="mt-3 text-2xl font-semibold">New access request</h1>
-        <p class="text-sm text-muted-foreground">Describe the request and write one SQL statement. Save a draft to keep editing, or submit it for approval.</p>
-      </header>
-        <form class="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+      <A href="/requests" class="w-fit text-sm text-muted-foreground underline underline-offset-4"><span aria-hidden="true">← </span>Back to requests</A>
+      <PageHeader eyebrow="Governed access" title="New access request" description="Give reviewers the context they need, then write the SQL you want approved." />
+      <div class="request-workspace">
+        <form class="request-form" onSubmit={(e) => e.preventDefault()}>
+          <section aria-labelledby="request-context-heading" class="content-surface request-section">
+            <div class="request-section-heading"><h2 id="request-context-heading">1. Request context</h2><p>Choose a database and explain the purpose of this request.</p></div>
           <div class="flex flex-col gap-1">
             <label class="text-sm font-medium" for="req-connection">
               Connection
@@ -238,14 +239,20 @@ export const CreateRequestForm: Component = () => {
             </Show>
           </div>
           <RequestNarrativeFields id="req" draft={draft()} disabled={busy()} onChange={setDraft} />
+          </section>
+          <section aria-labelledby="request-sql-heading" class="content-surface request-section">
+            <div class="request-section-heading"><h2 id="request-sql-heading">2. SQL and parameters</h2><p>One statement, with exact parameter values. Review formatting before submitting.</p></div>
           <SQLEditor id="req-sql" sql={draft().sql} disabled={busy()} onChange={sql => setDraft({ ...draft(), sql })} />
           <ParamEditor draft={draft()} onChange={setDraft} disabled={busy()} />
+          </section>
           <Show when={error() !== ""}>
             <Alert variant="destructive">
               <AlertDescription>{error()}</AlertDescription>
             </Alert>
           </Show>
-          <div class="flex justify-end gap-2">
+          <div class="content-surface request-actions">
+            <p class="text-xs text-muted-foreground">Submitting requests approval.<br />It does not execute SQL.</p>
+            <div>
             {/* The server already cancelled this draft along with its connection (§4.3), so there is nothing left to save, send, or withdraw — only to close. Showing the other three would be showing buttons that can only fail. */}
             <Show
               when={!settled()}
@@ -281,8 +288,19 @@ export const CreateRequestForm: Component = () => {
                 Submit
               </Button>
             </Show>
+            </div>
           </div>
         </form>
+        <aside class="content-surface request-guide" aria-label="Request guide">
+          <h2>Before you submit</h2>
+          <ol class="list-decimal pl-4">
+            <li>Confirm the target database and explain the expected impact.</li>
+            <li>Check the SQL and parameter values. Keep secrets out of the title and body.</li>
+            <li>Save a draft to continue later, or submit for the connection's approval policy.</li>
+          </ol>
+          <p class="mt-4 border-t pt-4">After approval, the requester can execute once. Changes to a draft must be saved explicitly.</p>
+        </aside>
+      </div>
     </section>
   );
 };

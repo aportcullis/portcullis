@@ -10,6 +10,7 @@ import { errorMessage } from "@/entities/request/store";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { cycleResultSorting } from "@/features/request/sorting";
+import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 
@@ -94,7 +95,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       <h1 class="mt-3 text-2xl font-semibold">Query result</h1><p class="text-sm text-muted-foreground">
         <Show when={execution()}>{e => <span>{e().rowsAffected.toString()} rows affected · {e().durationMs.toString()} ms</span>}</Show>
       </p></header>
-      <Show when={read.loading()}><p role="status">Loading result…</p></Show>
+      <Show when={read.loading()}><LoadingSkeleton label="Loading result…" /></Show>
       <Show when={read.error()}><p role="alert" class="text-destructive">{read.error()} Results may have expired or been evicted.</p></Show>
       <Show when={execution()?.state === AccessRequestState.OUTCOME_UNKNOWN}><p role="alert">Outcome unknown. Check the target database and audit history before creating another request. This execution will not retry.</p></Show>
       <Show when={execution()?.state === AccessRequestState.FAILED}><p role="alert">Execution failed. Submit a new request to try again.</p></Show>

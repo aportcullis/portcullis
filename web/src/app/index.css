@@ -39,6 +39,10 @@
   * {
     border-color: var(--color-border);
   }
+  :where(a, button, input, textarea, select):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
   body {
     font-family: var(--ui-font);
     background-color: var(--color-background);

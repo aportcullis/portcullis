@@ -2,7 +2,7 @@ import type { Component } from "solid-js";
 import { For, Match, Show, Switch } from "solid-js";
 
 import type { RouteSectionProps } from "@solidjs/router";
-import { Navigate } from "@solidjs/router";
+import { Navigate, useLocation } from "@solidjs/router";
 
 import { visibleSections } from "@/app/navigation";
 import { createPendingRequests } from "@/app/pendingRequests";
@@ -16,6 +16,7 @@ import { Badge } from "@/shared/ui/badge";
 // AppShell owns the session guard and capability-based navigation; the server still authorizes every RPC.
 const AppShell: Component<RouteSectionProps> = (props) => {
   const pendingCount = createPendingRequests();
+  const location = useLocation();
   return (
     <Switch>
       <Match when={session().status === "anonymous"}>
@@ -32,7 +33,7 @@ const AppShell: Component<RouteSectionProps> = (props) => {
               <For each={visibleSections(hasPermission)}>
                 {(section) => (
                   <a
-                    class="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                    aria-current={location.pathname === section.href || location.pathname.startsWith(`${section.href}/`) ? "page" : undefined}
                     href={section.href}
                   >
                     {section.label}

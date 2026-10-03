@@ -22,6 +22,7 @@ import {
 import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
+import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import {
   Table,
@@ -41,7 +42,7 @@ const actorLabel = (a?: { displayName: string; email: string }): string =>
 // The state filter covers request review and execution outcomes.
 const filterStates = ["draft", "pending", "approved", "executing", "succeeded", "failed", "outcome_unknown", "rejected", "expired", "cancelled"];
 
-// RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details dialog carries the approve/reject/cancel affordances.
+// RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details page carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
   onMount(() => {
     void loadAccessRequests();
@@ -60,7 +61,7 @@ export const RequestList: Component = () => {
 
   return (
     <>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <label class="text-sm text-muted-foreground" for="req-filter">
           Filter
         </label>
@@ -88,7 +89,7 @@ export const RequestList: Component = () => {
             when={listState() === "ready"}
             fallback={
               <Show when={listError() === ""}>
-                <p class="text-sm text-muted-foreground">Loading requests…</p>
+                <LoadingSkeleton label="Loading requests…" />
               </Show>
             }
           >
@@ -143,7 +144,7 @@ export const RequestList: Component = () => {
           <span class="text-sm text-muted-foreground">
             {start()}–{end()} of {totalCount().toString()}
           </span>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" disabled={page() <= 1} onClick={() => goToPage(page() - 1)}>
               Previous
             </Button>

@@ -1,4 +1,5 @@
 import { useNavigate } from "@solidjs/router";
+import { PageHeader } from "@/shared/ui/PageHeader";
 import { Button } from "@/shared/ui/button";
 import type { Component } from "solid-js";
 import { Show } from "solid-js";
@@ -11,17 +12,12 @@ const RequestsPage: Component = () => {
   const navigate = useNavigate();
   return (
   <>
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Access requests</h1>
-        <p class="text-sm text-muted-foreground">
-          Request, review, and approve one-off SQL against governed connections.
-        </p>
-      </div>
-      <Show when={hasPermission("requests.create")}>
+    <PageHeader eyebrow="Governed access" title="Access requests"
+      description="Follow requests from draft and review to a single approved execution."
+      actions={<Show when={hasPermission("requests.create")}>
         <Button onClick={() => navigate("/requests/new")}>New request</Button>
-      </Show>
-    </div>
+      </Show>}
+    />
 
     {/* The list is its own capability: a custom role may hold requests.create without requests.list (ADR-0008 allows any combination), and rendering the list anyway would fire an RPC that can only come back denied. */}
     <Show
@@ -33,7 +29,7 @@ const RequestsPage: Component = () => {
         </p>
       }
     >
-      <RequestList />
+      <div class="content-surface"><RequestList /></div>
     </Show>
   </>
 );

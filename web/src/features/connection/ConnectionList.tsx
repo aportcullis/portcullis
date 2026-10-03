@@ -12,6 +12,7 @@ import { resolveEditTarget } from "@/features/connection/editTarget";
 import { TestConnectionButton } from "@/features/connection/TestConnectionButton";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
+import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
 import {
   Table,
@@ -46,7 +47,7 @@ export const ConnectionList: Component = () => {
             when={listState() === "ready"}
             fallback={
               <Show when={listError() === ""}>
-                <p class="text-sm text-muted-foreground">Loading connections…</p>
+                <LoadingSkeleton label="Loading connections…" />
               </Show>
             }
           >

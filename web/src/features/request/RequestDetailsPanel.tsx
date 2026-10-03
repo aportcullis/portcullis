@@ -33,6 +33,7 @@ import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
+import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
@@ -147,8 +148,8 @@ export const RequestDetailsPanel: Component<{
 
   return (
     <section aria-label="Request details" class="flex min-w-0 flex-col gap-6">
-      <header>
-        <A href="/requests" class="text-sm underline">Back to requests</A>
+      <header class="request-detail-header">
+        <A href="/requests" class="inline-flex rounded-md border bg-card px-3 py-2 text-sm underline-offset-4 hover:underline">Back to requests</A>
         <h1 class="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-2xl font-semibold">
           <span class="min-w-0 break-words">{current().title || "Untitled request"}</span>
           <Badge variant={stateBadge(current().effectiveState)}>{stateLabel(current().effectiveState)}</Badge>
@@ -156,8 +157,9 @@ export const RequestDetailsPanel: Component<{
         <p class="text-sm text-muted-foreground">{current().connectionName} · requested by {actorLabel(current().requester)}</p>
         <p class="break-all font-mono text-xs text-muted-foreground">{props.requestId}</p>
       </header>
-      <Show when={requestRead.loading()}><p role="status">Loading request…</p></Show>
+      <Show when={requestRead.loading() && !detail()}><LoadingSkeleton label="Loading request…" /></Show>
         <Show when={requestRead.error() === ""} fallback={<Alert variant="destructive"><AlertDescription>{requestRead.error()}</AlertDescription></Alert>}>
+          <Show when={detail()}>
           <Show
             when={!editing()}
             fallback={
@@ -180,7 +182,9 @@ export const RequestDetailsPanel: Component<{
               </form>
             }
           >
-          <div class="flex min-w-0 flex-col gap-4">
+          <div class="request-review-layout">
+          <div class="content-surface request-evidence">
+            <h2 class="text-base font-semibold">Request evidence</h2>
             <Show when={detail()?.payload} fallback={
               <div class="flex flex-col gap-1">
                 <span class="text-sm font-medium">SQL (redacted)</span>
@@ -262,6 +266,14 @@ export const RequestDetailsPanel: Component<{
               </Show>
             </div>
 
+          </div>
+          <aside aria-label="Request actions" class="content-surface decision-panel">
+            <div class="request-section-heading">
+              <div class="page-eyebrow">Next action</div>
+              <h2>Review and execution</h2>
+              <p>Current state: {stateLabel(current().effectiveState)}. {current().validApprovals} / {current().requiredApprovals} valid approvals.</p>
+            </div>
+            <Show when={canDecide()}><p class="text-sm text-muted-foreground">Review the target and SQL before deciding. Approval does not execute the statement.</p></Show>
             <Show when={canDecide()}>
               <TextField>
                 <TextFieldLabel for="decision-reason">Reason (required to reject)</TextFieldLabel>
@@ -288,10 +300,18 @@ export const RequestDetailsPanel: Component<{
             </Show>
 
             <RequestRowActions request={current()} onChanged={refresh} executionOnly />
-            <div class="flex justify-end gap-2">
+            <div class="decision-buttons">
               <Show when={showEditDraft()}>
                 <Button variant="outline" disabled={busy()} onClick={startEditing}>
                   Edit draft
+                </Button>
+              </Show>
+              <Show when={showApprove()}>
+                <Button
+                  disabled={busy()}
+                  onClick={() => void runAndRefresh(() => approveAccessRequest(current().id, reason()), refresh)}
+                >
+                  Approve
                 </Button>
               </Show>
               <Show when={showReject()}>
@@ -301,14 +321,6 @@ export const RequestDetailsPanel: Component<{
                   onClick={() => void runAndRefresh(() => rejectAccessRequest(current().id, reason()), refresh)}
                 >
                   Reject
-                </Button>
-              </Show>
-              <Show when={showApprove()}>
-                <Button
-                  disabled={busy()}
-                  onClick={() => void runAndRefresh(() => approveAccessRequest(current().id, reason()), refresh)}
-                >
-                  Approve
                 </Button>
               </Show>
               <Show when={showCancel()}>
@@ -335,7 +347,10 @@ export const RequestDetailsPanel: Component<{
                 </Button>
               </Show>
             </div>
+            <A href="/requests" class="text-sm text-muted-foreground underline underline-offset-4">Return to request list</A>
+          </aside>
           </div>
+          </Show>
           </Show>
         </Show>
     </section>

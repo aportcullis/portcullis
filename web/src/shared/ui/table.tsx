@@ -8,7 +8,7 @@ import { cn } from "@/shared/lib/utils"
 const Table: Component<ComponentProps<"table">> = (props) => {
   const [local, others] = splitProps(props, ["class"])
   return (
-    <div class="relative w-full overflow-auto">
+    <div class="relative w-full min-w-0 overflow-auto">
       <table class={cn("w-full caption-bottom text-sm", local.class)} {...others} />
     </div>
   )
@@ -16,7 +16,7 @@ const Table: Component<ComponentProps<"table">> = (props) => {
 
 const TableHeader: Component<ComponentProps<"thead">> = (props) => {
   const [local, others] = splitProps(props, ["class"])
-  return <thead class={cn("[&_tr]:border-b", local.class)} {...others} />
+  return <thead class={cn("bg-muted/50 [&_tr]:border-b", local.class)} {...others} />
 }
 
 const TableBody: Component<ComponentProps<"tbody">> = (props) => {
