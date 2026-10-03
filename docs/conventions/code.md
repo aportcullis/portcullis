@@ -63,6 +63,14 @@ Every feature follows this loop; don't write the implementation first:
 
 A build that is red mid-cycle is expected; finish the loop before `make verify`.
 
+## Concurrent state changes
+
+Shared workflow state is protected by database transactions, conditional state/version updates and unique constraints; a process-local mutex does not coordinate separate application instances. When both rows are required, acquire the connection before the request, and the request before its execution record (ADR-0021). Review membership locks, cascade updates and implicit foreign-key locks alongside explicit locks before adding a path.
+
+Keep metadata transactions short: commit lease acquisition before target SQL or other external I/O. Propagate cancellation/deadlines through lock waits and roll back refused operations. Fence heartbeat and completion by owner and attempt; a competing or late report must preserve the committed terminal outcome and its audit evidence. Never retry target SQL merely because metadata locking or completion reporting failed.
+
+Verify observable contention scenarios with Testcontainers and `-race`: competing approval/execute calls, owner cancellation, stale ownership and simultaneous terminal reports. Coordinate competing callers explicitly and bound their contexts; a passing race detector alone does not establish database transaction correctness.
+
 ## Naming — the name is the interface
 A name must say what the thing is *about*, on its own, at the call site.
 `can` does not (a permission check? a feature flag?) — `hasPermission` does.
