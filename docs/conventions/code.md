@@ -107,7 +107,8 @@ Group documentation prose into paragraphs by topic; do not automatically insert 
 For long list items, state the rule in a short parent bullet and put conditions, examples, and exceptions in sub-bullets.
 
 A committed file may cite a stable product requirement section (`PRD §4.3`) or link to the [Korean](../product/prd.ko.md) or [English](../product/prd.en.md) PRD.
-Avoid line-number references and pointers into private, gitignored notes such as `todo.md`.
+Avoid line-number references.
+Never name, link or quote a file matched by `.gitignore` in a committed file, even when it exists locally; a fresh clone does not have it, and private notes may hold unpublished findings. The ignore files themselves are the only exception.
 Keep paired translations consistent according to the [documentation policy](../README.md#language-policy).
 
 ## Minimize hardcoding

@@ -57,4 +57,4 @@ docs/
     benchmarks/
 ```
 
-PRD files are repository documents; private working notes such as the root `todo.md` remain gitignored.
+PRD files are repository documents; private working notes stay gitignored and are never referenced from committed files.
