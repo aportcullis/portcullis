@@ -24,6 +24,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await page.getByRole("link", { name: /Requests/ }).click();
   await page.getByRole("button", { name: "New request" }).click();
   await page.getByLabel("Connection").selectOption({ label: "ExecutionTarget" });
+  await page.getByLabel("Title", { exact: true }).fill("Query review");
   await page.getByLabel("SQL", { exact: true }).fill("SELECT (9007199254740993::bigint + g) AS exact_value, '=formula'::text AS note FROM generate_series(1,25) AS g");
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   const row = page.getByRole("region", { name: "Request details" });

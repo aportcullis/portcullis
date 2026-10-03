@@ -39,6 +39,7 @@ test.describe.serial("access requests", () => {
 
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     await page.getByLabel("SQL", { exact: true }).fill("select 1");
     await page.getByRole("button", { name: "Submit" }).click();
     const approvedRow = page.getByRole("row", { name: /ReqTarget/ }).filter({ hasText: "Approved" });
@@ -50,6 +51,7 @@ test.describe.serial("access requests", () => {
     // A write is refused by the read-only policy. Create always persists a draft; only the subsequent Submit is refused — so the error shows AND a Draft row is left behind (the payload can then be fixed or cancelled).
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     await page.getByLabel("SQL", { exact: true }).fill("update t set x = 1");
     await page.getByRole("button", { name: "Submit" }).click();
     await expect(page.getByText(/not allowed/)).toBeVisible();
@@ -82,6 +84,7 @@ test.describe.serial("access requests", () => {
 
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     await page.getByLabel("SQL", { exact: true }).fill("select 3");
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.getByRole("link", { name: "Back to requests", exact: true }).click();
@@ -95,6 +98,7 @@ test.describe.serial("access requests", () => {
 
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     await page.getByLabel("SQL", { exact: true }).fill("select 4");
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.getByRole("link", { name: "Back to requests", exact: true }).click();
@@ -111,6 +115,7 @@ test.describe.serial("access requests", () => {
     await page.getByRole("link", { name: /Requests/ }).click();
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     await page.getByLabel("Auto-format SQL").uncheck();
     const sql = `SELECT 2 -- ${"long-sql-".repeat(100)}`;
     await page.getByLabel("SQL", { exact: true }).fill(sql);
@@ -137,6 +142,7 @@ test.describe.serial("access requests", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "New access request" })).toBeVisible();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     await page.getByLabel("Auto-format SQL").uncheck();
     const sql = "SELECT 42 AS page_request";
     await page.getByLabel("SQL", { exact: true }).fill(sql);
@@ -172,6 +178,7 @@ test.describe.serial("access requests", () => {
     await signInForScenario(page, email, password);
     await page.goto("/requests/new");
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Query review");
     const original = "select 42 as answer from (select 1) as source where 1 = 1";
     const editor = page.getByLabel("SQL", { exact: true });
     await editor.fill(original);
@@ -200,4 +207,47 @@ test.describe.serial("access requests", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
+  test("title and body survive save, reload, edit and submission as literal text", async ({ page }) => {
+    await page.goto("/login");
+    await signInForScenario(page, email, password);
+    await page.goto("/requests/new");
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("SQL", { exact: true }).fill("select 42");
+    await page.getByLabel("Title", { exact: true }).fill("Review monthly revenue");
+    await page.getByLabel("Body (optional)", { exact: true }).fill("Check the revenue totals before publishing the monthly report.\nPlease review the selected connection and SQL.");
+    await test.info().attach("Request composition", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    await page.getByLabel("Title", { exact: true }).fill("");
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("Enter a request title.");
+    const title = "Monthly revenue <script>literal</script>";
+    const body = "Check revenue totals.\n<img src=x onerror=window.narrativeExecuted=true>";
+    await page.getByLabel("Title", { exact: true }).fill(title);
+    await page.getByLabel("Body (optional)", { exact: true }).fill(body);
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    await expect(page).toHaveURL(/\/requests\/[0-9a-f-]+$/);
+    const detailURL = page.url();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(title);
+    await expect(page.getByText(body, { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(body, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Edit draft", exact: true }).click();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveValue(title);
+    await expect(page.getByLabel("Body (optional)", { exact: true })).toHaveValue(body);
+    const editedTitle = "Monthly revenue reviewed";
+    await page.getByLabel("Title", { exact: true }).fill(editedTitle);
+    await page.getByLabel("Body (optional)", { exact: true }).fill(body + "\nReviewed.");
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(editedTitle);
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit draft", exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText(body + "\nReviewed.", { exact: true })).toBeVisible();
+    await expect(page.locator("main img[src=x]")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("link", { name: "Back to requests", exact: true }).click();
+    await expect(page.getByRole("row", { name: new RegExp(editedTitle) })).toBeVisible();
+    await page.goto(detailURL);
+    await page.getByRole("button", { name: "Cancel request", exact: true }).click();
+  });
 });

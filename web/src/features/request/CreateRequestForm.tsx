@@ -28,6 +28,8 @@ import {
   toTypedRequestParameters,
   validateRequestDraft,
 } from "@/features/request/draft";
+import { loginConfig } from "@/entities/instance/config";
+import { RequestNarrativeFields } from "@/features/request/RequestNarrativeFields";
 import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
 import type { SessionOutcome } from "@/shared/lib/dialogSession";
@@ -130,7 +132,7 @@ export const CreateRequestForm: Component = () => {
   const persist = async (): Promise<SessionOutcome<SavedDraft>> => {
     if (savedId() === "") {
       const created = await runInSession(() =>
-        createAccessRequest(connectionId(), draft().sql, toTypedRequestParameters(draft())),
+        createAccessRequest(connectionId(), draft().sql, toTypedRequestParameters(draft()), draft().title, draft().body),
       );
       if (created.status !== "ok") return created;
       if (!created.value) return { status: "ok", value: undefined };
@@ -140,7 +142,7 @@ export const CreateRequestForm: Component = () => {
       return { status: "ok", value: { id: created.value.id, version: created.value.version } };
     }
     const updated = await runInSession(() =>
-      updateDraft(savedId(), savedVersion(), draft().sql, toTypedRequestParameters(draft())),
+      updateDraft(savedId(), savedVersion(), draft().sql, toTypedRequestParameters(draft()), draft().title, draft().body),
     );
     if (updated.status !== "ok") return updated;
     if (!updated.value) return { status: "ok", value: undefined };
@@ -160,7 +162,7 @@ export const CreateRequestForm: Component = () => {
       setError("Choose a connection.");
       return;
     }
-    const problem = validateRequestDraft(draft());
+    const problem = validateRequestDraft(draft(), loginConfig());
     if (problem !== "") {
       setError(problem);
       return;
@@ -195,7 +197,7 @@ export const CreateRequestForm: Component = () => {
       <header>
         <A href="/requests" class="text-sm underline">Back to requests</A>
         <h1 class="mt-3 text-2xl font-semibold">New access request</h1>
-        <p class="text-sm text-muted-foreground">Write one SQL statement. Save a draft to keep editing, or submit it for approval.</p>
+        <p class="text-sm text-muted-foreground">Describe the request and write one SQL statement. Save a draft to keep editing, or submit it for approval.</p>
       </header>
         <form class="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
           <div class="flex flex-col gap-1">
@@ -235,6 +237,7 @@ export const CreateRequestForm: Component = () => {
               </p>
             </Show>
           </div>
+          <RequestNarrativeFields id="req" draft={draft()} disabled={busy()} onChange={setDraft} />
           <SQLEditor id="req-sql" sql={draft().sql} disabled={busy()} onChange={sql => setDraft({ ...draft(), sql })} />
           <ParamEditor draft={draft()} onChange={setDraft} disabled={busy()} />
           <Show when={error() !== ""}>

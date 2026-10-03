@@ -3,15 +3,17 @@ import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import type { ParamRow, ParamType } from "@/entities/request/model";
 import { paramTypes } from "@/entities/request/model";
 
-/** Holds editable SQL and typed parameters for a request draft. */
+/** Holds the editable narrative, SQL and typed parameters for a request draft. */
 export type RequestDraft = {
+  title: string;
+  body: string;
   sql: string;
   params: ParamRow[];
 };
 
-/** Creates a request draft with no SQL or parameters. */
+/** Creates an empty request narrative and SQL payload. */
 export function createEmptyRequestDraft(): RequestDraft {
-  return { sql: "", params: [] };
+  return { title: "", body: "", sql: "", params: [] };
 }
 
 /** Checks whether a parameter type is supported by the form. */
@@ -22,6 +24,8 @@ function isSupportedParameterType(value: string): value is ParamType {
 /** Builds a draft from a decrypted payload, defaulting unknown parameter types to string. */
 export function createRequestDraftFromPayload(payload: AccessRequestPayload): RequestDraft {
   return {
+    title: payload.title,
+    body: payload.body,
     sql: payload.sql,
     params: payload.params.map((parameter) => ({
       name: parameter.name,
@@ -74,7 +78,12 @@ export function isParameterValueDisabled(type: ParamType): boolean {
 }
 
 /** Returns the first draft-validation error, or an empty string when valid. */
-export function validateRequestDraft(draft: RequestDraft): string {
+export function validateRequestDraft(draft: RequestDraft, limits?: { maxRequestTitleChars: number; maxRequestBodyChars: number }): string {
+  if (draft.title.trim() === "") return "Enter a request title.";
+  if (/[\r\n\0]/.test(draft.title)) return "The title must be a single line without NUL characters.";
+  if (draft.body.includes("\0")) return "The body must not contain NUL characters.";
+  if (limits && [...draft.title.trim()].length > limits.maxRequestTitleChars) return `The title must be at most ${limits.maxRequestTitleChars} characters.`;
+  if (limits && [...draft.body].length > limits.maxRequestBodyChars) return `The body must be at most ${limits.maxRequestBodyChars} characters.`;
   if (draft.sql.trim() === "") {
     return "Enter a SQL statement.";
   }

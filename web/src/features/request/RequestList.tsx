@@ -99,6 +99,7 @@ export const RequestList: Component = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Title</TableHead>
               <TableHead>Connection</TableHead>
               <TableHead>Requester</TableHead>
               <TableHead>Class</TableHead>
@@ -111,6 +112,7 @@ export const RequestList: Component = () => {
             <For each={accessRequests()}>
               {(r) => (
                 <TableRow>
+                  <TableCell class="max-w-80 break-words font-medium">{r.title || "Untitled request"}</TableCell>
                   <TableCell class="font-medium">{r.connectionName}</TableCell>
                   <TableCell class="text-muted-foreground">{actorLabel(r.requester)}</TableCell>
                   <TableCell class="text-muted-foreground">{r.statementClass || "—"}</TableCell>

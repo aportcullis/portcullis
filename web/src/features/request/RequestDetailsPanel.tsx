@@ -28,6 +28,7 @@ import {
 } from "@/features/request/actions";
 import type { RequestDraft } from "@/features/request/draft";
 import { createRequestDraftFromPayload, toTypedRequestParameters, validateRequestDraft } from "@/features/request/draft";
+import { RequestNarrativeFields } from "@/features/request/RequestNarrativeFields";
 import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
@@ -51,7 +52,7 @@ export const RequestDetailsPanel: Component<{
   const [actionError, setActionError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
-  const [editDraft, setEditDraft] = createSignal<RequestDraft>({ sql: "", params: [] });
+  const [editDraft, setEditDraft] = createSignal<RequestDraft>({ title: "", body: "", sql: "", params: [] });
 
   const requestRead = createOpenFetch(
     () => getAccessRequest(props.requestId),
@@ -117,14 +118,14 @@ export const RequestDetailsPanel: Component<{
   };
 
   const saveEdit = async () => {
-    const problem = validateRequestDraft(editDraft());
+    const problem = validateRequestDraft(editDraft(), loginConfig());
     if (problem !== "") {
       setActionError(problem);
       return;
     }
     await runAndRefresh(
       () =>
-        updateDraft(current().id, current().version, editDraft().sql, toTypedRequestParameters(editDraft())).then(
+        updateDraft(current().id, current().version, editDraft().sql, toTypedRequestParameters(editDraft()), editDraft().title, editDraft().body).then(
           () => undefined,
         ),
       refresh,
@@ -148,7 +149,10 @@ export const RequestDetailsPanel: Component<{
     <section aria-label="Request details" class="flex min-w-0 flex-col gap-6">
       <header>
         <A href="/requests" class="text-sm underline">Back to requests</A>
-        <h1 class="mt-3 flex items-center gap-2 text-2xl font-semibold">Request <Badge variant={stateBadge(current().effectiveState)}>{stateLabel(current().effectiveState)}</Badge></h1>
+        <h1 class="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-2xl font-semibold">
+          <span class="min-w-0 break-words">{current().title || "Untitled request"}</span>
+          <Badge variant={stateBadge(current().effectiveState)}>{stateLabel(current().effectiveState)}</Badge>
+        </h1>
         <p class="text-sm text-muted-foreground">{current().connectionName} · requested by {actorLabel(current().requester)}</p>
         <p class="break-all font-mono text-xs text-muted-foreground">{props.requestId}</p>
       </header>
@@ -159,6 +163,7 @@ export const RequestDetailsPanel: Component<{
             fallback={
               // Draft edit form (owner only): change the SQL/parameters and save the SAME draft — no new request is created (§4.4).
               <form class="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+                <RequestNarrativeFields id="edit" draft={editDraft()} disabled={busy()} onChange={setEditDraft} />
                 <SQLEditor id="edit-sql" sql={editDraft().sql} disabled={busy()} onChange={sql => setEditDraft({ ...editDraft(), sql })} />
                 <ParamEditor draft={editDraft()} onChange={setEditDraft} disabled={busy()} />
                 <Show when={actionError() !== ""}>
@@ -184,6 +189,12 @@ export const RequestDetailsPanel: Component<{
             }>
               {(payload) => (
                 <>
+                  <Show when={payload().body !== ""}>
+                    <div class="flex flex-col gap-1">
+                      <span class="text-sm font-medium">Body</span>
+                      <p class="whitespace-pre-wrap break-words rounded-md border border-input p-3 text-sm">{payload().body}</p>
+                    </div>
+                  </Show>
                   <div class="flex flex-col gap-1">
                     <span class="text-sm font-medium">SQL</span>
                     <pre class="overflow-x-auto rounded-md border border-input bg-muted p-3 font-mono text-sm">{payload().sql}</pre>

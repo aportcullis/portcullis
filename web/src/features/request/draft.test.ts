@@ -1,9 +1,12 @@
+import { create } from "@bufbuild/protobuf";
+import { AccessRequestPayloadSchema } from "@/gen/portcullis/v1/access_requests_pb";
 import { describe, expect, it } from "vitest";
 
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import {
   appendDraftParameter,
   createEmptyRequestDraft,
+  createRequestDraftFromPayload,
   resolveUnavailableTargetRequestState,
   isSelectedTargetAvailable,
   resolveUnavailableTargetAction,
@@ -55,17 +58,17 @@ describe("request draft", () => {
   });
 
   it("requires non-empty SQL", () => {
-    expect(validateRequestDraft({ sql: "   ", params: [] })).toMatch(/SQL/);
-    expect(validateRequestDraft({ sql: "select 1", params: [] })).toBe("");
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "   ", params: [] })).toMatch(/SQL/);
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "select 1", params: [] })).toBe("");
   });
 
   it("rejects unnamed and duplicate parameters", () => {
-    expect(validateRequestDraft({ sql: "select :a", params: [{ name: "", type: "string", value: "x" }] })).toMatch(
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "select :a", params: [{ name: "", type: "string", value: "x" }] })).toMatch(
       /needs a name/,
     );
     expect(
       validateRequestDraft({
-        sql: "select :a",
+        title: "Query review", body: "", sql: "select :a",
         params: [
           { name: "a", type: "string", value: "1" },
           { name: "a", type: "string", value: "2" },
@@ -75,14 +78,14 @@ describe("request draft", () => {
   });
 
   it("validates typed values", () => {
-    expect(validateRequestDraft({ sql: "s", params: [{ name: "n", type: "integer", value: "seven" }] })).toMatch(
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "s", params: [{ name: "n", type: "integer", value: "seven" }] })).toMatch(
       /whole number/,
     );
-    expect(validateRequestDraft({ sql: "s", params: [{ name: "n", type: "integer", value: "7" }] })).toBe("");
-    expect(validateRequestDraft({ sql: "s", params: [{ name: "b", type: "boolean", value: "yes" }] })).toMatch(
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "s", params: [{ name: "n", type: "integer", value: "7" }] })).toBe("");
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "s", params: [{ name: "b", type: "boolean", value: "yes" }] })).toMatch(
       /true or false/,
     );
-    expect(validateRequestDraft({ sql: "s", params: [{ name: "u", type: "uuid", value: "not-a-uuid" }] })).toMatch(
+    expect(validateRequestDraft({ title: "Query review", body: "", sql: "s", params: [{ name: "u", type: "uuid", value: "not-a-uuid" }] })).toMatch(
       /UUID/,
     );
   });
@@ -91,9 +94,28 @@ describe("request draft", () => {
     expect(isParameterValueDisabled("null")).toBe(true);
     expect(isParameterValueDisabled("string")).toBe(false);
     const params = toTypedRequestParameters({
-      sql: "select :x",
+      title: "Query review", body: "", sql: "select :x",
       params: [{ name: "x", type: "null", value: "ignored" }],
     });
     expect(params[0].value).toBe("");
+  });
+});
+
+describe("request narrative", () => {
+  it("reopens a saved narrative without losing literal text or parameter edits", () => {
+    const payload = create(AccessRequestPayloadSchema, { title: "Revenue", body: "Purpose\n<script>literal</script>", sql: "select 1" });
+    const draft = createRequestDraftFromPayload(payload);
+    expect(draft.title).toBe("Revenue");
+    expect(draft.body).toBe(payload.body);
+    const edited = appendDraftParameter(draft);
+    expect(edited.title).toBe("Revenue");
+    expect(edited.body).toBe(payload.body);
+  });
+  it("requires a title and counts narrative limits as Unicode code points", () => {
+    const draft = { title: "", body: "", sql: "select 1", params: [] };
+    expect(validateRequestDraft(draft)).toMatch(/title/i);
+    expect(validateRequestDraft({ ...draft, title: "😀".repeat(200), body: "😀".repeat(4000) }, { maxRequestTitleChars: 200, maxRequestBodyChars: 4000 })).toBe("");
+    expect(validateRequestDraft({ ...draft, title: "😀".repeat(201) }, { maxRequestTitleChars: 200, maxRequestBodyChars: 4000 })).toMatch(/title/i);
+    expect(validateRequestDraft({ ...draft, title: "Title", body: "😀".repeat(4001) }, { maxRequestTitleChars: 200, maxRequestBodyChars: 4000 })).toMatch(/body/i);
   });
 });

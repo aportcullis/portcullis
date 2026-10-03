@@ -12,5 +12,7 @@ export const [loginConfig, { refetch: refetchLoginConfig }] = createResource(asy
     needsBootstrap: res.needsBootstrap,
     // The reason cap comes from the server that enforces it (never a local literal — two copies drift). Undefined until the fetch lands, in which case the input is simply unbounded and the server still refuses.
     maxApprovalReasonChars: res.maxApprovalReasonChars,
+    maxRequestTitleChars: res.maxRequestTitleChars,
+    maxRequestBodyChars: res.maxRequestBodyChars,
   };
 });
