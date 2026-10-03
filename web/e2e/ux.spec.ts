@@ -61,3 +61,19 @@ test("request loading is bounded and expands the actual workflow inline after da
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally { release(); }
 });
+
+// Type parameters key by key, as a keyboard user does, so a re-rendered row cannot drop focus mid-word.
+test("parameter fields keep focus and every keystroke while typing", async ({ page }) => {
+  await page.goto("/login");
+  await signInForScenario(page, "admin@example.com", "correct-horse-battery");
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Requests" }).click();
+  await page.getByRole("button", { name: "New request" }).click();
+  await page.getByRole("button", { name: "Add parameter" }).click();
+  for (const [label, text] of [["Name", "customer_id"], ["Value", "42"]]) {
+    const field = page.getByRole("main").getByLabel(label, { exact: true });
+    await field.click();
+    await field.pressSequentially(text);
+    await expect(field).toHaveValue(text);
+    await expect(field).toBeFocused();
+  }
+});

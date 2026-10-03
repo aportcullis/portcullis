@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Show } from "solid-js";
+import { For, Index, Show } from "solid-js";
 
 import { paramTypes } from "@/entities/request/model";
 import type { RequestDraft } from "@/features/request/draft";
@@ -34,30 +34,31 @@ export const ParamEditor: Component<{
         when={props.draft.params.length > 0}
         fallback={<p class="text-sm text-muted-foreground">No parameters. Use :name in the SQL to bind one.</p>}
       >
-        <For each={props.draft.params}>
+        {/* Index keys rows by position: each edit replaces the row object, and reference keying would recreate the focused input. */}
+        <Index each={props.draft.params}>
           {(row, parameterIdx) => (
             <div class="flex items-end gap-2">
               <TextField class="flex-1">
-                <TextFieldLabel for={`param-name-${parameterIdx()}`}>Name</TextFieldLabel>
+                <TextFieldLabel for={`param-name-${parameterIdx}`}>Name</TextFieldLabel>
                 <TextFieldInput
-                  id={`param-name-${parameterIdx()}`}
-                  value={row.name}
+                  id={`param-name-${parameterIdx}`}
+                  value={row().name}
                   disabled={props.disabled}
-                  onInput={(e) => props.onChange(updateDraftParameter(props.draft, parameterIdx(), { name: e.currentTarget.value }))}
+                  onInput={(e) => props.onChange(updateDraftParameter(props.draft, parameterIdx, { name: e.currentTarget.value }))}
                 />
               </TextField>
               <div class="flex w-32 flex-col gap-1">
-                <label class="text-sm font-medium" for={`param-type-${parameterIdx()}`}>
+                <label class="text-sm font-medium" for={`param-type-${parameterIdx}`}>
                   Type
                 </label>
                 <select
-                  id={`param-type-${parameterIdx()}`}
+                  id={`param-type-${parameterIdx}`}
                   class={selectClass}
-                  value={row.type}
+                  value={row().type}
                   disabled={props.disabled}
                   onChange={(e) =>
                     props.onChange(
-                      updateDraftParameter(props.draft, parameterIdx(), {
+                      updateDraftParameter(props.draft, parameterIdx, {
                         type: e.currentTarget.value as (typeof paramTypes)[number],
                       }),
                     )
@@ -67,12 +68,12 @@ export const ParamEditor: Component<{
                 </select>
               </div>
               <TextField class="flex-1">
-                <TextFieldLabel for={`param-value-${parameterIdx()}`}>Value</TextFieldLabel>
+                <TextFieldLabel for={`param-value-${parameterIdx}`}>Value</TextFieldLabel>
                 <TextFieldInput
-                  id={`param-value-${parameterIdx()}`}
-                  value={row.value}
-                  disabled={props.disabled || isParameterValueDisabled(row.type)}
-                  onInput={(e) => props.onChange(updateDraftParameter(props.draft, parameterIdx(), { value: e.currentTarget.value }))}
+                  id={`param-value-${parameterIdx}`}
+                  value={row().value}
+                  disabled={props.disabled || isParameterValueDisabled(row().type)}
+                  onInput={(e) => props.onChange(updateDraftParameter(props.draft, parameterIdx, { value: e.currentTarget.value }))}
                 />
               </TextField>
               <Button
@@ -80,13 +81,13 @@ export const ParamEditor: Component<{
                 variant="ghost"
                 size="sm"
                 disabled={props.disabled}
-                onClick={() => props.onChange(removeDraftParameter(props.draft, parameterIdx()))}
+                onClick={() => props.onChange(removeDraftParameter(props.draft, parameterIdx))}
               >
                 Remove
               </Button>
             </div>
           )}
-        </For>
+        </Index>
       </Show>
     </div>
   );
