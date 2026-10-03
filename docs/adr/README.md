@@ -51,6 +51,9 @@ These must be `Accepted` before Core 1 coding begins.
 | [0034](0034-apache-two-project-license.md) | Apache License 2.0 for Portcullis | Accepted |
 | [0035](0035-kubernetes-cnpg-after-mysql.md) | Kubernetes/CNPG immediately after MySQL parity | Accepted |
 | [0036](0036-ui-customization-boundaries.md) | UI design values and layout independent of governance | Accepted |
+| [0037](0037-page-hierarchy-and-responsive-ux.md) | Page hierarchy and responsive request workflows | Accepted |
+| [0038](0038-inline-request-workflow.md) | Inline request workflow from authorized summary facts | Accepted |
+| [0039](0039-result-views-and-clipboard.md) | Bounded result views, clipboard export and loading | Accepted |
 
 ## Template
 ```markdown

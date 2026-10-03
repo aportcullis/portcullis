@@ -1,7 +1,7 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.9 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Shared revision:** v0.10 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
 > **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
 > **Deployment sequencing (ADR-0035):** M2 is MySQL parity → Kubernetes (Helm/Kustomize) and CNPG → SQL review/EXPLAIN.
 > **Status:** Draft v0.9 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
@@ -490,6 +490,10 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | Schema engine | Atlas Community CLI subprocess | Pin version/checksum and isolate behind `SchemaEngine` |
 
 UI customization (ADR-0036): developers can change project-owned design tokens (light/dark colors, typography, radius, application width/spacing), branding assets and presentational layout slots independently of session, authorization and request/result logic. Preserve current defaults and page-first workflows. This foundation does not promise runtime user settings or organization-specific branding.
+
+UX refinement (ADR-0037): show the current navigation location, reflow navigation and ordinary request controls at 320 CSS pixels, and group request context, SQL and explicit draft/submission actions. Use consistent page hierarchy and visible keyboard focus; SQL/data tables may scroll locally. A wide-screen review guide stacks within the page on narrow screens. Submission never implies execution. Update actual README captures after appearance changes.
+
+Inline progress (ADR-0038): clicking a request title expands Draft → Review → Ready → Execution below the row, using authorized summary facts and explicit unknowns rather than invented history. Results (ADR-0039) offer Table/Text views of the same bounded server page, visible-page clipboard copy with headers and spreadsheet formula escaping, and discoverable column sorting. View switches never execute SQL. Copy failure is reported inline. Initial loading uses fixed three-line skeletons; empty/error states remain distinct, and background refresh preserves known request details.
 
 ### 5.2 Metadata storage
 

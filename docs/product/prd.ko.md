@@ -1,7 +1,7 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.9 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **동기화 기준:** v0.10 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
 > **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
 > **배포 순서 변경(ADR-0035):** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN 순서다.
 > **상태:** Draft v0.9 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
@@ -458,6 +458,10 @@ Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만�
 | Schema 엔진 | Atlas Community CLI subprocess | 버전·checksum을 고정하고 `SchemaEngine` 인터페이스로 격리 |
 
 UI 변경 기반(ADR-0036): 개발자가 세션·인가·요청·결과 로직과 독립적으로 공통 디자인 토큰(밝은/어두운 색상, 글꼴, radius, 화면 폭·간격), 브랜딩 asset과 화면 배치 slot을 변경할 수 있게 한다. 기존 기본값과 페이지 중심 흐름을 유지하며 사용자 설정 화면이나 조직별 브랜딩 저장 기능을 약속하지 않는다.
+
+UX 개선(ADR-0037): 현재 메뉴 위치를 표시하고 320 CSS pixel에서도 메뉴와 일반 요청 동작을 사용할 수 있게 재배치한다. 요청 정보·SQL·명시적 draft 저장/제출을 묶고 일관된 화면 계층과 키보드 focus 표시를 제공한다. SQL·표는 내부 스크롤을 허용하며 넓은 화면의 검토 안내는 좁은 화면에서 페이지 안에 쌓는다. 제출은 실행을 의미하지 않는다. 외형 변경 후 실제 README 캡처를 갱신한다.
+
+인라인 진행 상태(ADR-0038): 요청 제목을 누르면 해당 행 아래에 Draft → Review → Ready → Execution을 펼친다. 허용된 목록 요약 정보만 사용하고 알 수 없는 단계는 명시하며 이력을 만들어내지 않는다. 결과(ADR-0039)는 같은 제한된 서버 페이지의 Table/Text 보기, 헤더를 포함한 현재 페이지 clipboard 복사와 spreadsheet formula escaping, 찾기 쉬운 column 정렬을 제공한다. 보기 전환은 SQL을 실행하지 않고 복사 실패는 페이지 안에 표시한다. 첫 로딩은 고정된 세 줄 skeleton을 사용하고 빈 결과·오류를 구분하며 background refresh는 이미 표시된 요청 상세를 유지한다.
 
 ### 5.2 메타데이터 저장소 원칙
 **"어디서 돌든 메타데이터는 PostgreSQL."** compose든 Helm이든 동일 스키마·쿼리·sqlc 코드가 동작.
