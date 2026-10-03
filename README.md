@@ -86,4 +86,4 @@ Follow the [PostgreSQL alpha quickstart](docs/operations/pg-alpha-quickstart.md)
 
 ## Documentation
 
-[Documentation index](docs/README.md) · [Product requirements](docs/product/prd.en.md) · [Architecture](docs/ARCHITECTURE.md) · [Development and roadmap](docs/development.md) · [Branding](docs/branding.md) · [Refreshing screenshots and GIFs](docs/media/README.md)
+[Documentation index](docs/README.md) · [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) · [Architecture](docs/ARCHITECTURE.md) · [Development guide](docs/development.md) · [Branding](docs/branding.md) · [Refreshing screenshots and GIFs](docs/media/README.md)
