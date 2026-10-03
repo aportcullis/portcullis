@@ -8,9 +8,9 @@ Self-hosted database governance and result exploration. Control access and chang
 
 ## Request, review, execute once
 
-Compose SQL on a dedicated request page with room for the statement and typed parameters. SQL auto-formats when you leave the editor; you can turn it off, format manually, or undo the formatting. Save a draft to continue editing, or submit it for approval. Submission freezes the request payload and policy version. A distinct reviewer inspects the request, then the original requester executes it once. An executed request cannot be replayed.
+Give each request a title and optionally explain its purpose and review context in the body. Compose SQL and typed parameters on the same dedicated page. SQL auto-formats when you leave the editor; you can turn it off, format manually, or undo the formatting. Save a draft to continue editing, or submit it for approval. Submission freezes the request payload and policy version. A distinct reviewer inspects the request, then the original requester executes it once. An executed request cannot be replayed.
 
-![SQL composition on the dedicated request page](docs/media/request.png)
+![Request composition with a title, explanatory body, SQL and typed parameters](docs/media/request.png)
 
 ![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
 
@@ -36,7 +36,7 @@ PostgreSQL is verified in the development alpha. MySQL is the next committed tar
 | --- | --- |
 | Connection management | Register and test PostgreSQL targets, label development/production environments, and archive connections |
 | Per-connection policies | Allow Read / Write / DDL, set approval quorums, and limit execution time, rows, and result bytes |
-| Requests and approvals | Editable drafts, frozen submissions, distinct reviewers, approval, rejection, and cancellation |
+| Requests and approvals | Titles and encrypted explanatory bodies, editable drafts, frozen submissions, distinct reviewers, approval, rejection, and cancellation |
 | Governed execution | Revalidate approvals and policies, execute once, request cancellation, and explicitly report uncertain outcomes |
 | Result exploration | Encrypted temporary snapshots, pagination, sorting, filtering, full-cell inspection, and CSV preparation |
 | Audit and authorization | Server-side permission checks and append-only evidence of state transitions and execution |
@@ -56,7 +56,7 @@ Policy settings open within the connections page. The default policy allows read
 
 ### Request review
 
-Reviewers inspect the submitted SQL, target connection snapshot, and approval status on the request detail page before approving or rejecting with a reason. Requests and results support direct links, reload, and browser history.
+Reviewers inspect the title, explanatory body, submitted SQL, target connection snapshot, and approval status on the request detail page before approving or rejecting with a reason. Requests and results support direct links, reload, and browser history.
 
 ![A distinct reviewer inspecting submitted SQL and choosing approval or rejection](docs/media/review.png)
 
