@@ -9,6 +9,7 @@ import { LogicalType } from "@/gen/portcullis/v1/query_executions_pb";
 import { errorMessage } from "@/entities/request/store";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
+import { cycleResultSorting } from "@/features/request/sorting";
 import { Button } from "@/shared/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 
@@ -56,6 +57,16 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
     if (next !== undefined) read.handleOpenChange(true);
   }));
   const reload = () => { revision++; setResult(); setFullCell(); read.handleOpenChange(true); };
+  const applySorting = (column: number | undefined, sortDescending: boolean) => {
+    setSortColumn(column);
+    setDescending(sortDescending);
+    setPage(1);
+    reload();
+  };
+  const cycleColumnSorting = (column: number) => {
+    const next = cycleResultSorting({ column: sortColumn(), descending: descending() }, column);
+    applySorting(next.column, next.descending);
+  };
   onCleanup(() => { revision++; read.handleOpenChange(false); });
   const table = createSolidTable<QueryResultRow>({
     get data() { return result()?.rows ?? []; },
@@ -97,9 +108,31 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
           <Button type="button" variant="outline" disabled={exporting()} onClick={() => void exportCSV()}>Export CSV</Button>
           <Show when={downloadURL()}>{url => <a class="inline-flex items-center rounded-md border px-4 text-sm" href={url()} download="query-result.csv">Download CSV</a>}</Show>
         </form>
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="flex items-center gap-2 text-sm">Sort by
+            <select aria-label="Sort by" class="h-10 rounded-md border bg-background px-3" value={sortColumn() === undefined ? "" : String(sortColumn())} onChange={e => applySorting(e.currentTarget.value === "" ? undefined : Number(e.currentTarget.value), false)}>
+              <option value="">Original query order</option>
+              <For each={snapshot().columns}>{(column, index) => <option value={String(index())}>{column.name} (column {index() + 1})</option>}</For>
+            </select>
+          </label>
+          <Show when={sortColumn() !== undefined}>
+            <label class="flex items-center gap-2 text-sm">Direction
+              <select aria-label="Sort direction" class="h-10 rounded-md border bg-background px-3" value={descending() ? "descending" : "ascending"} onChange={e => applySorting(sortColumn(), e.currentTarget.value === "descending")}>
+                <option value="ascending">Ascending</option><option value="descending">Descending</option>
+              </select>
+            </label>
+            <Button type="button" variant="outline" onClick={() => applySorting(undefined, false)}>Restore query order</Button>
+          </Show>
+        </div>
+        <p role="status" class="text-sm text-muted-foreground">
+          <Show when={sortColumn() !== undefined} fallback="Original query order.">
+            Sorted by {snapshot().columns[sortColumn() ?? 0]?.name} {descending() ? "descending" : "ascending"} across the cached snapshot. NULL values last.
+          </Show>
+        </p>
+        <p class="text-xs text-muted-foreground">Sorting uses each column's data type across all cached rows. CSV exports the complete snapshot in original query order, including rows hidden by filters.</p>
         <div class="overflow-x-auto"><Table>
-          <TableHeader><TableRow><For each={snapshot().columns}>{(column, index) => <TableHead>
-            <button class="text-left" onClick={() => { setDescending(sortColumn() === index() ? !descending() : false); setSortColumn(index()); setPage(1); reload(); }}>
+          <TableHeader><TableRow><For each={snapshot().columns}>{(column, index) => <TableHead aria-sort={sortColumn() === index() ? descending() ? "descending" : "ascending" : undefined}>
+            <button class="text-left" onClick={() => cycleColumnSorting(index())}>
               {column.name} {sortColumn() === index() ? descending() ? "↓" : "↑" : ""}
               <span class="block text-xs text-muted-foreground">{LogicalType[column.logicalType]} · {column.dbTypeName}</span>
             </button>

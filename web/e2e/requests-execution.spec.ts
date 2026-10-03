@@ -4,6 +4,8 @@ import { signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
 test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({ page }) => {
+  let executionCalls = 0;
+  page.on("request", request => { if (request.url().endsWith(".QueryExecutions/Execute")) executionCalls++; });
   await page.goto("/login");
   await signInForScenario(page, "admin@example.com", "correct-horse-battery");
   const target = await loadTarget();
@@ -25,7 +27,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await page.getByRole("button", { name: "New request" }).click();
   await page.getByLabel("Connection").selectOption({ label: "ExecutionTarget" });
   await page.getByLabel("Title", { exact: true }).fill("Query review");
-  await page.getByLabel("SQL", { exact: true }).fill("SELECT (9007199254740993::bigint + g) AS exact_value, '=formula'::text AS note FROM generate_series(1,25) AS g");
+  await page.getByLabel("SQL", { exact: true }).fill("SELECT (9007199254740993::bigint + g) AS exact_value, '=formula'::text AS note, CASE WHEN g % 2 = 0 THEN '2026-10-03T00:00:00Z'::timestamptz ELSE '2026-10-03T00:00:00.5Z'::timestamptz END AS recorded_at FROM generate_series(1,25) AS g ORDER BY g ASC");
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   const row = page.getByRole("region", { name: "Request details" });
   await expect(row.getByText("Approved", { exact: true })).toBeVisible();
@@ -42,8 +44,27 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254741018");
+  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute("aria-sort", "descending");
+  await expect(dialog.getByText(/25 rows · Page 1 of 2/)).toBeVisible();
+  await dialog.getByRole("button", { name: /exact_value/ }).click();
+  await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
+  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).not.toHaveAttribute("aria-sort");
+  await dialog.getByLabel("Sort by", { exact: true }).selectOption("2");
+  await expect(dialog.getByRole("columnheader", { name: /recorded_at/ })).toHaveAttribute("aria-sort", "ascending");
+  await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740995");
+  await dialog.getByLabel("Sort direction", { exact: true }).selectOption("descending");
+  await expect(dialog.getByRole("columnheader", { name: /recorded_at/ })).toHaveAttribute("aria-sort", "descending");
+  await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
+  await test.info().attach("Type-aware result sorting", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+  await dialog.getByRole("button", { name: "Restore query order", exact: true }).click();
+  await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
   await dialog.getByLabel("Filter results", { exact: true }).fill("9007199254740994");
   await dialog.getByRole("button", { name: "Filter results", exact: true }).click();
+  await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
+  await dialog.getByLabel("Sort by", { exact: true }).selectOption("0");
+  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute("aria-sort", "ascending");
+  await dialog.getByRole("button", { name: "Restore query order", exact: true }).click();
   await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
   await dialog.getByRole("button", { name: "Export CSV", exact: true }).click();
   const downloadLink = dialog.getByRole("link", { name: "Download CSV", exact: true });
@@ -62,4 +83,6 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   if (csvStream) for await (const chunk of csvStream) contents += String(chunk);
   expect(contents).toContain("9007199254740994,'=formula");
   expect(contents).toContain("9007199254741018,'=formula");
+  expect(contents.indexOf("9007199254740994,'=formula")).toBeLessThan(contents.indexOf("9007199254741018,'=formula"));
+  expect(executionCalls).toBe(1);
 });
