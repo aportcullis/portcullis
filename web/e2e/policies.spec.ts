@@ -15,7 +15,7 @@ test.describe.serial("connection policies", () => {
     await expect(page).toHaveURL(/\/connections$/);
 
 
-    const target = loadTarget();
+    const target = await loadTarget();
     await page.getByRole("button", { name: "New connection" }).click();
     await page.getByLabel("Display name").fill("Gated");
     await page.getByLabel("Host").fill(target.host);

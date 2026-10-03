@@ -24,7 +24,7 @@ test.describe.serial("connections vertical", () => {
   };
 
   test("register → test → archive against a live target", async ({ page }) => {
-    const target = loadTarget();
+    const target = await loadTarget();
 
     await page.goto("/login");
     await page.getByLabel("Email").fill(email);
@@ -37,6 +37,7 @@ test.describe.serial("connections vertical", () => {
 
 
     await page.getByRole("button", { name: "New connection" }).click();
+    await expect(page.getByLabel("Display name")).toBeFocused();
     await page.getByLabel("Display name").fill("Primary");
     await page.getByLabel("Environment").selectOption("production");
     await page.getByLabel("Description").fill("primary OLTP — e2e");
@@ -58,7 +59,7 @@ test.describe.serial("connections vertical", () => {
 
 
     await row.getByRole("button", { name: "Details" }).click();
-    await expect(page.getByText(`Host`)).toBeVisible();
+    await expect(page.getByText("Host", { exact: true })).toBeVisible();
     await expect(page.getByText(target.host, { exact: true })).toBeVisible();
     await expect(page.getByText(`TLS mode`)).toBeVisible();
     await expect(page.getByText(`disable`, { exact: true })).toBeVisible();
@@ -98,6 +99,7 @@ test.describe.serial("connections vertical", () => {
 
 
     await page.getByRole("button", { name: "New connection" }).click();
+    await expect(page.getByLabel("Display name")).toBeFocused();
     await page.getByLabel("Display name").fill("Broken");
     await fillConfig(page, target, "definitely-wrong-password");
     await page.getByRole("button", { name: "Test connection" }).click();

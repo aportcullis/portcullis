@@ -8,10 +8,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Postgres image strings in the Go/shell test harnesses (same digest as compose.yaml)",
+      "description": "Postgres image strings in the Go test harness (same digest as compose.yaml)",
       "managerFilePatterns": [
-        "/^internal/infra/dbtest/postgres\\.go$/",
-        "/^web/e2e/server\\.sh$/"
+        "/^internal/infra/dbtest/postgres\\.go$/"
       ],
       "matchStrings": [
         "\"(?<depName>postgres):(?<currentValue>[0-9][^\"@]*)@(?<currentDigest>sha256:[a-f0-9]{64})\""

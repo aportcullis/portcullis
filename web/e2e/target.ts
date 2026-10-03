@@ -1,4 +1,4 @@
-// The e2e stack's throwaway PostgreSQL — the single source of the target coordinates specs dial (minimize-hardcoding: one definition, not one per spec). Pinned in server.sh: PG_PORT and the POSTGRES_* envs there must match.
+// The local test harness serves its owned database coordinates after Testcontainers readiness.
 export type Target = {
   host: string;
   port: number;
@@ -7,10 +7,8 @@ export type Target = {
   password: string;
 };
 
-export const loadTarget = (): Target => ({
-  host: "127.0.0.1",
-  port: 15432,
-  database: "portcullis",
-  user: "portcullis",
-  password: "portcullis",
-});
+export const loadTarget = async (): Promise<Target> => {
+  const response = await fetch("http://127.0.0.1:18081/target", { signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) throw new Error("Testcontainers target unavailable");
+  return await response.json() as Target;
+};

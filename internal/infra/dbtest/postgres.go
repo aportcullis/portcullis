@@ -18,6 +18,9 @@ import (
 	"github.com/aportcullis/portcullis/internal/platform/logging"
 )
 
+// PostgresImage pins the disposable database used by Go and browser integration tests.
+const PostgresImage = "postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
+
 var (
 	pgOnce  sync.Once
 	pgPool  *pgxpool.Pool
@@ -43,8 +46,8 @@ func startPostgres() {
 	if dsn == "" {
 		// Route testcontainers output through our standardized slog stream.
 		tcLogger := logging.NewPrintfLogger(logging.New("debug", "json"), slog.LevelDebug, "testcontainers")
-		// tag@digest pin (supply chain); same digest as compose.yaml and web/e2e/server.sh — Renovate's regex manager bumps them together.
-		container, err := tcpostgres.Run(ctx, "postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+		// Renovate keeps the test image aligned with Compose.
+		container, err := tcpostgres.Run(ctx, PostgresImage,
 			tcpostgres.WithDatabase("portcullis"),
 			tcpostgres.WithUsername("portcullis"),
 			tcpostgres.WithPassword("portcullis"),
