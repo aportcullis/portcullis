@@ -10,7 +10,7 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 | `login.png` | Branded local sign-in screen |
 | `connections.png` | Two demo connections with development/production labels |
 | `policy.png` | Default read-only policy and one distinct required reviewer |
-| `request.png` | SQL composition on a dedicated page with typed parameters |
+| `request.png` | SQL composition with local auto-format, manual format, undo and typed parameters |
 | `review.png` | A distinct reviewer inspecting submitted SQL |
 | `results.png` | Typed results with exact large integers and decimal amounts |
 | `workflow.gif` | Request → distinct approval → single-use execution |
@@ -35,6 +35,6 @@ PYTHONPATH="$PWD/.test-docker/media-python" python3 docs/media/make_gifs.py
 
 `capture.mjs` builds the SPA and real binary, starts a fresh database, bootstraps a demo administrator, provisions a distinct reviewer, then operates the real browser UI. It asserts the request state transitions, single-use execution, approval button layout, exact result values, sorting, filtering and whole-snapshot CSV contents. It writes temporary frames into ignored `.test-docker/readme-media/`; only final PNGs and GIFs belong in Git. The synthetic password and randomly generated master key are confined to this throwaway installation.
 
-The GIFs are deliberately paced step walkthroughs rather than continuous video. The only added visual element is a caption strip outside the unchanged application screenshot. Each captioned frame is encoded with a 128-color palette and a 1.6–2.8 second reading pause. Keep a static result screenshot and descriptive alt text in the README so understanding the feature does not depend on animation.
+The GIFs are deliberately paced step walkthroughs rather than continuous video. The only added visual element is a caption strip outside the unchanged application screenshot. Each captioned frame is encoded with a 128-color palette and a 1.6–2.8 second reading pause. Full-page captures keep approval actions visible; GIF frames share a canvas sized to the tallest captured page. Keep a static result screenshot and descriptive alt text in the README so understanding the feature does not depend on animation.
 
 Capture API behavior follows the [Playwright screenshot documentation](https://playwright.dev/docs/api/class-page#page-screenshot); GIF encoding follows [Pillow's GIF documentation](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif). Inspect every final screenshot and the GIF sequence before committing refreshed media. Use only synthetic accounts, SQL and results; do not capture actual credentials or operational data.

@@ -11,9 +11,12 @@ groups = json.loads((root / ".test-docker/readme-media/frames.json").read_text()
 font = ImageFont.load_default(size=20)
 for name, records in groups.items():
     frames = []
-    for record in records:
-        screenshot = Image.open(record["path"]).convert("RGB")
-        canvas = Image.new("RGB", (screenshot.width, screenshot.height + 56), "#102A36")
+    screenshots = [Image.open(record["path"]).convert("RGB") for record in records]
+    width = max(screen.width for screen in screenshots)
+    height = max(screen.height for screen in screenshots)
+    for record, screenshot in zip(records, screenshots):
+        canvas = Image.new("RGB", (width, height + 56), "white")
+        ImageDraw.Draw(canvas).rectangle((0, 0, width, 56), fill="#102A36")
         canvas.paste(screenshot, (0, 56))
         ImageDraw.Draw(canvas).text((24, 17), record["caption"], font=font, fill="#F5F4EF")
         frames.append(canvas.quantize(colors=128))

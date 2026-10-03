@@ -59,12 +59,12 @@ try {
     for (const image of await target.locator("img").all()) {
       await expect.poll(() => image.evaluate(element => element.complete && element.naturalWidth > 0)).toBeTruthy();
     }
-    await target.screenshot({ path: media + name + ".png", animations: "disabled", caret: "hide" });
+    await target.screenshot({ path: media + name + ".png", animations: "disabled", caret: "hide", fullPage: true });
   };
   const frame = async (group, caption, duration = 1600, target = page) => {
     await target.evaluate(() => document.fonts.ready);
     const path = work + group + "-" + String(frames[group].length).padStart(3, "0") + ".png";
-    await target.screenshot({ path, animations: "disabled", caret: "hide" });
+    await target.screenshot({ path, animations: "disabled", caret: "hide", fullPage: true });
     frames[group].push({ path, caption, duration });
   };
   const login = async (target, email) => {
@@ -129,6 +129,9 @@ try {
        (g * 19.95)::numeric(12,2) AS revenue_usd
 FROM generate_series(1, 30) AS g`;
   await page.getByLabel("SQL", { exact: true }).fill(sql);
+  await page.getByLabel("Connection").click();
+  await expect(page.getByLabel("SQL", { exact: true })).not.toHaveValue(sql);
+  await expect(page.getByRole("button", { name: "Undo formatting", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/requests\/new$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await shot("request");

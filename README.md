@@ -8,7 +8,7 @@ Self-hosted database governance and result exploration. Control access and chang
 
 ## Request, review, execute once
 
-Compose SQL on a dedicated request page with room for the statement and typed parameters. Save a draft to continue editing, or submit it for approval. Submission freezes the request payload and policy version. A distinct reviewer inspects the request, then the original requester executes it once. An executed request cannot be replayed.
+Compose SQL on a dedicated request page with room for the statement and typed parameters. SQL auto-formats when you leave the editor; you can turn it off, format manually, or undo the formatting. Save a draft to continue editing, or submit it for approval. Submission freezes the request payload and policy version. A distinct reviewer inspects the request, then the original requester executes it once. An executed request cannot be replayed.
 
 ![SQL composition on the dedicated request page](docs/media/request.png)
 
