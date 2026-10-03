@@ -25,6 +25,7 @@ export type PermissionKey =
   | "policies.update"
   | "requests.list"
   | "requests.get"
+  | "requests.execute"
   | "requests.create"
   | "requests.approve"
   | "requests.reject"

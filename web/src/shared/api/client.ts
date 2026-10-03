@@ -6,6 +6,7 @@ import { AccessRequests } from "@/gen/portcullis/v1/access_requests_pb";
 import { Auth } from "@/gen/portcullis/v1/auth_pb";
 import { ConnectionPolicies } from "@/gen/portcullis/v1/connection_policies_pb";
 import { Connections } from "@/gen/portcullis/v1/connections_pb";
+import { QueryExecutions } from "@/gen/portcullis/v1/query_executions_pb";
 import { readCSRFTokenCookie } from "@/shared/lib/csrf";
 
 // Every call echoes the CSRF cookie in the X-CSRF-Token header (double submit, ADR-0006). Public procedures ignore the header, so sending it untargeted is harmless and saves per-call bookkeeping.
@@ -24,3 +25,4 @@ export const authClient = createClient(Auth, transport);
 export const connectionsClient = createClient(Connections, transport);
 export const policiesClient = createClient(ConnectionPolicies, transport);
 export const requestsClient = createClient(AccessRequests, transport);
+export const executionsClient = createClient(QueryExecutions, transport);
