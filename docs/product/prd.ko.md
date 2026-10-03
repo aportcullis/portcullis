@@ -160,6 +160,12 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   SQL 본문 상한은 요청 크기 제한(64 KiB, ADR-0010)을 따른다.
 - **공유 / 즐겨찾기:** 가시성(private/organization_shared), 권한에 따른 공유, 사용자별 즐겨찾기.
 - **실행 이력에서 자산 전환:** audit의 실행 기록에서 "이 쿼리 저장" → saved_query 생성.
+- **유사 쿼리 추천(ADR-0046):** SQL 작성 중 재사용할 이력을 페이지 안에서 발견한다. 구현 전 Core 2/M3 계획이며 현재 제공 기능이 아니다.
+  - 선택한 connection/dialect에서 조회 권한이 있는 과거 요청을 처음에는 5개까지 순위로 표시하고 제한된 추가 탐색을 제공한다. 제목·작성자·상태·제출 시점·기록된 실행 시점을 보여준다.
+  - **내역 보기**와 **이 쿼리 사용**을 분리한다. 내역 이동은 초안을 보존하며, 재사용은 인가된 SQL과 파라미터 정의만 적용하고 되돌리기를 제공한다. 제목·본문·connection은 유지하고 파라미터 값·승인은 새로 받아야 한다.
+  - dialect parser 기반 구조 비교에서는 포맷·주석·literal 차이를 정규화하고, 동일 객체/statement 종류와 최근 시점을 순위에 활용한다. 유사성이 의미적 동등성을 보장하지는 않는다.
+  - 타인의 비공개 draft와 접근 불가 원본은 제외하고 재사용 시 권한을 재검사한다. 과거 target config 변경 여부를 표시하며 재사용한 초안은 현재 대상·정책으로 검증한다. 공유 saved version은 Library 가시성 규칙 구현 후 연동한다.
+  - SQL 암호화·조직 범위 keyed 검색 signature·늦은 응답 차단을 유지한다. 검색 때문에 대상 SQL을 실행하거나 외부 AI를 호출하지 않는다.
 - **파라미터화 쿼리:** `:start_date` 같은 명명된 변수를 정의하되 문자열 치환하지 않고 각 DB의 bind parameter로 변환.
   MVP 타입은 string, integer, decimal, boolean, date, timestamp, UUID, null.
   테이블명·컬럼명 등 identifier 파라미터는 금지.
@@ -801,7 +807,7 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현
 2  Bridge       PostgreSQL/MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → 결정론 SQL 검토·기본 Read EXPLAIN
-3  Core 2       두 DB 쿼리 저장·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
+3  Core 2       두 DB 쿼리 저장·유사 이력 추천·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
    ── MVP ──
 4  access 확장  민감정보 마스킹 우선 → 임시 접근·다단계 승인·OIDC/LDAP
 5  schema       M3 미리보기 계약 기반 schema 승인·apply·복구·verify 완성

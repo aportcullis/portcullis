@@ -172,6 +172,12 @@ Turn approved, executed queries into assets.
   - SQL follows the 64 KiB request-size limit, ADR-0010.
 - **Sharing/favorites:** `private`/`organization_shared` visibility, permission-based sharing, and per-user favorites.
 - **Save from history:** Convert an execution record into a saved query.
+- **Similar-query suggestions (ADR-0046):** Discover reusable history inline while composing SQL; planned Core 2/M3 scope, not a shipped feature.
+  - Initially show five ranked authorized requests on the selected connection/dialect with bounded expansion: title, author, status, submitted time and recorded execution time.
+  - Separate **View history** and **Use this query**. Preserve composition during navigation; fill authorized SQL and parameter definitions with undo, keeping title/body/connection and requiring fresh parameter values and approval.
+  - Compare dialect-aware structure while normalizing formatting/comments and literal differences; same objects/class and recency support ranking, not semantic equivalence.
+  - Exclude other users' private drafts and inaccessible sources; recheck source permission at reuse. Label historical target-config changes and validate a reused draft against the current target/policy. Shared saved versions join under Library visibility rules when implemented.
+  - Keep SQL encrypted, use keyed scoped index signatures and fence stale responses. Search never executes target SQL or calls external AI.
 - **Parameters:** Named values such as `:start_date` become native bind parameters, never string substitution.
   - MVP types: string, integer, decimal, boolean, date, timestamp, UUID, null.
   - Table/column identifiers cannot be parameters.
@@ -841,7 +847,7 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice
 2  Bridge       PostgreSQL/MySQL parity → Kubernetes (Helm/Kustomize) + CNPG → deterministic SQL review and basic read EXPLAIN
-3  Core 2       Saved queries/reuse across both DBs; schema status/dry-run/impact preview (no apply)
+3  Core 2       Saved queries + similar-history suggestions/reuse across both DBs; schema status/dry-run/impact preview (no apply)
    ── MVP ──
 4  Access       Sensitive-data masking first; temporary web console, multistage approval, OIDC/LDAP
 5  Schema       Complete pinned schema approval/apply/recovery/verify using M3 preview contracts

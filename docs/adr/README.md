@@ -60,6 +60,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0043](0043-load-package-imports.md) | Portable package-root imports for TypeScript k6 tests | Accepted |
 | [0044](0044-postgresql-string-interpretation.md) | Pin execution string interpretation and reject mismatched server reports | Accepted |
 | [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted |
+| [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted |
 
 ## Template
 ```markdown
