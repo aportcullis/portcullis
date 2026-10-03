@@ -1,64 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Verify release notes from a real history without touching repository tags.
-mkdir -p .test-docker
-fixture=$(mktemp -d "$PWD/.test-docker/changelog.XXXXXX")
-trap 'rm -rf "$fixture"' EXIT
-cp cliff.toml "$fixture/cliff.toml"
-mkdir -p "$fixture/.github/scripts"
-cp .github/scripts/git-cliff.sh .github/scripts/update-changelog.sh .github/scripts/validate-release-tag.sh "$fixture/.github/scripts/"
-git init -q "$fixture"
-export GIT_AUTHOR_NAME='Changelog fixture' GIT_AUTHOR_EMAIL='fixture@example.invalid'
-export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
-commit_fixture() {
-  git -C "$fixture" -c core.hooksPath="$fixture/.git/hooks" commit -q --allow-empty "$@"
+# Run all mutable fixtures in bounded tmpfs; never create test files on the host.
+source .github/scripts/git-cliff-image.sh
+run_id="$(date +%s)-$$-$RANDOM"
+image="portcullis-changelog-check:$run_id"
+container="portcullis-changelog-check-$run_id"
+docker build --build-arg "GIT_CLIFF_IMAGE=$GIT_CLIFF_IMAGE" \
+  --tag "$image" --file tests/release/Dockerfile.changelog tests/release
+cleanup_changelog_resources() {
+  if docker container inspect "$container" >/dev/null 2>&1; then
+    docker rm -f "$container" >/dev/null
+  fi
+  docker image rm "$image" >/dev/null
 }
-commit_fixture -m 'feat(requests): submit reviewed SQL'
-commit_fixture -m 'fix(security): refuse unsafe SQL'
-git -C "$fixture" tag v0.1.0
-commit_fixture -m 'feat(results)!: replace wire format' -m 'BREAKING CHANGE: clients must regenerate bindings'
-commit_fixture -m 'docs: explain private deployment'
-commit_fixture -m 'Legacy history entry'
-commit_fixture -m 'chore(changelog): refresh generated notes'
-commit_fixture -m 'chore(changelog)!: migrate note format' -m 'BREAKING CHANGE: update note consumers'
-(cd "$fixture" && bash .github/scripts/git-cliff.sh) > "$fixture/all.md"
-(cd "$fixture" && bash .github/scripts/git-cliff.sh --unreleased --strip all) > "$fixture/unreleased.md"
-(cd "$fixture" && RELEASE_TAG=v0.2.0-rc.1 bash .github/scripts/update-changelog.sh)
-cp "$fixture/CHANGELOG.md" "$fixture/preview.md"
-# A refused release name and generator failure must preserve existing notes.
-if (cd "$fixture" && RELEASE_TAG=vbanana bash .github/scripts/update-changelog.sh) >/dev/null 2>&1; then
-  echo "Invalid release preview accepted" >&2
-  exit 1
-fi
-cmp "$fixture/preview.md" "$fixture/CHANGELOG.md"
-cp "$fixture/cliff.toml" "$fixture/config.backup"
-printf 'not valid TOML [\n' > "$fixture/cliff.toml"
-if (cd "$fixture" && bash .github/scripts/update-changelog.sh) >/dev/null 2>&1; then
-  echo "Invalid generator configuration accepted" >&2
-  exit 1
-fi
-cmp "$fixture/preview.md" "$fixture/CHANGELOG.md"
-mv "$fixture/config.backup" "$fixture/cliff.toml"
-git -C "$fixture" tag v0.2.0-rc.1
-(cd "$fixture" && bash .github/scripts/git-cliff.sh --current --strip all) > "$fixture/current.md"
-python3 - "$fixture" <<'PYTEST'
-from pathlib import Path
-import sys
-root = Path(sys.argv[1])
-all_notes = (root / 'all.md').read_text()
-unreleased = (root / 'unreleased.md').read_text()
-current = (root / 'current.md').read_text()
-for expected in ['## Unreleased', 'v0.1.0', '### Features', '### Security', 'submit reviewed SQL', 'refuse unsafe SQL', '**BREAKING**', 'clients must regenerate bindings', 'update note consumers', 'Legacy history entry', 'https://github.com/aportcullis/portcullis/commit/']:
-    assert expected in all_notes, expected
-assert 'refresh generated notes' not in all_notes
-for notes in [unreleased, current]:
-    assert 'replace wire format' in notes
-    assert 'submit reviewed SQL' not in notes
-    assert 'refuse unsafe SQL' not in notes
-assert 'v0.2.0-rc.1' in (root / 'preview.md').read_text()
-assert (root / 'CHANGELOG.md').stat().st_mode & 0o777 == 0o644
-assert 'v0.2.0-rc.1' in current
-assert 'Unreleased' not in current
-print('Changelog history, breaking-change and release-boundary scenarios passed')
-PYTEST
+trap cleanup_changelog_resources EXIT
+docker run --name "$container" --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --user "$(id -u):$(id -g)" \
+  --tmpfs "/app:rw,noexec,nosuid,size=64m,uid=$(id -u),gid=$(id -g),mode=0700" \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m --env HOME=/tmp \
+  --mount "type=bind,source=$PWD,target=/source,readonly" --workdir /app \
+  "$image" /source/tests/release/changelog-scenario.sh
+cleanup_changelog_resources
+trap - EXIT
+echo 'Changelog container and image cleanup passed'

@@ -23,10 +23,10 @@
       "customType": "regex",
       "description": "Pinned offline changelog generator",
       "managerFilePatterns": [
-        "/^\\.github/scripts/git-cliff\\.sh$/"
+        "/^\\.github/scripts/git-cliff-image\\.sh$/"
       ],
       "matchStrings": [
-        "image='(?<depName>ghcr.io/orhun/git-cliff/git-cliff):(?<currentValue>[0-9.]+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
+        "GIT_CLIFF_IMAGE='(?<depName>ghcr.io/orhun/git-cliff/git-cliff):(?<currentValue>[0-9.]+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
       ],
       "datasourceTemplate": "docker"
     }
