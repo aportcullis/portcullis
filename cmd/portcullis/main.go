@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
 	accessreq "github.com/aportcullis/portcullis/internal/app/accessrequest"
@@ -20,8 +21,11 @@ import (
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
+	executionapp "github.com/aportcullis/portcullis/internal/app/execution"
+	resultapp "github.com/aportcullis/portcullis/internal/app/result"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
+	"github.com/aportcullis/portcullis/internal/infra/executionguard"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
@@ -60,9 +64,11 @@ func main() {
 		err = run()
 	case args[0] == "migrate":
 		err = runMigrate()
+	case len(args) == 2 && args[0] == "key" && args[1] == "rotate":
+		err = runKeyRotation()
 	default:
 		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("unknown command",
-			"command", args[0], "hint", "usage: portcullis [serve|migrate]")
+			"hint", "usage: portcullis [serve|migrate|key rotate]")
 		os.Exit(2)
 	}
 	if err != nil {
@@ -101,7 +107,7 @@ func run() error {
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat)
 
 	// Refuse to start without a valid master key — encryption is mandatory.
-	keyring, err := crypto.LoadKeyring(cfg.MasterKey, cfg.MasterKeyFile)
+	keyring, err := crypto.LoadVersionedKeyring(cfg.MasterKey, cfg.MasterKeyFile, cfg.MasterKeyPrevious, cfg.MasterKeyPreviousFile)
 	if err != nil {
 		logger.Error("master key required",
 			"err", err,
@@ -259,6 +265,33 @@ func run() error {
 	}
 	requestsPath, requestsHandler := portcullisv1connect.NewAccessRequestsHandler(connectapi.NewAccessRequestsService(authzSvc, requestSvc), recoverAndChain...)
 
+	resultStore := postgres.NewResultStore(pool)
+	resultSvc, err := resultapp.New(resultStore, crypto.NewResultCodec(keyring), 2)
+	if err != nil {
+		return err
+	}
+	executionSvc, err := executionapp.New(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgDialect, resultSvc, uuid.NewString(), 2)
+	if err != nil {
+		return err
+	}
+	executionSvc.WithAdmission(executionguard.New())
+	if err := executionSvc.Reconcile(startupCtx); err != nil {
+		logger.Error("execution recovery failed")
+		return err
+	}
+	organizationID, err := requestStore.DefaultOrganizationID(startupCtx)
+	if err != nil {
+		return err
+	}
+	if err = resultStore.PurgeExpired(startupCtx, organizationID); err != nil {
+		logger.Error("result startup cleanup failed")
+		return err
+	}
+	queryOptions := append([]connect.HandlerOption(nil), recoverAndChain...)
+	queryOptions = append(queryOptions, connect.WithCodec(connectapi.ExecutionJSONCodec{}))
+	queryOptions = append(queryOptions, connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, cfg.TrustedProxyNets())))
+	executionsPath, executionsHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultSvc), queryOptions...)
+
 	mounts := []server.Mount{
 		{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
 		{Pattern: authPath, Handler: http.MaxBytesHandler(authHandler, server.MaxRequestBytes)},
@@ -266,6 +299,7 @@ func run() error {
 		{Pattern: connsPath, Handler: http.MaxBytesHandler(connsHandler, server.MaxRequestBytes)},
 		{Pattern: policiesPath, Handler: http.MaxBytesHandler(policiesHandler, server.MaxRequestBytes)},
 		{Pattern: requestsPath, Handler: http.MaxBytesHandler(requestsHandler, server.MaxRequestBytes)},
+		{Pattern: executionsPath, Handler: http.MaxBytesHandler(connectapi.BoundCSVWrites(executionsHandler), server.MaxRequestBytes)},
 	}
 
 	// Google login (ADR-0007) mounts only when configured: provider discovery must succeed at boot (fail-fast, like the keyring), and when disabled the routes simply don't exist. The redirect flow is plain HTTP, not Connect.
@@ -299,6 +333,29 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				maintenanceCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				if err := executionSvc.Reconcile(maintenanceCtx); err != nil {
+					logger.Error("execution recovery failed")
+				}
+				org, err := requestStore.DefaultOrganizationID(maintenanceCtx)
+				if err == nil {
+					err = resultStore.PurgeExpired(maintenanceCtx, org)
+				}
+				if err != nil {
+					logger.Error("result cleanup failed")
+				}
+				cancel()
+			}
+		}
+	}()
 
 	// A bind/serve failure must terminate the process with a non-zero exit, not fall through to the normal shutdown path.
 	serveErr := make(chan error, 1)
@@ -320,6 +377,7 @@ func run() error {
 	}
 
 	// Background, not a timeout: the drain delay and the shutdown timeout are sequential budgets (ADR-0010) — Server.Shutdown applies the timeout to the drain of in-flight requests only, after the delay has fully elapsed.
+	executionSvc.StopAdmission()
 	if err := srv.Shutdown(context.Background(), cfg.ShutdownTimeout); err != nil {
 		logger.Error("graceful shutdown failed", "err", err)
 		return err
