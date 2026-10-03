@@ -13,6 +13,8 @@ Product requirements are maintained in Korean and English; other documents adopt
 | Development | [Code](conventions/code.md) · [Data](conventions/data.md) · [Security](conventions/security.md) · [Tooling](conventions/tooling.md) · [Frontend](conventions/frontend.md) | English |
 | Performance | [Scenarios and sizing](performance/README.md) · [Query measurements](performance/benchmarks/2026-09-30-query-workloads.md) | English |
 | Operations | [PG alpha quickstart](operations/pg-alpha-quickstart.md) · [M1 validation](operations/m1-validation.md) · [Encryption key rotation](operations/key-rotation.md) | English |
+| Branding | [Logo assets and placement](branding.md) · [UI screenshots and GIFs](media/README.md) | English |
+| Contributors | [Development and roadmap](development.md) | English |
 
 ## Language policy
 
