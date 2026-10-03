@@ -22,6 +22,8 @@ Requests use `/requests` for the list, `/requests/new` for composition, `/reques
 
 Keep permission checks per action and all backend enforcement unchanged. Page reads and mutations remain fenced against route/session changes; unmounting discards in-flight UI callbacks. Polling must not replace SQL being edited or a decision reason. Route changes never automatically save or submit SQL; use the explicit draft action before leaving. An unsaved form does not persist plaintext to browser storage.
 
+Closing an optional read panel invalidates its session and immediately clears its loading state; completion of the underlying request is not required. Late success, error and finally callbacks must not update a reopened panel or clear its new loading state. The close/in-flight/reopen scenarios enforce this independently of network timing, using Solid's [explicit signal setters](https://docs.solidjs.com/reference/basic-reactivity/create-signal).
+
 ## Consequences
 
 Replace request overlays first, then apply the same rule to remaining routine connection and policy flows. Update browser scenarios and actual README captures alongside their screen changes. URL state is navigation only, never authorization. The known native-download gate remains enabled.

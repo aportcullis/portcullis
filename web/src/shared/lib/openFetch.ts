@@ -36,6 +36,7 @@ export function createOpenFetch<T>(
       refetch();
     } else {
       discardSession(); // fence in-flight responses from the closed dialog
+      setLoading(false);
     }
   };
 

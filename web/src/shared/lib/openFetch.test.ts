@@ -6,8 +6,8 @@ import { createOpenFetch } from "@/shared/lib/openFetch";
 const asMessage = (err: unknown) => (err instanceof Error ? err.message : "failed");
 
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
+  let resolve = (_value: T): void => { throw new Error("Deferred resolver is not initialized"); };
+  let reject = (_reason: unknown): void => { throw new Error("Deferred rejection is not initialized"); };
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
@@ -47,11 +47,13 @@ describe("createOpenFetch", () => {
     f.handleOpenChange(true);
     expect(f.loading()).toBe(true);
     f.handleOpenChange(false);
+    expect(f.loading()).toBe(false);
 
     d.resolve("late");
     await flush();
 
     expect(onLoaded).not.toHaveBeenCalled();
+    expect(f.loading()).toBe(false);
   });
 
   it("fences a stale error and reports only the current open's failure", async () => {
@@ -63,10 +65,12 @@ describe("createOpenFetch", () => {
     f.handleOpenChange(true);
     f.handleOpenChange(false);
     f.handleOpenChange(true);
+    expect(f.loading()).toBe(true);
 
     first.reject(new Error("stale failure"));
     await flush();
     expect(f.error()).toBe(""); // the stale error must not surface
+    expect(f.loading()).toBe(true);
 
     second.reject(new Error("current failure"));
     await flush();

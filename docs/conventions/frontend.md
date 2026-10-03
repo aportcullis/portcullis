@@ -53,7 +53,7 @@ Each component family lives in its own directory with an explicit `index.ts`, im
 - Auth/session errors render **uniform messages** (one string for every login rejection — the server is oracle-free and the UI must not undo that, ADR-0006).
 - **Fence dialog sessions**
   - Fence work after every `await` through `shared/lib/dialogSession.ts`; closing and reopening remains possible while requests run.
-  - Apply nothing when `runInSession` returns `superseded`; the close handler releases `busy` and `saving`.
+  - Apply nothing when `runInSession` returns `superseded`; the close handler releases `busy`, `saving` and read loading immediately, even if the old request never settles. Old callbacks must not clear a reopened session's loading state.
   - Use `createOpenFetch` for the same protection on read-on-open callbacks.
 - **Own drafts at list level**
   - Solid’s `<For>` is [keyed by reference](https://docs.solidjs.com/reference/components/for), so refreshed row objects destroy row-owned forms.
