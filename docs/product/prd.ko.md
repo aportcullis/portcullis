@@ -767,7 +767,7 @@ audit_events
 
 | 채널 | 내용 |
 |---|---|
-| Docker Compose (**MVP**) | server + PostgreSQL. local quickstart와 mounted secret 기반 production 예제 분리. |
+| Docker Compose (**MVP**) | server + PostgreSQL. 로컬 HTTP는 IPv4 loopback에만 공개하고 local quickstart와 mounted secret 기반 production 예제를 분리. |
 | Helm + Kustomize (**M2, MySQL parity 직후**) | Portcullis 단일 replica + 외부 또는 CNPG 관리 메타데이터 PostgreSQL 18. 기존 Secret·mounted key, 검증된 TLS, 최소 권한, probe·resource·security 설정. |
 | Terraform / OpenTofu Provider (**API 안정화 후**) | 제품 *안의 리소스*(connection/policy 등)를 CRUD. `terraform-plugin-framework` + Connect unary(HTTP) 클라이언트, 필요 시 REST gateway 경유. 양 레지스트리 등록. |
 

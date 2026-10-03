@@ -95,7 +95,7 @@ Cloudflare private-network `cloudflared` traffic likewise reaches internal servi
 
 ## Deployment and operating scope
 
-Start with one Portcullis instance on a private host or container network. The [Compose quickstart](pg-alpha-quickstart.md) is a local demonstration: current `8080:8080` port publishing binds host interfaces and does not establish private-only production isolation. Restrict production publishing to loopback or a private interface, place the HTTPS proxy in front and enforce the host/network firewall. This document does not modify the demo Compose file.
+Start with one Portcullis instance on a private host or container network. The [Compose quickstart](pg-alpha-quickstart.md) is a local demonstration: its `127.0.0.1:8080:8080` port publishing now limits host access to IPv4 loopback. This is a safer local default, not complete production isolation. Place the private HTTPS proxy in front and enforce host/network firewall controls; do not override the bind with a wildcard public address. Operators must also account for Docker routing and daemon configuration.
 
 Preserve metadata storage, the master key and recoverable backups separately from application containers. Use managed or mounted runtime secrets, keep migration-owner credentials out of runtime and test restoration with the preserved key. Result storage currently uses PostgreSQL; this recommendation does not require or provide Valkey.
 

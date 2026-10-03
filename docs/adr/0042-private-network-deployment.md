@@ -15,10 +15,12 @@ Describe private DNS, browser-trusted TLS, source/proxy attribution and the host
 
 ## Consequences
 
-The recommendation requires provider enrollment, route/access policies and reachable private DNS to be configured by operators. A private tunnel still uses external connectivity; private-only describes application and database exposure. Documentation changes do not alter the existing local-demo listener, Compose port publishing or authentication model. Both PRD translations record the production deployment recommendation.
+The recommendation requires provider enrollment, route/access policies and reachable private DNS to be configured by operators. A private tunnel still uses external connectivity; private-only describes application and database exposure. The 2026-10-03 review correction pins demo Compose host publishing to IPv4 loopback (`127.0.0.1:8080:8080`); container-network access, routing and firewalls remain separate operator boundaries. The application listener and authentication model are unchanged. Both PRD translations record the production deployment recommendation.
 
 ## Sources
 
 - [Cloudflare private networks](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/).
 - [Tailscale subnet routers](https://tailscale.com/docs/features/subnet-routers).
 - [Tailscale access policy guidance](https://tailscale.com/docs/reference/examples/acls).
+
+- [Docker publishing and host binding](https://docs.docker.com/engine/network/port-publishing/) (checked 2026-10-03).

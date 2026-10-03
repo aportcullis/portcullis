@@ -807,7 +807,7 @@ The recommended production topology keeps Portcullis and its databases private. 
 
 | Channel | Scope |
 |---|---|
-| Docker Compose, MVP | Server + PG; separate local quickstart and production mounted-secret examples |
+| Docker Compose, MVP | Server + PG; IPv4-loopback-only local HTTP publishing; separate local quickstart and production mounted-secret examples |
 | Helm + Kustomize, M2 immediately after MySQL parity | Single Portcullis replica; external or CNPG-managed metadata PostgreSQL 18; existing Secrets/mounted keys, verified TLS, least privilege, probes and resource/security settings |
 | Terraform/OpenTofu, after API stability | CRUD product resources such as connections/policies using terraform-plugin-framework + Connect unary HTTP, or REST gateway if needed; publish to both registries |
 
