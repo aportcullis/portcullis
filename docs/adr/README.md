@@ -40,11 +40,11 @@ These must be `Accepted` before Core 1 coding begins.
 | [0023](0023-local-sql-formatting.md) | Local PostgreSQL formatting for editable requests | Accepted |
 | [0024](0024-webmcp-next-milestone.md) | WebMCP browser boundary (original M2 sequence) | Accepted; ordering amended by 0025/0026 |
 | [0025](0025-sql-database-first-expansion.md) | SQL database parity first; exclude SQLite from target scope | Accepted |
-| [0026](0026-review-tools-before-agent-integration.md) | Early SQL review/EXPLAIN and schema preview; defer WebMCP to M6 | Accepted |
-| [0027](0027-masking-before-agent-registration.md) | Sensitive-data masking before agent registration and integration | Accepted |
-| [0028](0028-agent-neutral-mcp-gateway.md) | Agent-neutral local/remote MCP Gateway and Kubernetes infrastructure boundary | Accepted |
+| [0026](0026-review-tools-before-agent-integration.md) | Early SQL review/EXPLAIN and schema preview; defer WebMCP to M6 | Accepted (implementation pending) |
+| [0027](0027-masking-before-agent-registration.md) | Sensitive-data masking before agent registration and integration | Accepted (implementation pending) |
+| [0028](0028-agent-neutral-mcp-gateway.md) | Agent-neutral local/remote MCP Gateway and Kubernetes infrastructure boundary | Accepted (implementation pending) |
 | [0029](0029-dependency-supply-chain-controls.md) | Dependency installation, provenance and immutable tooling controls | Accepted |
-| [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted |
+| [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted (additional version qualification pending) |
 | [0031](0031-typescript-seven-native-tooling.md) | TypeScript 7 and native lint enforcement without the classic compiler API | Accepted |
 | [0032](0032-request-title-and-body.md) | Access request titles and explanatory bodies | Accepted |
 | [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Accepted |

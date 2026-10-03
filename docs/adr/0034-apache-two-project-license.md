@@ -1,7 +1,7 @@
 # ADR-0034: Apache License 2.0 for Portcullis
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR-0035: Kubernetes and CloudNativePG immediately after MySQL parity
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

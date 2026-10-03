@@ -1,7 +1,7 @@
 # ADR-0039: Result views and bounded clipboard export
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR-0040: Recorded execution time in request and result views
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

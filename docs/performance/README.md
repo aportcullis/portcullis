@@ -132,12 +132,14 @@ Keep this headroom rule provisional until measurements justify it.
 Publish the largest passing activity profile, not just the largest attempted VU count.
 
 Report: commit, k6/app/DB versions, hardware/resource split, dataset size, HTTPS/IP topology, concurrent active users, think time, offered and completed journeys/s, per-RPC latency, failure/429/drop counts and resource peaks.
-Mark today's results **governance-only** until execution/results are covered.
+Label each measurement by the journeys it actually exercises; governance-only evidence does not certify execution or results.
 
 Translate active users to team size only with an explicit observed active fraction: e.g. 50 active users at a measured 10% peak activity fraction corresponds to an illustrative 500-person organization.
 It is not a support guarantee; query frequency and result size must also match the tested workload.
 
 ## Integration validation (2026-09-30)
+
+Historical measurements used the then-pinned PostgreSQL 18.4 baseline. They do not qualify the current 18.6 pin or other target families; repeat controlled measurements before transferring capacity conclusions.
 
 k6 2.3.0 passed submit, distinct-reviewer approval and mixed smoke runs (three journeys each, one VU) against the real Go server and a fresh PostgreSQL 18 container.
 A short arrival-rate browse run also passed, including zero dropped iterations.

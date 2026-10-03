@@ -1,7 +1,7 @@
 # ADR-0037: Page hierarchy and responsive governance workflows
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR-0038: Inline request workflow disclosure
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

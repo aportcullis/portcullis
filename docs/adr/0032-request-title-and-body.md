@@ -1,7 +1,7 @@
 # ADR-0032: Access request titles and explanatory bodies
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

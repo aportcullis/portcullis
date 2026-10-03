@@ -1,7 +1,7 @@
 # ADR-0036: Separate UI design values and application layout from governance
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

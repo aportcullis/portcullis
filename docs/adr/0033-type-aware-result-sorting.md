@@ -1,7 +1,7 @@
 # ADR-0033: Type-aware result sorting within cached snapshots
 
-- Status: Accepted
-- Date: 2026-10-03
+- **Status:** Accepted
+- **Date:** 2026-10-03
 
 ## Context
 

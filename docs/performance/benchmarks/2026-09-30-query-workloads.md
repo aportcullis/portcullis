@@ -1,5 +1,7 @@
 # Query workload observations — 2026-09-30
 
+Historical patch-specific evidence: PostgreSQL 18.4 was the pinned baseline at measurement time. These results do not recertify PostgreSQL 18.6 or additional target families.
+
 The current PostgreSQL adapter handles ordinary reads with modest latency in this local warm-cache test.
 Deep OFFSET and large result values deserve explicit treatment before recommending production capacity.
 These are sequential adapter-only measurements, not the full governed Execute path.
