@@ -1,6 +1,6 @@
 # M1 implementation and validation — 2026-10-03
 
-The PostgreSQL M1 implementation is present, but its release gate is not complete. Native CSV file saving remains a failing browser assertion; do not label this checkout as a verified releasable alpha.
+The PostgreSQL M1 correctness/release gate passed on 2026-10-03 with Docker-hosted Chromium, including native CSV file saving and saved-file readback. This establishes the first PostgreSQL alpha boundary; it is not a published release or a production-capacity certification. Earlier host-native download failures remain recorded below and are not claimed fixed.
 
 ## Implemented scope
 
@@ -36,12 +36,22 @@ ADR-0023 adds local PostgreSQL formatting to new-request and draft-edit fields, 
 
 Build, vet, lint (zero issues), all Go tests including Testcontainers coverage, frontend typecheck/lint, 109 frontend tests and load-script typecheck passed during the full verification run. The initial browser run exposed ambiguous substring labels after introducing the Auto-format SQL checkbox; selectors were narrowed to the exact SQL field. The subsequent complete browser suite passed 10 of 11, including automatic formatting, undo, explicit save/reload and failed formatting in draft edits. Its sole remaining failure is the existing native CSV `canceled` assertion, which remains enabled. README source and actual PNG/GIF files were refreshed together from the real application, with full-page capture and consistent GIF frame dimensions.
 
+## Completed M1 gate — Docker-hosted Chromium
+
+The complete `make verify` command passed with the application and test runner on the host, PostgreSQL owned by Testcontainers, and Chromium supplied by Playwright 1.61.1 in `mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48`. The passing code includes commit `345ae70` (lockout scenario correction). Build, vet, lint (zero issues), frontend typecheck/lint, all 109 frontend unit tests, load-script typecheck and all Go tests passed. All 11 browser E2E scenarios passed in 35.8 seconds.
+
+A standalone eight-byte CSV first passed native saving and saved-file readback in this browser. The real product scenario then passed whole-snapshot CSV preparation, the native download event, filename, `download.failure() === null` and file-stream readback containing exact large integers and formula-safe cells. No saving assertion was disabled or replaced with a prepared-Blob fetch.
+
+The first complete run with this browser exposed an independent lockout-test defect: the previous scenarios could exhaust the shared login IP bucket, while the test treated its uniform error message as a counted password failure. A strengthened real-response assertion observed `429` instead of `401`. Waiting for one token before the first attempt, as already done between attempts, fixed the scenario; every wrong-password and locked correct-password attempt must now receive `401`. Production admission, lockout timing and security rules are unchanged.
+
+Only the project was mounted into the disposable browser container: source read-only, test downloads writable. The remote endpoint was bound to host loopback, and the Docker socket was not mounted into the browser. Host-native Chromium still reproduced `canceled`, including when both temporary and download paths were project-local; the OS cause remains undiagnosed. The passing Linux browser gate does not imply host-native macOS saving was repaired. The database harness removes its owned fixtures at shutdown; the disposable browser container is stopped after verification. See the [reproduction guide](browser-e2e.md).
+
 ## Reproduction
 
-Use a project-local Docker configuration with `{"auths":{}}` to avoid reading unrelated home configuration. Point `DOCKER_CONFIG` at it and `DOCKER_HOST` at the explicitly permitted Docker socket. Set `CI=true` for the noninteractive pnpm install and `PLAYWRIGHT_BROWSERS_PATH` to a project-local browser installation, then run `make verify`. Playwright's configured download directory is project-local as well. The Docker socket and Go build cache require the path-specific permissions established for this session.
+Use a project-local Docker configuration with `{"auths":{}}` to avoid reading unrelated home configuration. Point `DOCKER_CONFIG` at it and `DOCKER_HOST` at the explicitly permitted Docker socket. Set `CI=true` for the noninteractive pnpm install and `PLAYWRIGHT_BROWSERS_PATH` to a project-local browser installation, then run `make verify`. Playwright's configured download directory is project-local as well. For the passing container-browser setup, follow the [Docker browser E2E guide](browser-e2e.md). The Docker socket and Go build cache require the path-specific permissions established for this session.
 
-## Remaining gate and qualification
+## Separate qualification and later scope
 
-- Resolve native browser file saving under the project-only filesystem boundary and pass the entire `make verify` gate.
+- M1 correctness verification is complete in the recorded Docker browser environment; host-native macOS download diagnosis remains an environment-specific follow-up.
 - Run ADR-0020 load/soak qualification before claiming 50-user latency targets, a total Go-heap bound or hardware recommendations.
 - MySQL/SQLite, saved queries and later milestones are outside this implementation.

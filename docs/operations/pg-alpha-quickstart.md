@@ -1,6 +1,6 @@
 # PostgreSQL alpha quickstart
 
-The M1 implementation provides local/password and Google authentication, connection policy, immutable requests and approvals, single-use PostgreSQL execution, encrypted result snapshots, and audit history. The [validation record](m1-validation.md) tracks the remaining release gate. MySQL/SQLite and saved queries remain later milestones.
+The M1 implementation provides local/password and Google authentication, connection policy, immutable requests and approvals, single-use PostgreSQL execution, encrypted result snapshots, and audit history. The complete M1 correctness gate has passed with Docker-hosted Chromium; the [validation record](m1-validation.md) describes the environment and separate capacity qualification. MySQL/SQLite and saved queries remain later milestones.
 
 For a disposable local installation, run `docker compose up --build` from the project root and open `http://localhost:8080`. Compose initializes PostgreSQL, creates a persistent master key, runs owner migrations separately, and starts the restricted runtime server. The sample credentials and disabled database TLS are for local development.
 

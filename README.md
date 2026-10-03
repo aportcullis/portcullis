@@ -4,7 +4,7 @@
 
 Self-hosted database governance and result exploration. Control access and changes, review SQL before execution, and explore the results in one application. Portcullis ships as a Go binary with an embedded SolidJS web interface.
 
-**Currently in PostgreSQL alpha development.** These screenshots show the real development build with synthetic data. The M1 release gate is still incomplete: native CSV file saving remains unverified in the browser environment. See the [validation record](docs/operations/m1-validation.md) for the evidence and remaining gate.
+**PostgreSQL alpha — M1 verification passed.** These screenshots show the real application with synthetic data. The full gate includes actual CSV file saving and readback using Docker-hosted Chromium. See the [validation record](docs/operations/m1-validation.md) for the tested environment and qualification limits.
 
 ## Request, review, execute once
 

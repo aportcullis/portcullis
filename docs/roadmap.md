@@ -4,9 +4,9 @@
 
 Portcullis is evolving from a PostgreSQL governance tool into a self-hosted platform for database access, changes, and analysis. This roadmap explains the outcomes we are working toward, how they depend on one another, and what must be true before a milestone is complete.
 
-![Portcullis roadmap: Foundation baseline; Gate in progress; Bridge adds WebMCP then database parity; Library completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
+![Portcullis roadmap: Foundation baseline; Gate verified; Bridge adds WebMCP then database parity; Library completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
 
-**Updated: 2026-10-03. Current focus: Gate (M1).** Implementation is present in the development checkout, but the release gate is not complete. Native CSV file saving still needs a passing browser verification. See the [validation evidence](operations/m1-validation.md).
+**Updated: 2026-10-03. Gate (M1) verified; Bridge (M2) is next.** The complete `make verify` gate passed with Docker-hosted Chromium, including native CSV saving and saved-file readback. See the [validation evidence](operations/m1-validation.md) for the tested environment and separate capacity qualification.
 
 ## Three directions
 
@@ -28,17 +28,17 @@ Authentication, organization-scoped permissions, encrypted secrets, append-only 
 
 ## Gate · M1
 
-**In progress — first PostgreSQL alpha after its gate passes.**
+**Verified — first PostgreSQL alpha boundary.**
 
 Give teams one complete path from connection registration through policy, request, distinct review, single-use execution, result exploration, and audit. Preserve exact result values and explicitly report uncertain outcomes without automatically rerunning SQL.
 
-**To complete:** The PostgreSQL vertical slice must pass the full `make verify` gate, including real browser result exploration and CSV file saving. The quickstart must demonstrate the first governed execution. The current unresolved file-saving check is recorded in the [M1 validation record](operations/m1-validation.md); feature implementation alone does not complete the milestone.
+**Acceptance evidence:** The PostgreSQL vertical slice passed the full `make verify` gate: build, vet, lint, all Go tests, 109 frontend tests and all 11 real browser scenarios, including result exploration and native CSV saving/readback. The quickstart describes the first governed execution. See the [M1 validation record](operations/m1-validation.md) for the Docker-hosted browser environment and the undiagnosed host-native saving failure. Performance/soak qualification remains separate.
 
 **Explore:** [Actual workflow and screenshots](../README.md#request-review-execute-once), [alpha quickstart](operations/pg-alpha-quickstart.md), [execution contracts](adr/0021-governed-query-execution.md).
 
 ## Bridge · M2
 
-**Next — after Gate is accepted.**
+**Next — Gate verification is complete.**
 
 First, add browser WebMCP assistance to the PostgreSQL workflow: discover a connection, compose visible SQL and typed parameters, explicitly save/submit a request, inspect approval state, execute an approved request as its requester, and inspect bounded results. Preserve the same permissions and distinct review; tools do not automatically approve requests. Keep the normal web interface usable in browsers without native WebMCP support.
 
