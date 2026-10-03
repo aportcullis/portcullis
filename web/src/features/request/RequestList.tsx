@@ -1,6 +1,6 @@
 import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, onMount, onCleanup } from "solid-js";
+import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
 
 
 import { stateBadge, stateLabel } from "@/entities/request/model";
@@ -19,6 +19,7 @@ import {
   totalCount,
   totalPages,
 } from "@/entities/request/store";
+import { RequestWorkflow } from "@/features/request/RequestWorkflow";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
@@ -44,6 +45,7 @@ const filterStates = ["draft", "pending", "approved", "executing", "succeeded", 
 
 // RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details page carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
+  const [expandedId, setExpandedId] = createSignal<string>();
   onMount(() => {
     void loadAccessRequests();
     const refresh = () => { if (!document.hidden) void loadAccessRequests(); };
@@ -60,7 +62,7 @@ export const RequestList: Component = () => {
   const end = () => rangeEnd(page(), pageSize(), accessRequests().length, totalCount());
 
   return (
-    <>
+    <div class="flex min-w-0 flex-col gap-4">
       <div class="flex flex-wrap items-center gap-2">
         <label class="text-sm text-muted-foreground" for="req-filter">
           Filter
@@ -112,8 +114,9 @@ export const RequestList: Component = () => {
           <TableBody>
             <For each={accessRequests()}>
               {(r) => (
+                <>
                 <TableRow>
-                  <TableCell class="max-w-80 break-words font-medium">{r.title || "Untitled request"}</TableCell>
+                  <TableCell class="max-w-80 break-words font-medium"><button class="inline-flex items-start gap-2 text-left text-primary underline-offset-4 hover:underline" aria-expanded={expandedId() === r.id} aria-controls={`workflow-${r.id}`} onClick={() => setExpandedId(expandedId() === r.id ? undefined : r.id)}><span aria-hidden="true">{expandedId() === r.id ? "▾" : "▸"}</span><span>{r.title || "Untitled request"}</span></button></TableCell>
                   <TableCell class="font-medium">{r.connectionName}</TableCell>
                   <TableCell class="text-muted-foreground">{actorLabel(r.requester)}</TableCell>
                   <TableCell class="text-muted-foreground">{r.statementClass || "—"}</TableCell>
@@ -135,12 +138,14 @@ export const RequestList: Component = () => {
                     </span>
                   </TableCell>
                 </TableRow>
+                <Show when={expandedId() === r.id}><TableRow><TableCell colSpan={7} class="bg-muted/30"><RequestWorkflow request={r} mayOpenDetails={hasPermission("requests.get")} /></TableCell></TableRow></Show>
+                </>
               )}
             </For>
           </TableBody>
         </Table>
 
-        <div class="flex items-center justify-between">
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
           <span class="text-sm text-muted-foreground">
             {start()}–{end()} of {totalCount().toString()}
           </span>
@@ -163,6 +168,6 @@ export const RequestList: Component = () => {
         </div>
       </Show>
 
-    </>
+    </div>
   );
 };

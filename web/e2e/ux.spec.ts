@@ -23,3 +23,33 @@ test("narrow screens keep navigation and request actions reachable with a curren
   }
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+// Hold a real response to distinguish pending data from empty or failed data.
+test("request loading is bounded and expands the actual workflow inline after data arrives", async ({ page }) => {
+  await page.goto("/login");
+  await signInForScenario(page, "admin@example.com", "correct-horse-battery");
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/portcullis.v1.AccessRequests/List", async route => {
+    await pending;
+    await route.continue();
+  });
+  try {
+    await page.goto("/requests");
+    const loading = page.getByRole("status").filter({ hasText: "Loading requests…" });
+    await expect(loading).toHaveAttribute("aria-busy", "true");
+    await expect(loading.locator('[aria-hidden="true"] > div')).toHaveCount(3);
+    await expect(page.getByText("No access requests yet.")).toHaveCount(0);
+    release();
+    await expect(loading).toHaveCount(0);
+    const disclosure = page.getByRole("button", { name: "Query review", exact: true }).first();
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    const workflow = page.getByRole("region", { name: "Workflow for Query review" });
+    await expect(workflow.getByRole("list", { name: "Request stages" }).getByRole("listitem")).toHaveCount(4);
+    await expect(workflow).toContainText("Execution");
+    await disclosure.click();
+    await expect(workflow).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  } finally { release(); }
+});
