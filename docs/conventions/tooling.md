@@ -24,7 +24,9 @@ Pin remote plugin versions in `buf.gen.yaml` to the corresponding Go/TypeScript 
 **Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`).
 
 ## Commit messages
-Conventional-commit subject; body as **one sentence per line** (break on topic) or bullets / sub-bullets. **Do not add a `Co-Authored-By` trailer.**
+Use a conventional-commit subject and keep each commit focused on one concern. Write the body as paragraphs separated when the topic changes, or as bullets; do not automatically break after every sentence. **Do not add a `Co-Authored-By` trailer.**
+
+Immediately before each commit, review the staged diff for scope, correctness, dependency direction, security and scenario coverage. Check the staged snapshot rather than relying on unstaged dependencies in the working tree, and run verification appropriate to the change. Fix findings, repeat the review after changing the staged content, and record any remaining failed gate explicitly. Commit related tests with the behavior they verify; do not reconstruct an unobserved TDD history after implementation.
 
 ## Definition of done
 `go build ./...`, `go vet ./...`, `make lint` (0 issues), and `make test` all green before calling any work done.

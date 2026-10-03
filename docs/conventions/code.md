@@ -90,7 +90,7 @@ Express operations through names instead of explaining an ambiguous name in a co
 Keep detailed rationale in ADRs; retain a short inline comment only for a non-obvious constraint or invariant.
 Break comment lines only at sentence endings, never to wrap a sentence to a fixed width.
 Describe the current behavior or reason; omit review history, reviewer names, and finding numbers.
-Use sentence-boundary line breaks in documentation prose too; preserve Markdown lists, tables, and code blocks.
+Group documentation prose into paragraphs by topic; do not automatically insert a line break after every sentence. Preserve Markdown lists, tables, and code blocks.
 For long list items, state the rule in a short parent bullet and put conditions, examples, and exceptions in sub-bullets.
 
 A committed file may cite a stable product requirement section (`PRD §4.3`) or link to the [Korean](../product/prd.ko.md) or [English](../product/prd.en.md) PRD.

@@ -27,7 +27,7 @@ Product requirements are maintained in Korean and English; other documents adopt
   - Add each translated pair to this index and link both versions to each other.
   - Preserve ADR numbers and existing filenames so decision references remain stable.
 - **Keep prose easy to maintain.**
-  - Break lines at sentence endings and keep comments concise.
+  - Group prose into paragraphs by topic and keep comments concise; do not automatically break after every sentence.
   - Use a short parent bullet for a rule and sub-bullets for its conditions, examples, and exceptions.
   - Prefer section references over line numbers and keep relative links valid when moving documents.
 

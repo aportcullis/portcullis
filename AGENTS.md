@@ -17,6 +17,7 @@ Ships as one Go binary with the SolidJS SPA embedded.
 4. If an ADR shows the PRD is wrong/insufficient, **amend both PRD translations** (ADR-backed), then implement.
 5. Aim for **clean architecture (ports & adapters)** and implement in the **DDD × TDD cycle**: domain model → port (consumer-defined interface) → **red scenario test** (TDD verifies *scenarios* — observable use-case behavior, not implementation) → green → refactor → wire the adapter in `cmd/portcullis`.
    See [code.md — Development order](docs/conventions/code.md).
+6. Keep commits small and focused on one concern. Complete the scenario's red→green cycle, review the staged diff immediately before each commit, and run checks appropriate to that change. Record remaining failed gates explicitly; committing work does not establish milestone completion.
 
 ## Definition of done
 `go build ./...`, `go vet ./...`, `make lint` (0 issues), `make test`, and `make e2e` (browser e2e — Playwright against the real binary) all green; `make verify` runs the whole gate.
