@@ -1,8 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.3 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
-> **Status:** Draft v0.3 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Shared revision:** v0.4 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity precedes WebMCP.
+> **Status:** Draft v0.4 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -83,7 +84,7 @@ Expand BI gradually from MVP saved queries and result grids.
 
 #### Included
 
-- **Target databases:** PostgreSQL, MySQL, and SQLite; metadata always uses PostgreSQL.
+- **Target databases:** PostgreSQL and MySQL; metadata always uses PostgreSQL.
 - **Deployment:** Docker Compose quickstart with one server instance and PostgreSQL.
 - **Authentication:** Local email/password with argon2id, Google OIDC, server-side sessions, and initial admin bootstrap.
 - **Requests:** Approval of one SQL statement against one connection with exact parameter values.
@@ -118,7 +119,7 @@ Expand BI gradually from MVP saved queries and result grids.
   - Record lease acquisition and `EXECUTION_STARTED` in the same metadata transaction.
   - If the server stops before confirming the outcome, do not retry automatically; reconciliation transitions expired `executing` to `outcome_unknown`.
 - Audit every transition and execution attempt with actor, time, target, previous/next states, and payload digest.
-- Enforce default 30-second query timeout, maximum 5 minutes, maximum 10,000 rows, and a result byte cap on all three databases.
+- Enforce default 30-second query timeout, maximum 5 minutes, maximum 10,000 rows, and a result byte cap on both databases.
 - Complete bootstrap → connection registration → request → approval → execution within 15 minutes in a fresh Docker Compose environment.
 - Target p95 ≤500ms for major APIs excluding query execution time at 50 concurrent users.
 - **Performance and sizing, ADR-0020:** Measure browsing, requests, and approvals with k6 first; add execution, result navigation, CSV, and cancellation after the executor exists.
@@ -155,7 +156,7 @@ Do not define this audience by assuming a competitor's UX is poor.
 
 The core governance loop for production queries.
 
-- **Connections:** Register PostgreSQL/MySQL/SQLite configurations, test before saving, and encrypt credentials at the application layer.
+- **Connections:** Register PostgreSQL/MySQL configurations, test before saving, and encrypt credentials at the application layer.
 - **Access requests:** Submit one statement with exact execution parameters; submitted payloads are immutable.
 - **Approval:** Distinct active approvers in the same organization review and approve up to the policy quorum, or reject; no self-approval.
 - **Execution:** Execute the approved payload once, enforcing server-side timeout and row/byte caps with no automatic retry.
@@ -213,26 +214,26 @@ Turn approved, executed queries into assets.
   - Reject archive while any request executes; successful archive immediately blocks requests, tests, and execution.
   - Cancel drafts and expire pending/approved requests with `connection_archived`, close pools, and discard encrypted credentials.
   - Restoration requires credential re-entry and a connection test.
-  - History snapshots contain connection ID, display name, DB type, and target fingerprint, excluding credentials and full SQLite paths.
+  - History snapshots contain connection ID, display name, DB type, and target fingerprint, excluding credentials.
   - Only separate retention jobs delete history; runtime cannot update/delete audit events (§8.4).
 
 #### MVP database compatibility contract
 
-| Feature | PostgreSQL | MySQL | SQLite |
-|---|---|---|---|
-| Connection test and TLS/path validation | Required | Required | Required |
-| Single-statement parsing/classification | Required | Required | Required |
-| Typed bind parameters | Required | Required | Required |
-| Read/write/DDL policy | Required | Required | Required |
-| Timeout and cancellation attempts | Required | Required | Required |
-| Row/byte caps, snapshots and CSV | Required | Required | Required |
-| Request → approval → execution → audit | Required | Required | Required |
+Current implementation status is tracked separately in the [DB feature support matrix](database-support.md); required does not mean shipped.
+
+| Feature | PostgreSQL | MySQL |
+|---|---|---|
+| Connection test and TLS validation | Required | Required |
+| Single-statement parsing/classification | Required | Required |
+| Typed bind parameters | Required | Required |
+| Read/write/DDL policy | Required | Required |
+| Timeout and cancellation attempts | Required | Required |
+| Row/byte caps, snapshots and CSV | Required | Required |
+| Request → approval → execution → audit | Required | Required |
 
 - Do not label a DB supported in the UI until it passes these common acceptance tests.
 - Reject transaction control, session mutation, native file/network I/O, multiple statements, and unclassified statements in MVP.
 - Permit implicit-commit statements such as MySQL DDL only under allowed DDL policy and warn approvers that rollback may be impossible.
-- Manage SQLite only as server-local files, with path/symlink checks and concurrent-write restrictions.
-- Retain SQLite as a low-cost adapter-contract reference/demo without an external network DB (§5.3), while making its additional path/symlink/write protections mandatory (§8.1).
 
 ### 4.4 Access Request state machine
 
@@ -328,7 +329,7 @@ Use Atlas Community for status/dry-run/apply; differentiation comes from Git int
 - **Verify:** Re-run status to check only that the revision table reached the target migration version.
   - Drift and data postconditions are excluded; add separate postcondition checks later if needed.
 - **Audit:** Put every step transition on the same timeline as access and query assets.
-- **Compatibility:** Pin Atlas Community object support for each of PostgreSQL/MySQL/SQLite in a matrix.
+- **Compatibility:** Pin Atlas Community object support for each of PostgreSQL/MySQL in a matrix.
   - Enable each DB only after independent contract tests; explicitly reject unsupported objects during status/dry-run.
 
 ### 4.6 Access Governance extensions (Kviklet parity track)
@@ -343,7 +344,7 @@ Use the 0.9.2 fixes for approved-command replacement and result-log exposure as 
 
 | Feature | Phase | Portcullis policy |
 |---|---|---|
-| Single-query request/approve/reject | MVP | Common support for all three databases |
+| Single-query request/approve/reject | MVP | Common support for both databases |
 | Connection RBAC/read/write/DDL policy | MVP | Default read-only, no self-approval |
 | Unified audit | MVP | Same timeline as query assets and schema changes |
 | Comments/review suggestions | Post-MVP | Append-only discussion separate from state transitions |
@@ -426,7 +427,7 @@ This section replaces the separate PRD previously required to start M4.
 
 ### 4.10 WebMCP query assistance (M2 / Bridge)
 
-Browser WebMCP is promoted from the broad Later agent direction into the next milestone, after M1's complete release gate (ADR-0024). In M2, implement the PostgreSQL browser-agent journey first, then the existing MySQL/SQLite parity track. This is planned scope, not an available feature. HTTP MCP gateways and remote/headless machine clients remain Later.
+Browser WebMCP is promoted from the broad Later agent direction into the next milestone, after M1's complete release gate (ADR-0024). In M2, complete PostgreSQL/MySQL governance parity first, then implement browser WebMCP assistance (ADR-0025). SQLite is excluded from supported-target scope. This is planned scope, not an available feature. HTTP MCP gateways and remote/headless machine clients remain Later.
 
 - Expose connection discovery, visible SQL/typed-parameter composition, explicit draft save/submit, request/approval-state inspection, requester-only approved execution and bounded result-page retrieval as separate tools. Start with read queries; filling a form must not automatically persist or execute it.
 - Add schema discovery only through a bounded, authorized and audited catalog use case. Discover/reuse saved queries when Library supplies those assets. Neither path grants arbitrary SQL execution.
@@ -448,7 +449,7 @@ Browser WebMCP is promoted from the broad Later agent direction into the next mi
 | Real-time | Connect server-streaming | One mechanism for migration views, approval notifications, and later session monitoring; no separate SSE/WebSocket; after reconnect, fetch current state through unary RPC before resubscribing |
 | Metadata | PostgreSQL | Container in MVP Compose; external PG/Helm later |
 | Metadata access | `sqlc` on `pgx` | Raw SQL with type safety, no ORM |
-| Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL/SQLite differences |
+| Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL differences |
 | Authentication | argon2id passwords, Google OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; other OIDC/SAML later |
 | Authorization | Go RBAC/org scope | Repository enforcement and cross-org integration tests; no metadata RLS in MVP, schema remains RLS-ready, ADR-0004 |
 | Frontend | SolidJS SPA/Vite | CSR, embedded using `go:embed` |
@@ -472,13 +473,13 @@ type QueryDialect interface {
     ValidateConnection(ctx context.Context, cfg ConnectionConfig) error
     Execute(ctx context.Context, req ExecutionRequest) (ResultStream, error)
 }
-// postgresDialect, mysqlDialect, sqliteDialect
+// postgresDialect, mysqlDialect
 ```
 
 - Services own payload digest, approval, leases, timeout, row/byte caps, snapshots, and auditing.
 - Adapters own connection validation, exact classification, bind syntax, read-only/transaction configuration, cancellation, and error redaction.
 - Every DB passes the same contract suite; expose intentional differences in the matrix and UI.
-- ADR-0001 fixes drivers/parsers: pgx, go-sql-driver/mysql, modernc.org/sqlite; PG pgplex/pgparser, MySQL tidb pkg/parser, SQLite engine authorizer.
+- ADR-0001 fixes drivers/parsers: pgx and go-sql-driver/mysql; PG pgplex/pgparser and MySQL tidb pkg/parser. ADR-0025 removes SQLite from target scope.
 
 ### 5.4 Atlas boundary
 
@@ -539,7 +540,7 @@ oidc_identities          (user-issuer-subject; Google OIDC; unique(issuer,subjec
 sessions                 (opaque token hash, idle/absolute expiry, revoked_at)
 oidc_providers           (enterprise, later)
 
-connections              (PostgreSQL|MySQL|SQLite; encrypted config, org_id, current_policy_version, archived_at)
+connections              (PostgreSQL|MySQL; encrypted config, org_id, current_policy_version, archived_at)
 connection_policy_versions (connection, version, per-class required_approvals; one limit set per policy: timeout/rows/bytes, ADR-0015; created_by)
 access_requests          (AEAD-encrypted SQL+params, payload_digest, redacted_sql, statement_class, policy_version, required_approvals, state, expires_at)
 approvals                (request, approver, decision, reason, decided_at; UNIQUE(request, approver))
@@ -592,7 +593,7 @@ audit_events
   - No temporary session can execute without history, matching kviklet `Connection.kt` per-execute `saveEvent`, code verified 2026-06-27.
 - **Secrets:** No credentials, session tokens, or result rows in audit; parameter values are encrypted in payloads, with only digest in audit.
 - **History:** Archive preserves requests/executions/audit (§4.3); no hard-delete API, with `ON DELETE RESTRICT` FKs.
-  - Store connection snapshots excluding credentials/full SQLite paths.
+  - Store connection snapshots excluding credentials.
 - **Tamper limits:** Cryptographic evidence against direct self-host DB-owner tampering is Later.
   - MVP explicitly documents its append-only/runtime-permission boundary.
 
@@ -634,7 +635,6 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 
 - Show type-specific fields and hide irrelevant ones.
   - PostgreSQL/MySQL: host, port, database, user, password, TLS mode.
-  - SQLite: server-local path under admin-configured root, and read-only setting.
 - Common descriptors: environment `development|production`, with an explicit production badge, and optional description ≤500 characters, added 2026-07-18.
 - Test before saving.
 - Only admins create/edit/test; never return stored credentials or original DSNs through UI/API after creation.
@@ -666,7 +666,6 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - Refuse startup without a valid 32-byte master key.
 - **Production keys:** Document mounted-secret injection instead of plaintext environment keys, with Compose examples; retain key IDs for re-encryption-based rotation.
 - **TLS:** Default PG/MySQL connections to certificate verification; relaxation requires explicit admin choice and auditing.
-- **SQLite:** Restrict real paths to configured root, rejecting symlink escapes, `:memory:`, URI bypasses, devices/special files.
 - **Exposure:** Never expose passwords, original DSNs, session tokens, plaintext parameters, or result rows in APIs/logs/audit.
   - Redact target DB errors before returning them.
 - **Target privileges:** Provide least-privilege setup guidance and connection-test warnings matching policy.
@@ -701,7 +700,6 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 |---|---|---|
 | PostgreSQL | Read-only transaction | Commit/rollback transactional statements |
 | MySQL | Read-only transaction | DML transaction; warn before possible implicit-commit DDL |
-| SQLite | `query_only` + transaction | Bound write-lock waits; transactional DDL only |
 
 Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`, `SELECT ... INTO OUTFILE`, `LOAD DATA`, `ATTACH/DETACH`, and writable `PRAGMA` until separately designed for safety.
 
@@ -791,8 +789,8 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 ```text
 0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice
-2  Bridge       Browser WebMCP query assistance first; then MySQL/SQLite parity and shared tests
-3  Core 2       Saved queries, favorites, sharing, parameters, result grid across all three DBs
+2  Bridge       PostgreSQL/MySQL parity and shared tests first; then browser WebMCP query assistance
+3  Core 2       Saved queries, favorites, sharing, parameters, result grid across both DBs
    ── MVP ──
 4  Access       Sequential validation of temporary web console, multistage approval, EXPLAIN, OIDC/LDAP
 5  Schema       Git source, Atlas subprocess status/dry-run/apply, deterministic review/optional AI, Argo-style UI
@@ -801,7 +799,7 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 ```
 
 Stage 1, PostgreSQL-only Core 1, is the **first releasable alpha**.
-MVP means stage 3 completion, including MySQL/SQLite parity and Core 2, subject to interview-driven Core 2 adjustments (§1.4).
+MVP means stage 3 completion, including MySQL parity and Core 2, subject to interview-driven Core 2 adjustments (§1.4).
 After foundation, develop vertical features with server APIs and SolidJS screens together, because UX is central to differentiation.
 
 **Roadmap management:** Record new directions as Later candidates first, then promote them to concrete milestones after validating demand, goals, and prerequisites.
@@ -815,11 +813,10 @@ Before implementation, update PRD scope, acceptance criteria, and required ADRs;
 
 - **Approval:** Per-connection/class read/write/ddl quorum 0–N, default 1, distinct active approvers and no self-approval.
   - Zero means audited system approval; pin policy versions and expire unexecuted requests on policy changes (§4.3).
-- **SQLite:** Retain for adapter/demo contracts with mandatory path/symlink/concurrent-write protections (§4.3, §8.1).
 - **Archive:** No hard delete; reject during execution, discard credentials, close pools, expire unexecuted requests, and preserve history (§4.3, §8.4).
 - **Results:** UNLOGGED PostgreSQL result_cache with per-result AES-256-GCM DEKs, shared primary and accepted crash/standby loss.
   - Temporarily decrypt sort/filter data in concurrency-bounded workers (§6, §7.1).
-- **Release:** Core 1-PG is first alpha; MySQL/SQLite plus Core 2 complete MVP (§11).
+- **Release:** Core 1-PG is first alpha; MySQL plus Core 2 complete MVP (§11).
 - **Temporary access:** Web console reuses server execution for dialect-independent policy, result grid, and per-statement audit (§6.1).
   - Native DB proxy credentials remain Later pending demand.
   - Terminal-style UI, default stateless per statement; later connection-opted multi-statement transactions are read-only with hard idle timeout/automatic rollback (§4.6).
@@ -830,7 +827,7 @@ Resolved items; their ADRs are binding specifications.
 
 | Item | Resolution |
 |---|---|
-| DB versions/drivers/parsers | ADR-0001: pgx/go-sql-driver/modernc; PG pgplex/pgparser, MySQL tidb pkg/parser, SQLite authorizer; PG ≥14, MySQL ≥8.0 with 8.4 LTS target |
+| DB versions/drivers/parsers | ADR-0001: pgx/go-sql-driver; PG pgplex/pgparser, MySQL tidb pkg/parser; SQLite scope removed by ADR-0025; PG ≥14, MySQL ≥8.0 with 8.4 LTS target |
 | Statement classes/edge fixtures | ADR-0002: 27 literal fixtures and structural CTE-DML/SELECT INTO detection |
 | Master-key format/rotation/loss | ADR-0003: single base64 file, `_PREVIOUS` versions, eager batch rotation, unrecoverable key loss; envelope/AAD/Argon2 parameters |
 | Metadata RLS | ADR-0004: excluded in MVP, RLS-ready schema, mandatory cross-org tests |

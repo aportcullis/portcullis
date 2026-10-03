@@ -1,8 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.3 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
-> **상태:** Draft v0.3 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
+> **동기화 기준:** v0.4 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity를 WebMCP보다 먼저 진행한다.
+> **상태:** Draft v0.4 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -73,7 +74,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 ### 2.3 MVP 릴리스 경계
 
 #### 포함
-- **관리 대상 DB:** PostgreSQL, MySQL, SQLite.
+- **관리 대상 DB:** PostgreSQL, MySQL.
   제품 메타데이터 DB는 관리 대상 종류와 무관하게 PostgreSQL.
 - **배포:** 단일 서버 인스턴스 + PostgreSQL로 구성된 Docker Compose quickstart.
 - **인증:** 로컬 이메일/비밀번호(argon2id)와 **Google 소셜 로그인(OIDC)**, 서버사이드 세션.
@@ -87,7 +88,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - **감사:** 인증, 요청, 승인, 실행, 관리 작업의 구조화된 append-only 이벤트.
 
 #### 제외
-- PostgreSQL/MySQL/SQLite 외 추가 관리 대상 DB, 임시 접근 세션과 DB proxy.
+- PostgreSQL/MySQL 외 추가 관리 대상 DB, 임시 접근 세션과 DB proxy.
 - team/role별 승인 규칙, 순서가 있는 다단계 승인, break-glass.
   동일 역할의 N명 정족수 승인은 MVP에 포함.
 - Google 외 OIDC provider/LDAP, SAML, SCIM 및 IdP group-role sync.
@@ -106,7 +107,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - 동일한 승인 완료 요청에 대해 실행 lease를 원자적으로 한 번만 획득한다(`request_id` unique + lease owner/deadline/heartbeat). lease 획득과 `EXECUTION_STARTED` audit는 같은 metadata transaction에 기록한다.
   서버가 결과 확인 전에 중단되면 자동 재시도하지 않고, reconciler가 만료된 `executing`을 `outcome_unknown`으로 전이한다.
 - 모든 상태 전이와 실행 시도는 actor, 시각, 대상, 이전/다음 상태, payload digest를 포함한 audit event를 남긴다.
-- PostgreSQL/MySQL/SQLite 모두에서 기본 query timeout 30초, 최대 5분, 최대 10,000행 및 결과 바이트 상한이 서버에서 강제된다.
+- PostgreSQL/MySQL 모두에서 기본 query timeout 30초, 최대 5분, 최대 10,000행 및 결과 바이트 상한이 서버에서 강제된다.
 - Docker Compose 기준 새 환경에서 15분 이내에 bootstrap→connection 등록→요청→승인→실행 흐름을 완료할 수 있다.
 - query 실행 시간을 제외한 주요 API는 50 동시 사용자에서 p95 500ms 이내를 목표로 한다.
 - **성능 검증·권장 사양(ADR-0020):** k6로 조회·요청·승인을 먼저 측정하고 executor 구현 후 실행·결과 탐색·CSV·취소를 추가한다. active 사용자 수·think time·journey/s·데이터 규모·공용 IP 제한을 함께 명시한다.
@@ -142,7 +143,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 ### 4.1 Core 1: Access Governance (MVP)
 운영 DB 쿼리 실행을 통제하는 핵심 루프.
 
-- **Connection 관리:** PostgreSQL/MySQL/SQLite 타입별 연결 정보를 등록하고 저장 전 연결 테스트. credential은 애플리케이션 레벨에서 암호화.
+- **Connection 관리:** PostgreSQL/MySQL 타입별 연결 정보를 등록하고 저장 전 연결 테스트. credential은 애플리케이션 레벨에서 암호화.
 - **Access Request:** 사용자가 단일 SQL statement와 실행 시 사용할 파라미터 값을 제출.
   제출 후 payload는 불변.
 - **Approval:** 동일 organization의 서로 다른 활성 approver가 정책에 필요한 수만큼 검토→승인하거나 반려.
@@ -195,27 +196,26 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - **저장 쿼리 권한:** 작성자와 admin만 수정 가능. shared query는 조직 구성원이 조회·fork할 수 있지만 원본을 덮어쓸 수 없음.
 - **결과 권한:** result snapshot과 CSV는 실행 요청자만 조회 가능. approver/admin은 audit metadata를 볼 수 있지만 결과 row를 볼 수 없음.
 - **내역 보존 ↔ connection archive 분리 (결정됨):** connection "삭제"는 **archive**이며 요청·승인·실행·audit 내역을 지우지 않는다. archive는 실행 중인 요청이 있으면 거부하고, 성공 시 새 요청·connection test·실행을 즉시 차단하며 `draft`는 `cancelled`, `pending`/`approved`는 `expired(reason=connection_archived)`로 전이한다. connection pool을 닫고 암호화 credential을 폐기하므로 복원 시 credential 재입력과 connection test가 필요하다.
-  과거 내역에는 connection ID·표시 이름·DB 종류·target 식별 fingerprint를 snapshot으로 남기되 credential과 전체 SQLite 파일 경로는 남기지 않는다.
+  과거 내역에는 connection ID·표시 이름·DB 종류·target 식별 fingerprint를 snapshot으로 남기되 credential은 남기지 않는다.
   실제 내역 삭제는 별도 retention 작업으로만 수행하며 audit event는 runtime 권한으로 수정·삭제할 수 없다(8.4).
 
 #### MVP DB 호환성 계약
 
-| 기능 | PostgreSQL | MySQL | SQLite |
-|---|---|---|---|
-| connection test / TLS·경로 검증 | 필수 | 필수 | 필수 |
-| 단일 statement parse·분류 | 필수 | 필수 | 필수 |
-| typed bind parameter | 필수 | 필수 | 필수 |
-| read/write/DDL policy | 필수 | 필수 | 필수 |
-| timeout·cancel 시도 | 필수 | 필수 | 필수 |
-| row/byte cap·result snapshot·CSV | 필수 | 필수 | 필수 |
-| request→approval→execution→audit | 필수 | 필수 | 필수 |
+현재 구현 상태는 [DB 기능 지원표](database-support.md)에서 별도로 관리한다. 필수 계약을 현재 제공 기능으로 해석하지 않는다.
+
+| 기능 | PostgreSQL | MySQL |
+|---|---|---|
+| connection test / TLS 검증 | 필수 | 필수 |
+| 단일 statement parse·분류 | 필수 | 필수 |
+| typed bind parameter | 필수 | 필수 |
+| read/write/DDL policy | 필수 | 필수 |
+| timeout·cancel 시도 | 필수 | 필수 |
+| row/byte cap·result snapshot·CSV | 필수 | 필수 |
+| request→approval→execution→audit | 필수 | 필수 |
 
 - 위 공통 인수 테스트를 통과하지 못한 DB는 UI에서 “지원”으로 표시하지 않는다.
 - transaction control, session mutation, DB-native file/network I/O, 여러 statement, parser가 분류하지 못한 statement는 MVP에서 거부한다.
 - MySQL DDL처럼 implicit commit이 발생하는 문장은 DDL 허용 정책 아래에서만 실행하고, 승인 화면에 rollback 불가 가능성을 표시한다.
-- SQLite는 서버 로컬 파일만 관리 대상으로 하며 경로·symlink 검증과 동시 write 제약을 별도로 적용한다.
-- **SQLite를 MVP에 두는 이유(결정됨: 유지):** SQLite는 dialect adapter 계약(5.3)을 외부 네트워크 DB 없이 검증·데모할 수 있는 저비용 레퍼런스로 MVP에 유지한다.
-  다만 경로·symlink·동시 write 등 8.1의 보안 표면을 늘리므로 해당 안전장치를 필수 인수 조건으로 함께 강제한다.
 
 ### 4.4 Access Request 상태 머신
 
@@ -297,7 +297,7 @@ Atlas Community를 status/dry-run/apply 엔진으로 빌려 쓰고, lint·pre-ch
   적용 시도와 결과는 audit event로 기록하고 자동 재시도하지 않는다(`outcome_unknown` 동일 규칙).
 - **verify (revision verify):** apply 후 `migrate status`를 재조회해 **revision table이 목표 migration version에 도달했는지만** 확인한다. schema drift나 data postcondition은 검증하지 않는다(필요 시 향후 별도 postcondition check 추가).
 - **audit:** 위 모든 스텝 전이를 access·query enablement와 **같은 통합 audit 타임라인**에 남긴다.
-- **지원 범위:** PostgreSQL/MySQL/SQLite별로 Atlas Community가 지원하는 object 목록을 compatibility matrix로 고정.
+- **지원 범위:** PostgreSQL/MySQL별로 Atlas Community가 지원하는 object 목록을 compatibility matrix로 고정.
   각 DB가 독립된 contract test를 통과한 뒤 활성화하며 미지원 object는 status/dry-run 단계에서 명시적으로 거부.
 
 ### 4.6 Access Governance 확장 (Kviklet parity track)
@@ -311,7 +311,7 @@ Portcullis에 telemetry를 추가하는 결정은 하지 않는다. 0.9.2의 승
 
 | 기능 | 시점 | Portcullis 방침 |
 |---|---|---|
-| 단일 쿼리 요청·승인·반려 | MVP | PostgreSQL/MySQL/SQLite 공통 지원 |
+| 단일 쿼리 요청·승인·반려 | MVP | PostgreSQL/MySQL 공통 지원 |
 | connection별 RBAC·read/write/DDL 정책 | MVP | 기본 read-only, 자기 승인 금지 |
 | 통합 audit log | MVP | query asset·schema change와 같은 timeline 사용 |
 | 요청 댓글·review suggestion | post-MVP | 상태 전이와 분리된 append-only discussion으로 구현 |
@@ -327,7 +327,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM은 MVP와 parity track의 필수 범�
 
 ### 4.7 이후 (Later)
 
-- PostgreSQL/MySQL/SQLite 외 추가 관리 대상 DB
+- PostgreSQL/MySQL 외 추가 관리 대상 DB
 - team 단위 공유·승인 정책
 - **BI 분석·공유:** 저장 쿼리와 실행 결과를 차트·대시보드로 연결한다.
   - bar/line/pie 등 기본 시각화부터 시작하고 팀 분석 결과 공유로 확장한다.
@@ -394,7 +394,7 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 
 ### 4.10 WebMCP 쿼리 보조 (M2 / Bridge)
 
-브라우저 WebMCP를 포괄적인 Later 에이전트 방향에서 다음 마일스톤으로 상향하며, M1 전체 출하 게이트 통과 후 착수한다(ADR-0024). M2에서는 PostgreSQL 브라우저 에이전트 과업을 먼저 구현하고 기존 MySQL/SQLite parity를 이어서 진행한다. 계획된 범위이며 현재 제공 기능이 아니다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다.
+브라우저 WebMCP를 포괄적인 Later 에이전트 방향에서 다음 마일스톤으로 상향하며, M1 전체 출하 게이트 통과 후 착수한다(ADR-0024). M2에서는 PostgreSQL/MySQL 거버넌스 parity를 먼저 완료하고 브라우저 WebMCP 쿼리 보조를 이어서 구현한다(ADR-0025). SQLite는 지원 범위에서 제외한다. 계획된 범위이며 현재 제공 기능이 아니다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다.
 
 - 연결 탐색, 화면에 보이는 SQL·타입 파라미터 작성, 명시적 초안 저장·제출, 요청·승인 상태 조회, 요청자만의 승인된 실행, 제한된 결과 페이지 조회를 각각 도구로 제공한다. Read 쿼리부터 시작하며, 폼을 채우는 것만으로 자동 저장·실행하지 않는다.
 - 스키마 탐색은 제한·인가·감사를 갖춘 catalog use case를 정의한 뒤 추가한다. 저장 쿼리 탐색·재사용은 Library가 해당 자산을 제공할 때 연동한다. 어느 경로도 임의 SQL 실행 권한을 부여하지 않는다.
@@ -416,7 +416,7 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 | 실시간 | **Connect server-streaming** | migration 워크플로 라이브 뷰·승인 알림·(향후)임시 세션 모니터링을 한 메커니즘으로. SSE/WebSocket 불필요. stream은 끊길 수 있으므로 **재연결 시 현재 상태를 unary로 다시 조회한 뒤 stream을 재구독**하는 recovery 규칙을 둔다 |
 | 메타데이터 DB | PostgreSQL | MVP compose=컨테이너, 외부 PG/Helm은 이후 |
 | 메타데이터 DB 접근 | `sqlc` on `pgx` | raw SQL + 타입 안전. ORM 미사용 |
-| 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL/SQLite 차이를 명시적으로 격리 |
+| 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL 차이를 명시적으로 격리 |
 | 인증 | password(argon2id) + Google OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 그 외 OIDC/SAML은 이후 |
 | Authz | Go 레이어(RBAC + org 스코프) | repository 강제 + cross-org 통합 테스트. metadata RLS는 MVP 미적용으로 확정(ADR-0004, 스키마는 RLS-ready) |
 | 프론트엔드 | SolidJS SPA + Vite | CSR. `go:embed`로 바이너리에 포함 |
@@ -440,13 +440,13 @@ type QueryDialect interface {
     ValidateConnection(ctx context.Context, cfg ConnectionConfig) error
     Execute(ctx context.Context, req ExecutionRequest) (ResultStream, error)
 }
-// postgresDialect, mysqlDialect, sqliteDialect
+// postgresDialect, mysqlDialect
 ```
 
 - 공통 service가 payload digest, approval, execution lease, timeout, row/byte cap, result snapshot, audit을 담당.
 - adapter는 연결 검증, 정확한 statement 분류, bind 문법, read-only/transaction 설정, cancel과 오류 redaction을 담당.
 - DB별 구현은 동일한 contract test suite를 통과해야 하며 의도적인 차이는 compatibility matrix와 UI에 노출.
-- driver와 parser 라이브러리는 ADR-0001로 확정: pgx / go-sql-driver/mysql / modernc.org/sqlite + per-dialect parser(PG=pgplex/pgparser, MySQL=tidb pkg/parser, SQLite=엔진 authorizer).
+- driver와 parser 라이브러리는 ADR-0001로 확정: pgx / go-sql-driver/mysql + per-dialect parser(PG=pgplex/pgparser, MySQL=tidb pkg/parser). ADR-0025로 SQLite를 지원 범위에서 제외한다.
 
 ### 5.4 Atlas 통합 경계
 
@@ -507,7 +507,7 @@ oidc_identities          (user-issuer-subject 링크; Google 소셜 로그인, u
 sessions                 (opaque token hash, idle/absolute expiry, revoked_at)
 oidc_providers           (엔터프라이즈용, 나중)
 
-connections              (PostgreSQL|MySQL|SQLite; encrypted config, org_id, current_policy_version, archived_at)
+connections              (PostgreSQL|MySQL; encrypted config, org_id, current_policy_version, archived_at)
 connection_policy_versions (connection, version, read/write/ddl별 required_approvals + policy당 limit 1세트(timeout/rows/bytes — ADR-0015), created_by)
 access_requests          (AEAD-encrypted SQL+params payload, payload_digest, redacted_sql, statement_class, policy_version, required_approvals, 상태, expires_at)
                          — redacted_sql의 원본은 이 행이며, audit event는 기록 시점 값을 **복사**해 적재한다
@@ -558,7 +558,7 @@ audit_events
 - audit에는 credential, session token, query 결과 row를 저장하지 않음.
   파라미터 값은 request payload에 암호화하고 audit에는 payload digest만 기록.
 - **내역 보존:** access_request·query_execution·audit_event는 connection archive 시 그대로 남는다(4.3).
-  MVP는 connection hard delete API를 제공하지 않고 FK는 `ON DELETE RESTRICT`로 보호한다. audit event에는 credential·전체 SQLite 경로를 제외한 connection 식별 snapshot을 함께 적재한다.
+  MVP는 connection hard delete API를 제공하지 않고 FK는 `ON DELETE RESTRICT`로 보호한다. audit event에는 credential을 제외한 connection 식별 snapshot을 함께 적재한다.
 - self-host DB owner의 직접 변조까지 막는 cryptographic tamper evidence는 Later 범위이며, MVP는 이 한계를 문서에 명시.
   MVP 변조 방지의 기준선은 append-only + runtime의 UPDATE/DELETE 차단이다.
 
@@ -604,7 +604,6 @@ audit_events
 - 타입별 폼을 제공하고 사용하지 않는 필드는 숨김.
   - PostgreSQL: host/port/database/user/password/TLS mode.
   - MySQL: host/port/database/user/password/TLS mode.
-  - SQLite: 관리자가 설정한 root 아래의 서버 로컬 파일 경로와 read-only 여부.
 - 공통 descriptor 필드: **environment**(development|production — UI는 production을 명시적 배지로 표시)와 **description**(선택, ≤500자) (2026-07-18 증보).
 - 저장 전 연결 테스트.
 - admin만 생성·수정·테스트 가능하며 credential과 원문 DSN은 생성 후 UI/API로 다시 반환하지 않음.
@@ -631,7 +630,6 @@ audit_events
 - production에서는 master key를 환경변수 평문보다 mounted secret으로 주입하도록 문서와 Compose 예제를 제공. key ID를 함께 저장해 재암호화 기반 rotation이 가능해야 함.
 - 새 PostgreSQL/MySQL connection은 인증서를 검증하는 TLS mode가 기본.
   완화된 TLS 설정은 admin의 명시적 선택과 audit event가 필요.
-- SQLite 경로는 설정된 root 디렉터리 아래로 제한하고 `realpath` 기준으로 symlink escape, `:memory:`, URI 우회와 device/special file을 거부.
 - API·로그·audit에서 password, 원문 DSN, session token, 암호화 전 parameter values, result row를 노출하지 않음.
   대상 DB 오류도 credential을 redaction한 뒤 반환.
 - 관리 대상 DB 계정은 connection 정책에 맞는 최소 권한 계정을 사용하도록 setup guide와 connection test 경고를 제공.
@@ -647,7 +645,7 @@ audit_events
   `timestamp`는 RFC 3339 시점이므로 `timestamptz`에 대응한다.
   `null`에는 기반 타입이 없으므로 SQL 문맥에서 추론하고, 모호한 표현식은 명시적 cast를 요구한다.
 - 각 실행은 전용 DB connection을 사용하고 DB가 지원하는 범위에서 transaction과 read-only mode를 강제.
-  PostgreSQL/MySQL/SQLite의 implicit commit, timeout, cancel 차이는 adapter contract와 승인 UI에 명시.
+  PostgreSQL/MySQL의 implicit commit, timeout, cancel 차이는 adapter contract와 승인 UI에 명시.
 - **read-only 트랜잭션은 함수 부작용을 막지 못한다 (2026-07-24 증보, ADR-0002):** PostgreSQL의 `READ ONLY`는 문서상 "a high-level notion of read-only that does not prevent all writes to disk"로, 금지 대상은 명령(INSERT/UPDATE/DELETE/MERGE/COPY FROM/DDL/GRANT/TRUNCATE)뿐이다.
   따라서 `dblink_exec`·`pg_notify`·`set_config`·advisory lock·서버 파일 함수는 `SELECT` 안에서 통과한다.
   방어는 ① 분류 시점 **함수·연산자 allow-list** — 목록 밖·사용자 정의·스키마 수식 이름은 fail-closed 거부이고, **클래스와 무관하게 ddl 포함 모든 문장에 적용**한다(2026-07-25 증보: ddl은 등급만 최종이고 부작용 검사를 면제하지 않는다 — CTAS·표현식 인덱스·컬럼 DEFAULT가 함수를 품는다) ② 실행 시 명시적으로 참조된 함수·연산자의 **후보 OID 전체를 검증**(고정 `search_path` + 신뢰 카탈로그 대조; 사용자 overload가 하나라도 있으면 거부하는 보수적 대안, ADR-0021) ③ 대상 DB 계정 최소권한(§8.1)이다.
@@ -664,7 +662,6 @@ audit_events
 |---|---|---|
 | PostgreSQL | read-only transaction | 가능한 statement는 transaction 안에서 commit/rollback |
 | MySQL | read-only transaction | DML은 transaction 사용, DDL implicit commit 가능성을 실행 전 경고 |
-| SQLite | `query_only` + transaction | write lock 대기시간을 제한하고 transactional DDL만 허용 |
 
 `COPY ... PROGRAM`, `SELECT ... INTO OUTFILE`, `LOAD DATA`, `ATTACH/DETACH`, 쓰기 가능한 `PRAGMA`처럼 서버 파일·네트워크·세션 상태에 영향을 주는 문장은 별도 안전 설계 전까지 거부한다.
 
@@ -751,8 +748,8 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 ```
 0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현
-2  Bridge       브라우저 WebMCP 쿼리 보조 우선 → MySQL/SQLite parity 및 공통 test
-3  Core 2       세 DB 공통 saved query / favorite / share / params / 결과 그리드
+2  Bridge       PostgreSQL/MySQL parity 및 공통 test 우선 → 브라우저 WebMCP 쿼리 보조
+3  Core 2       두 DB 공통 saved query / favorite / share / params / 결과 그리드
    ── MVP ──
 4  access 확장  임시 접근(웹 console session)·다단계 승인·EXPLAIN·OIDC/LDAP 순차 검증
 5  schema       git 소스 + Atlas subprocess(status/dry-run/apply) + deterministic review(+optional AI) + Argo식 워크플로우 UI (Schema 마일스톤)
@@ -761,7 +758,7 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 ```
 
 **출하 경계:** 단계 1(Core 1-PG, PostgreSQL 단독 거버넌스 루프)을 **first releasable alpha 경계**로 둔다.
-문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL/SQLite parity(2)와 Core 2(3)를 포함한다.
+문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity(2)와 Core 2(3)를 포함한다.
 인터뷰 결과(1.4)에 따라 Core 2 범위를 조정할 여지는 남긴다.
 
 개발 원칙: 토대 이후로는 **기능 단위 수직 개발**(서버 API + SolidJS 화면을 함께).
@@ -779,12 +776,11 @@ UX가 차별점이므로 API와 화면을 동시에 맞춘다.
 - **승인 정책:** connection·statement 종류별 `required_approvals`(read/write/ddl 각 0~N, 기본 1).
   N명은 서로 다른 활성 approver이며 자기 승인은 금지.
   `N=0`은 system 자동 승인. request는 policy version을 snapshot하고 정책 변경 시 미실행 요청을 만료시킴(4.3).
-- **SQLite MVP 유지:** adapter 데모·contract test 가치로 유지하되 경로·symlink·동시 write 안전장치를 필수 인수 조건으로 강제(4.3, 8.1).
 - **Connection archive:** hard delete하지 않음.
   실행 중에는 archive를 거부하고 credential 폐기·pool 종료·미실행 요청 만료를 수행하며 과거 내역은 보존(4.3, 8.4).
 - **Result store:** PostgreSQL `result_cache` schema의 UNLOGGED table + result별 AES-256-GCM DEK. application replica는 같은 primary에서 공유하고 crash/standby failover 유실은 허용.
   정렬·필터는 동시성이 제한된 server worker에서 일시 복호화해 처리(6, 7.1).
-- **출하 경계:** Core 1-PG 완료를 first releasable alpha, MySQL/SQLite와 Core 2까지 완료한 시점을 MVP로 정의(11).
+- **출하 경계:** Core 1-PG 완료를 first releasable alpha, MySQL과 Core 2까지 완료한 시점을 MVP로 정의(11).
 - **임시 접근 = 웹 SQL console session:** 서버 실행 경로 재사용 → dialect 무관·자동 정책·결과 그리드·statement 단위 audit(6.1).
   DB proxy credential은 Later 보류(native client 수요 검증 시에만).
   UI는 터미널처럼 렌더하되 **기본 stateless per-statement**(idle-in-transaction 차단), 멀티 statement 트랜잭션은 connection 정책 opt-in + 하드 idle timeout·자동 ROLLBACK·read-only로 제한된 후속 옵션(4.6).
@@ -795,7 +791,7 @@ UX가 차별점이므로 API와 화면을 동시에 맞춘다.
 
 | 항목 | 해소 |
 |---|---|
-| DB 최소 버전·driver/parser 라이브러리 | **ADR-0001** (pgx / go-sql-driver / modernc; PG=pgplex/pgparser, MySQL=tidb pkg/parser, SQLite=엔진 authorizer; PG≥14, MySQL≥8.0·8.4 LTS 타깃) |
+| DB 최소 버전·driver/parser 라이브러리 | **ADR-0001** (pgx / go-sql-driver; PG=pgplex/pgparser, MySQL=tidb pkg/parser; SQLite는 ADR-0025로 제외; PG≥14, MySQL≥8.0·8.4 LTS 타깃) |
 | statement 분류표·edge fixture | **ADR-0002** (리터럴 fixture 27종, CTE-DML/`SELECT INTO` 구조 검출 확정) |
 | master key 파일 형식·rotation·key 유실 정책 | **ADR-0003** (base64 단일 파일, `_PREVIOUS` 다중 버전 형식, eager batch rotation, 유실 시 복구 불가 명시; envelope/AAD/Argon2 전체 파라미터 포함) |
 | metadata RLS | **ADR-0004** (MVP 미적용, RLS-ready 유지, cross-org 테스트 필수) |

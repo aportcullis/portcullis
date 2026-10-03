@@ -1,5 +1,5 @@
 # ADR-0024: WebMCP query assistance first in Bridge (M2)
-- **Status:** Accepted (roadmap scope; implementation follows the M1 release gate)
+- **Status:** Accepted — ordering and DB scope amended by [ADR-0025](0025-sql-database-first-expansion.md) (roadmap scope; implementation follows the M1 release gate)
 - **Date:** 2026-10-03
 
 ## Context

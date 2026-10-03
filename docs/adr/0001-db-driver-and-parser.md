@@ -4,6 +4,8 @@
   (Amended 2026-07-04: PG/SQLite parser picks closed, minimum engine versions pinned; the remaining acceptance gate is the ADR-0002 fixture suite passing during adapter work. Amended 2026-07-19: PG gate CLOSED — pgplex/pgparser v0.2.0 pinned in go.mod, the PG-applicable ADR-0002 fixtures pass; MySQL/SQLite gates remain open until those adapters land in M2.)
 - **Date:** 2026-06-27 (amended 2026-07-04, 2026-07-19)
 
+> **Scope amendment, 2026-10-03:** [ADR-0025](0025-sql-database-first-expansion.md) removes SQLite from supported targets. SQLite choices below are historical and do not authorize an adapter. PostgreSQL/MySQL choices remain applicable.
+
 ## Context
 For each managed database engine (PostgreSQL, MySQL, SQLite) two components must be chosen, and both sit behind the `QueryDialect` boundary so the upper layers never branch on engine.
 
