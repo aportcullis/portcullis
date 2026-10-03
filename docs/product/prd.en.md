@@ -199,7 +199,7 @@ Turn approved, executed queries into assets.
 - **Validity:** Default 24 hours from the Nth approval or system approval, configurable by organization from 15 minutes to 7 days.
   - Both paths set `expires_at` inside the transaction after acquiring the row lock, added 2026-07-26.
   - Computing automatic approval time before locking could consume validity while waiting for policy/archive locks before the request is stored.
-- **Statement policy:** Per-dialect parsers establish one statement and its class; uncertain classification is rejected, then connection `read`/`write`/`ddl` permissions apply.
+- **Statement policy:** Per-dialect parsers establish one statement and its class; uncertain classification is rejected, then connection `read`/`write`/`ddl` permissions apply. PostgreSQL DDL query bodies must pass the full read vocabulary and reject locking/unknown expressions. M1 rejects one statement combining DDL with nested DML instead of waiving an independently configured write policy (ADR-0002).
 - **Read-only defaults:** New connections use `read=true`, `write=false`, `ddl=false`; admin write/DDL enablement is audited.
 - **Reuse friction:** Every saved-query execution creates a new request because approval is not inherited (§4.2).
   - Control friction through per-connection/class approval policy, extending the verified kviklet `numTotalRequired` model, 2026-06-27.

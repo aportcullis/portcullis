@@ -51,6 +51,16 @@ The full-tree function/operator sweep still checks expressions in every admitted
 | 55 | `CREATE SCHEMA s CREATE TABLE t (id int) CREATE INDEX CONCURRENTLY i ON t (id)` | PG | reject (non-transactional) |
 | 56 | `CREATE SCHEMA s CREATE TABLE t (id int) CREATE VIEW v AS SELECT id FROM t` | PG | `ddl` |
 
+### DDL query-body validation (2026-10-03)
+
+PostgreSQL `CREATE TABLE AS`, materialized-view creation through that node, and `CREATE VIEW` require their query body to pass the complete read-expression vocabulary, including unknown-node and locking checks. The independent whole-tree function/operator sweep still applies afterward. `SELECT INTO` is DDL only when it contains no data-modifying CTE or row locking.
+
+For M1, refuse a single statement combining object creation with nested DML instead of silently selecting DDL alone. Read/write/DDL have independently configured permission/quorum, so one class cannot represent both requirements safely. Separate the changes into independently approved requests until an explicit multi-effect policy is designed. This does not change M5 migration classification across separate statements.
+
+Regression scenarios reject CTAS with a DELETE CTE, SELECT INTO with an UPDATE CTE, views with a DELETE CTE, CTAS with FOR UPDATE, and CTAS/views with XMLPARSE (an expression outside the admitted vocabulary). Ordinary read-only CTAS/CTEs, views and SELECT INTO remain DDL. These are classification boundary tests; acceptance by the parser does not prove that PostgreSQL permits every rejected form to execute.
+
+Sources checked 2026-10-03: [PostgreSQL data-modifying CTEs](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-MODIFYING), [CREATE TABLE AS](https://www.postgresql.org/docs/current/sql-createtableas.html).
+
 ### Pinned edge-case fixtures (literal; must hold on every engine where the syntax exists)
 The suite assumes a table `t(id integer, v text)`.
 `PG`/`MY`/`SQ` mark engine applicability; a fixture without a mark runs on all three.

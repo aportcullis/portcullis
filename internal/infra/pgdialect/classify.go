@@ -8,7 +8,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// Classify applies the ADR-0002 statement allow-list, then checks functions and operators in every admitted class, including DDL. Unknown read/write nodes fail closed.
+// Classify applies the ADR-0002 statement allow-list, then checks functions and operators in every admitted class, including DDL. Unknown read/write nodes and DDL query-body nodes fail closed.
 func (d *Dialect) Classify(st query.Statement) (query.StatementClass, error) {
 	ps, ok := st.(*statement)
 	if !ok || ps.node == nil {
@@ -51,7 +51,9 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 		if _, opaque := stmt.Query.(*nodes.ExecuteStmt); opaque {
 			return "", &query.Rejection{Reason: query.RejectOpaqueCall}
 		}
-		return query.ClassDDL, nil
+		return classifyDDLQuery(stmt.Query)
+	case *nodes.ViewStmt:
+		return classifyDDLQuery(stmt.Query)
 	case *nodes.CreateSchemaStmt:
 		// Apply statement gates inside CREATE SCHEMA to prevent nested bypasses.
 		if stmt.SchemaElts != nil {
@@ -64,7 +66,7 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 		return query.ClassDDL, nil
 	case *nodes.CreateStmt, *nodes.TruncateStmt,
 		*nodes.RenameStmt, *nodes.CommentStmt, *nodes.AlterTableStmt,
-		*nodes.ViewStmt, *nodes.CreateSeqStmt:
+		*nodes.CreateSeqStmt:
 		return query.ClassDDL, nil
 	case *nodes.TransactionStmt:
 		return "", &query.Rejection{Reason: query.RejectTxnControl}
@@ -79,7 +81,22 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 	}
 }
 
-// classifyReadTree walks a SELECT/VALUES tree: hidden DML (data-modifying CTEs) escalates to write, an IntoClause escalates to ddl (fixture #10), and row locking is rejected while the statement stays read — FOR UPDATE cannot run in a read-only transaction (fixture #28).
+// classifyDDLQuery admits a fully allowlisted read body without hidden writes or locking.
+func classifyDDLQuery(node nodes.Node) (query.StatementClass, error) {
+	if node == nil {
+		return "", &query.Rejection{Reason: query.RejectNotAllowlisted}
+	}
+	class, err := classifyReadTree(node)
+	if err != nil {
+		return "", err
+	}
+	if class != query.ClassRead {
+		return "", &query.Rejection{Reason: query.RejectNotAllowlisted}
+	}
+	return query.ClassDDL, nil
+}
+
+// classifyReadTree classifies allowed SELECT/VALUES effects, rejecting mixed DDL/DML and locking outside writes.
 func classifyReadTree(node nodes.Node) (query.StatementClass, error) {
 	facts, err := walk(node)
 	if err != nil {
@@ -90,22 +107,25 @@ func classifyReadTree(node nodes.Node) (query.StatementClass, error) {
 		class = query.ClassWrite
 	}
 	if facts.into {
+		if facts.dml {
+			return "", &query.Rejection{Reason: query.RejectNotAllowlisted}
+		}
 		class = query.ClassDDL
 	}
-	if facts.locking && class == query.ClassRead {
+	if facts.locking && class != query.ClassWrite {
 		return "", &query.Rejection{Reason: query.RejectLocking}
 	}
 	return class, nil
 }
 
-// classifyWriteTree walks a DML tree for unknown nodes; locking inside a write is ordinary row locking, and an IntoClause (not grammatical here) would only escalate further.
+// classifyWriteTree rejects unknown or mixed DDL/DML nodes while allowing ordinary write locking.
 func classifyWriteTree(node nodes.Node) (query.StatementClass, error) {
 	facts, err := walk(node)
 	if err != nil {
 		return "", err
 	}
 	if facts.into {
-		return query.ClassDDL, nil
+		return "", &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
 	return query.ClassWrite, nil
 }
