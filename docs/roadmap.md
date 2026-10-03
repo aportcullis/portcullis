@@ -4,7 +4,7 @@
 
 Portcullis is evolving from a PostgreSQL governance tool into a self-hosted platform for database access, changes, and analysis. This roadmap explains the outcomes we are working toward, how they depend on one another, and what must be true before a milestone is complete.
 
-![Portcullis roadmap: Foundation baseline; Gate verified; Bridge adds WebMCP then database parity; Library completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
+![Portcullis roadmap: Foundation baseline; Gate verified; Bridge adds MySQL parity then WebMCP; Library completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
 
 **Updated: 2026-10-03. Gate (M1) verified; Bridge (M2) is next.** The complete `make verify` gate passed with Docker-hosted Chromium, including native CSV saving and saved-file readback. See the [validation evidence](operations/m1-validation.md) for the tested environment and separate capacity qualification.
 
@@ -40,13 +40,13 @@ Give teams one complete path from connection registration through policy, reques
 
 **Next — Gate verification is complete.**
 
-First, add browser WebMCP assistance to the PostgreSQL workflow: discover a connection, compose visible SQL and typed parameters, explicitly save/submit a request, inspect approval state, execute an approved request as its requester, and inspect bounded results. Preserve the same permissions and distinct review; tools do not automatically approve requests. Keep the normal web interface usable in browsers without native WebMCP support.
+First, complete MySQL's connection → policy → request → distinct review → single-use execution → bounded results/CSV → audit journey alongside PostgreSQL. Users should recognize the same workflow across engines while intentional dialect differences remain visible. SQLite is excluded from supported-target scope. MariaDB and other SQL engines remain separately qualified candidates, not committed MVP targets.
 
-Then extend the same governance loop to MySQL and SQLite. Users should recognize the same workflow across databases while intentional dialect differences remain visible. Saved-query discovery and reuse follow Library when those assets exist.
+Then add browser WebMCP assistance: discover a connection, compose visible SQL and typed parameters, explicitly save/submit a request, inspect approval state, execute as its requester, and inspect bounded results. Preserve permissions and distinct review; tools do not automatically approve requests. Keep the normal interface usable without native WebMCP support. Saved-query discovery follows Library.
 
-**To complete:** Verify the assisted query journey in a real supported browser, including denied/revoked access, cross-user isolation, replay refusal, cancellation, exact/bounded results, and unsupported-browser fallback. Reverify the evolving browser API at implementation time. All three adapters must pass the shared behavior and security contracts. The matrix must document MySQL implicit-commit DDL behavior and SQLite path, symlink, and concurrent-write protections. A new adapter must preserve policy checks, limits, cancellation, audit, and unknown-outcome handling.
+**To complete:** Both committed adapters must pass the shared behavior and security contracts, including MySQL implicit-commit DDL disclosure, exact types, TLS, limits, cancellation, audit and unknown-outcome handling. Verify WebMCP in a real supported browser, including denied/revoked access, cross-user isolation, replay refusal and unsupported-browser fallback. Reverify the evolving API at implementation time. See the [DB feature support matrix](product/database-support.md).
 
-**Specification:** [WebMCP query assistance](product/prd.en.md#410-webmcp-query-assistance-m2--bridge), [scope and browser boundary](adr/0024-webmcp-next-milestone.md), [Dialect boundary](product/prd.en.md#53-database-dialect-boundary), [safe execution](product/prd.en.md#82-sql-execution-safety).
+**Specification:** [WebMCP query assistance](product/prd.en.md#410-webmcp-query-assistance-m2--bridge), [SQL-first scope](adr/0025-sql-database-first-expansion.md), [browser boundary](adr/0024-webmcp-next-milestone.md), [Dialect boundary](product/prd.en.md#53-database-dialect-boundary), [safe execution](product/prd.en.md#82-sql-execution-safety).
 
 ## Library · M3
 
@@ -54,7 +54,7 @@ Then extend the same governance loop to MySQL and SQLite. Users should recognize
 
 Turn useful SQL into reusable assets: saved queries, versions, favorites, organization sharing, typed parameters, and execution history. Reusing a query creates a new governed request rather than inheriting an earlier approval.
 
-**To complete:** Saved-query workflows and the result grid must work across all three supported databases under the PRD's ownership, sharing, versioning, and approval rules. Core 2 scope remains subject to the product-validation work in [PRD §1.4](product/prd.en.md#14-problem-validation).
+**To complete:** Saved-query workflows and the result grid must work across both committed databases under the PRD's ownership, sharing, versioning, and approval rules. Core 2 scope remains subject to the product-validation work in [PRD §1.4](product/prd.en.md#14-problem-validation).
 
 **Release boundary:** Gate is the first PostgreSQL alpha. Library, including Bridge, is the MVP.
 
