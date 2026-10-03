@@ -56,6 +56,9 @@ try {
   page.setDefaultTimeout(15000);
   const shot = async (name, target = page) => {
     await target.evaluate(() => document.fonts.ready);
+    for (const image of await target.locator("img").all()) {
+      await expect.poll(() => image.evaluate(element => element.complete && element.naturalWidth > 0)).toBeTruthy();
+    }
     await target.screenshot({ path: media + name + ".png", animations: "disabled", caret: "hide" });
   };
   const frame = async (group, caption, duration = 1600, target = page) => {
@@ -73,11 +76,15 @@ try {
   };
   await page.goto("/");
   await expect(page).toHaveURL(/\/bootstrap$/);
+  await expect(page.getByRole("img", { name: "Portcullis" })).toBeVisible();
+  await shot("bootstrap");
   await page.getByLabel("Email").fill("alex@example.test");
   await page.getByLabel("Display name").fill("Alex · Platform");
   await page.getByLabel(/^Password/).fill(password);
   await page.getByRole("button", { name: "Create admin account" }).click();
   await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("img", { name: "Portcullis" })).toBeVisible();
+  await shot("login");
   // M1 has no provisioning UI: add a second, distinct reviewer only in this disposable fixture.
   const seed = `BEGIN;
     INSERT INTO users(email, display_name) VALUES ('sam@example.test', 'Sam · Reviewer');
@@ -175,7 +182,7 @@ FROM generate_series(1, 30) AS g`;
   await frame("results", "5 / 5  ·  Prepare CSV for the whole snapshot, including other regions", 2600);
   // Deliberately do not claim native file saving: the release gate records its environment failure.
   await writeFile(work + "frames.json", JSON.stringify(frames, null, 2));
-  console.log("Captured 4 screenshots and 2 walkthrough frame sequences from the real application.");
+  console.log("Captured 6 screenshots and 2 walkthrough frame sequences from the real application.");
 } finally {
   if (browser) await browser.close();
   if (server && server.exitCode === null) {

@@ -6,6 +6,8 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 
 | File | Contents |
 | --- | --- |
+| `bootstrap.png` | Branded first-administrator setup screen |
+| `login.png` | Branded local sign-in screen |
 | `connections.png` | Two demo connections with development/production labels |
 | `policy.png` | Default read-only policy and one distinct required reviewer |
 | `review.png` | A distinct reviewer inspecting submitted SQL |
