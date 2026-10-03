@@ -114,18 +114,24 @@ message AccessRequest {
   string connection_fingerprint = 20;
   // Which configuration of the connection was approved (ADR-0014's config token): a replacement expires this request with reason connection_changed.
   int64 connection_config_version = 21;
+  // Plain request metadata, empty for legacy requests.
+  string title = 22;
 }
 
 // AccessRequestPayload is the decrypted approval unit (§8.4) — returned only to the requester or a REVIEWER (a holder of requests.approve OR requests.reject), and only from Get.
 message AccessRequestPayload {
   string sql = 1;
   repeated TypedParam params = 2;
+  string title = 3;
+  string body = 4;
 }
 
 message CreateAccessRequestRequest {
   string connection_id = 1;
   string sql = 2;
   repeated TypedParam params = 3;
+  string title = 4;
+  string body = 5;
 }
 message CreateAccessRequestResponse {
   AccessRequest request = 1;
@@ -136,6 +142,8 @@ message UpdateAccessRequestDraftRequest {
   int64 expected_version = 2;
   string sql = 3;
   repeated TypedParam params = 4;
+  string title = 5;
+  string body = 6;
 }
 message UpdateAccessRequestDraftResponse {
   AccessRequest request = 1;

@@ -34,6 +34,7 @@ type AccessRequest struct {
 	Version                 int64
 	CreatedAt               pgtype.Timestamptz
 	UpdatedAt               pgtype.Timestamptz
+	Title                   string
 }
 
 type Approval struct {

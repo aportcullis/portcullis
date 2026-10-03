@@ -65,6 +65,8 @@ func (a *AccessRequestsService) Create(
 	}
 	view, err := a.svc.Create(ctx, user.ID, accessrequest.CreateParams{
 		ConnectionID: id,
+		Title:        req.Msg.GetTitle(),
+		Body:         req.Msg.GetBody(),
 		SQL:          req.Msg.GetSql(),
 		Params:       toParams(req.Msg.GetParams()),
 	})
@@ -90,6 +92,8 @@ func (a *AccessRequestsService) UpdateDraft(
 		return nil, err
 	}
 	view, err := a.svc.UpdateDraft(ctx, user.ID, id, accessrequest.UpdateDraftParams{
+		Title:           req.Msg.GetTitle(),
+		Body:            req.Msg.GetBody(),
 		SQL:             req.Msg.GetSql(),
 		Params:          toParams(req.Msg.GetParams()),
 		ExpectedVersion: req.Msg.GetExpectedVersion(),
@@ -372,12 +376,13 @@ func toProtoPayload(p access.Payload) *portcullisv1.AccessRequestPayload {
 			Value: param.Value.Text,
 		})
 	}
-	return &portcullisv1.AccessRequestPayload{Sql: p.SQL, Params: params}
+	return &portcullisv1.AccessRequestPayload{Title: p.Title, Body: p.Body, Sql: p.SQL, Params: params}
 }
 
 func toProtoRequest(v access.RequestView) *portcullisv1.AccessRequest {
 	r := v.Request
 	out := &portcullisv1.AccessRequest{
+		Title:          r.Title,
 		Id:             string(r.ID),
 		ConnectionId:   string(r.ConnectionID),
 		ConnectionName: v.ConnectionName,

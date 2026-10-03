@@ -1,6 +1,7 @@
 package execution_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/aportcullis/portcullis/internal/app/execution"
@@ -15,13 +16,15 @@ import (
 )
 
 type executionFixture struct {
-	request    access.Request
-	verify     bool
-	acquired   bool
-	executions int
-	execErr    error
-	resultErr  error
-	completion access.ExecutionCompletion
+	narrativeBody     string
+	expectedCanonical []byte
+	request           access.Request
+	verify            bool
+	acquired          bool
+	executions        int
+	execErr           error
+	resultErr         error
+	completion        access.ExecutionCompletion
 }
 
 type blockingExecutionFixture struct {
@@ -159,9 +162,14 @@ func (f *executionFixture) TestMaterial(context.Context, identity.OrganizationID
 	return connection.Connection{ConfigVersion: 1, DBType: connection.DBTypePostgreSQL}, connection.SealedCredential{}, nil
 }
 func (f *executionFixture) Open(identity.OrganizationID, access.RequestID, access.SealedPayload) (access.Payload, error) {
-	return access.Payload{SQL: "SELECT :value", Params: []query.Parameter{{Name: "value", Value: query.TypedValue{Type: query.ParamInteger, Text: "1"}}}}, nil
+	return access.Payload{Title: f.request.Title, Body: f.narrativeBody, SQL: "SELECT :value", Params: []query.Parameter{{Name: "value", Value: query.TypedValue{Type: query.ParamInteger, Text: "1"}}}}, nil
 }
-func (f *executionFixture) Verify([]byte, []byte, uint32) (bool, error) { return f.verify, nil }
+func (f *executionFixture) Verify(canonical []byte, _ []byte, _ uint32) (bool, error) {
+	if f.expectedCanonical != nil {
+		return bytes.Equal(canonical, f.expectedCanonical), nil
+	}
+	return f.verify, nil
+}
 
 type credentialCodec struct{}
 
@@ -273,6 +281,38 @@ func TestApprovedExecutionRejectsTamperingAndNeverRetriesUnknownOutcomes(t *test
 				if f.executions != 1 {
 					t.Fatal("target SQL was retried")
 				}
+			}
+		})
+	}
+}
+
+func TestExecutionRefusesChangedRequestNarrative(t *testing.T) {
+	for _, tc := range []struct {
+		name, title, body string
+		refused           bool
+	}{
+		{"approved narrative", "Revenue", "Reviewed purpose", false},
+		{"title changed", "Different review", "Reviewed purpose", true},
+		{"body changed", "Revenue", "Unreviewed purpose", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &executionFixture{request: access.Request{ID: "request", OrganizationID: "org", RequesterID: "requester", ConnectionID: "connection", State: access.StateApproved, Class: connection.ClassRead, PolicyVersion: 1, ConnectionConfigVersion: 1, ConnectionDBType: "postgresql", Title: tc.title}, narrativeBody: tc.body}
+			canonical, err := access.CanonicalPayload(access.ApprovalUnit{OrganizationID: "org", RequesterID: "requester", ConnectionID: "connection", Class: connection.ClassRead, PolicyVersion: 1, ConnectionConfigVersion: 1, Title: "Revenue", Body: "Reviewed purpose", SQL: "SELECT :value", Params: []query.Parameter{{Name: "value", Value: query.TypedValue{Type: query.ParamInteger, Text: "1"}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.expectedCanonical = canonical
+			svc, err := execution.New(f, f, f, f, credentialCodec{}, f, f, "server", 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			completion, err := svc.Execute(context.Background(), "requester", "request")
+			if tc.refused {
+				if !errors.Is(err, access.ErrPayloadIntegrity) || f.acquired || f.executions != 0 {
+					t.Fatalf("changed narrative reached execution: err=%v acquired=%v calls=%d", err, f.acquired, f.executions)
+				}
+			} else if err != nil || completion.State != access.StateSucceeded || f.executions != 1 {
+				t.Fatalf("approved narrative execution: err=%v state=%v calls=%d", err, completion.State, f.executions)
 			}
 		})
 	}

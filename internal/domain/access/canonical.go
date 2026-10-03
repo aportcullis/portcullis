@@ -24,6 +24,8 @@ type ApprovalUnit struct {
 	ConnectionConfigVersion int64
 	PolicyVersion           int64
 	Class                   connection.StatementClass
+	Title                   string
+	Body                    string
 	SQL                     string
 	Params                  []query.Parameter
 }
@@ -39,6 +41,8 @@ type canonicalUnit struct {
 	StatementClass          string           `json:"statement_class"`
 	SQL                     string           `json:"sql"`
 	Params                  []canonicalParam `json:"params"`
+	Title                   string           `json:"title,omitempty"`
+	Body                    string           `json:"body,omitempty"`
 }
 
 type canonicalParam struct {
@@ -47,7 +51,7 @@ type canonicalParam struct {
 	Value string `json:"value"`
 }
 
-// CanonicalPayload serializes the approval unit with normalized SQL and sorted parameters.
+// CanonicalPayload authenticates narrative, normalized SQL and sorted parameters without changing empty-narrative legacy digests.
 func CanonicalPayload(u ApprovalUnit) ([]byte, error) {
 	ps := make([]canonicalParam, len(u.Params))
 	for idx, p := range u.Params {
@@ -64,6 +68,8 @@ func CanonicalPayload(u ApprovalUnit) ([]byte, error) {
 		StatementClass:          string(u.Class),
 		SQL:                     normalizeSQLForDigest(u.SQL),
 		Params:                  ps,
+		Title:                   u.Title,
+		Body:                    u.Body,
 	})
 }
 

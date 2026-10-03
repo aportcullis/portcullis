@@ -2,14 +2,17 @@ package access
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// The 56 KiB limit includes SQL and all parameter names and values, leaving room within the 64 KiB transport limit for the Connect envelope and metadata.
+// The 56 KiB limit includes request narrative, SQL and all parameter names and values, leaving room within the 64 KiB transport limit for the Connect envelope and metadata.
 const (
-	MaxPayloadBytes  = 56 * 1024
-	MaxPayloadParams = 100
+	MaxPayloadBytes      = 56 * 1024
+	MaxPayloadParams     = 100
+	MaxRequestTitleChars = 200
+	MaxRequestBodyChars  = 4000
 )
 
 // countPayloadBytes sums SQL and parameter-name/value byte lengths.
@@ -21,8 +24,10 @@ func countPayloadBytes(sql string, params []query.Parameter) int {
 	return total
 }
 
-// Payload holds plaintext SQL and typed parameters for an approval.
+// Payload holds the plaintext narrative, SQL and typed parameters for an approval.
 type Payload struct {
+	Title  string
+	Body   string
 	SQL    string
 	Params []query.Parameter
 }
@@ -60,4 +65,24 @@ type SealedPayload struct {
 	WrappedDEK []byte
 	Nonce      []byte
 	Ciphertext []byte
+}
+
+// NewDescribedPayload validates a request's narrative and SQL payload.
+func NewDescribedPayload(title, body, sql string, params []query.Parameter) (Payload, error) {
+	if !utf8.ValidString(title) || !utf8.ValidString(body) || strings.ContainsAny(title, "\r\n\x00") || strings.ContainsRune(body, 0) {
+		return Payload{}, ErrInvalidPayload
+	}
+	normalizedTitle := strings.TrimSpace(title)
+	if (title != "" && normalizedTitle == "") || utf8.RuneCountInString(normalizedTitle) > MaxRequestTitleChars || utf8.RuneCountInString(body) > MaxRequestBodyChars {
+		return Payload{}, ErrInvalidPayload
+	}
+	payload, err := NewPayload(sql, params)
+	if err != nil {
+		return Payload{}, err
+	}
+	if len(normalizedTitle)+len(body)+countPayloadBytes(sql, params) > MaxPayloadBytes {
+		return Payload{}, ErrInvalidPayload
+	}
+	payload.Title, payload.Body = normalizedTitle, body
+	return payload, nil
 }

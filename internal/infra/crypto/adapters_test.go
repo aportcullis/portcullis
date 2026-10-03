@@ -201,7 +201,9 @@ func TestAccessRequestPayloadCodecRoundTrip(t *testing.T) {
 	t.Parallel()
 	codec := crypto.NewAccessRequestPayloadCodec(testKeyring(t))
 	payload := access.Payload{
-		SQL: "update t set note = 'π secret' where id = :id",
+		Title: "Monthly maintenance",
+		Body:  "Reason\n<script>literal</script>",
+		SQL:   "update t set note = 'π secret' where id = :id",
 		Params: []query.Parameter{
 			{Name: "id", Value: query.TypedValue{Type: query.ParamInteger, Text: "42"}},
 			{Name: "when", Value: query.TypedValue{Type: query.ParamNull, Text: ""}},
@@ -219,7 +221,7 @@ func TestAccessRequestPayloadCodecRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if got.SQL != payload.SQL || len(got.Params) != 2 || got.Params[0] != payload.Params[0] || got.Params[1] != payload.Params[1] {
+	if got.Title != payload.Title || got.Body != payload.Body || got.SQL != payload.SQL || len(got.Params) != 2 || got.Params[0] != payload.Params[0] || got.Params[1] != payload.Params[1] {
 		t.Errorf("round trip = %+v, want %+v", got, payload)
 	}
 }

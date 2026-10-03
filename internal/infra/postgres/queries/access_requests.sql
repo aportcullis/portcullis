@@ -17,11 +17,11 @@ order by display_name asc, id asc;
 -- name: InsertAccessRequest :exec
 -- created_at/updated_at are given explicitly rather than left to the column DEFAULT: this insert runs after a FOR SHARE wait on the connection, and the default is now() — the transaction's start time, which predates the wait (ADR-0009).
 insert into public.access_requests (
-    id, organization_id, connection_id, requester_id,
+    id, organization_id, connection_id, requester_id, title,
     payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext,
     created_at, updated_at
 ) values (
-    @id, @organization_id, @connection_id, @requester_id,
+    @id, @organization_id, @connection_id, @requester_id, @title,
     @payload_key_version, @payload_wrapped_dek, @payload_nonce, @payload_ciphertext,
     @at::timestamptz, @at::timestamptz
 );
@@ -38,7 +38,8 @@ for update;
 
 -- name: UpdateAccessRequestDraftPayload :one
 update public.access_requests
-set payload_key_version = @payload_key_version,
+set title = @title,
+    payload_key_version = @payload_key_version,
     payload_wrapped_dek = @payload_wrapped_dek,
     payload_nonce = @payload_nonce,
     payload_ciphertext = @payload_ciphertext,

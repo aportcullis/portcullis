@@ -480,8 +480,10 @@ type AccessRequest struct {
 	ConnectionFingerprint string `protobuf:"bytes,20,opt,name=connection_fingerprint,json=connectionFingerprint,proto3" json:"connection_fingerprint,omitempty"`
 	// Which configuration of the connection was approved (ADR-0014's config token): a replacement expires this request with reason connection_changed.
 	ConnectionConfigVersion int64 `protobuf:"varint,21,opt,name=connection_config_version,json=connectionConfigVersion,proto3" json:"connection_config_version,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Plain request metadata, empty for legacy requests.
+	Title         string `protobuf:"bytes,22,opt,name=title,proto3" json:"title,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AccessRequest) Reset() {
@@ -661,11 +663,20 @@ func (x *AccessRequest) GetConnectionConfigVersion() int64 {
 	return 0
 }
 
+func (x *AccessRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
 // AccessRequestPayload is the decrypted approval unit (§8.4) — returned only to the requester or a REVIEWER (a holder of requests.approve OR requests.reject), and only from Get.
 type AccessRequestPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Sql           string                 `protobuf:"bytes,1,opt,name=sql,proto3" json:"sql,omitempty"`
 	Params        []*TypedParam          `protobuf:"bytes,2,rep,name=params,proto3" json:"params,omitempty"`
+	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -714,11 +725,27 @@ func (x *AccessRequestPayload) GetParams() []*TypedParam {
 	return nil
 }
 
+func (x *AccessRequestPayload) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *AccessRequestPayload) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
 type CreateAccessRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ConnectionId  string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	Sql           string                 `protobuf:"bytes,2,opt,name=sql,proto3" json:"sql,omitempty"`
 	Params        []*TypedParam          `protobuf:"bytes,3,rep,name=params,proto3" json:"params,omitempty"`
+	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Body          string                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -774,6 +801,20 @@ func (x *CreateAccessRequestRequest) GetParams() []*TypedParam {
 	return nil
 }
 
+func (x *CreateAccessRequestRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *CreateAccessRequestRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
 type CreateAccessRequestResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Request       *AccessRequest         `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
@@ -824,6 +865,8 @@ type UpdateAccessRequestDraftRequest struct {
 	ExpectedVersion int64                  `protobuf:"varint,2,opt,name=expected_version,json=expectedVersion,proto3" json:"expected_version,omitempty"`
 	Sql             string                 `protobuf:"bytes,3,opt,name=sql,proto3" json:"sql,omitempty"`
 	Params          []*TypedParam          `protobuf:"bytes,4,rep,name=params,proto3" json:"params,omitempty"`
+	Title           string                 `protobuf:"bytes,5,opt,name=title,proto3" json:"title,omitempty"`
+	Body            string                 `protobuf:"bytes,6,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -884,6 +927,20 @@ func (x *UpdateAccessRequestDraftRequest) GetParams() []*TypedParam {
 		return x.Params
 	}
 	return nil
+}
+
+func (x *UpdateAccessRequestDraftRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *UpdateAccessRequestDraftRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
 }
 
 type UpdateAccessRequestDraftResponse struct {
@@ -1582,7 +1639,7 @@ const file_portcullis_v1_access_requests_proto_rawDesc = "" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x129\n" +
 	"\n" +
 	"decided_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x12\x14\n" +
-	"\x05valid\x18\x05 \x01(\bR\x05valid\"\x84\b\n" +
+	"\x05valid\x18\x05 \x01(\bR\x05valid\"\x9a\b\n" +
 	"\rAccessRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rconnection_id\x18\x02 \x01(\tR\fconnectionId\x12'\n" +
@@ -1608,21 +1665,28 @@ const file_portcullis_v1_access_requests_proto_rawDesc = "" +
 	"updated_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12,\n" +
 	"\x12connection_db_type\x18\x13 \x01(\tR\x10connectionDbType\x125\n" +
 	"\x16connection_fingerprint\x18\x14 \x01(\tR\x15connectionFingerprint\x12:\n" +
-	"\x19connection_config_version\x18\x15 \x01(\x03R\x17connectionConfigVersion\"[\n" +
+	"\x19connection_config_version\x18\x15 \x01(\x03R\x17connectionConfigVersion\x12\x14\n" +
+	"\x05title\x18\x16 \x01(\tR\x05title\"\x85\x01\n" +
 	"\x14AccessRequestPayload\x12\x10\n" +
 	"\x03sql\x18\x01 \x01(\tR\x03sql\x121\n" +
-	"\x06params\x18\x02 \x03(\v2\x19.portcullis.v1.TypedParamR\x06params\"\x86\x01\n" +
+	"\x06params\x18\x02 \x03(\v2\x19.portcullis.v1.TypedParamR\x06params\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\"\xb0\x01\n" +
 	"\x1aCreateAccessRequestRequest\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12\x10\n" +
 	"\x03sql\x18\x02 \x01(\tR\x03sql\x121\n" +
-	"\x06params\x18\x03 \x03(\v2\x19.portcullis.v1.TypedParamR\x06params\"U\n" +
+	"\x06params\x18\x03 \x03(\v2\x19.portcullis.v1.TypedParamR\x06params\x12\x14\n" +
+	"\x05title\x18\x04 \x01(\tR\x05title\x12\x12\n" +
+	"\x04body\x18\x05 \x01(\tR\x04body\"U\n" +
 	"\x1bCreateAccessRequestResponse\x126\n" +
-	"\arequest\x18\x01 \x01(\v2\x1c.portcullis.v1.AccessRequestR\arequest\"\xa1\x01\n" +
+	"\arequest\x18\x01 \x01(\v2\x1c.portcullis.v1.AccessRequestR\arequest\"\xcb\x01\n" +
 	"\x1fUpdateAccessRequestDraftRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12)\n" +
 	"\x10expected_version\x18\x02 \x01(\x03R\x0fexpectedVersion\x12\x10\n" +
 	"\x03sql\x18\x03 \x01(\tR\x03sql\x121\n" +
-	"\x06params\x18\x04 \x03(\v2\x19.portcullis.v1.TypedParamR\x06params\"Z\n" +
+	"\x06params\x18\x04 \x03(\v2\x19.portcullis.v1.TypedParamR\x06params\x12\x14\n" +
+	"\x05title\x18\x05 \x01(\tR\x05title\x12\x12\n" +
+	"\x04body\x18\x06 \x01(\tR\x04body\"Z\n" +
 	" UpdateAccessRequestDraftResponse\x126\n" +
 	"\arequest\x18\x01 \x01(\v2\x1c.portcullis.v1.AccessRequestR\arequest\"W\n" +
 	"\x1aSubmitAccessRequestRequest\x12\x0e\n" +

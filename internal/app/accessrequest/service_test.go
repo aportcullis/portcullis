@@ -173,6 +173,7 @@ func (f *fakeRepo) UpdateDraft(_ context.Context, r access.Request, sealed acces
 	if cur.Version != expectedVersion {
 		return access.RequestView{}, access.ErrConflict
 	}
+	cur.Title = r.Title
 	cur.Version++
 	f.requests[r.ID] = cur
 	f.sealed[r.ID] = sealed
@@ -1140,6 +1141,56 @@ func TestListRequestableConnections(t *testing.T) {
 		}
 		if c.DisplayName == "" || c.DBType == "" || c.Environment == "" {
 			t.Errorf("requestable connection missing a form field: %+v", c)
+		}
+	}
+}
+
+func TestRequestNarrativeDraftEditAndSubmission(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := newRepo()
+	svc := newService(t, repo)
+	created, err := svc.Create(ctx, requester, accessrequest.CreateParams{ConnectionID: connAuto, SQL: "select 1", Title: "Revenue", Body: "Initial purpose"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := svc.Get(ctx, requester, false, created.Request.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Payload.Title != "Revenue" || detail.Payload.Body != "Initial purpose" {
+		t.Fatalf("creation lost narrative: %+v", detail.Payload)
+	}
+	updated, err := svc.UpdateDraft(ctx, requester, created.Request.ID, accessrequest.UpdateDraftParams{ExpectedVersion: created.Request.Version, SQL: "select 2", Title: "Reviewed revenue", Body: "Updated purpose"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.UpdateDraft(ctx, requester, created.Request.ID, accessrequest.UpdateDraftParams{ExpectedVersion: created.Request.Version, SQL: "select 3", Title: "Stale title"})
+	if !errors.Is(err, access.ErrConflict) {
+		t.Fatalf("stale edit: %v", err)
+	}
+	submitted, err := svc.Submit(ctx, requester, created.Request.ID, updated.Request.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.UpdateDraft(ctx, requester, created.Request.ID, accessrequest.UpdateDraftParams{ExpectedVersion: submitted.Request.Version, SQL: "select 3", Title: "Changed after approval"})
+	if !errors.Is(err, access.ErrNotDraft) {
+		t.Fatalf("post-submit edit: %v", err)
+	}
+	detail, err = svc.Get(ctx, requester, false, created.Request.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Request.Title != "Reviewed revenue" || detail.Payload.Body != "Updated purpose" {
+		t.Fatalf("submission lost narrative: %+v", detail)
+	}
+	for _, evt := range repo.events {
+		metadata, err := json.Marshal(evt.Metadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(metadata), "Updated purpose") || strings.Contains(string(metadata), "Reviewed revenue") {
+			t.Fatal("narrative leaked into audit")
 		}
 	}
 }

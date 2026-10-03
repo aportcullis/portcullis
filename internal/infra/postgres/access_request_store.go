@@ -124,6 +124,7 @@ func (s *AccessRequestStore) CreateDraft(ctx context.Context, r access.Request, 
 			OrganizationID:    organizationUUID,
 			ConnectionID:      cid,
 			RequesterID:       uid,
+			Title:             r.Title,
 			PayloadKeyVersion: int32(sealed.KeyVersion), //nolint:gosec // key versions count rotations, far below int32
 			PayloadWrappedDek: sealed.WrappedDEK,
 			PayloadNonce:      sealed.Nonce,
@@ -177,6 +178,7 @@ func (s *AccessRequestStore) UpdateDraft(ctx context.Context, r access.Request, 
 			ID:                requestUUID,
 			OrganizationID:    organizationUUID,
 			ExpectedVersion:   expectedVersion,
+			Title:             r.Title,
 			PayloadKeyVersion: int32(sealed.KeyVersion), //nolint:gosec // key versions count rotations, far below int32
 			PayloadWrappedDek: sealed.WrappedDEK,
 			PayloadNonce:      sealed.Nonce,
@@ -776,6 +778,7 @@ type requestViewRow struct {
 	Version                 int64
 	CreatedAt               pgtype.Timestamptz
 	UpdatedAt               pgtype.Timestamptz
+	Title                   string
 	RequesterEmail          string
 	RequesterDisplayName    string
 	ConnectionName          string
@@ -803,6 +806,7 @@ func viewFromRow(r requestViewRow) access.RequestView {
 // toBaseRequestRow extracts the base request row from joined display fields.
 func toBaseRequestRow(r requestViewRow) db.AccessRequest {
 	return db.AccessRequest{
+		Title:                   r.Title,
 		ID:                      r.ID,
 		OrganizationID:          r.OrganizationID,
 		ConnectionID:            r.ConnectionID,
@@ -833,6 +837,7 @@ func toBaseRequestRow(r requestViewRow) db.AccessRequest {
 
 func toAccessRequest(row db.AccessRequest) access.Request {
 	r := access.Request{
+		Title:          row.Title,
 		ID:             access.RequestID(uuidToString(row.ID)),
 		OrganizationID: identity.OrganizationID(uuidToString(row.OrganizationID)),
 		ConnectionID:   connection.ConnectionID(uuidToString(row.ConnectionID)),

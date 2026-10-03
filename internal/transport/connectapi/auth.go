@@ -123,6 +123,8 @@ func (a *AuthService) GetConfig(
 		NeedsBootstrap: cfg.NeedsBootstrap,
 		// A domain limit the UI must not hardcode, served from the one place that enforces it. Filled here rather than in the auth service: the limit belongs to the access domain, and composing per-domain facts into a transport response is the transport's job.
 		MaxApprovalReasonChars: access.MaxApprovalReasonChars,
+		MaxRequestTitleChars:   access.MaxRequestTitleChars,
+		MaxRequestBodyChars:    access.MaxRequestBodyChars,
 	}), nil
 }
 

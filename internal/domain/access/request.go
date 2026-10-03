@@ -12,6 +12,7 @@ type RequestID string
 
 // Request holds the access-request lifecycle and immutable submission snapshot.
 type Request struct {
+	Title          string
 	ID             RequestID
 	OrganizationID identity.OrganizationID
 	ConnectionID   connection.ConnectionID

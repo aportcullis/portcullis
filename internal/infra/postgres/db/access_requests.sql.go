@@ -48,7 +48,7 @@ set state = 'cancelled', state_reason = 'connection_archived', version = version
     updated_at = $1::timestamptz
 where connection_id = $2 and organization_id = $3
   and state = 'draft'
-returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at
+returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
 type CancelDraftsForConnectionParams struct {
@@ -93,6 +93,7 @@ func (q *Queries) CancelDraftsForConnection(ctx context.Context, arg CancelDraft
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Title,
 		); err != nil {
 			return nil, err
 		}
@@ -185,7 +186,7 @@ set state = 'expired', state_reason = $1, version = version + 1,
     updated_at = $2::timestamptz
 where connection_id = $3 and organization_id = $4
   and state in ('pending', 'approved')
-returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at
+returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
 type ExpireLiveRequestsForConnectionParams struct {
@@ -236,6 +237,7 @@ func (q *Queries) ExpireLiveRequestsForConnection(ctx context.Context, arg Expir
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Title,
 		); err != nil {
 			return nil, err
 		}
@@ -254,7 +256,7 @@ set state = 'expired', state_reason = 'ttl_expired', version = version + 1,
     updated_at = (select at from observed)
 where id = $1 and organization_id = $2
   and state = 'approved' and expires_at < (select at from observed)
-returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at
+returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
 type ExpireOverdueAccessRequestParams struct {
@@ -298,6 +300,7 @@ func (q *Queries) ExpireOverdueAccessRequest(ctx context.Context, arg ExpireOver
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Title,
 		); err != nil {
 			return nil, err
 		}
@@ -310,7 +313,7 @@ func (q *Queries) ExpireOverdueAccessRequest(ctx context.Context, arg ExpireOver
 }
 
 const getAccessRequest = `-- name: GetAccessRequest :one
-select id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at from public.access_requests
+select id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title from public.access_requests
 where id = $1 and organization_id = $2
 `
 
@@ -348,12 +351,13 @@ func (q *Queries) GetAccessRequest(ctx context.Context, arg GetAccessRequestPara
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
 
 const getAccessRequestForUpdate = `-- name: GetAccessRequestForUpdate :one
-select id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at from public.access_requests
+select id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title from public.access_requests
 where id = $1 and organization_id = $2
 for update
 `
@@ -393,13 +397,14 @@ func (q *Queries) GetAccessRequestForUpdate(ctx context.Context, arg GetAccessRe
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
 
 const getAccessRequestView = `-- name: GetAccessRequestView :one
 select
-    r.id, r.organization_id, r.connection_id, r.requester_id, r.state, r.state_reason, r.payload_key_version, r.payload_wrapped_dek, r.payload_nonce, r.payload_ciphertext, r.payload_digest, r.payload_digest_key_version, r.redacted_sql, r.statement_class, r.policy_version, r.required_approvals, r.submitted_at, r.connection_config_version, r.connection_fingerprint, r.connection_display_name, r.connection_db_type, r.expires_at, r.version, r.created_at, r.updated_at,
+    r.id, r.organization_id, r.connection_id, r.requester_id, r.state, r.state_reason, r.payload_key_version, r.payload_wrapped_dek, r.payload_nonce, r.payload_ciphertext, r.payload_digest, r.payload_digest_key_version, r.redacted_sql, r.statement_class, r.policy_version, r.required_approvals, r.submitted_at, r.connection_config_version, r.connection_fingerprint, r.connection_display_name, r.connection_db_type, r.expires_at, r.version, r.created_at, r.updated_at, r.title,
     u.email as requester_email,
     u.display_name as requester_display_name,
     -- The name this request was SUBMITTED against wins; a draft has no snapshot yet, so it shows the connection as it is now (PRD §4.3 — renaming a connection must not rewrite what a past request was approved for).
@@ -462,6 +467,7 @@ type GetAccessRequestViewRow struct {
 	Version                 int64
 	CreatedAt               pgtype.Timestamptz
 	UpdatedAt               pgtype.Timestamptz
+	Title                   string
 	RequesterEmail          string
 	RequesterDisplayName    string
 	ConnectionName          string
@@ -501,6 +507,7 @@ func (q *Queries) GetAccessRequestView(ctx context.Context, arg GetAccessRequest
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 		&i.RequesterEmail,
 		&i.RequesterDisplayName,
 		&i.ConnectionName,
@@ -514,13 +521,13 @@ func (q *Queries) GetAccessRequestView(ctx context.Context, arg GetAccessRequest
 
 const insertAccessRequest = `-- name: InsertAccessRequest :exec
 insert into public.access_requests (
-    id, organization_id, connection_id, requester_id,
+    id, organization_id, connection_id, requester_id, title,
     payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext,
     created_at, updated_at
 ) values (
-    $1, $2, $3, $4,
-    $5, $6, $7, $8,
-    $9::timestamptz, $9::timestamptz
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9,
+    $10::timestamptz, $10::timestamptz
 )
 `
 
@@ -529,6 +536,7 @@ type InsertAccessRequestParams struct {
 	OrganizationID    pgtype.UUID
 	ConnectionID      pgtype.UUID
 	RequesterID       pgtype.UUID
+	Title             string
 	PayloadKeyVersion int32
 	PayloadWrappedDek []byte
 	PayloadNonce      []byte
@@ -543,6 +551,7 @@ func (q *Queries) InsertAccessRequest(ctx context.Context, arg InsertAccessReque
 		arg.OrganizationID,
 		arg.ConnectionID,
 		arg.RequesterID,
+		arg.Title,
 		arg.PayloadKeyVersion,
 		arg.PayloadWrappedDek,
 		arg.PayloadNonce,
@@ -582,7 +591,7 @@ func (q *Queries) InsertApproval(ctx context.Context, arg InsertApprovalParams) 
 
 const listAccessRequestsAsc = `-- name: ListAccessRequestsAsc :many
 select
-    r.id, r.organization_id, r.connection_id, r.requester_id, r.state, r.state_reason, r.payload_key_version, r.payload_wrapped_dek, r.payload_nonce, r.payload_ciphertext, r.payload_digest, r.payload_digest_key_version, r.redacted_sql, r.statement_class, r.policy_version, r.required_approvals, r.submitted_at, r.connection_config_version, r.connection_fingerprint, r.connection_display_name, r.connection_db_type, r.expires_at, r.version, r.created_at, r.updated_at,
+    r.id, r.organization_id, r.connection_id, r.requester_id, r.state, r.state_reason, r.payload_key_version, r.payload_wrapped_dek, r.payload_nonce, r.payload_ciphertext, r.payload_digest, r.payload_digest_key_version, r.redacted_sql, r.statement_class, r.policy_version, r.required_approvals, r.submitted_at, r.connection_config_version, r.connection_fingerprint, r.connection_display_name, r.connection_db_type, r.expires_at, r.version, r.created_at, r.updated_at, r.title,
     u.email as requester_email,
     u.display_name as requester_display_name,
     -- The name this request was SUBMITTED against wins; a draft has no snapshot yet, so it shows the connection as it is now (PRD §4.3 — renaming a connection must not rewrite what a past request was approved for).
@@ -653,6 +662,7 @@ type ListAccessRequestsAscRow struct {
 	Version                 int64
 	CreatedAt               pgtype.Timestamptz
 	UpdatedAt               pgtype.Timestamptz
+	Title                   string
 	RequesterEmail          string
 	RequesterDisplayName    string
 	ConnectionName          string
@@ -703,6 +713,7 @@ func (q *Queries) ListAccessRequestsAsc(ctx context.Context, arg ListAccessReque
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Title,
 			&i.RequesterEmail,
 			&i.RequesterDisplayName,
 			&i.ConnectionName,
@@ -723,7 +734,7 @@ func (q *Queries) ListAccessRequestsAsc(ctx context.Context, arg ListAccessReque
 
 const listAccessRequestsDesc = `-- name: ListAccessRequestsDesc :many
 select
-    r.id, r.organization_id, r.connection_id, r.requester_id, r.state, r.state_reason, r.payload_key_version, r.payload_wrapped_dek, r.payload_nonce, r.payload_ciphertext, r.payload_digest, r.payload_digest_key_version, r.redacted_sql, r.statement_class, r.policy_version, r.required_approvals, r.submitted_at, r.connection_config_version, r.connection_fingerprint, r.connection_display_name, r.connection_db_type, r.expires_at, r.version, r.created_at, r.updated_at,
+    r.id, r.organization_id, r.connection_id, r.requester_id, r.state, r.state_reason, r.payload_key_version, r.payload_wrapped_dek, r.payload_nonce, r.payload_ciphertext, r.payload_digest, r.payload_digest_key_version, r.redacted_sql, r.statement_class, r.policy_version, r.required_approvals, r.submitted_at, r.connection_config_version, r.connection_fingerprint, r.connection_display_name, r.connection_db_type, r.expires_at, r.version, r.created_at, r.updated_at, r.title,
     u.email as requester_email,
     u.display_name as requester_display_name,
     -- The name this request was SUBMITTED against wins; a draft has no snapshot yet, so it shows the connection as it is now (PRD §4.3 — renaming a connection must not rewrite what a past request was approved for).
@@ -794,6 +805,7 @@ type ListAccessRequestsDescRow struct {
 	Version                 int64
 	CreatedAt               pgtype.Timestamptz
 	UpdatedAt               pgtype.Timestamptz
+	Title                   string
 	RequesterEmail          string
 	RequesterDisplayName    string
 	ConnectionName          string
@@ -845,6 +857,7 @@ func (q *Queries) ListAccessRequestsDesc(ctx context.Context, arg ListAccessRequ
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Title,
 			&i.RequesterEmail,
 			&i.RequesterDisplayName,
 			&i.ConnectionName,
@@ -1151,7 +1164,7 @@ set state = $1,
     updated_at = (select at from stamped)
 where id = $13 and organization_id = $14
   and state = 'draft' and version = $15
-returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at
+returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
 type SubmitAccessRequestParams struct {
@@ -1218,6 +1231,7 @@ func (q *Queries) SubmitAccessRequest(ctx context.Context, arg SubmitAccessReque
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
@@ -1230,7 +1244,7 @@ set state = $1,
     version = version + 1,
     updated_at = coalesce($4::timestamptz, clock_timestamp())
 where id = $5 and organization_id = $6 and state = $7
-returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at
+returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
 type TransitionAccessRequestParams struct {
@@ -1281,25 +1295,28 @@ func (q *Queries) TransitionAccessRequest(ctx context.Context, arg TransitionAcc
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
 
 const updateAccessRequestDraftPayload = `-- name: UpdateAccessRequestDraftPayload :one
 update public.access_requests
-set payload_key_version = $1,
-    payload_wrapped_dek = $2,
-    payload_nonce = $3,
-    payload_ciphertext = $4,
+set title = $1,
+    payload_key_version = $2,
+    payload_wrapped_dek = $3,
+    payload_nonce = $4,
+    payload_ciphertext = $5,
     version = version + 1,
     -- The caller's observed instant, taken after it locked this row: now() is the transaction's start time and the lock may have held it for a while (ADR-0009).
-    updated_at = $5::timestamptz
-where id = $6 and organization_id = $7
-  and state = 'draft' and version = $8
-returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at
+    updated_at = $6::timestamptz
+where id = $7 and organization_id = $8
+  and state = 'draft' and version = $9
+returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
 type UpdateAccessRequestDraftPayloadParams struct {
+	Title             string
 	PayloadKeyVersion int32
 	PayloadWrappedDek []byte
 	PayloadNonce      []byte
@@ -1312,6 +1329,7 @@ type UpdateAccessRequestDraftPayloadParams struct {
 
 func (q *Queries) UpdateAccessRequestDraftPayload(ctx context.Context, arg UpdateAccessRequestDraftPayloadParams) (AccessRequest, error) {
 	row := q.db.QueryRow(ctx, updateAccessRequestDraftPayload,
+		arg.Title,
 		arg.PayloadKeyVersion,
 		arg.PayloadWrappedDek,
 		arg.PayloadNonce,
@@ -1348,6 +1366,7 @@ func (q *Queries) UpdateAccessRequestDraftPayload(ctx context.Context, arg Updat
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }

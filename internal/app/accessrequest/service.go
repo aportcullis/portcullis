@@ -71,7 +71,7 @@ func (s *Service) Create(ctx context.Context, requester identity.UserID, p Creat
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("resolve organization: %w", err)
 	}
-	payload, err := access.NewPayload(p.SQL, p.Params)
+	payload, err := access.NewDescribedPayload(p.Title, p.Body, p.SQL, p.Params)
 	if err != nil {
 		return access.RequestView{}, err
 	}
@@ -80,6 +80,7 @@ func (s *Service) Create(ctx context.Context, requester identity.UserID, p Creat
 	if err != nil {
 		return access.RequestView{}, err
 	}
+	r.Title = payload.Title
 	sealed, err := s.codec.Seal(org, r.ID, payload)
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("seal payload: %w", err)
@@ -112,10 +113,11 @@ func (s *Service) UpdateDraft(ctx context.Context, requester identity.UserID, id
 	if r.Version != p.ExpectedVersion {
 		return access.RequestView{}, access.ErrConflict
 	}
-	payload, err := access.NewPayload(p.SQL, p.Params)
+	payload, err := access.NewDescribedPayload(p.Title, p.Body, p.SQL, p.Params)
 	if err != nil {
 		return access.RequestView{}, err
 	}
+	r.Title = payload.Title
 	sealed, err := s.codec.Seal(org, id, payload)
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("seal payload: %w", err)
@@ -205,6 +207,8 @@ func (s *Service) Submit(ctx context.Context, requester identity.UserID, id acce
 		ConnectionConfigVersion: target.ConfigVersion,
 		PolicyVersion:           policy.Version,
 		Class:                   class,
+		Title:                   r.Title,
+		Body:                    payload.Body,
 		SQL:                     payload.SQL,
 		Params:                  payload.Params,
 	})

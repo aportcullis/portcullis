@@ -47,6 +47,8 @@ These must be `Accepted` before Core 1 coding begins.
 | [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted |
 | [0031](0031-typescript-seven-native-tooling.md) | TypeScript 7 and native lint enforcement without the classic compiler API | Accepted |
 
+| [0032](0032-request-title-and-body.md) | Access request titles and explanatory bodies | Accepted |
+
 ## Template
 ```markdown
 # ADR-XXXX: <title>

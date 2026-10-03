@@ -91,7 +91,7 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	if err != nil {
 		return access.ExecutionCompletion{}, access.ErrPayloadIntegrity
 	}
-	canonical, err := access.CanonicalPayload(access.ApprovalUnit{OrganizationID: r.OrganizationID, RequesterID: r.RequesterID, ConnectionID: r.ConnectionID, ConnectionConfigVersion: r.ConnectionConfigVersion, PolicyVersion: r.PolicyVersion, Class: r.Class, SQL: payload.SQL, Params: payload.Params})
+	canonical, err := access.CanonicalPayload(access.ApprovalUnit{OrganizationID: r.OrganizationID, RequesterID: r.RequesterID, ConnectionID: r.ConnectionID, ConnectionConfigVersion: r.ConnectionConfigVersion, PolicyVersion: r.PolicyVersion, Class: r.Class, Title: r.Title, Body: payload.Body, SQL: payload.SQL, Params: payload.Params})
 	if err != nil {
 		return access.ExecutionCompletion{}, err
 	}

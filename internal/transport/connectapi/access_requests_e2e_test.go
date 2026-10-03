@@ -3,6 +3,7 @@ package connectapi_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -198,7 +199,7 @@ func TestAccessRequestVisibilityE2E(t *testing.T) {
 	adminC := env.requestClient(jar)
 
 	created, err := adminC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateAccessRequestRequest{
-		ConnectionId: connID, Sql: "select secret",
+		ConnectionId: connID, Sql: "select secret", Title: "Private review", Body: "Private purpose",
 	}), csrf))
 	if err != nil {
 		t.Fatalf("admin Create: %v", err)
@@ -299,5 +300,63 @@ func TestRequestableConnectionsForPlainRequesterE2E(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != connID {
 		t.Errorf("requestable ids = %v, want only the active %s", ids, connID)
+	}
+}
+
+func TestRequestNarrativeRoundTripAndFreezeE2E(t *testing.T) {
+	env, jar, csrf, connID := reqEnv(t, 0)
+	ctx := context.Background()
+	client := env.requestClient(jar)
+	created, err := client.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateAccessRequestRequest{ConnectionId: connID, Sql: "select 1", Title: "  Revenue  ", Body: "Purpose\n<script>literal</script>"}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := created.Msg.GetRequest()
+	if request.GetTitle() != "Revenue" {
+		t.Fatalf("created title: %q", request.GetTitle())
+	}
+	detail, err := client.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetAccessRequestRequest{Id: request.GetId()}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Msg.GetPayload().GetBody() != "Purpose\n<script>literal</script>" {
+		t.Fatalf("body: %q", detail.Msg.GetPayload().GetBody())
+	}
+	updated, err := client.UpdateDraft(ctx, withCSRF(connect.NewRequest(&portcullisv1.UpdateAccessRequestDraftRequest{Id: request.GetId(), ExpectedVersion: request.GetVersion(), Sql: "select 2", Title: "Revenue reviewed", Body: "Updated purpose"}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request = updated.Msg.GetRequest()
+	listed, err := client.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.ListAccessRequestsRequest{}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Msg.GetItems()) != 1 || listed.Msg.GetItems()[0].GetTitle() != "Revenue reviewed" {
+		t.Fatalf("list title: %+v", listed.Msg)
+	}
+	submitted, err := client.Submit(ctx, withCSRF(connect.NewRequest(&portcullisv1.SubmitAccessRequestRequest{Id: request.GetId(), ExpectedVersion: request.GetVersion()}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.UpdateDraft(ctx, withCSRF(connect.NewRequest(&portcullisv1.UpdateAccessRequestDraftRequest{Id: request.GetId(), ExpectedVersion: submitted.Msg.GetRequest().GetVersion(), Sql: "select 3", Title: "Changed", Body: "Changed"}), csrf))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("approved edit: %v", err)
+	}
+	detail, err = client.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetAccessRequestRequest{Id: request.GetId()}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Msg.GetRequest().GetTitle() != "Revenue reviewed" || detail.Msg.GetPayload().GetBody() != "Updated purpose" {
+		t.Fatalf("frozen narrative: %+v", detail.Msg)
+	}
+	for _, input := range []*portcullisv1.CreateAccessRequestRequest{
+		{ConnectionId: connID, Sql: "select 1", Title: strings.Repeat("😀", 201)},
+		{ConnectionId: connID, Sql: "select 1", Title: "Title", Body: strings.Repeat("😀", 4001)},
+		{ConnectionId: connID, Sql: "select 1", Title: "Spoof\nTitle"},
+	} {
+		_, err := client.Create(ctx, withCSRF(connect.NewRequest(input), csrf))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("invalid narrative: %v", err)
+		}
 	}
 }

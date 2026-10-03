@@ -522,6 +522,8 @@ type GetConfigResponse struct {
 	NeedsBootstrap bool `protobuf:"varint,2,opt,name=needs_bootstrap,json=needsBootstrap,proto3" json:"needs_bootstrap,omitempty"`
 	// max_approval_reason_chars is the server's cap on an approval/rejection reason (PRD §4.4). Served so a client can bound its input from the one authority that enforces it — clients MUST NOT restate the number, the same rule the paged lists follow by adopting the response's page_size.
 	MaxApprovalReasonChars int32 `protobuf:"varint,3,opt,name=max_approval_reason_chars,json=maxApprovalReasonChars,proto3" json:"max_approval_reason_chars,omitempty"`
+	MaxRequestTitleChars   int32 `protobuf:"varint,4,opt,name=max_request_title_chars,json=maxRequestTitleChars,proto3" json:"max_request_title_chars,omitempty"`
+	MaxRequestBodyChars    int32 `protobuf:"varint,5,opt,name=max_request_body_chars,json=maxRequestBodyChars,proto3" json:"max_request_body_chars,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -577,6 +579,20 @@ func (x *GetConfigResponse) GetMaxApprovalReasonChars() int32 {
 	return 0
 }
 
+func (x *GetConfigResponse) GetMaxRequestTitleChars() int32 {
+	if x != nil {
+		return x.MaxRequestTitleChars
+	}
+	return 0
+}
+
+func (x *GetConfigResponse) GetMaxRequestBodyChars() int32 {
+	if x != nil {
+		return x.MaxRequestBodyChars
+	}
+	return 0
+}
+
 var File_portcullis_v1_auth_proto protoreflect.FileDescriptor
 
 const file_portcullis_v1_auth_proto_rawDesc = "" +
@@ -608,11 +624,13 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x1b\n" +
 	"\trole_name\x18\x03 \x01(\tR\broleName\"\x12\n" +
-	"\x10GetConfigRequest\"\x9e\x01\n" +
+	"\x10GetConfigRequest\"\x8a\x02\n" +
 	"\x11GetConfigResponse\x12%\n" +
 	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\x12'\n" +
 	"\x0fneeds_bootstrap\x18\x02 \x01(\bR\x0eneedsBootstrap\x129\n" +
-	"\x19max_approval_reason_chars\x18\x03 \x01(\x05R\x16maxApprovalReasonChars2\xf6\x02\n" +
+	"\x19max_approval_reason_chars\x18\x03 \x01(\x05R\x16maxApprovalReasonChars\x125\n" +
+	"\x17max_request_title_chars\x18\x04 \x01(\x05R\x14maxRequestTitleChars\x123\n" +
+	"\x16max_request_body_chars\x18\x05 \x01(\x05R\x13maxRequestBodyChars2\xf6\x02\n" +
 	"\x04Auth\x12P\n" +
 	"\tBootstrap\x12\x1f.portcullis.v1.BootstrapRequest\x1a .portcullis.v1.BootstrapResponse\"\x00\x12D\n" +
 	"\x05Login\x12\x1b.portcullis.v1.LoginRequest\x1a\x1c.portcullis.v1.LoginResponse\"\x00\x12G\n" +

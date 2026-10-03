@@ -256,6 +256,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
   - The connection is fixed during Create under its row lock, which rejects archived targets, amended 2026-07-26, ADR-0018.
   - Changing target changes policy pins, digest, and audit target, so create a new request and cancel the old draft.
 - **Cancellation:** Requesters can cancel draft/pending/approved requests; terminal states cannot be undone.
+- **Request narrative (ADR-0032):** New UI requests require a single-line title (≤200 Unicode code points) and offer an optional plain-text body (≤4,000 code points) for purpose and review context. The title appears in scoped lists and details; the body is encrypted with SQL/parameters and visible only through authorized request details. Draft replacement saves all fields under the same version token; submission freezes and authenticates the narrative. Legacy/API requests without narrative remain valid with an untitled fallback. Narrative shares the 56 KiB payload budget and is excluded from audit metadata.
 - **Decisions:** Approvers can approve/reject only pending requests and provide a reason.
   - Unique `(request_id, approver_id)`; reject requester self-approval.
   - Stay pending below N distinct active approvals; the Nth approves, and any rejection terminates as rejected.

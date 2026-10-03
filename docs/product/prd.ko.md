@@ -234,8 +234,9 @@ approved ──approval invalid────────────────�
 approved ──acquire execution lease──> executing ──> succeeded|failed|cancelled|outcome_unknown
 ```
 
-- `draft`에서만 SQL·파라미터를 수정할 수 있음. submit 시 payload digest를 생성하고 이후 수정 금지. **connection은 생성 시 고정된다 (2026-07-26 개정, ADR-0018):** 대상은 Create가 connection 행을 잠그고 archived를 거부하는 그 시점에 정해지고, 대상이 바뀌면 정책 pin·digest·감사 대상이 모두 달라져 사실상 새 승인 단위다.
+- `draft`에서만 제목·본문·SQL·파라미터를 수정할 수 있음. submit 시 payload digest를 생성하고 이후 수정 금지. **connection은 생성 시 고정된다 (2026-07-26 개정, ADR-0018):** 대상은 Create가 connection 행을 잠그고 archived를 거부하는 그 시점에 정해지고, 대상이 바뀌면 정책 pin·digest·감사 대상이 모두 달라져 사실상 새 승인 단위다.
   다른 connection을 쓰려면 새 요청을 만든다(기존 draft는 취소).
+- **요청 설명 (ADR-0032):** 새 UI 요청은 한 줄 제목(유니코드 코드 포인트 ≤200자)을 필수로 입력하고, 목적과 검토 내용을 적는 일반 텍스트 본문(≤4,000자)은 선택으로 입력한다. 제목은 권한 범위 내 목록·상세에 표시하고, 본문은 SQL·파라미터와 함께 암호화하며 권한이 있는 상세 조회에서만 공개한다. 초안 수정은 같은 version으로 모든 필드를 저장하고 제출 후 설명까지 고정·digest 인증한다. 설명이 없는 기존/API 요청은 유효하며 제목 없음으로 표시한다. 설명도 56 KiB payload 한도를 공유하고 audit metadata에는 넣지 않는다.
 - requester는 `draft`, `pending`, `approved` 요청을 취소할 수 있음. terminal 상태는 되돌리지 않음.
 - approver는 `pending`만 승인/반려할 수 있고 사유를 남김.
   `(request_id, approver_id)`는 unique이며 requester의 승인은 거부한다.

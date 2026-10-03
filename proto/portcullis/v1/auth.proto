@@ -67,4 +67,6 @@ message GetConfigResponse {
   bool needs_bootstrap = 2;
   // max_approval_reason_chars is the server's cap on an approval/rejection reason (PRD §4.4). Served so a client can bound its input from the one authority that enforces it — clients MUST NOT restate the number, the same rule the paged lists follow by adopting the response's page_size.
   int32 max_approval_reason_chars = 3;
+  int32 max_request_title_chars = 4;
+  int32 max_request_body_chars = 5;
 }

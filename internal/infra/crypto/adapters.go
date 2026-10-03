@@ -130,7 +130,7 @@ func (c *CSRFProtector) mac(sessionToken string, nonce []byte) ([]byte, error) {
 	return d.Sum, nil
 }
 
-// AccessRequestPayloadCodec seals SQL and typed parameters under organization/request AAD and exposes the keyring digest (ADR-0003/0018).
+// AccessRequestPayloadCodec seals narrative, SQL and typed parameters under organization/request AAD and exposes the keyring digest (ADR-0003/0018).
 type AccessRequestPayloadCodec struct {
 	kr *Keyring
 }
@@ -150,13 +150,15 @@ type accessRequestParamJSON struct {
 // accessRequestPayloadJSON is the sealed plaintext layout, version 1.
 type accessRequestPayloadJSON struct {
 	V      int                      `json:"v"`
+	Title  string                   `json:"title,omitempty"`
+	Body   string                   `json:"body,omitempty"`
 	SQL    string                   `json:"sql"`
 	Params []accessRequestParamJSON `json:"params"`
 }
 
 // Seal envelope-encrypts the payload bound to (org, request id) — a sealed payload cannot be replayed onto another request or organization.
 func (c *AccessRequestPayloadCodec) Seal(org identity.OrganizationID, id access.RequestID, p access.Payload) (access.SealedPayload, error) {
-	doc := accessRequestPayloadJSON{V: accessRequestPayloadVersion, SQL: p.SQL, Params: make([]accessRequestParamJSON, 0, len(p.Params))}
+	doc := accessRequestPayloadJSON{V: accessRequestPayloadVersion, Title: p.Title, Body: p.Body, SQL: p.SQL, Params: make([]accessRequestParamJSON, 0, len(p.Params))}
 	for _, param := range p.Params {
 		doc.Params = append(doc.Params, accessRequestParamJSON{Name: param.Name, Type: string(param.Value.Type), Text: param.Value.Text})
 	}
@@ -199,7 +201,7 @@ func (c *AccessRequestPayloadCodec) Open(org identity.OrganizationID, id access.
 	for _, p := range doc.Params {
 		params = append(params, query.Parameter{Name: p.Name, Value: query.TypedValue{Type: query.ParamType(p.Type), Text: p.Text}})
 	}
-	return access.Payload{SQL: doc.SQL, Params: params}, nil
+	return access.Payload{Title: doc.Title, Body: doc.Body, SQL: doc.SQL, Params: params}, nil
 }
 
 // Digest authenticates the full canonical approval unit and returns its key version; store both together (ADR-0003).
