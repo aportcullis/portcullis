@@ -22,7 +22,7 @@ Regenerate by editing `proto/*.proto` and the `*.sql` queries, then `make genera
 Pin remote plugin versions in `buf.gen.yaml` to the corresponding Go/TypeScript runtime versions; update pins and generated output together.
 
 ## Dependencies
-**Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`).
+**Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification. Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.
 
 ## Commit messages
 Use a conventional-commit subject and keep each commit focused on one concern. Write the body as paragraphs separated when the topic changes, or as bullets; do not automatically break after every sentence. **Do not add a `Co-Authored-By` trailer.**

@@ -11,7 +11,7 @@ const media = fileURLToPath(new URL("./", import.meta.url));
 const work = root + ".test-docker/readme-media/";
 const baseURL = "http://127.0.0.1:18080";
 const password = "readme-demo-password-only";
-const image = "postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15";
+const image = "postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
 const run = (command, args) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "inherit"] }).trim();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Refuse occupied ports before starting anything; never capture or seed another installation.

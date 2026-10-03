@@ -8,9 +8,11 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Postgres image strings in the Go test harness (same digest as compose.yaml)",
+      "description": "PostgreSQL images in the compatibility catalog and test harness",
       "managerFilePatterns": [
-        "/^internal/infra/dbtest/postgres\\.go$/"
+        "/^internal/infra/dbtest/postgres\\.go$/",
+        "/^internal/infra/dbtest/images\\.go$/",
+        "/^docs/media/capture\\.mjs$/"
       ],
       "matchStrings": [
         "\"(?<depName>postgres):(?<currentValue>[0-9][^\"@]*)@(?<currentDigest>sha256:[a-f0-9]{64})\""
@@ -41,6 +43,32 @@
         "custom.regex"
       ],
       "groupName": "docker images"
+    },
+    {
+      "description": "Keep the explicit PostgreSQL compatibility families; review major promotions separately",
+      "matchManagers": [
+        "custom.regex",
+        "docker-compose"
+      ],
+      "matchDepNames": [
+        "postgres"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Maintain PostgreSQL 19 preview builds without automatic GA promotion",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "postgres"
+      ],
+      "matchCurrentValue": "/^19beta[0-9]+$/",
+      "versioning": "regex:^(?<major>19)beta(?<patch>[0-9]+)$",
+      "allowedVersions": "/^19beta[0-9]+$/"
     }
   ],
   "minimumReleaseAge": "7 days",
