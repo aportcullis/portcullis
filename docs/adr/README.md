@@ -37,6 +37,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0020](0020-scenario-load-testing.md) | Scenario load testing — k6 capacity gates and measured deployment sizing | Accepted |
 | [0021](0021-governed-query-execution.md) | Governed PostgreSQL execution, leases, catalog gate, and results | Accepted |
 | [0022](0022-page-first-workflows.md) | Page-first workflows, routed request composition/review/results | Accepted |
+| [0023](0023-local-sql-formatting.md) | Local PostgreSQL formatting for editable requests | Accepted |
 
 ## Template
 ```markdown
