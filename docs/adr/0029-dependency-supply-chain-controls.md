@@ -59,6 +59,19 @@ Exclude local test/runtime artifacts before sending a Docker build context: `.te
 
 A small synthetic context using the actual `.dockerignore` reproduced the cache-marker inclusion before the fix. The real Docker `COPY`/`RUN` check then passed for excluded cache/load/browser/environment markers and retained Go/TypeScript generated sources, sqlc files, migrations and `.env.example`. No real credentials or repository cache contents were sent. This packaging regression does not constitute a complete image build or image scan.
 
+### GitHub Actions Node 24 runtime (2026-10-03)
+
+The CI and PostgreSQL compatibility jobs reported deprecated Node 20 action runtimes. `setup-node`'s `node-version: 24` selects the application's Node version; it does not change the runtime declared by other actions. Update both workflows to immutable SHAs for checkout v7.0.1, setup-go v7.0.0, setup-node v7.0.0 and pnpm/action-setup v6.1.0. Their exact-SHA `action.yml` files declare `runs.using: node24`; official release tags resolve to the pinned, verified commits. All four releases satisfy the existing seven-day release-age policy.
+
+Keep pnpm 10.34.6, explicit pnpm caching, disabled persisted checkout credentials, read-only permissions and the existing PostgreSQL matrix. Hosted `ubuntu-latest` supplies the required Node 24-compatible runner; self-hosted runners would need at least v2.327.1. Do not use runtime-forcing environment variables or unsafe checkout overrides to hide warnings. This delivery change does not alter product requirements.
+
+Validation: actionlint v1.7.12 accepts both workflows; official tag/SHA, commit verification, runtime metadata and existing input contracts were checked. A new hosted run has not been observed, so local validation does not establish that the remote jobs passed or that their warnings disappeared.
+
+- [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1).
+- [setup-go v7.0.0](https://github.com/actions/setup-go/releases/tag/v7.0.0).
+- [setup-node v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0).
+- [pnpm/action-setup v6.1.0](https://github.com/pnpm/action-setup/releases/tag/v6.1.0).
+
 ## Sources (checked 2026-10-03)
 
 - [pnpm 10 settings](https://pnpm.io/10.x/settings).
