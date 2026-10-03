@@ -24,9 +24,10 @@ services:
   # Generate the key only if absent; replacing it makes sealed data unreadable.
   keygen:
     image: alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-    command: ["sh", "-c", "[ -s /secrets/master.key ] || head -c 32 /dev/urandom | base64 > /secrets/master.key"]
+    command: ["sh", "/keygen/generate-master-key.sh"]
     volumes:
       - secrets:/secrets
+      - ./deploy/keygen:/keygen:ro
 
   # Keep owner credentials in the one-shot migration process (ADR-0009).
   migrate:

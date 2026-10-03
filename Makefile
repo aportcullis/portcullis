@@ -1,5 +1,13 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
+.PHONY: keygen-check
+
+# Use only a disposable tmpfs; never run key-generation tests on the demo volume.
+keygen-check:
+	@image="$$(sed -n 's/^    image: \(alpine:[^ ]*\)$$/\1/p' compose.yaml)"; \
+		test -n "$$image" && docker run --rm \
+		--mount "type=bind,source=$(CURDIR)/deploy/keygen,target=/keygen,readonly" \
+		--tmpfs /secrets:rw,mode=0700 "$$image" sh /keygen/test-master-key.sh
 
 K6 ?= k6
 LOAD_FIXTURES ?= $(CURDIR)/tests/load/fixtures.local.json

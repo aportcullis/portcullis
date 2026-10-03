@@ -95,6 +95,12 @@ portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]
 - Audit **integrity tags and metadata survive** key loss by design (they are derived/stored separately and are not the only copy of operational history).
   Operators are told to back up the KEK in a secret manager and to keep metadata-DB backups.
 
+### Compose demo key provisioning (2026-10-03)
+
+The one-shot initializer uses a private temporary file and atomic no-replace hard-link publication. Concurrent initializers must preserve the winning key. An existing empty, malformed or symlink key is refused, never regenerated. Set the key to mode `0400` and its directory to `0700`, owned by UID/GID `65532` to match the distroless nonroot runtime; do not log key material. Apply ownership/permission repair to valid existing demo keys without changing their bytes. Mount the persistent volume read-only in the serving process. Production remains responsible for protected secret provisioning and backups.
+
+`make keygen-check` exercises concurrent initialization, nonroot readability, unrelated-user denial, repeated byte preservation, corrupt/empty key refusal and symlink refusal in a disposable tmpfs using the exact Compose keygen image. Never execute this test on an operator secrets volume. See [Docker secret injection](https://docs.docker.com/compose/how-tos/use-secrets/) (checked 2026-10-03).
+
 ## Consequences
 - A small `crypto` package owns: KEK loading/validation, HKDF purpose-key derivation, `Seal/Open` (AES-256-GCM with associated data), DEK wrap/unwrap, `payload_digest` compute/verify, and Argon2id hash/verify/needs-rehash.
   It is the only place that touches key material.
