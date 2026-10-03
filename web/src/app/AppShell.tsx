@@ -12,11 +12,16 @@ import { LogoutButton } from "@/features/auth/LogoutButton";
 import { ApplicationFrame } from "@/shared/ui/ApplicationFrame";
 import { BrandLogo } from "@/shared/ui/BrandLogo";
 import { Badge } from "@/shared/ui/badge";
+import { Avatar } from "@/shared/ui/avatar";
 
 // AppShell owns the session guard and capability-based navigation; the server still authorizes every RPC.
 const AppShell: Component<RouteSectionProps> = (props) => {
   const pendingCount = createPendingRequests();
   const location = useLocation();
+  const currentUser = () => {
+    const current = session();
+    return current.status === "authenticated" ? current.user : undefined;
+  };
   return (
     <Switch>
       <Match when={session().status === "anonymous"}>
@@ -44,13 +49,12 @@ const AppShell: Component<RouteSectionProps> = (props) => {
             </nav>
           }
           account={<>
-            <span class="text-sm text-muted-foreground">
-              {(() => {
-                const s = session();
-                if (s.status !== "authenticated") return "";
-                return s.user.displayName || s.user.email;
-              })()}
-            </span>
+            <Show when={currentUser()}>
+              {(user) => <div class="flex items-center gap-2">
+                <Avatar seed={user().id} label={`Profile image for ${user().displayName || user().email}`} />
+                <span class="text-sm text-muted-foreground">{user().displayName || user().email}</span>
+              </div>}
+            </Show>
             {/* Role badge: the membership's display label (empty when the server degraded resolution) — a label, never authorization. */}
             <Show
               when={(() => {

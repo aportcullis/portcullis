@@ -724,6 +724,7 @@ audit_events
   서버는 사용자가 0명일 때만 부팅 중 같은 Bootstrap 유스케이스를 실행하고(락 하 재검사로 대화형과 race-safe), 사용자가 있으면 로그만 남기고 건너뛴다.
   부분 설정·약한 비밀번호는 **기동 거부**(master key와 동일 fail-fast).
   표시 이름(display name)은 이제 **필수**다 — 승인·요청 화면이 사람을 표시 이름으로 렌더링하므로 모든 계정이 하나를 갖는다(헤더는 표시 이름을 보이고 없으면 email fallback).
+  로그인한 사용자 이름 옆에 opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하며, 외부 이미지 요청 없이 로컬에서 생성한다(ADR-0041).
 - 공개 회원가입은 제공하지 않음. admin이 사용자를 생성하면 24시간 유효한 일회용 password setup link를 발급하며 MVP에서는 이메일 발송 없이 한 번만 표시.
 - **Google 소셜 로그인(OIDC):** Authorization Code + PKCE, `state`(CSRF)·`nonce`(replay) 필수, ID token 검증(서명·iss·aud·exp)과 `email_verified` 확인.
   흐름은 **서버 사이드 콜백**(`/auth/google/start`·`/auth/google/callback`)이며 프론트는 Google SDK를 쓰지 않고 백엔드 링크만 둔다.

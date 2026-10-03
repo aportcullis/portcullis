@@ -761,6 +761,7 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
   - Startup invokes the same use case only with zero users and rechecks under lock against interactive races; otherwise log and skip.
   - Incomplete configuration or weak passwords refuse startup.
   - Display name is required for every account; headers use it with email fallback.
+  - Show a stable, locally generated geometric profile image beside the signed-in user's name, derived from the opaque user ID without external image requests (ADR-0041).
 - No public signup; admin-created users get a 24-hour one-time password-setup link, displayed once without MVP email delivery.
 - **Google OIDC:** Authorization Code + PKCE, mandatory state/nonce, ID-token signature/issuer/audience/expiry and `email_verified` validation.
   - Use server `/auth/google/start` and `/auth/google/callback`; frontend links to backend without Google SDK.

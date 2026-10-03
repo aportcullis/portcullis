@@ -18,6 +18,7 @@ Import from a component directory, for example `import { Button } from "@/shared
 |---|---|
 | [button](button/README.md) | Actions, variants and sizes |
 | [badge](badge/README.md) | Short status labels |
+| [avatar](avatar/README.md) | Stable local default profile images |
 | [alert](alert/README.md) | Important inline feedback |
 | [card](card/README.md) | Grouped content |
 | [dialog](dialog/README.md) | Risky-action confirmation |

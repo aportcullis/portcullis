@@ -18,7 +18,7 @@ test.describe.serial("auth vertical", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
   };
 
-  test("first run: bootstrap → login → session survives reload → logout", async ({ page }) => {
+  test("first run: bootstrap → login → session survives reload → logout", async ({ page }, testInfo) => {
 
     await page.goto("/");
     await expect(page).toHaveURL(/\/bootstrap$/);
@@ -43,14 +43,22 @@ test.describe.serial("auth vertical", () => {
     await expect(page).toHaveURL(/\/connections$/);
     await expect(page.getByText(displayName, { exact: true })).toBeVisible();
 
+    const avatar = page.getByRole("img", { name: `Profile image for ${displayName}`, exact: true });
+    await expect(avatar).toBeVisible();
+    const profilePattern = await avatar.innerHTML();
+    await page.screenshot({ path: testInfo.outputPath("signed-in-profile.png") });
+
     await expect(page.getByText("admin", { exact: true })).toBeVisible();
 
 
     await page.reload();
     await expect(page.getByText(displayName, { exact: true })).toBeVisible();
+    await expect(avatar).toBeVisible();
+    await expect(avatar).toHaveJSProperty("innerHTML", profilePattern);
 
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login$/);
+    await expect(avatar).toHaveCount(0);
     await page.reload();
     await expect(page).toHaveURL(/\/login$/);
   });
