@@ -1,12 +1,15 @@
 package connectapi_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +24,8 @@ import (
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
+	executionapp "github.com/aportcullis/portcullis/internal/app/execution"
+	resultapp "github.com/aportcullis/portcullis/internal/app/result"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
@@ -37,6 +42,24 @@ type connsTestEnv struct {
 	serverURL *url.URL
 	tsURL     string
 	transport http.RoundTripper
+	logs      *testLogBuffer
+}
+
+type testLogBuffer struct {
+	mu sync.Mutex
+	bytes.Buffer
+}
+
+func (b *testLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.Write(p)
+}
+
+func (b *testLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.String()
 }
 
 func newConnsTestEnv(t *testing.T) *connsTestEnv {
@@ -92,7 +115,9 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 		t.Fatalf("accessreq.New: %v", err)
 	}
 
+	logs := &testLogBuffer{}
 	chain := connect.WithInterceptors(
+		connectapi.NewErrorLogInterceptor(slog.New(slog.NewJSONHandler(logs, nil))),
 		connectapi.NewClientIPInterceptor(nil),
 		connectapi.NewAuthInterceptor(authSvc),
 	)
@@ -104,6 +129,16 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), chain, readLimit)
 	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), chain, readLimit)
 	requestsPath, requestsHandler := portcullisv1connect.NewAccessRequestsHandler(connectapi.NewAccessRequestsService(authzSvc, requestSvc), chain, readLimit)
+	resultSvc, err := resultapp.New(postgres.NewResultStore(pool), crypto.NewResultCodec(keyring), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executionSvc, err := executionapp.New(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgdialect.New(pgdialect.Options{}), resultSvc, "test-server", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executionPath, executionHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultSvc), chain, readLimit, connect.WithCodec(connectapi.ExecutionJSONCodec{}), connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, nil)))
+	mux.Handle(executionPath, http.MaxBytesHandler(connectapi.BoundCSVWrites(executionHandler), server.MaxRequestBytes))
 	mux.Handle(authPath, http.MaxBytesHandler(authHandler, server.MaxRequestBytes))
 	mux.Handle(auditPath, http.MaxBytesHandler(auditHandler, server.MaxRequestBytes))
 	mux.Handle(connsPath, http.MaxBytesHandler(connsHandler, server.MaxRequestBytes))
@@ -113,7 +148,11 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	t.Cleanup(ts.Close)
 
 	serverURL, _ := url.Parse(ts.URL)
-	return &connsTestEnv{pool: pool, store: store, hasher: hasher, serverURL: serverURL, tsURL: ts.URL, transport: ts.Client().Transport}
+	return &connsTestEnv{pool: pool, store: store, hasher: hasher, serverURL: serverURL, tsURL: ts.URL, transport: ts.Client().Transport, logs: logs}
+}
+
+func (e *connsTestEnv) executionClient(jar http.CookieJar) portcullisv1connect.QueryExecutionsClient {
+	return portcullisv1connect.NewQueryExecutionsClient(&http.Client{Transport: e.transport, Jar: jar}, e.tsURL)
 }
 
 func (e *connsTestEnv) clients() (http.CookieJar, portcullisv1connect.AuthClient, portcullisv1connect.ConnectionsClient, portcullisv1connect.AuditClient) {
