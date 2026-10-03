@@ -12,7 +12,9 @@ The suite separates workload configuration (`config.ts`), typed RPC contracts/cl
 `governance.ts` schedules journeys and records outcomes.
 
 Use k6 **2.3.0**, TypeScript **7.0.2** and an isolated Portcullis installation with synthetic accounts and an active test connection.
-Create one requester per VU using the existing test/admin provisioning process.
+`make load-server` prepares two owned Testcontainers PostgreSQL databases, 100 distinct synthetic requesters, a separate approver and a read-only target account over 100,000 rows. The application listens on loopback port 18082 and uses only the least-privilege metadata runtime role, with startup migrations disabled. Synthetic sessions are issued before measurement through the existing persistence/crypto adapters. The harness writes a private fixture and aggregate resource identity manifest inside `tests/load/`, and removes the private fixture, application and its databases on SIGINT/SIGTERM. Use a new harness for each comparable repeat.
+
+For an externally prepared installation, create one requester per VU using the existing test/admin provisioning process.
 Account-management RPC provisioning is not implemented yet.
 Obtain their session and CSRF cookie values from Login and copy the fixture shape in [fixtures.example.json](../../tests/load/fixtures.example.json) into `tests/load/fixtures.local.json`.
 Keep the file private; it is gitignored.

@@ -1,5 +1,5 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
-.PHONY: load-test load-typecheck query-bench
+.PHONY: load-test load-typecheck load-server query-bench
 
 K6 ?= k6
 
@@ -9,6 +9,11 @@ load-typecheck:
 
 load-test: load-typecheck
 	$(K6) run tests/load/governance.ts
+
+load-server: web
+	mkdir -p .test-docker/e2e tests/load/results
+	go build -o .test-docker/e2e/portcullis ./cmd/portcullis
+	go run ./tests/load/server
 
 query-bench:
 	go test ./internal/infra/pgdialect -run '^$$' -bench '^BenchmarkQueryWorkloads$$' -benchtime=20x -count=3 -benchmem
