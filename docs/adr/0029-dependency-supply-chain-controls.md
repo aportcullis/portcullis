@@ -27,6 +27,16 @@ Freeze normal Make/CI installs and pin CI pnpm to the packageManager version. Di
 
 ## Consequences
 
+### Go toolchain security update (2026-10-03)
+
+The CI vulnerability gate reported six reachable standard-library advisories with Go 1.26.5. The reports identify Go 1.26.6 as the fixed patch in that series; the user requested migration to Go 1.27. Adopt the current stable Go 1.27.1 patch in `go.mod` and the Docker builder together. CI already reads `go-version-file: go.mod`, so it inherits the same version without a second version pin. The builder uses the official `golang:1.27.1-alpine3.24` multi-platform index digest verified directly against Docker Hub. Keep the vulnerability gate enabled and verify the complete supply-chain target with the upgraded compiler; do not suppress the advisories. This delivery-toolchain update changes no product contract or PRD requirements.
+
+- [Go release history](https://go.dev/doc/devel/release): Go 1.26.6 security fixes and Go 1.27.1 stable patch.
+- [GO-2026-6218](https://pkg.go.dev/vuln/GO-2026-6218): affected and fixed `net/url` versions.
+- [Official Go Docker image](https://hub.docker.com/_/golang): builder tag and registry digest.
+
+Verification: `make supply-chain` passes on Go 1.27.1 with zero reachable or imported-package vulnerabilities. Its remaining module-only advisory, GO-2026-5932, concerns `golang.org/x/crypto/openpgp`, which this application does not import; it is not suppressed. Build, vet, lint (zero issues), Go scenario tests, frontend/load type checks, frontend lint, 126 frontend tests, and 14 real-binary browser scenarios pass. The browser gate uses the documented remote Chromium adapter. A separate HEAD snapshot containing only the toolchain edits also passes build, vet and govulncheck, without depending on existing uncommitted work.
+
 A newly released security fix can need a narrowly scoped, documented version exception to the age policy after review. Delay and provenance checks reduce exposure and do not prove a package is benign. Third-party code can still run when an explicitly invoked compiler, bundler or test runner starts. CI must enforce the same policy on fresh installations, not just an existing local node_modules directory.
 
 No TypeScript 6 compatibility dependency remains. No product requirements change is needed: these controls concern development and delivery.

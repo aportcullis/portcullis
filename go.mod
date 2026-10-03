@@ -1,6 +1,6 @@
 module github.com/aportcullis/portcullis
 
-go 1.26.5
+go 1.27.1
 
 require (
 	connectrpc.com/connect v1.20.0
