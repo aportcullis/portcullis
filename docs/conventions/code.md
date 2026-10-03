@@ -98,5 +98,7 @@ Avoid line-number references and pointers into private, gitignored notes such as
 Keep paired translations consistent according to the [documentation policy](../README.md#language-policy).
 
 ## Minimize hardcoding
+Select resources by their domain role or identity, not a fixed collection position. Use named fields/variables for fixed roles (such as metadata and target databases) and typed keyed collections for identity-based assignments. Keep indices when order is the actual contract, such as result paging, and translate external positional formats once at the boundary.
+
 Catalogs, roles, and configuration load from the **database/config at startup**, not Go constants (e.g. the permission catalog and role assignments are seeded in SQL).
 Only fixed domain enums the code branches on (e.g. `UserStatus`) live in code. **Never hardcode role names** — resolve via DB flags (e.g. `is_bootstrap_default`).

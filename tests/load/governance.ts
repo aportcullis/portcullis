@@ -3,7 +3,8 @@ import exec from 'k6/execution';
 import { Counter, Rate } from 'k6/metrics';
 
 import { config, needsReview, vus } from './config.ts';
-import { fixtures, verifyFixtures } from './fixtures.ts';
+import { fixturesByVirtualUser, verifyFixtures } from './fixtures.ts';
+import { fixtureForVirtualUser } from './fixture-assignment.ts';
 import { browse, submit, executeAndExplore } from './journeys.ts';
 
 export { options } from './config.ts';
@@ -18,8 +19,7 @@ export default function (): void {
   }
   const journeyIndex = (exec.vu.iterationInScenario + exec.vu.idInTest - 1) % 5;
   try {
-    const fixture = fixtures[exec.vu.idInTest - 1];
-    if (!fixture) throw new Error('No fixture assigned to this VU');
+    const fixture = fixtureForVirtualUser(fixturesByVirtualUser, exec.vu.idInTest);
     if (config.journey === 'execute' || (config.journey === 'full' && journeyIndex === 0)) {
       executeAndExplore(fixture);
     } else if (config.journey === 'browse' || ((config.journey === 'mixed' && journeyIndex !== 0) || (config.journey === 'full' && journeyIndex > 1))) {

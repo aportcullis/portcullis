@@ -7,14 +7,14 @@ import { decodeJSON } from './json.ts';
 import { z } from 'zod';
 
 const input = decodeJSON(z.array(fixtureSchema).min(vus), open(config.fixturePath));
-export const fixtures: Fixture[] = input.slice(0, vus);
-if (needsReview && fixtures.some(fixture => fixture.approver === undefined)) {
+export const fixturesByVirtualUser: ReadonlyMap<number, Fixture> = new Map(input.slice(0, vus).map((fixture, index): [number, Fixture] => [index + 1, fixture]));
+if (needsReview && input.slice(0, vus).some(fixture => fixture.approver === undefined)) {
   throw new Error('Review needs an approver fixture');
 }
 
 export function verifyFixtures(): void {
   const identities = new Set<string>();
-  for (const fixture of fixtures) {
+  for (const fixture of fixturesByVirtualUser.values()) {
     const requester = rpc('Auth.Me', {}, fixture.requester, 'setup');
     if (identities.has(requester.user.id)) fail('Each VU needs a distinct requester');
     identities.add(requester.user.id);

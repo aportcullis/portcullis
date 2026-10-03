@@ -1,9 +1,9 @@
 import { check, sleep } from 'k6';
-import { z } from 'zod';
+import exec from 'k6/execution';
 
 import { rpcAsync } from './client.ts';
-import { actorSchema } from './contracts.ts';
-import { fixtures, verifyFixtures } from './fixtures.ts';
+import { fixturesByVirtualUser, verifyFixtures } from './fixtures.ts';
+import { reviewFixtureForVirtualUser } from './fixture-assignment.ts';
 
 export const setup = verifyFixtures;
 export const options = {
@@ -13,7 +13,7 @@ export const options = {
 
 /** Verifies typed async execution and the conservative cancellation contract against the real server. */
 export default async function (): Promise<void> {
-  const fixture = z.object({ connectionId: z.string(), requester: actorSchema, approver: actorSchema }).parse(fixtures[0]);
+  const fixture = reviewFixtureForVirtualUser(fixturesByVirtualUser, exec.vu.idInTest);
   const created = await rpcAsync('AccessRequests.Create', {
     connectionId: fixture.connectionId,
     sql: 'SELECT sum(i) FROM generate_series(1,100000000) AS i', params: [],

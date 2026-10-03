@@ -60,6 +60,10 @@ Existing performance evidence used the preceding client. Contract and real-serve
 
 Primary references checked 2026-10-03: [Zod codecs](https://zod.dev/codecs), [k6 asyncRequest JSON/form behavior](https://grafana.com/docs/k6/latest/javascript-api/k6-http/asyncrequest/), [k6 module bundling](https://grafana.com/docs/k6/latest/using-k6/modules/), [esbuild bundling](https://esbuild.github.io/getting-started/#bundling), and [ProtoJSON](https://protobuf.dev/programming-guides/json/).
 
+### Named resource assignments (2026-10-03)
+
+Keep metadata and governed target database references in named variables rather than positional array slots; the container collection exists only for cleanup, including partial startup failure. Assign synthetic identities to explicit k6 virtual-user IDs in a read-only map, reject unassigned IDs and validate required approvers before review scenarios. The JSON fixture format stays unchanged: its ordered entries are assigned to one-based virtual-user IDs once at the loading boundary. This preserves per-VU isolation without numeric offsets at journey call sites. Product requirements are unchanged. References: [Go named fields and declarations](https://go.dev/doc/effective_go), [Zod required properties](https://zod.dev/api).
+
 - Add `make load-test` separately from `make verify`; smoke can become a CI gate once reproducible account provisioning exists.
   Long stress/soak and hardware sizing run on controlled benchmark hosts.
 - Compare candidate combined app/metadata-DB hosts at 2 vCPU/4 GiB, 4 vCPU/8 GiB and 8 vCPU/16 GiB with explicit app/DB resource allocation.
