@@ -47,24 +47,42 @@ func run() error {
 	defer func() { _ = targetListener.Close() }()
 	startupCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	metadataDatabase, err := tcpostgres.Run(startupCtx, dbtest.PostgresImage,
-		tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("portcullis"), tcpostgres.WithPassword("portcullis"),
-		testcontainers.WithLabels(map[string]string{"portcullis.test": "browser"}), tcpostgres.BasicWaitStrategies())
+	targetImage, err := dbtest.PostgresTestImage()
 	if err != nil {
 		return err
 	}
+	databases := make([]*tcpostgres.PostgresContainer, 0, 2)
 	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cleanupCancel()
-		if err := metadataDatabase.Terminate(cleanupCtx); err != nil {
-			fmt.Fprintln(os.Stderr, "browser database cleanup:", err)
+		for _, database := range databases {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := database.Terminate(cleanupCtx); err != nil {
+				fmt.Fprintln(os.Stderr, "browser database cleanup:", err)
+			}
+			cleanupCancel()
 		}
 	}()
+	startDatabase := func(image string) (*tcpostgres.PostgresContainer, error) {
+		database, err := tcpostgres.Run(startupCtx, image,
+			tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("portcullis"), tcpostgres.WithPassword("portcullis"),
+			testcontainers.WithLabels(map[string]string{"portcullis.test": "browser"}), tcpostgres.BasicWaitStrategies())
+		if err != nil {
+			return nil, err
+		}
+		databases = append(databases, database)
+		return database, nil
+	}
+	metadataDatabase, err := startDatabase(dbtest.PostgresImage)
+	if err != nil {
+		return err
+	}
+	targetDatabase, err := startDatabase(targetImage)
+	if err != nil {
+		return err
+	}
 	dsn, err := metadataDatabase.ConnectionString(startupCtx, "sslmode=disable")
 	if err != nil {
 		return err
 	}
-	targetDatabase := metadataDatabase
 	host, err := targetDatabase.Host(startupCtx)
 	if err != nil {
 		return err
