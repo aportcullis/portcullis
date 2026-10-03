@@ -65,9 +65,10 @@ message CellValue {
 
 ### CSV serialization
 - Each cell → text: `is_null` → empty field; `bytes` → base64; `JSON`/`ARRAY` → raw text; temporal → the canonical ISO string; numbers → their string form.
-- **Formula-injection escape:** any field whose first character is `=`, `+`, `-`, `@`, tab, or CR is prefixed with a single quote by default.
+- **Formula-injection escape:** prefix headers and fields with a single quote when their leading whitespace/control prefix contains tab, CR or LF, or when the first following character is `=`, `+`, `-`, `@` or a full-width counterpart. Inspect the prefix without trimming the exported value.
   A raw (un-escaped) export is a separate explicit option with a warning.
 - RFC-4180 quoting; UTF-8 encoding; embedded newlines preserved inside quoted fields.
+- Keep raw snapshot values unchanged. This reduces initial spreadsheet interpretation risk; no universal spreadsheet/re-save safety is claimed. [OWASP CSV Injection](https://community.owasp.org/attacks/CSV_Injection), checked 2026-10-03, documents full-width/control prefixes and warns that Excel can remove escaping when saving and reopening. Application-level export scenarios do not establish behavior in every spreadsheet.
 
 ## Consequences
 - Pin protobuf-go, Connect Go, and protobuf-es generator versions in `buf.gen.yaml` to their corresponding runtime dependencies.

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/domain/query"
@@ -277,8 +278,13 @@ func cellText(cell query.CellValue) string {
 }
 
 func escapeCSV(value string) string {
-	if value != "" && strings.ContainsRune("=+-@\t\r", rune(value[0])) {
-		return "'" + value
+	for _, character := range value {
+		if strings.ContainsRune("=+-@＝＋－＠\t\r\n", character) {
+			return "'" + value
+		}
+		if character > 0x20 && !unicode.IsSpace(character) && character != '\ufeff' {
+			break
+		}
 	}
 	return value
 }

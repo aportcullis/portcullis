@@ -15,7 +15,7 @@ const spreadsheetLiteral = (text: string, type?: LogicalType): string => {
   if (type !== undefined && numericTypes.has(type) && numericText.test(text)) return text;
   // Leading control characters must not bypass spreadsheet formula escaping.
   // eslint-disable-next-line no-control-regex
-  return /^[\s\u0000-\u0020]*[=+\-@]/.test(text) ? "'" + text : text;
+  return /^[\s\u0000-\u0020\u0085]*[=+\-@＝＋－＠\t\r\n]/.test(text) ? "'" + text : text;
 };
 
 const serialize = (page: QueryResultPage, spreadsheet: boolean): string => {

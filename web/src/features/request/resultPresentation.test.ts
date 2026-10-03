@@ -21,3 +21,18 @@ describe("visible result presentation", () => {
     expect(resultText(page)).toBe('value\nNULL\n""\n\\x00ff');
   });
 });
+
+const spreadsheetCases = [
+  { text: "\ntext", expected: "\"'\ntext\"" },
+  { text: "\ttext", expected: "\"'\ttext\"" },
+  { text: "\rtext", expected: "\"'\rtext\"" },
+  { text: "＝1+1", expected: "'＝1+1" },
+  { text: " ＋1", expected: "' ＋1" },
+  { text: "－1", expected: "'－1" },
+  { text: "＠SUM(A1:A2)", expected: "'＠SUM(A1:A2)" },
+];
+it.each(spreadsheetCases)("protects header and visible text $text without changing Text view", ({ text, expected }) => {
+  const page = create(QueryResultPageSchema, { columns: [{ name: text, logicalType: LogicalType.STRING }], rows: [{ cells: [cell(text)] }] });
+  expect(resultClipboard(page)).toBe(`${expected}\n${expected}`);
+  expect(resultText(page)).not.toBe(resultClipboard(page));
+});

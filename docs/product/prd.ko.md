@@ -640,7 +640,7 @@ audit_events
   - 같은 primary를 사용하는 application replica 간에는 공유되지만 PostgreSQL crash·standby failover 시 cache가 사라질 수 있다.
     이때 재실행하지 않고 `result_unavailable`을 표시한다.
   - CSV export도 동일한 snapshot과 상한을 사용하며 매 요청마다 원래 사용자/organization 권한을 다시 검사.
-  - **CSV injection 방어:** `=,+,-,@`(및 tab/CR 선행) 으로 시작하는 cell은 기본 escape해 spreadsheet formula 실행을 막는다. raw export가 필요하면 명시적 옵션 + 경고로만 허용. bytes/JSON/newline/encoding 직렬화 규칙은 result 타입 계약(12.2)을 따른다.
+  - **CSV injection 방어:** 헤더·cell의 선행 공백·제어문자 뒤 `=,+,-,@` 또는 전각 대응 문자를 기본 escape하고, 그 접두 구간의 tab/CR/LF도 escape한다(ADR-0005/0039). 원본 snapshot과 escape 접두어 뒤 원문은 보존하며 모든 spreadsheet의 재저장 안전성을 보장하지 않는다. raw export가 필요하면 명시적 옵션 + 경고로만 허용. bytes/JSON/newline/encoding 직렬화 규칙은 result 타입 계약(12.2)을 따른다.
   - 무제한 export와 query 재실행 기반 export는 MVP에서 지원하지 않음.
 
 ### 7.2 Connection 추가 플로우

@@ -669,7 +669,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - No resident Go-heap result cache during TTL; row/byte caps and worker semaphore bound temporary memory.
   - Replicas share one primary; crash/standby failover can lose cache, producing `result_unavailable` without retry.
   - CSV uses identical snapshots/caps and rechecks original user/org permissions for every request.
-  - Escape cells starting `=,+,-,@` or leading tab/CR by default against spreadsheet formula injection.
+  - Escape headers/cells with `=,+,-,@` or full-width counterparts after leading whitespace/control characters, and any tab/CR/LF in that prefix, by default (ADR-0005/0039). Preserve the original snapshot and exported text after the escape prefix; this is not a universal spreadsheet re-save safety guarantee.
   - Raw CSV requires an explicit option and warning; bytes/JSON/newline/encoding follow §12.2's result type contract.
   - No unlimited or re-execution-based export in MVP.
 
