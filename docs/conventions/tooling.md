@@ -9,6 +9,8 @@
   - `make lint` checks gofmt and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also run `GOOS=linux GOARCH=amd64 make lint` to check Linux-specific source before relying on Linux CI (ADR-0029).
 - **Frontend verification**
   - `make web-lint`, `make web-typecheck`, and `make web-test` run Oxlint, TypeScript 7 native `tsc`, and Vitest.
+- **Container images**
+  - `make image-check` builds and smoke-tests Linux AMD64 and ARM64 images. `IMAGE_PLATFORMS` selects a supported variant; cross-architecture local execution needs emulation. CI uses native runners and both checks gate tagged publication (ADR-0049).
 - **Release history**
   - `make changelog` generates the reviewed English `CHANGELOG.md` snapshot with digest-pinned git-cliff in Docker; run before release tagging and review the diff.
   - `make changelog-check` exercises real Git history and release boundaries; included in `make verify`. `make release-notes` renders only the current tag for the GHCR publication summary.
@@ -35,7 +37,7 @@ Immediately before each commit, review the staged diff for scope, correctness, d
 Commit a completed red→green, checked and reviewed concern immediately, before starting another concern. Queue incoming requests until the current commit is complete. Never carry completed uncommitted changes into the next task; an explicit stop request or destructive action takes precedence.
 
 ## Definition of done
-Milestone completion requires `make verify` (Go build/vet/lint/tests, web typecheck/lint/tests, load-check and browser E2E) plus `make supply-chain`, matching CI. Each small commit runs the checks appropriate to its change; any remaining failed gates must be explicit.
+Milestone completion requires `make verify` (Go build/vet/lint/tests, web typecheck/lint/tests, load-check and browser E2E) plus `make supply-chain`, matching the functional CI gate. CI also builds and smoke-tests image packaging on native AMD64 and ARM64 runners; tagged publication requires those jobs. Each small commit runs the checks appropriate to its change; any remaining failed gates must be explicit.
 The browser harness builds the real embedded application, uses the [Testcontainers PostgreSQL module](https://golang.testcontainers.org/modules/postgres/) with its readiness strategy, and serves its dynamically assigned fixture coordinates at the loopback-only test endpoint `127.0.0.1:18081/target`. It removes its own databases and server at shutdown and refuses occupied application or fixture ports. The fixture clears inherited application configuration before supplying its disposable database and key.
 
 For a restricted host browser environment, the [Docker browser E2E guide](../operations/browser-e2e.md) runs Chromium remotely while preserving the same real-binary, Testcontainers and native CSV file-readback assertions.

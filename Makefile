@@ -1,6 +1,6 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
-.PHONY: keygen-check release-check changelog changelog-check release-notes
+.PHONY: keygen-check release-check changelog changelog-check release-notes image-check
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -120,13 +120,16 @@ vuln:
 audit: web-audit vuln
 
 
-export RELEASE_TAG
+export RELEASE_TAG IMAGE_PLATFORMS
 
 changelog:
 	@bash .github/scripts/update-changelog.sh
 
 release-notes:
 	@bash .github/scripts/git-cliff.sh --current --strip all
+
+image-check:
+	bash tests/release/images.sh
 
 changelog-check:
 	bash tests/release/changelog.sh

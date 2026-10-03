@@ -63,6 +63,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted |
 | [0047](0047-tagged-container-publication.md) | Verified tag releases to GHCR | Accepted |
 | [0048](0048-commit-based-changelog.md) | Reviewed Conventional Commit changelogs with offline git-cliff | Accepted |
+| [0049](0049-multiarchitecture-container-builds.md) | AMD64/ARM64 cross-compilation and native image smoke gates | Accepted |
 
 ## Template
 ```markdown

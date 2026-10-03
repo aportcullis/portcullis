@@ -22,7 +22,7 @@ This example triggers publication; it is not part of local verification. Inspect
 | `v0.1.0` | `0.1.0`, `0.1`, `sha-<full commit SHA>` |
 | `v0.2.0-rc.1` | `0.2.0-rc.1`, `sha-<full commit SHA>` |
 
-There is no implicit `latest` or major-only alias. The initial platform is `linux/amd64`. Minor aliases are mutable; reruns and retagging can overwrite other tags too. Different-version releases can complete out of order and move a minor alias backwards. Pin the returned `ghcr.io/aportcullis/portcullis@sha256:...` digest in production.
+There is no implicit `latest` or major-only alias. Each tag selects `linux/amd64` (AMD/Intel x86-64) or `linux/arm64` (AArch64) through one image index. Apple Silicon uses the ARM64 Linux variant in Docker; native macOS/Windows executables and other CPU architectures are outside this container scope. Minor aliases are mutable; reruns and retagging can overwrite other tags too. Different-version releases can complete out of order and move a minor alias backwards. Pin the returned `ghcr.io/aportcullis/portcullis@sha256:...` digest in production.
 
 The publication job alone receives `packages: write`, authenticating with `GITHUB_TOKEN`. For an existing package, grant the repository Actions access if needed. New GHCR packages start private: a package administrator must explicitly set visibility to public for anonymous OSS pulls. No personal access token is required by this workflow.
 
@@ -30,6 +30,10 @@ BuildKit publishes OCI SBOM and maximum provenance attestations with the image. 
 
 ## Verification
 
-`make release-check` exercises valid stable/prerelease tags and refusal of malformed, unsafe, ambiguous and oversized names; `make verify` includes it. `make changelog-check` tests real stable/prerelease history, grouping, breaking notes and current-tag boundaries in a disposable Git repository. `make verify` includes both scenario targets. The Docker generator is digest-pinned, reads only the mounted repository and runs without network or external template commands. Workflow validation uses actionlint. A local check does not prove registry permissions, hosted build success or package visibility: confirm these on the first authorized release run.
+`make release-check` exercises valid stable/prerelease tags and refusal of malformed, unsafe, ambiguous and oversized names; `make verify` includes it. `make changelog-check` tests real stable/prerelease history, grouping, breaking notes and current-tag boundaries in a disposable Git repository. `make verify` includes both scenario targets. The Docker generator is digest-pinned, reads only the mounted repository and runs without network or external template commands.
+
+`make image-check` builds both real images, checks OS/architecture and non-root runtime, then verifies the actual entrypoint rejects deliberately invalid configuration. Local non-native execution needs existing emulation; set `IMAGE_PLATFORMS=linux/arm64` or `linux/amd64` to select a native variant. CI runs each variant on its native Ubuntu runner and release publication requires both jobs. These are image/startup smoke checks; the full database/browser gate remains on AMD64.
+
+Workflow validation uses actionlint. A local check does not prove registry permissions, hosted build success or package visibility: confirm these on the first authorized release run.
 
 References: [GHCR permissions and visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), [Docker metadata](https://github.com/docker/metadata-action#semver), [OCI build attestations](https://docs.docker.com/build/ci/github-actions/attestations/), [ADR-0047](../adr/0047-tagged-container-publication.md).

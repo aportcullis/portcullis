@@ -4,6 +4,7 @@ web/node_modules
 **/node_modules
 .test-docker
 .codex-review
+.review-cache
 .pnpm-store
 **/.vite
 **/test-results
