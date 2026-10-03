@@ -9,6 +9,12 @@
   },
   "devDependencies": {
     "@types/k6": "2.3.0",
+    "@types/node": "24.13.2",
+    "esbuild": "0.28.2",
+    "oxlint": "1.85.0",
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
   }
 }
