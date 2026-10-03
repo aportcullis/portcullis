@@ -338,7 +338,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM은 MVP와 parity track의 필수 범�
 - ML 이상 탐지 (audit 기반 위험 점수 → 4.8 AI Review와 연계)
 - SAML/SCIM (수요 검증 후)
 - **Agent Gateway 연동:** 에이전트가 Portcullis의 기능에 접근할 수 있는 연동 경로를 단계적으로 추가한다.
-  - 우선 사용 사례는 쿼리 자산 탐색과 접근 요청 생성이며, 승인·실행 연동은 후속 단계에서 검토한다.
+  - 브라우저 WebMCP 쿼리 보조는 M2(4.10)로 상향하며, 이 Later 항목은 브라우저 과업을 넘어서는 원격·headless Gateway 연동을 다룬다.
   - 착수 시 에이전트 신원, 사용자 위임, 최소 권한, 승인 경계, 감사 추적을 정의한다.
   - Gateway 제품·프로토콜·인증 방식과 구현 순서는 수요 검증 후 ADR로 결정한다.
 
@@ -391,6 +391,16 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 - **audit:** `SESSION_OPENED`/`SESSION_CLOSED`/`SESSION_REVOKED` + statement마다 6.1 불변식 그대로(`EXECUTION_STARTED`/`FINISHED`/`outcome_unknown`, redacted SQL + digest).
   "세션은 열리되 내역이 안 남는" 경로 금지(6.1).
 - **transaction:** 기본 **stateless per-statement**(idle-in-transaction 차단, 12.1). stateful multi-statement transaction은 connection 정책 opt-in 후속 옵션으로, **read-only 한정 + transaction idle 60초 초과 시 자동 ROLLBACK** 경계를 여기서 확정한다. *(잠정)*
+
+### 4.10 WebMCP 쿼리 보조 (M2 / Bridge)
+
+브라우저 WebMCP를 포괄적인 Later 에이전트 방향에서 다음 마일스톤으로 상향하며, M1 전체 출하 게이트 통과 후 착수한다(ADR-0024). M2에서는 PostgreSQL 브라우저 에이전트 과업을 먼저 구현하고 기존 MySQL/SQLite parity를 이어서 진행한다. 계획된 범위이며 현재 제공 기능이 아니다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다.
+
+- 연결 탐색, 화면에 보이는 SQL·타입 파라미터 작성, 명시적 초안 저장·제출, 요청·승인 상태 조회, 요청자만의 승인된 실행, 제한된 결과 페이지 조회를 각각 도구로 제공한다. Read 쿼리부터 시작하며, 폼을 채우는 것만으로 자동 저장·실행하지 않는다.
+- 스키마 탐색은 제한·인가·감사를 갖춘 catalog use case를 정의한 뒤 추가한다. 저장 쿼리 탐색·재사용은 Library가 해당 자산을 제공할 때 연동한다. 어느 경로도 임의 SQL 실행 권한을 부여하지 않는다.
+- 현재 인증 사용자·조직과 기존 서버 권한, CSRF, 소유권, 별도 검토자, quorum, 불변 payload·config·policy, 1회 실행, 취소, audit, 결과 제한을 재사용한다. 초기 자동 승인·반려 도구는 제공하지 않는다. 실행은 명시적인 사용자 요청이 있어야 하며, 인증된 사용자 귀속과 신뢰할 수 없는 agent/source 표기를 구분한다.
+- 일반 작업은 페이지 내부에 유지한다. 도구 결과와 직접 링크를 화면에 표시하고 로그아웃·신원·권한 변경·경로 종료 시 등록 해제와 진행 응답 fencing을 적용한다. 출력을 제한하고 catalog·SQL·결과 내용을 신뢰할 수 없는 데이터로 취급한다. 자격 증명·암호화 키·UI 쿠키를 노출하지 않는다.
+- 네이티브 브라우저 지원을 감지하고 미지원 환경에서도 일반 UI를 사용할 수 있어야 한다. 착수 시 변경 중인 API를 다시 검증한다. 실제 지원 브라우저의 쿼리 과업, 거부·권한 회수·다른 사용자 접근, 재실행 거부, 취소, 정확하고 제한된 결과, 미지원 브라우저 fallback을 인수 조건으로 둔다. 가짜 registry만으로 네이티브 호환성을 입증하지 않는다.
 
 ---
 
@@ -741,7 +751,7 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 ```
 0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현
-2  DB parity    MySQL/SQLite adapter + 3개 DB 공통 contract/security test
+2  Bridge       브라우저 WebMCP 쿼리 보조 우선 → MySQL/SQLite parity 및 공통 test
 3  Core 2       세 DB 공통 saved query / favorite / share / params / 결과 그리드
    ── MVP ──
 4  access 확장  임시 접근(웹 console session)·다단계 승인·EXPLAIN·OIDC/LDAP 순차 검증

@@ -370,7 +370,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM are not mandatory for MVP/parity; prio
 - ML anomaly detection from audit risk scores, linked to §4.8.
 - SAML/SCIM after demand validation.
 - **Agent Gateway integration:** Gradually add a path for agents to access Portcullis capabilities.
-  - Initial use cases are query-asset discovery and access-request creation; consider approval/execution integration in subsequent stages.
+  - Browser WebMCP query assistance is promoted to M2 (§4.10); this Later item covers remote/headless gateway integration beyond that browser workflow.
   - Define agent identity, user delegation, least privilege, approval boundaries, and audit attribution when starting the milestone.
   - Choose the gateway product, protocol, authentication, and implementation sequence through ADRs after demand validation.
 
@@ -423,6 +423,16 @@ This section replaces the separate PRD previously required to start M4.
   - Never allow execution without history.
 - **Transactions:** Default stateless per statement to avoid idle-in-transaction.
   - Stateful multi-statement transactions are a later connection-policy opt-in restricted to read-only, with automatic ROLLBACK after 60 seconds transaction idle, provisional.
+
+### 4.10 WebMCP query assistance (M2 / Bridge)
+
+Browser WebMCP is promoted from the broad Later agent direction into the next milestone, after M1's complete release gate (ADR-0024). In M2, implement the PostgreSQL browser-agent journey first, then the existing MySQL/SQLite parity track. This is planned scope, not an available feature. HTTP MCP gateways and remote/headless machine clients remain Later.
+
+- Expose connection discovery, visible SQL/typed-parameter composition, explicit draft save/submit, request/approval-state inspection, requester-only approved execution and bounded result-page retrieval as separate tools. Start with read queries; filling a form must not automatically persist or execute it.
+- Add schema discovery only through a bounded, authorized and audited catalog use case. Discover/reuse saved queries when Library supplies those assets. Neither path grants arbitrary SQL execution.
+- Reuse the current authenticated user/org and existing server permissions, CSRF, ownership, distinct reviewers, quorum, immutable payload/config/policy, single-use execution, cancellation, audit and result limits. No initial automatic approval/rejection tool. Require an explicit user execution request, and distinguish authenticated user attribution from untrusted agent/source labels.
+- Keep ordinary work within pages. Provide a visible tool outcome and direct links; revoke registration and fence pending responses on logout, identity/permission changes and route teardown. Bound outputs and treat catalog/SQL/result content as untrusted data. Never export credentials, encryption keys or UI cookies.
+- Feature-detect native browser support; keep the normal interface usable without WebMCP. Reverify the evolving API at implementation time. Acceptance requires a real supported-browser query journey, denied/revoked and cross-user cases, replay refusal, cancellation, exact/bounded results and unsupported-browser fallback; a fake registry alone does not prove compatibility.
 
 ---
 
@@ -781,7 +791,7 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 ```text
 0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice
-2  DB parity    MySQL/SQLite adapters and common three-DB contract/security tests
+2  Bridge       Browser WebMCP query assistance first; then MySQL/SQLite parity and shared tests
 3  Core 2       Saved queries, favorites, sharing, parameters, result grid across all three DBs
    ── MVP ──
 4  Access       Sequential validation of temporary web console, multistage approval, EXPLAIN, OIDC/LDAP
