@@ -16,7 +16,7 @@
 
 The strongest near-term proposal is MySQL first, then evaluate MariaDB as an explicitly qualified compatibility target. ClickHouse is a plausible subsequent analysis direction; SQL Server should follow demonstrated user demand and an x86-64 test environment. TiDB and CockroachDB need independent compatibility gates. These priorities do not establish support dates.
 
-SQLite is being reconsidered by the product owner. Its removal or deferral, changes to the MVP DB matrix, and DB-first versus WebMCP-first ordering require a scope decision recorded in an ADR and both PRD translations. This research record leaves those decisions open.
+[ADR-0025](../adr/0025-sql-database-first-expansion.md) establishes SQL-first ordering: PostgreSQL/MySQL parity before WebMCP. SQLite is excluded from supported-target scope. See the [feature support matrix](database-support.md) for current evidence and planned scope.
 
 ## Actual engine experiment
 

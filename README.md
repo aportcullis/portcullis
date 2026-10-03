@@ -26,6 +26,10 @@ Browse pages, sort numeric columns, filter values, and inspect full cells. Large
 
 CSV preparation uses the entire cached snapshot, independently of the current page or filter. The walkthrough stops at the prepared download link; it does not demonstrate successful native file saving. Cached results expire after 15 minutes and may be evicted earlier under quota pressure.
 
+## Database support
+
+PostgreSQL is verified in the development alpha. MySQL is the next committed target; its product adapter is not available yet. SQLite is excluded. See the [DB-by-feature support matrix](docs/product/database-support.md) for available features, planned work, version evidence and additional SQL candidates.
+
 ## Features
 
 | Feature | Available in the development build |

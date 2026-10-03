@@ -8,6 +8,7 @@ Product requirements are maintained in Korean and English; other documents adopt
 | Area | Documents | Language |
 |---|---|---|
 | Product requirements | [한국어 PRD](product/prd.ko.md) · [English PRD](product/prd.en.md) | Korean / English |
+| Database support | [Feature matrix and evidence boundaries](product/database-support.md) | English |
 | Database research | [Container-backed candidates and engine experiments](product/database-candidates.md) | English |
 | Architecture | [Layers and boundaries](ARCHITECTURE.md) | English |
 | Decisions | [ADR index](adr/README.md) | English |
