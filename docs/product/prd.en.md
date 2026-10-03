@@ -1,10 +1,10 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.11 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Shared revision:** v0.12 / 2026-10-04. Update requirements and section numbers in both languages in the same change.
 > **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
 > **Deployment sequencing (ADR-0035):** M2 is MySQL parity → Kubernetes (Helm/Kustomize) and CNPG → SQL review/EXPLAIN.
-> **Status:** Draft v0.11 (2026-10-03; 2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Status:** Draft v0.12 (2026-10-04; 2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -121,6 +121,7 @@ Expand BI gradually from MVP saved queries and result grids.
   - If the server stops before confirming the outcome, do not retry automatically; reconciliation transitions expired `executing` to `outcome_unknown`.
 - Audit every transition and execution attempt with actor, time, target, previous/next states, and payload digest.
 - Enforce default 30-second query timeout, maximum 5 minutes, maximum 10,000 rows, and a result byte cap on both databases.
+- Bound each lock wait of an execution separately (default 5 seconds, operator range 1–60 seconds), so a queued exclusive lock cannot stall other users of the target object for the whole query timeout; a lock-wait refusal is a confirmed failure (ADR-0021).
 - Complete bootstrap → connection registration → request → approval → execution within 15 minutes in a fresh Docker Compose environment.
 - Target p95 ≤500ms for major APIs excluding query execution time at 50 concurrent users.
 - **Performance and sizing, ADR-0020:** Measure browsing, requests, and approvals with k6 first; add execution, result navigation, CSV, and cancellation after the executor exists.

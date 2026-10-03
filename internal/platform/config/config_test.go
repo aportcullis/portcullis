@@ -86,6 +86,11 @@ func TestRejectsInvalidEnvValues(t *testing.T) {
 		{"connection test timeout zero", "PORTCULLIS_CONNECTION_TEST_TIMEOUT", "0s"},
 		{"connection test timeout below floor", "PORTCULLIS_CONNECTION_TEST_TIMEOUT", "500ms"},
 		{"connection test timeout absurd", "PORTCULLIS_CONNECTION_TEST_TIMEOUT", "2m"},
+		{"execution lock timeout zero", "PORTCULLIS_EXECUTION_LOCK_TIMEOUT", "0s"},
+		{"execution lock timeout negative", "PORTCULLIS_EXECUTION_LOCK_TIMEOUT", "-1s"},
+		{"execution lock timeout below floor", "PORTCULLIS_EXECUTION_LOCK_TIMEOUT", "500ms"},
+		{"execution lock timeout absurd", "PORTCULLIS_EXECUTION_LOCK_TIMEOUT", "2m"},
+		{"execution lock timeout unitless", "PORTCULLIS_EXECUTION_LOCK_TIMEOUT", "5"},
 		{"negative drain delay", "PORTCULLIS_DRAIN_DELAY", "-5s"},
 		{"zero shutdown timeout", "PORTCULLIS_SHUTDOWN_TIMEOUT", "0s"},
 		{"negative shutdown timeout", "PORTCULLIS_SHUTDOWN_TIMEOUT", "-1s"},
@@ -580,5 +585,26 @@ func TestApprovalValidity(t *testing.T) {
 	t.Setenv("PORTCULLIS_APPROVAL_VALIDITY", "169h")
 	if _, err := config.Load(); err == nil {
 		t.Error("over-7d approval_validity must fail Load")
+	}
+}
+
+func TestExecutionLockTimeoutAcceptsDefaultAndInRangeValues(t *testing.T) {
+	cfg, err := config.Load()
+	if err != nil || cfg.ExecutionLockTimeout != 5*time.Second {
+		t.Fatalf("default ExecutionLockTimeout = %v, %v; want 5s", cfg.ExecutionLockTimeout, err)
+	}
+	for _, accepted := range []struct {
+		envValue string
+		want     time.Duration
+	}{
+		{"1s", time.Second},
+		{"10s", 10 * time.Second},
+		{"1500ms", 1500 * time.Millisecond},
+		{"1m", time.Minute},
+	} {
+		t.Setenv("PORTCULLIS_EXECUTION_LOCK_TIMEOUT", accepted.envValue)
+		if cfg, err := config.Load(); err != nil || cfg.ExecutionLockTimeout != accepted.want {
+			t.Errorf("PORTCULLIS_EXECUTION_LOCK_TIMEOUT=%q gave %v, %v; want %v", accepted.envValue, cfg.ExecutionLockTimeout, err, accepted.want)
+		}
 	}
 }

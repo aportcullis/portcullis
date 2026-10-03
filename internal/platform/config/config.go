@@ -82,6 +82,7 @@ func Load() (Config, error) {
 		{setting.KeyLoginBackoffCap, cfg.LoginBackoffCap.String()},
 		{setting.KeyConnectionTestTimeout, cfg.ConnectionTestTimeout.String()},
 		{setting.KeyApprovalValidity, cfg.ApprovalValidity.String()},
+		{setting.KeyExecutionLockTimeout, cfg.ExecutionLockTimeout.String()},
 	} {
 		d, ok := setting.Lookup(tc.key)
 		if !ok {

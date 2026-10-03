@@ -47,6 +47,8 @@ type Config struct {
 	ConnectionTestTimeout time.Duration `mapstructure:"connection_test_timeout"`
 	// ApprovalValidity is how long an approved access request stays executable, measured from the Nth approval or the system auto-approval (PRD §4.3; ADR-0018; default 24h, range [15m, 168h]).
 	ApprovalValidity time.Duration `mapstructure:"approval_validity"`
+	// ExecutionLockTimeout bounds each lock wait of a governed target execution (ADR-0021; default 5s, range [1s, 60s]).
+	ExecutionLockTimeout time.Duration `mapstructure:"execution_lock_timeout"`
 	// TrustedProxies is a comma-separated list of CIDRs whose requests carry a real client IP in X-Forwarded-For (used for rate-limit keying). Empty (default) means the direct peer IP is trusted — the correct setting for direct exposure.
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
 

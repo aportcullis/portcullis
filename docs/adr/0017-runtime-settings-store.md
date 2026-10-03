@@ -29,6 +29,7 @@ Moves into the settings store (live-mutable):
 - `log_level`
 - `login_backoff_threshold`, `login_backoff_base`, `login_backoff_cap` (ADR-0006 Parameters)
 - `connection_test_timeout` (ADR-0014)
+- `execution_lock_timeout` (ADR-0021, default 5s, range [1s, 60s])
 - the M1 query-execution tunables as they land — query timeout (PRD §8.2), max result rows/bytes, and the pgdialect execution timeouts currently hardcoded.
 
 Stays env, by design (lifecycle-read-once or rebuild-required — live mutation has no value or no effect):

@@ -68,6 +68,9 @@ const (
 	// Approval validity window (PRD §4.3: default 24h, org-configurable 15 minutes to 7 days; ADR-0018).
 	MinApprovalValidity = 15 * time.Minute
 	MaxApprovalValidity = 7 * 24 * time.Hour
+	// Governed execution lock wait (ADR-0021): short enough that a queued ACCESS EXCLUSIVE request cannot stall a target table for the whole statement timeout.
+	MinExecutionLockTimeout = time.Second
+	MaxExecutionLockTimeout = time.Minute
 )
 
 // LogLevels is the log_level vocabulary. platform/logging owns the runtime mapping; a config test pins the two lists together (the repo's established cross-package-literal pattern — domain imports nothing outward).
@@ -81,6 +84,7 @@ var registry = []Descriptor{
 	{Key: KeyLoginBackoffCap, Kind: KindDuration, Default: "15m0s", MinDuration: time.Nanosecond, MaxDuration: MaxLoginBackoffCap},
 	{Key: KeyConnectionTestTimeout, Kind: KindDuration, Default: "10s", MinDuration: MinConnectionTestTimeout, MaxDuration: MaxConnectionTestTimeout},
 	{Key: KeyApprovalValidity, Kind: KindDuration, Default: "24h0m0s", MinDuration: MinApprovalValidity, MaxDuration: MaxApprovalValidity},
+	{Key: KeyExecutionLockTimeout, Kind: KindDuration, Default: "5s", MinDuration: MinExecutionLockTimeout, MaxDuration: MaxExecutionLockTimeout},
 }
 
 var byKey = func() map[Key]Descriptor {

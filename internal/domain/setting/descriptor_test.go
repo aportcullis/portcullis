@@ -55,6 +55,15 @@ func TestValidateBounds(t *testing.T) {
 		{setting.KeyConnectionTestTimeout, "abc", false},
 		{setting.KeyConnectionTestTimeout, "10", false},
 
+		{setting.KeyExecutionLockTimeout, "5s", true},
+		{setting.KeyExecutionLockTimeout, "1s", true},
+		{setting.KeyExecutionLockTimeout, "30s", true},
+		{setting.KeyExecutionLockTimeout, "1m", true},
+		{setting.KeyExecutionLockTimeout, "999ms", false},
+		{setting.KeyExecutionLockTimeout, "61s", false},
+		{setting.KeyExecutionLockTimeout, "-1s", false},
+		{setting.KeyExecutionLockTimeout, "five", false},
+
 		{setting.KeyLoginBackoffThreshold, "5", true},
 		{setting.KeyLoginBackoffThreshold, "1", true},
 		{setting.KeyLoginBackoffThreshold, "1000", true},

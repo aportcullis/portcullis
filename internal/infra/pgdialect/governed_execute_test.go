@@ -8,6 +8,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGovernedExecutionRejectsUserOverloadBeforeItRuns(t *testing.T) {
@@ -61,6 +62,82 @@ func TestGovernedUnqualifiedDDLCreatesObjectInPublicSchema(t *testing.T) {
 	}
 	if createdTable == nil {
 		t.Fatal("governed DDL did not create public.governed_ddl")
+	}
+}
+
+// lockScenario holds heldLock in another transaction while a governed execution runs statement.
+type lockScenario struct {
+	name      string
+	heldLock  string
+	statement string
+	class     query.StatementClass
+}
+
+// executeWhileLockHeld runs one governed statement with a 1s lock timeout while a separate transaction holds the scenario's lock.
+func executeWhileLockHeld(t *testing.T, scenario lockScenario) (time.Duration, error) {
+	t.Helper()
+	pool, target, cred := freshExec(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, "INSERT INTO exec_t (id, v) VALUES (1, 'a'), (2, 'b')"); err != nil {
+		t.Fatal(err)
+	}
+	lockHolder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lockHolder.Rollback(ctx) }()
+	if scenario.heldLock != "" {
+		if _, err := lockHolder.Exec(ctx, scenario.heldLock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dialect := pgdialect.New(pgdialect.Options{LockTimeout: time.Second})
+	started := time.Now()
+	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: scenario.statement, Class: scenario.class, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	if err == nil {
+		for stream.Next() {
+			_ = stream.Row()
+		}
+		err = stream.Err()
+		if closeErr := stream.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	return time.Since(started), err
+}
+
+func TestGovernedExecutionStopsWaitingForConflictingLockAtLockTimeout(t *testing.T) {
+	for _, scenario := range []lockScenario{
+		{name: "read behind access exclusive table lock", heldLock: "LOCK TABLE exec_t IN ACCESS EXCLUSIVE MODE", statement: "SELECT id FROM exec_t", class: query.ClassRead},
+		{name: "update behind row lock", heldLock: "SELECT id FROM exec_t WHERE id = 1 FOR UPDATE", statement: "UPDATE exec_t SET v = 'z' WHERE id = 1", class: query.ClassWrite},
+		{name: "insert behind share table lock", heldLock: "LOCK TABLE exec_t IN SHARE MODE", statement: "INSERT INTO exec_t (id, v) VALUES (9, 'z')", class: query.ClassWrite},
+		{name: "truncate behind reader", heldLock: "SELECT id FROM exec_t", statement: "TRUNCATE TABLE exec_t", class: query.ClassDDL},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			waited, err := executeWhileLockHeld(t, scenario)
+			var execErr *query.ExecError
+			if !errors.As(err, &execErr) || execErr.SQLState != "55P03" {
+				t.Fatalf("lock wait error = %v, want SQLSTATE 55P03 lock_not_available", err)
+			}
+			if waited > 10*time.Second {
+				t.Fatalf("lock wait took %s, want about the 1s lock timeout", waited)
+			}
+		})
+	}
+}
+
+func TestGovernedExecutionProceedsAlongsideCompatibleLocks(t *testing.T) {
+	for _, scenario := range []lockScenario{
+		{name: "read with no other transaction", statement: "SELECT id FROM exec_t", class: query.ClassRead},
+		{name: "read beside row update", heldLock: "UPDATE exec_t SET v = 'held' WHERE id = 1", statement: "SELECT id FROM exec_t", class: query.ClassRead},
+		{name: "read beside share table lock", heldLock: "LOCK TABLE exec_t IN SHARE MODE", statement: "SELECT id FROM exec_t", class: query.ClassRead},
+		{name: "update of another row beside row lock", heldLock: "SELECT id FROM exec_t WHERE id = 1 FOR UPDATE", statement: "UPDATE exec_t SET v = 'z' WHERE id = 2", class: query.ClassWrite},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			if _, err := executeWhileLockHeld(t, scenario); err != nil {
+				t.Fatalf("compatible lock blocked execution: %v", err)
+			}
+		})
 	}
 }
 

@@ -61,6 +61,8 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 		// pg_catalog is searched implicitly before every listed schema, so built-ins still resolve first while unqualified objects are created in public.
 		cfg.RuntimeParams["search_path"] = "public"
 		cfg.RuntimeParams["statement_timeout"] = strconv.Itoa(exec.TimeoutSeconds * 1000)
+		// A queued lock request blocks every later locker on that object, so the wait is bounded well below the statement timeout (ADR-0021).
+		cfg.RuntimeParams["lock_timeout"] = strconv.FormatInt(d.lockTimeout.Milliseconds(), 10)
 		cfg.RuntimeParams["idle_in_transaction_session_timeout"] = "60000"
 		cfg.BuildFrontend = func(reader io.Reader, writer io.Writer) *pgproto3.Frontend {
 			frontend := pgproto3.NewFrontend(reader, writer)

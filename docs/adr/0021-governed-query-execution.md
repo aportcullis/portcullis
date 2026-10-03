@@ -39,6 +39,14 @@ This intentionally reduces compatibility; it does not claim to reproduce Postgre
 ADR-0002 and both PRD translations adopt this conservative alternative to exact selected-OID resolution.
 Catalog ownership, concurrent target catalog changes, implicit casts from user-defined relation columns, views, triggers, row security, and function bodies remain under the least-privilege target account and trusted database administrator boundary.
 
+### Lock waits (2026-10-04)
+
+Governed sessions pin `lock_timeout` from the Tier-C setting `execution_lock_timeout` (default 5s, range [1s, 60s]; ADR-0017), alongside `statement_timeout`.
+PostgreSQL queues later lock requests behind a waiting one, so an approved `ALTER TABLE` or `TRUNCATE` waiting for ACCESS EXCLUSIVE otherwise stalls every reader and writer of that table for up to the five-minute statement timeout.
+The timeout applies separately to each lock acquisition and only while waiting; exceeding it raises SQLSTATE 55P03 before COMMIT, which is a confirmed `failed` outcome and leaves the target healthy.
+When a policy's statement timeout is at or below the lock timeout, PostgreSQL's statement timeout fires first, which is equally bounded.
+Source: [PostgreSQL client connection defaults](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-LOCK-TIMEOUT).
+
 The server admits two active target executions and two result-processing workers.
 Saturation refuses work before acquiring a lease; result processing responds with Retry-After.
 Governed target streams check raw row bytes before decoding and limit protocol message allocation to the result byte budget plus 64 KiB framing allowance.

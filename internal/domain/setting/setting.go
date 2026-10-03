@@ -12,4 +12,5 @@ const (
 	KeyLoginBackoffCap       Key = "login_backoff_cap"
 	KeyConnectionTestTimeout Key = "connection_test_timeout"
 	KeyApprovalValidity      Key = "approval_validity"
+	KeyExecutionLockTimeout  Key = "execution_lock_timeout"
 )
