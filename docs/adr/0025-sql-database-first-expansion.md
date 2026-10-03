@@ -3,6 +3,8 @@
 - **Status:** Accepted (milestone sequence; support remains gated)
 - **Date:** 2026-10-03
 
+> **Sequence amendment:** [ADR-0026](0026-review-tools-before-agent-integration.md) advances M2 SQL review/EXPLAIN and M3 schema preview, defers WebMCP to M6 after M5, and removes WebMCP from MVP acceptance. Earlier sequence text below is historical.
+
 ## Context
 
 The product owner chooses SQL-based databases first after the container-backed candidate assessment. PostgreSQL has passed M1. ADR-0024 previously placed WebMCP before the remaining DB adapters. The [candidate assessment](../product/database-candidates.md) records primary-source research and actual MySQL/MariaDB engine experiments; the experiments establish engine behavior, not Portcullis adapter support.

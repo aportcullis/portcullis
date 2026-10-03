@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.4 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
-> **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity precedes WebMCP.
-> **Status:** Draft v0.4 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Shared revision:** v0.5 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 WebMCP (ADR-0026).
+> **Status:** Draft v0.5 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -298,6 +298,8 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
 
 ### 4.5 Schema Change Governance (Schema milestone)
 
+**Delivery split (ADR-0026):** M3 provides immutable-artifact status/dry-run/impact preview only; M5 completes approval/apply/recovery/verify. M3 must not expose migration apply.
+
 Govern migration files from Git or other remote storage through the access core's request → review → approve → execution → audit pattern.
 Use Atlas Community for status/dry-run/apply; differentiation comes from Git integration, governance approval, impact review, unified auditing, and Argo-style UX, without building lint/pre-check risk engines.
 
@@ -350,7 +352,7 @@ Use the 0.9.2 fixes for approved-command replacement and result-log exposure as 
 | Comments/review suggestions | Post-MVP | Append-only discussion separate from state transitions |
 | Temporary SQL access | Post-MVP | Web console session reusing server execution, dialect-independent policy and result grid; audit each statement, matching kviklet `Connection.kt` per-execute `saveEvent`, code checked 2026-06-27; threat model §4.9 |
 | Multistage/role review gates | Post-MVP | Start with explicit quorum/role rules before a policy DSL |
-| EXPLAIN | Post-MVP | Distinguish read safety from `ANALYZE` execution per DB |
+| EXPLAIN | M2 (basic read plans) | Distinguish read safety from `ANALYZE` execution per DB |
 | Google OIDC | MVP | Server callbacks, no frontend SDK; verified-email linking to admin-created users, no signup, ADR-0007 |
 | Other OIDC/LDAP and group-role sync | Post-MVP | External IdP as source of truth |
 | Native DB client proxy | Later/deferred | Web console replaces temporary access; reconsider only after strong native-client demand and complete wire policy/audit/credential design; kviklet 0.9 PG/MySQL/MariaDB is Enterprise beta, with separate dialect implementation/validation cost |
@@ -371,7 +373,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM are not mandatory for MVP/parity; prio
 - ML anomaly detection from audit risk scores, linked to §4.8.
 - SAML/SCIM after demand validation.
 - **Agent Gateway integration:** Gradually add a path for agents to access Portcullis capabilities.
-  - Browser WebMCP query assistance is promoted to M2 (§4.10); this Later item covers remote/headless gateway integration beyond that browser workflow.
+  - Browser WebMCP query assistance is deferred to M6 (§4.10); this Later item covers remote/headless gateway integration beyond that browser workflow.
   - Define agent identity, user delegation, least privilege, approval boundaries, and audit attribution when starting the milestone.
   - Choose the gateway product, protocol, authentication, and implementation sequence through ADRs after demand validation.
 
@@ -425,15 +427,23 @@ This section replaces the separate PRD previously required to start M4.
 - **Transactions:** Default stateless per statement to avoid idle-in-transaction.
   - Stateful multi-statement transactions are a later connection-policy opt-in restricted to read-only, with automatic ROLLBACK after 60 seconds transaction idle, provisional.
 
-### 4.10 WebMCP query assistance (M2 / Bridge)
+### 4.10 WebMCP query assistance (M6 / Reach)
 
-Browser WebMCP is promoted from the broad Later agent direction into the next milestone, after M1's complete release gate (ADR-0024). In M2, complete PostgreSQL/MySQL governance parity first, then implement browser WebMCP assistance (ADR-0025). SQLite is excluded from supported-target scope. This is planned scope, not an available feature. HTTP MCP gateways and remote/headless machine clients remain Later.
+Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. HTTP MCP gateways and remote/headless machine clients remain Later.
 
 - Expose connection discovery, visible SQL/typed-parameter composition, explicit draft save/submit, request/approval-state inspection, requester-only approved execution and bounded result-page retrieval as separate tools. Start with read queries; filling a form must not automatically persist or execute it.
 - Add schema discovery only through a bounded, authorized and audited catalog use case. Discover/reuse saved queries when Library supplies those assets. Neither path grants arbitrary SQL execution.
 - Reuse the current authenticated user/org and existing server permissions, CSRF, ownership, distinct reviewers, quorum, immutable payload/config/policy, single-use execution, cancellation, audit and result limits. No initial automatic approval/rejection tool. Require an explicit user execution request, and distinguish authenticated user attribution from untrusted agent/source labels.
 - Keep ordinary work within pages. Provide a visible tool outcome and direct links; revoke registration and fence pending responses on logout, identity/permission changes and route teardown. Bound outputs and treat catalog/SQL/result content as untrusted data. Never export credentials, encryption keys or UI cookies.
 - Feature-detect native browser support; keep the normal interface usable without WebMCP. Reverify the evolving API at implementation time. Acceptance requires a real supported-browser query journey, denied/revoked and cross-user cases, replay refusal, cancellation, exact/bounded results and unsupported-browser fallback; a fake registry alone does not prove compatibility.
+
+### 4.11 Early SQL review and schema preview (M2–M3)
+
+ADR-0026 advances review tools before agent integration. In M2, after MySQL parity, show deterministic statement class, identifiable referenced objects and applicable policy/limits, with explicit unknowns. Add basic native EXPLAIN only for supported read statements, using typed parameters and fixed server-controlled options; reject ANALYZE, unsafe functions/operators and unclassified forms. Require org/connection authorization, archived-target checks, target/config/policy validation, bounded planning timeout/output, cancellation, requester-only plan access and audit. Planning does not approve or execute a request. Tie evidence to SQL/parameter digest, target/config, engine version and observation time; invalidate changed inputs and label costs/rows as estimates. Accept only after parser rejection, side-effect defenses, denied/cross-org access, stale inputs, sensitive plan output and real-engine scenarios pass for both DBs.
+
+M3 adds the §4.5/ADR-0012 schema status → dry-run → deterministic review slice over a pinned immutable Git/Atlas artifact. Enforce the per-DB object matrix, permissions, audit and bounded subprocess/catalog operations. Display fact sources, observation time, estimates and unknowns. No migration apply endpoint is exposed until M5; preview does not simulate changes or guarantee rollback/lock safety. Actual apply must revalidate artifact and target state.
+
+EXPLAIN ANALYZE, execute-then-rollback query dry-run, AI review and index recommendations remain deferred. Basic review facts do not promise exact affected rows or a risk score.
 
 ---
 
@@ -789,17 +799,17 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 ```text
 0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice
-2  Bridge       PostgreSQL/MySQL parity and shared tests first; then browser WebMCP query assistance
-3  Core 2       Saved queries, favorites, sharing, parameters, result grid across both DBs
+2  Bridge       PostgreSQL/MySQL parity; deterministic SQL review and basic read EXPLAIN
+3  Core 2       Saved queries/reuse across both DBs; schema status/dry-run/impact preview (no apply)
    ── MVP ──
-4  Access       Sequential validation of temporary web console, multistage approval, EXPLAIN, OIDC/LDAP
-5  Schema       Git source, Atlas subprocess status/dry-run/apply, deterministic review/optional AI, Argo-style UI
-6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability
+4  Access       Sequential validation of temporary web console, multistage approval, OIDC/LDAP
+5  Schema       Complete pinned schema approval/apply/recovery/verify using M3 preview contracts
+6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability; browser WebMCP after M5
 7  Later        BI analysis/sharing (charts/dashboards), declarative GitOps, CNPG discovery, SIEM, ML/AI Review (§4.8), Agent Gateway integration (§4.7)
 ```
 
 Stage 1, PostgreSQL-only Core 1, is the **first releasable alpha**.
-MVP means stage 3 completion, including MySQL parity and Core 2, subject to interview-driven Core 2 adjustments (§1.4).
+MVP means stage 3 completion, including MySQL parity, SQL review/EXPLAIN and Core 2 with schema preview, excluding WebMCP, subject to interview-driven Core 2 adjustments (§1.4).
 After foundation, develop vertical features with server APIs and SolidJS screens together, because UX is central to differentiation.
 
 **Roadmap management:** Record new directions as Later candidates first, then promote them to concrete milestones after validating demand, goals, and prerequisites.

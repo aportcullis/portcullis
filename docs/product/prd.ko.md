@@ -1,9 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.4 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
-> **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity를 WebMCP보다 먼저 진행한다.
-> **상태:** Draft v0.4 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
+> **동기화 기준:** v0.5 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 WebMCP는 M6로 미룬다(ADR-0026).
+> **상태:** Draft v0.5 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -270,6 +270,9 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
   행의 `expires_at`, system APPROVED 이벤트의 `occurred_at`, 그 이벤트 metadata의 `expires_at` 복사본이 **모두 그 하나의 시각에서 파생**된다 — 잠금 전에 계산한 값을 감사에 남기면 행과 감사가 서로 다른 시각을 말한다.
 
 ### 4.5 Schema Change Governance (Schema 마일스톤)
+
+**단계 분리(ADR-0026):** M3는 불변 artifact 기반 status/dry-run/영향 미리보기만 제공하고, M5에서 승인·apply·복구·verify를 완성한다. M3에는 migration apply를 노출하지 않는다.
+
 Git 등 remote storage의 migration 파일을 access core와 **동일한 거버넌스 패턴**(요청→review→approve→실행→audit)에 태운다.
 Atlas Community를 status/dry-run/apply 엔진으로 빌려 쓰고, lint·pre-check 같은 자체 위험 엔진은 만들지 않는다(차별화는 git 연동 + 거버넌스 승인 + impact review + 통합 audit + Argo식 UX에서 나온다).
 
@@ -317,7 +320,7 @@ Portcullis에 telemetry를 추가하는 결정은 하지 않는다. 0.9.2의 승
 | 요청 댓글·review suggestion | post-MVP | 상태 전이와 분리된 append-only discussion으로 구현 |
 | 임시 SQL 접근 session | post-MVP | **웹 SQL console session**으로 구현(서버 실행 경로 재사용 → dialect 무관·자동 정책·결과 그리드). **세션 중 모든 statement를 개별 audit event로 기록**(kviklet proxy가 `Connection.kt`에서 per-execute `saveEvent`하는 것과 동일 보장, 코드 검증 2026-06-27). threat model은 §4.9로 확정 |
 | 다단계·role-based review gate | post-MVP | 정책 DSL보다 명시적 quorum/role rule부터 시작 |
-| EXPLAIN | post-MVP | DB별 read safety와 `ANALYZE` 실행 여부를 분리 |
+| EXPLAIN | M2 (기본 Read 실행계획) | DB별 read safety와 `ANALYZE` 실행 여부를 분리 |
 | Google 소셜 로그인(OIDC) | MVP | 서버 사이드 콜백 flow(프론트 SDK 없음). admin이 만든 사용자에 verified email로 링크, 자동 가입 없음(ADR-0007) |
 | 그 외 OIDC provider/LDAP 및 group-role sync | post-MVP | 외부 IdP를 source of truth로 사용 |
 | DB client용 proxy | Later (보류) | 임시 접근은 웹 console session으로 대체하므로 기본 미채택. native client(psql 등) 강한 수요가 검증되고 wire-level 정책·audit 완전성·credential 발급이 풀릴 때만 재고. kviklet 0.9는 PostgreSQL/MySQL/MariaDB를 지원하지만 Enterprise-only(beta); Portcullis도 dialect별 wire 구현·검증 비용을 별도로 평가 |
@@ -338,7 +341,7 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM은 MVP와 parity track의 필수 범�
 - ML 이상 탐지 (audit 기반 위험 점수 → 4.8 AI Review와 연계)
 - SAML/SCIM (수요 검증 후)
 - **Agent Gateway 연동:** 에이전트가 Portcullis의 기능에 접근할 수 있는 연동 경로를 단계적으로 추가한다.
-  - 브라우저 WebMCP 쿼리 보조는 M2(4.10)로 상향하며, 이 Later 항목은 브라우저 과업을 넘어서는 원격·headless Gateway 연동을 다룬다.
+  - 브라우저 WebMCP 쿼리 보조는 M6(4.10)로 미루며, 이 Later 항목은 브라우저 과업을 넘어서는 원격·headless Gateway 연동을 다룬다.
   - 착수 시 에이전트 신원, 사용자 위임, 최소 권한, 승인 경계, 감사 추적을 정의한다.
   - Gateway 제품·프로토콜·인증 방식과 구현 순서는 수요 검증 후 ADR로 결정한다.
 
@@ -392,15 +395,23 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
   "세션은 열리되 내역이 안 남는" 경로 금지(6.1).
 - **transaction:** 기본 **stateless per-statement**(idle-in-transaction 차단, 12.1). stateful multi-statement transaction은 connection 정책 opt-in 후속 옵션으로, **read-only 한정 + transaction idle 60초 초과 시 자동 ROLLBACK** 경계를 여기서 확정한다. *(잠정)*
 
-### 4.10 WebMCP 쿼리 보조 (M2 / Bridge)
+### 4.10 WebMCP 쿼리 보조 (M6 / Reach)
 
-브라우저 WebMCP를 포괄적인 Later 에이전트 방향에서 다음 마일스톤으로 상향하며, M1 전체 출하 게이트 통과 후 착수한다(ADR-0024). M2에서는 PostgreSQL/MySQL 거버넌스 parity를 먼저 완료하고 브라우저 WebMCP 쿼리 보조를 이어서 구현한다(ADR-0025). SQLite는 지원 범위에서 제외한다. 계획된 범위이며 현재 제공 기능이 아니다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다.
+브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. HTTP MCP Gateway와 원격·headless 머신 클라이언트는 Later로 유지한다.
 
 - 연결 탐색, 화면에 보이는 SQL·타입 파라미터 작성, 명시적 초안 저장·제출, 요청·승인 상태 조회, 요청자만의 승인된 실행, 제한된 결과 페이지 조회를 각각 도구로 제공한다. Read 쿼리부터 시작하며, 폼을 채우는 것만으로 자동 저장·실행하지 않는다.
 - 스키마 탐색은 제한·인가·감사를 갖춘 catalog use case를 정의한 뒤 추가한다. 저장 쿼리 탐색·재사용은 Library가 해당 자산을 제공할 때 연동한다. 어느 경로도 임의 SQL 실행 권한을 부여하지 않는다.
 - 현재 인증 사용자·조직과 기존 서버 권한, CSRF, 소유권, 별도 검토자, quorum, 불변 payload·config·policy, 1회 실행, 취소, audit, 결과 제한을 재사용한다. 초기 자동 승인·반려 도구는 제공하지 않는다. 실행은 명시적인 사용자 요청이 있어야 하며, 인증된 사용자 귀속과 신뢰할 수 없는 agent/source 표기를 구분한다.
 - 일반 작업은 페이지 내부에 유지한다. 도구 결과와 직접 링크를 화면에 표시하고 로그아웃·신원·권한 변경·경로 종료 시 등록 해제와 진행 응답 fencing을 적용한다. 출력을 제한하고 catalog·SQL·결과 내용을 신뢰할 수 없는 데이터로 취급한다. 자격 증명·암호화 키·UI 쿠키를 노출하지 않는다.
 - 네이티브 브라우저 지원을 감지하고 미지원 환경에서도 일반 UI를 사용할 수 있어야 한다. 착수 시 변경 중인 API를 다시 검증한다. 실제 지원 브라우저의 쿼리 과업, 거부·권한 회수·다른 사용자 접근, 재실행 거부, 취소, 정확하고 제한된 결과, 미지원 브라우저 fallback을 인수 조건으로 둔다. 가짜 registry만으로 네이티브 호환성을 입증하지 않는다.
+
+### 4.11 SQL 검토와 스키마 미리보기 조기 제공 (M2–M3)
+
+ADR-0026으로 에이전트 연동보다 검토 도구를 앞당긴다. M2는 MySQL parity 이후 statement 종류, 식별 가능한 참조 object, 적용 policy·limit을 결정론적으로 표시하고 미확인 항목은 unknown으로 둔다. 지원 Read 문장만 typed parameter와 서버 고정 옵션으로 기본 native EXPLAIN을 제공하며 ANALYZE, 위험 함수·연산자, 미분류 구문은 거부한다. 조직·connection 인가, archive 검사, target/config/policy 검증, 제한된 planning timeout·출력, 취소, 요청자만의 plan 접근과 audit가 필수다. 계획 조회는 승인이나 요청 실행이 아니다. SQL·parameter digest, target/config, 엔진 버전, 관측 시각을 근거에 연결하고 입력 변경 시 무효화하며 cost·row 수는 추정으로 표시한다. 두 DB 모두 parser 거절, 부작용 방어, 권한 거부·타 조직 접근, 오래된 입력, 민감 plan 출력 및 실제 엔진 시나리오 통과 후 제공한다.
+
+M3는 4.5/ADR-0012의 고정된 불변 Git/Atlas artifact로 schema status → dry-run → 결정론 review만 제공한다. DB별 object matrix, 인가, audit, 제한된 subprocess·catalog 작업을 강제한다. fact 산출원·관측 시각·추정·unknown을 표시한다. M5 전에는 migration apply endpoint를 제공하지 않으며 미리보기는 변경 시뮬레이션이나 rollback·lock 안전성 보장이 아니다. 실제 apply 전 artifact와 target 상태를 재검증한다.
+
+EXPLAIN ANALYZE, 실행 후 rollback하는 일반 쿼리 dry-run, AI review, 인덱스 추천은 후속 범위로 유지한다. 기본 검토 정보는 정확한 영향 row 수나 위험 점수를 약속하지 않는다.
 
 ---
 
@@ -748,17 +759,17 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 ```
 0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현
-2  Bridge       PostgreSQL/MySQL parity 및 공통 test 우선 → 브라우저 WebMCP 쿼리 보조
-3  Core 2       두 DB 공통 saved query / favorite / share / params / 결과 그리드
+2  Bridge       PostgreSQL/MySQL parity → 결정론 SQL 검토·기본 Read EXPLAIN
+3  Core 2       두 DB 쿼리 저장·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
    ── MVP ──
-4  access 확장  임시 접근(웹 console session)·다단계 승인·EXPLAIN·OIDC/LDAP 순차 검증
-5  schema       git 소스 + Atlas subprocess(status/dry-run/apply) + deterministic review(+optional AI) + Argo식 워크플로우 UI (Schema 마일스톤)
-6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider
+4  access 확장  임시 접근(웹 console session)·다단계 승인·OIDC/LDAP 순차 검증
+5  schema       M3 미리보기 계약 기반 schema 승인·apply·복구·verify 완성
+6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider; M5 이후 브라우저 WebMCP
 7  later        BI 분석·공유(차트·대시보드), declarative GitOps, CNPG 자동발견, SIEM, ML/AI Review(4.8), Agent Gateway 연동(4.7)
 ```
 
 **출하 경계:** 단계 1(Core 1-PG, PostgreSQL 단독 거버넌스 루프)을 **first releasable alpha 경계**로 둔다.
-문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity(2)와 Core 2(3)를 포함한다.
+문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity·SQL 검토·EXPLAIN(2)와 schema 미리보기를 포함한 Core 2(3)를 포함하며 WebMCP는 제외한다.
 인터뷰 결과(1.4)에 따라 Core 2 범위를 조정할 여지는 남긴다.
 
 개발 원칙: 토대 이후로는 **기능 단위 수직 개발**(서버 API + SolidJS 화면을 함께).

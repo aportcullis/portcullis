@@ -2,6 +2,8 @@
 - **Status:** Accepted — ordering and DB scope amended by [ADR-0025](0025-sql-database-first-expansion.md) (roadmap scope; implementation follows the M1 release gate)
 - **Date:** 2026-10-03
 
+> **Sequence amendment:** [ADR-0026](0026-review-tools-before-agent-integration.md) advances M2 SQL review/EXPLAIN and M3 schema preview, defers WebMCP to M6 after M5, and removes WebMCP from MVP acceptance. Earlier sequence text below is historical.
+
 ## Context
 
 The product owner requests Web MCP query assistance in the next milestone. Bridge (M2) currently covers MySQL/SQLite parity; agent integration was a Later candidate. Promote browser WebMCP query assistance into Bridge, before adapter expansion, while retaining milestone identifiers and the existing alpha/MVP release boundaries. The initial interpretation of "Web MCP" is browser WebMCP; a remote HTTP MCP service is a separate scope decision.
