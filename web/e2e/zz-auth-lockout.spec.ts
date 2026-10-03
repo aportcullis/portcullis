@@ -15,14 +15,18 @@ test.describe.serial("auth lockout", () => {
   const signIn = async (page: import("@playwright/test").Page, pw: string) => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(pw);
+    const response = page.waitForResponse(res =>
+      res.request().method() === "POST" && res.url().endsWith("/portcullis.v1.Auth/Login"));
     await page.getByRole("button", { name: "Sign in" }).click();
+    expect((await response).status(), "credential rejection must reach authentication, not the rate limiter").toBe(401);
   };
 
   test("progressive backoff lockout is invisible", async ({ page }) => {
     test.slow();
     await page.goto("/login");
 
-    // 5 wrong passwords lock the account (ADR-0006). Pace the attempts so the per-IP/email token bucket refills — this test targets the backoff, and a rate-limited attempt would never reach the failure counter.
+    // The preceding scenarios can drain the shared IP bucket. Refill before the first attempt as well as between attempts; a 429 never increments the account's failure counter (ADR-0006/0010).
+    await page.waitForTimeout(3200);
     for (let i = 0; i < 5; i++) {
       await signIn(page, wrong);
       await expect(page.getByText(genericError)).toBeVisible(slowExpect);
