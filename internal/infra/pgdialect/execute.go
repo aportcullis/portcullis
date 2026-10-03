@@ -2,10 +2,13 @@ package pgdialect
 
 import (
 	"context"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
+	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/aportcullis/portcullis/internal/domain/connection"
@@ -16,6 +19,21 @@ import (
 func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential, exec query.Execution) (query.ResultStream, error) {
 	if !exec.Class.Valid() {
 		return nil, &query.Rejection{Reason: query.RejectNotAllowlisted}
+	}
+	var parsed query.Statement
+	if exec.Governed {
+		var parseErr error
+		parsed, parseErr = d.ParseSingle(exec.SQL)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		class, classErr := d.Classify(parsed)
+		if classErr != nil {
+			return nil, classErr
+		}
+		if class != exec.Class || exec.MaxRows < 1 || exec.MaxRows > 10000 || exec.MaxResultBytes < 1 || exec.MaxResultBytes > query.MaxSnapshotBytes || exec.TimeoutSeconds < 1 || exec.TimeoutSeconds > 300 {
+			return nil, &query.Rejection{Reason: query.RejectNotAllowlisted}
+		}
 	}
 	args, err := encodeArgs(exec.Args)
 	if err != nil {
@@ -38,6 +56,16 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 		"bytea_output":    "hex",
 	}
 
+	if exec.Governed {
+		cfg.RuntimeParams["search_path"] = "pg_catalog,public"
+		cfg.RuntimeParams["statement_timeout"] = strconv.Itoa(exec.TimeoutSeconds * 1000)
+		cfg.RuntimeParams["idle_in_transaction_session_timeout"] = "60000"
+		cfg.BuildFrontend = func(reader io.Reader, writer io.Writer) *pgproto3.Frontend {
+			frontend := pgproto3.NewFrontend(reader, writer)
+			frontend.SetMaxBodyLen(int(exec.MaxResultBytes) + 65536)
+			return frontend
+		}
+	}
 	dialCtx, cancelDial := context.WithTimeout(ctx, d.validateTimeout)
 	defer cancelDial()
 	conn, err := pgconn.ConnectConfig(dialCtx, cfg)
@@ -55,14 +83,22 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 		return nil, redactExecError(ctx, err)
 	}
 
-	stream := &resultStream{ctx: ctx, conn: conn}
+	if exec.Governed {
+		if err := validateCatalog(ctx, conn, parsed); err != nil {
+			closeConn(ctx, conn)
+			return nil, err
+		}
+	}
+	stream := &resultStream{ctx: ctx, conn: conn, maxRows: exec.MaxRows, maxBytes: exec.MaxResultBytes}
 	stream.rr = conn.ExecParams(ctx, exec.SQL, args, parameterOIDs(exec.Args), nil, nil)
 
 	// Read ahead one row: pgconn learns the row description on the first read, and an immediately failing statement concludes here rather than handing the caller a stream that was never going to produce anything.
 	if stream.rr.NextRow() {
 		stream.columns = describeColumns(stream.rr.FieldDescriptions())
-		stream.pending = decodeRow(stream.columns, stream.rr.Values())
-		stream.hasPending = true
+		if stream.acceptRow(stream.rr.Values()) {
+			stream.pending = decodeRow(stream.columns, stream.rr.Values())
+			stream.hasPending = true
+		}
 		return stream, nil
 	}
 	// Copy column descriptions before closing pgconn’s reader, which owns their backing buffer. Return early failures directly; mid-stream failures remain on ResultStream.Err.

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -26,10 +27,16 @@ type resultStream struct {
 
 	rowsAffected int64
 	err          error
+	maxRows      int
+	maxBytes     int64
+	rowCount     int
+	byteCount    int64
+	decodedBytes int64
+	truncated    bool
 	finished     bool // transaction ended, connection closed (or abandoned via Close)
 }
 
-func (s *resultStream) Truncated() bool { return false }
+func (s *resultStream) Truncated() bool { return s.truncated }
 
 func (s *resultStream) Columns() []query.Column { return s.columns }
 func (s *resultStream) Row() []query.CellValue  { return s.current }
@@ -45,9 +52,11 @@ func (s *resultStream) Next() bool {
 		s.current, s.pending, s.hasPending = s.pending, nil, false
 		return true
 	}
-	if s.rr.NextRow() {
-		s.current = decodeRow(s.columns, s.rr.Values())
-		return true
+	for s.rr.NextRow() {
+		if s.acceptRow(s.rr.Values()) {
+			s.current = decodeRow(s.columns, s.rr.Values())
+			return true
+		}
 	}
 	tag, err := s.rr.Close()
 	s.conclude(tag, err)
@@ -218,4 +227,25 @@ func canonicalTimestamptz(text string) string {
 		}
 	}
 	return text
+}
+
+// acceptRow checks raw wire sizes before allocating decoded cells.
+func (s *resultStream) acceptRow(values [][]byte) bool {
+	if s.truncated {
+		return false
+	}
+	var byteCount int64
+	for _, value := range values {
+		byteCount += int64(len(value))
+	}
+	// Reserve cell storage separately from payload bytes: NULL and narrow cells still allocate structs. Include the executor's row copy.
+	decodedBytes := int64(len(values))*int64(2*unsafe.Sizeof(query.CellValue{})) + int64(unsafe.Sizeof([]query.CellValue{}))
+	if (s.maxRows > 0 && s.rowCount >= s.maxRows) || (s.maxBytes > 0 && (byteCount > s.maxBytes-s.byteCount || decodedBytes > s.maxBytes-s.decodedBytes)) {
+		s.truncated = true
+		return false
+	}
+	s.rowCount++
+	s.byteCount += byteCount
+	s.decodedBytes += decodedBytes
+	return true
 }
