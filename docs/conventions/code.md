@@ -47,7 +47,8 @@ Plan the split BEFORE creating files; prefer separation.
   - Cover success, refusal/race/recovery failure, and adversarial requests.
   - Attack examples include foreign IDs, forged versions, cross-org resources, replay, compression bombs, control characters, and missing or mismatched CSRF headers.
   - Exercise server boundaries through raw Connect clients and headers; UI predicates do not verify authorization.
-  - Prefer several distinct failure angles over one example.
+  - Every scenario has at least three or four distinct success cases and at least three or four distinct failure cases.
+  - Choose cases that differ in kind (boundaries, inputs, lock or state shapes, attack angles), not repetitions of one example.
 - **Behavioral red baseline**
   - A compile error is not a red; preserve old behavior behind a new signature until the test observes an incorrect value.
   - To strengthen existing behavior, revert the logic, write the failing scenario, then reimplement.
