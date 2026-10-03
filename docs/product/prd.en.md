@@ -706,7 +706,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - Authenticate canonical AAD `portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]`, ADR-0003, to prevent ciphertext swapping.
   - Key version is bound through HKDF-derived wrap-key selection, not AAD; tampering causes decryption failure.
   - Refuse startup without a valid 32-byte master key.
-- **Production keys:** Document mounted-secret injection instead of plaintext environment keys, with Compose examples; retain key IDs for re-encryption-based rotation. The local initializer must preserve an existing valid key across concurrent starts, reject invalid existing keys without replacement, and restrict file access to the nonroot runtime (ADR-0003).
+- **Production keys:** Document mounted-secret injection instead of plaintext environment keys, with Compose examples; retain key IDs for re-encryption-based rotation. The local initializer must preserve an existing valid key across concurrent starts, reject invalid existing keys without replacement, and restrict file access to the nonroot runtime (ADR-0003). Key-rotation completion requires a successful count across all organizations proving no nonactive encryption envelope remains; unresolved rows refuse completion and historical integrity keys remain retained (ADR-0003/0004).
 - **TLS:** Default PG/MySQL connections to certificate verification; relaxation requires explicit admin choice and auditing.
 - **Exposure:** Never expose passwords, original DSNs, session tokens, plaintext parameters, or result rows in APIs/logs/audit.
   - Redact target DB errors before returning them.

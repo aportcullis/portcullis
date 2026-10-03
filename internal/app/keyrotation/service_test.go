@@ -10,9 +10,14 @@ import (
 )
 
 type rotationRepository struct {
-	counts  []int
-	calls   int
-	failure error
+	counts    []int
+	calls     int
+	failure   error
+	remaining int64
+}
+
+func (r *rotationRepository) RemainingEncryptionRows(context.Context, uint32) (int64, error) {
+	return r.remaining, nil
 }
 
 func (r *rotationRepository) RotateBatch(_ context.Context, active uint32, rotate func(encryption.Record) (encryption.Record, error)) (int, error) {
@@ -29,6 +34,18 @@ func (r *rotationRepository) RotateBatch(_ context.Context, active uint32, rotat
 	count := r.counts[0]
 	r.counts = r.counts[1:]
 	return count, nil
+}
+
+func TestRotationRefusesCompletionWhileAnyEncryptionRowsRemain(t *testing.T) {
+	repository := &rotationRepository{remaining: 1}
+	service, err := keyrotation.New(repository, rotationCodec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := service.Rotate(context.Background())
+	if count != 0 || !errors.Is(err, keyrotation.ErrIncomplete) {
+		t.Fatalf("rotation claimed completion despite unresolved encryption: count=%d error=%v", count, err)
+	}
 }
 
 type rotationCodec struct{}

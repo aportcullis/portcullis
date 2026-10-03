@@ -19,6 +19,14 @@ func NewKeyRotationStore(pool *pgxpool.Pool) *KeyRotationStore {
 	return &KeyRotationStore{conns: NewConnectionStore(pool)}
 }
 
+// RemainingEncryptionRows checks every org for nonactive envelopes before administrative completion.
+func (s *KeyRotationStore) RemainingEncryptionRows(ctx context.Context, active uint32) (int64, error) {
+	if active == 0 || active > math.MaxInt32 {
+		return 0, safeErrorf("invalid encryption version")
+	}
+	return s.conns.q.CountRemainingEncryptionRows(ctx, int32(active)) //nolint:gosec // checked above
+}
+
 // RotateBatch locks old envelopes, replaces them, and commits one event per affected organization.
 func (s *KeyRotationStore) RotateBatch(ctx context.Context, active uint32, rotate func(encryption.Record) (encryption.Record, error)) (int, error) {
 	if active == 0 || active > math.MaxInt32 {

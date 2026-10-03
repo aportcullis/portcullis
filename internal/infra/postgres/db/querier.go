@@ -24,6 +24,9 @@ type Querier interface {
 	CountAccessRequests(ctx context.Context, arg CountAccessRequestsParams) (int64, error)
 	// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".
 	CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error)
+	// Administrative rotation completion check: count envelopes across every org
+	// without exposing their contents (ADR-0003/0004). Not a customer read endpoint.
+	CountRemainingEncryptionRows(ctx context.Context, activeVersion int32) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// How many recorded approvals still COUNT (ADR-0018): the approver is active, still resolves requests.approve through the live membership→role→permission join (the PermissionsForUser shape, rbac.sql), and is not the requester.
 	CountValidApprovals(ctx context.Context, arg CountValidApprovalsParams) (int64, error)

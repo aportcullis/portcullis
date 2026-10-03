@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/aportcullis/portcullis/internal/app/keyrotation"
 	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/connection"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/domain/query"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
@@ -102,5 +104,53 @@ func TestKeyRotationPreservesCredentialsPayloadsResultsAndDigestEvidence(t *test
 	}
 	if batches != 1 {
 		t.Fatal("rotation evidence missing")
+	}
+}
+
+func TestRotationDoesNotClaimCompletionForAnotherOrganizationsEncryptedRows(t *testing.T) {
+	f := newReqFixtureFresh(t)
+	ctx := context.Background()
+	org := identity.OrganizationID(uuid.NewString())
+	if _, err := f.pool.Exec(ctx, `insert into organizations(id,name,slug) values ($1,'Rotation fixture',$2)`, string(org), uuid.NewString()); err != nil {
+		t.Fatal(err)
+	}
+	connectionRecord := f.newConn(t, unique("other-org-rotation"))
+	connectionRecord.OrganizationID = org
+	oldKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	newKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
+	old, err := crypto.LoadKeyring(oldKey, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := crypto.NewConnectionCredentialCodec(old).Seal(org, connectionRecord.ID, connection.Credential{User: "fixture", Password: "fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Create(ctx, connectionRecord, sealed, connEvent("CONNECTION_CREATED", connectionRecord.ID)); err != nil {
+		t.Fatal(err)
+	}
+	ring, err := crypto.LoadVersionedKeyring(newKey, "", "1:"+oldKey, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := postgres.NewKeyRotationStore(f.pool)
+	service, err := keyrotation.New(store, ring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := service.Rotate(ctx)
+	if count != 0 || !errors.Is(err, keyrotation.ErrIncomplete) {
+		t.Fatalf("unrotated foreign org was reported complete: count=%d err=%v", count, err)
+	}
+	remaining, err := store.RemainingEncryptionRows(ctx, ring.ActiveVersion())
+	if err != nil || remaining != 1 {
+		t.Fatalf("remaining=%d err=%v", remaining, err)
+	}
+	if _, err := f.pool.Exec(ctx, `update connections set credential_key_version=3 where id=$1`, string(connectionRecord.ID)); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err = store.RemainingEncryptionRows(ctx, ring.ActiveVersion())
+	if err != nil || remaining != 1 {
+		t.Fatalf("future-version row was omitted: remaining=%d err=%v", remaining, err)
 	}
 }

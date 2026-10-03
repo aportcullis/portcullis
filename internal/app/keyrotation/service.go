@@ -34,6 +34,13 @@ func (s *Service) Rotate(ctx context.Context) (int, error) {
 		}
 		total += count
 		if count == 0 {
+			remaining, err := s.repository.RemainingEncryptionRows(ctx, s.codec.ActiveVersion())
+			if err != nil {
+				return total, err
+			}
+			if remaining != 0 {
+				return total, ErrIncomplete
+			}
 			return total, nil
 		}
 		timer := time.NewTimer(25 * time.Millisecond)

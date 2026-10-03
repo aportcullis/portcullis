@@ -73,7 +73,7 @@ portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]
 ### Rotation
 - Multiple KEK versions coexist; the **highest version is active** for new writes, older versions remain available for decrypt/unwrap during transition.
 - A `key rotate` CLI re-wraps DEKs and re-encrypts request payloads to the new version as an **eager batch** (decided 2026-07-04; no lazy-on-read path).
-  Eager keeps completion observable — the CLI reports "0 rows on old encryption versions". Historical KEKs remain necessary for immutable approval/audit HMAC verification, so M1 does not support destroying them solely on that count.
+  Eager keeps completion observable — the CLI reports "0 rows on old encryption versions" only after a database-wide count verifies every credential, request payload and result wrapper uses the active encryption version. The completion check includes all organizations and versions newer than the loaded active key; unresolved rows or a failed count refuse completion (2026-10-03 review correction). Historical KEKs remain necessary for immutable approval/audit HMAC verification, so M1 does not support destroying them solely on that count.
   The batch is resumable (keyed by `key_version < active`) and throttled; reads during rotation work throughout because all versions stay loaded.
 - `payload_digest` carries its `key_version`; verification uses the version recorded on the row.
 - **Implementation status:** M1 implements the multi-version keyring and resumable `key rotate` CLI. Credential/request envelopes are re-encrypted and result DEKs rewrapped in locked, audited batches. Stop serving writers during the operational key switch; see [rotation runbook](../operations/key-rotation.md).

@@ -11,6 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countRemainingEncryptionRows = `-- name: CountRemainingEncryptionRows :one
+select (
+    (select count(*) from public.connections where credential_key_version <> $1::int) +
+    (select count(*) from public.access_requests where payload_key_version <> $1::int) +
+    (select count(*) from result_cache.result_sets where key_version <> $1::int)
+    )::bigint as remaining
+`
+
+// Administrative rotation completion check: count envelopes across every org
+// without exposing their contents (ADR-0003/0004). Not a customer read endpoint.
+func (q *Queries) CountRemainingEncryptionRows(ctx context.Context, activeVersion int32) (int64, error) {
+	row := q.db.QueryRow(ctx, countRemainingEncryptionRows, activeVersion)
+	var remaining int64
+	err := row.Scan(&remaining)
+	return remaining, err
+}
+
 const lockRotationCredentials = `-- name: LockRotationCredentials :many
 select id,organization_id,credential_key_version,credential_wrapped_dek,credential_nonce,credential_ciphertext
 from public.connections where organization_id=$1 and credential_key_version < $2::int
