@@ -69,3 +69,7 @@ When shared logic needs a caller-specific piece (an error formatter, a label), *
 - Type safety is enforced by `pnpm -C web typecheck` (tsgo).
 - Unit tests: vitest (`make web-test`, part of `make verify`), colocated as `*.test.ts`, node environment (`web/vitest.config.ts` mirrors the `@/` alias).
   Reserved for pure logic Playwright cannot schedule deterministically — store/state race interleavings are the canonical case (`entities/connection/store.test.ts`); component rendering stays with e2e.
+
+## Page-first workflows
+
+Routine create/edit/detail/review/settings/results workflows use pages with direct URLs and visible navigation (ADR-0022). Reserve modal confirmation for risky or destructive actions. Read-only expansion, full cells and validation errors stay inline. Fence asynchronous reads/mutations on route unmount and session changes; background refresh must preserve active SQL edits and decision reasons.

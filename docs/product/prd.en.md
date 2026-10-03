@@ -592,6 +592,9 @@ audit_events
 
 ### 7.1 Results and pagination
 
+Routine creation, editing, request review, policy settings and result exploration belong within pages; modal confirmation is reserved for risky/destructive actions (ADR-0022). Requests provide directly reloadable creation, detail and result routes with browser history and visible back links. Preserve typed SQL and decision reasons during background refresh, and require explicit Save draft/Submit actions; route navigation must not automatically persist plaintext or execute SQL.
+
+
 Provide explicit navigation position and stable access to one execution's results.
 kviklet already has pagination, request filters, stored results, and full-cell views; validate UX through tasks rather than claiming pagination as differentiation, ADR-0019.
 
