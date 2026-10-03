@@ -24,6 +24,15 @@ interface RequestID {
   id: string;
 }
 
+interface ExecutionView {
+  state: string;
+  rowCount?: string;
+  byteCount?: string;
+  durationMs?: string;
+  resultAvailable?: boolean;
+  truncated?: boolean;
+}
+
 export interface RPCs {
   'Auth.Me': {
     input: Record<string, never>;
@@ -48,6 +57,13 @@ export interface RPCs {
   'AccessRequests.Get': { input: RequestID; output: RequestResponse };
   'AccessRequests.Approve': { input: RequestID; output: RequestResponse };
   'AccessRequests.Cancel': { input: RequestID; output: RequestResponse };
+  'QueryExecutions.Execute': { input: { requestId: string }; output: ExecutionView };
+  'QueryExecutions.Get': { input: { requestId: string }; output: ExecutionView };
+  'QueryExecutions.Cancel': { input: { requestId: string }; output: Record<string, never> };
+  'QueryExecutions.GetResult': {
+    input: { requestId: string; page: number; pageSize: number; sortColumn?: number; descending?: boolean; filterColumn?: number; filter?: string };
+    output: { totalCount: string; truncated?: boolean; rows?: { cells: { intValue?: string; stringValue?: string }[] }[] };
+  };
 }
 
 export type RPCName = keyof RPCs;

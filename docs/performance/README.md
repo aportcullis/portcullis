@@ -145,3 +145,9 @@ No production capacity or recommended specification is inferred from it.
 
 After conversion to native TypeScript modules, TypeScript 7.0.2 strict checking and k6 module inspection passed.
 Submit and mixed browse/distinct-reviewer approval smoke runs also passed against a new isolated stack.
+
+## Execution and exploration workload
+
+`JOURNEY=execute` covers a distinctly approved read and checks durable execution state, two bounded pages, exact int64 ordering/filtering and complete Connect-streamed CSV with formula escaping. `JOURNEY=full` rotates 60% browse, 20% submit/review/reopen/cancel and 20% execution/exploration. Every expected RPC must have samples, so an unexercised endpoint cannot pass a zero-latency threshold. Closed-model users stagger their first action across the think interval; admission controls stay enabled. Set `THINK_SECONDS=60` for the measured 50-user full profile behind one NAT address.
+
+`control_plane_ms` excludes Execute; `execution_ms` measures Execute HTTP duration and `server_execution_ms` records the server-reported execution duration, including adapter/result processing. Neither is a pure target-engine query timer. This indexed 25-row read over a 100,000-row table does not qualify large-result, cap/eviction or slow-query capacity. Report those limits separately.

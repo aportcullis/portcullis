@@ -18,13 +18,13 @@ function number(name: string, fallback: number, integer = true): number {
 export const config = {
   baseURL: (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/$/, ''),
   mode: choice('MODE', 'smoke', ['smoke', 'load', 'soak', 'stress', 'arrival']),
-  journey: choice('JOURNEY', 'browse', ['browse', 'submit', 'review', 'mixed']),
+  journey: choice('JOURNEY', 'browse', ['browse', 'submit', 'review', 'execute', 'mixed', 'full']),
   fixturePath: __ENV.LOAD_FIXTURES || './fixtures.local.json',
   thinkSeconds: number('THINK_SECONDS', 45, false),
 };
 
 export const vus = number('VUS', config.mode === 'smoke' ? 1 : 50);
-export const needsReview = config.journey === 'review' || config.journey === 'mixed';
+export const needsReview = config.journey === 'review' || ['mixed', 'execute', 'full'].includes(config.journey);
 const profiles: Record<typeof config.mode, Scenario> = {
   smoke: { executor: 'per-vu-iterations', vus, iterations: 3, maxDuration: '1m' },
   load: { executor: 'constant-vus', vus, duration: __ENV.DURATION || '10m' },
@@ -39,19 +39,37 @@ const profiles: Record<typeof config.mode, Scenario> = {
     timeUnit: '1s', duration: __ENV.DURATION || '10m', preAllocatedVUs: vus, maxVUs: vus },
 };
 
+let rpcThresholdsForCSV = false;
 const measuredRPCs: RPCName[] = [];
-if (config.journey === 'browse' || config.journey === 'mixed') {
+if (config.journey === 'browse' || ['mixed', 'full'].includes(config.journey)) {
   measuredRPCs.push('Auth.Me', 'AccessRequests.List', 'AccessRequests.ListRequestableConnections');
 }
 if (config.journey !== 'browse') {
   measuredRPCs.push('AccessRequests.Create', 'AccessRequests.Submit', 'AccessRequests.Get', 'AccessRequests.Cancel');
 }
 if (needsReview) measuredRPCs.push('AccessRequests.Approve');
+if (config.journey === 'execute' || config.journey === 'full') {
+  measuredRPCs.push('QueryExecutions.Get', 'QueryExecutions.GetResult');
+  rpcThresholdsForCSV = true;
+}
 const rpcThresholds: Record<string, string[]> = {};
-for (const name of measuredRPCs) rpcThresholds[`control_plane_ms{rpc:${name}}`] = ['p(95)<500'];
+for (const name of measuredRPCs) {
+  rpcThresholds[`control_plane_ms{rpc:${name}}`] = ['p(95)<500'];
+  rpcThresholds[`rpc_samples{rpc:${name}}`] = ['count>0'];
+}
+if (rpcThresholdsForCSV) {
+  if (config.journey === 'execute') {
+    delete rpcThresholds['control_plane_ms{rpc:AccessRequests.Cancel}'];
+    delete rpcThresholds['rpc_samples{rpc:AccessRequests.Cancel}'];
+  }
+  rpcThresholds['control_plane_ms{rpc:QueryExecutions.ExportCSV}'] = ['p(95)<500'];
+  rpcThresholds['rpc_samples{rpc:QueryExecutions.ExportCSV}'] = ['count>0'];
+  rpcThresholds['rpc_samples{rpc:QueryExecutions.Execute}'] = ['count>0'];
+}
 
 export const options: Options = {
   setupTimeout: '5m',
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(95)', 'p(99)'],
   scenarios: { governance: { ...profiles[config.mode], gracefulStop: '30s' } },
   thresholds: {
     control_plane_ms: ['p(95)<500'],
