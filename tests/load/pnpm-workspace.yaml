@@ -1,0 +1,20 @@
+# ADR-0029: reviewed dependency sources and install scripts.
+minimumReleaseAge: 10080
+# Reviewed security patch with provenance; expires naturally after seven days.
+minimumReleaseAgeExclude:
+  - 'pnpm@10.34.6'
+  - '@pnpm/exe@10.34.6'
+  - '@pnpm/linux-arm64@10.34.6'
+  - '@pnpm/linux-x64@10.34.6'
+  - '@pnpm/macos-arm64@10.34.6'
+  - '@pnpm/macos-x64@10.34.6'
+  - '@pnpm/win-arm64@10.34.6'
+  - '@pnpm/win-x64@10.34.6'
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+strictDepBuilds: true
+verifyStoreIntegrity: true
+saveExact: true
+allowBuilds:
+  esbuild: false
+  '@tailwindcss/oxide': false

@@ -2,7 +2,7 @@
   "name": "portcullis-load-tests",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.34.3",
+  "packageManager": "pnpm@10.34.6",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

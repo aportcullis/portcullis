@@ -21,23 +21,28 @@
   "packageRules": [
     {
       "description": "Group Go module updates into one PR",
-      "matchManagers": ["gomod"],
+      "matchManagers": [
+        "gomod"
+      ],
       "groupName": "go modules"
     },
     {
       "description": "Group frontend updates (the npm manager also handles pnpm)",
-      "matchManagers": ["npm"],
+      "matchManagers": [
+        "npm"
+      ],
       "groupName": "frontend deps"
     },
     {
       "description": "Group base image updates (Dockerfile + compose + test harness strings)",
-      "matchManagers": ["dockerfile", "docker-compose", "custom.regex"],
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "custom.regex"
+      ],
       "groupName": "docker images"
-    },
-    {
-      "description": "Pinned preview compiler — only manual bumps",
-      "matchPackageNames": ["@typescript/native-preview"],
-      "enabled": false
     }
-  ]
+  ],
+  "minimumReleaseAge": "7 days",
+  "automerge": false
 }

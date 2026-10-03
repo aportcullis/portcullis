@@ -43,6 +43,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0026](0026-review-tools-before-agent-integration.md) | Early SQL review/EXPLAIN and schema preview; defer WebMCP to M6 | Accepted |
 | [0027](0027-masking-before-agent-registration.md) | Sensitive-data masking before agent registration and integration | Accepted |
 | [0028](0028-agent-neutral-mcp-gateway.md) | Agent-neutral local/remote MCP Gateway and Kubernetes infrastructure boundary | Accepted |
+| [0029](0029-dependency-supply-chain-controls.md) | Dependency installation, provenance and immutable tooling controls | Accepted |
 | [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted |
 | [0031](0031-typescript-seven-native-tooling.md) | TypeScript 7 and native lint enforcement without the classic compiler API | Accepted |
 

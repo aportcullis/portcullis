@@ -46,7 +46,7 @@ generate:
 
 
 web-install:
-	pnpm -C web install
+	pnpm -C web install --frozen-lockfile
 
 
 web: web-install
@@ -98,7 +98,7 @@ test-race:
 
 
 vuln:
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 
 audit: web-audit vuln
@@ -124,3 +124,14 @@ tidy:
 
 clean:
 	rm -rf bin web/src/gen
+
+# Verify integrity and known vulnerabilities before delivery.
+.PHONY: supply-chain load-audit install-policy-test
+load-audit:
+	pnpm -C tests/load audit --audit-level=high
+
+install-policy-test:
+	cd web && node --test tests/install-policy.test.mjs
+
+supply-chain: web-audit load-audit vuln install-policy-test
+	go mod verify
