@@ -37,7 +37,7 @@ Constraints:
 Stored per record as `Blob`:
 | Field | Content |
 |---|---|
-| `key_version` | KEK version whose `dek-wrap` key wrapped the DEK (int, ≥ 1; v1 keyring loads a single version `1`) |
+| `key_version` | KEK version whose `dek-wrap` key wrapped the DEK (int, ≥ 1; M1 keyring loads historical versions and an active version) |
 | `wrapped_dek` | `wrapNonce (12B) ‖ AES-256-GCM(dek-wrap key, DEK)` — nonce prefixed, one field |
 | `nonce` | 12-byte data nonce |
 | `ciphertext` | `AES-256-GCM(DEK, plaintext)` |
@@ -65,19 +65,18 @@ portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]
   Nothing else — no PEM, no JSON.
 - On boot: decode, validate length (exactly 32 bytes after decode), and load.
   Missing or malformed → refuse to start.
-  The loaded key is **version 1** until rotation ships.
+  With no historical versions the active key is **version 1**.
 - **Multi-version provisioning (with the rotation CLI):** the active key stays in `PORTCULLIS_MASTER_KEY`/`_FILE`; retired-but-still-decrypting versions are supplied as `PORTCULLIS_MASTER_KEY_PREVIOUS` — comma-separated `<version>:<base64>` entries (or the `_PREVIOUS_FILE` variant with one `<version>:<base64>` per line).
   The active version number is `max(previous versions) + 1`.
-  Duplicate or non-monotonic versions refuse to start.
+  Historical versions must be consecutive ascending entries starting at 1; duplicate versions or key material, missing versions, and reuse of the active key refuse to start.
 
 ### Rotation
 - Multiple KEK versions coexist; the **highest version is active** for new writes, older versions remain available for decrypt/unwrap during transition.
 - A `key rotate` CLI re-wraps DEKs and re-encrypts request payloads to the new version as an **eager batch** (decided 2026-07-04; no lazy-on-read path).
-  Eager keeps completion observable — the CLI reports "0 rows on old versions", which is the precondition for retiring a version; lazy rotation can never prove completion and leaves ciphertext on old keys indefinitely.
+  Eager keeps completion observable — the CLI reports "0 rows on old encryption versions". Historical KEKs remain necessary for immutable approval/audit HMAC verification, so M1 does not support destroying them solely on that count.
   The batch is resumable (keyed by `key_version < active`) and throttled; reads during rotation work throughout because all versions stay loaded.
 - `payload_digest` carries its `key_version`; verification uses the version recorded on the row.
-- **Implementation status:** the rotation model (versioned columns, multi-version coexistence) is fixed here, but the multi-version keyring load and the `key rotate` CLI are implemented alongside the Core 1 features that use envelope encryption (connection credentials, result snapshots).
-  Until then the keyring loads a single active version.
+- **Implementation status:** M1 implements the multi-version keyring and resumable `key rotate` CLI. Credential/request envelopes are re-encrypted and result DEKs rewrapped in locked, audited batches. Stop serving writers during the operational key switch; see [rotation runbook](../operations/key-rotation.md).
 - **Operational note (CSRF):** the session CSRF token (ADR-0006) is HMAC'd with the active key and carries **no** `key_version`, so rotating the master key invalidates outstanding CSRF tokens — users must re-login.
   Tagging the CSRF token with a `key_version` for graceful rotation is a future option, taken with the rotation CLI.
 

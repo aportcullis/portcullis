@@ -2,10 +2,12 @@
 package crypto
 
 import (
+	"bytes"
 	"crypto/hkdf"
 	"crypto/sha256"
 	"encoding/base64"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -25,6 +27,50 @@ func LoadKeyring(b64, file string) (*Keyring, error) {
 		return nil, ErrBadMasterKey
 	}
 	return &Keyring{active: 1, keys: map[KeyVersion][]byte{1: raw}}, nil
+}
+
+// LoadVersionedKeyring loads the active key and retained historical key versions.
+func LoadVersionedKeyring(b64, file, previous, previousFile string) (*Keyring, error) {
+	ring, err := LoadKeyring(b64, file)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(previous) != "" && strings.TrimSpace(previousFile) != "" {
+		return nil, ErrMultipleKeySources
+	}
+	if strings.TrimSpace(previousFile) != "" {
+		data, err := os.ReadFile(previousFile)
+		if err != nil {
+			return nil, ErrBadMasterKey
+		}
+		previous = string(data)
+	}
+	entries := strings.FieldsFunc(previous, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' })
+	if len(entries) == 0 {
+		return ring, nil
+	}
+	activeKey := ring.keys[1]
+	ring.keys = make(map[KeyVersion][]byte, len(entries)+1)
+	for index, entry := range entries {
+		versionText, keyText, ok := strings.Cut(strings.TrimSpace(entry), ":")
+		version, err := strconv.ParseUint(versionText, 10, 31)
+		if !ok || err != nil || version != uint64(index+1) {
+			return nil, ErrBadMasterKey
+		}
+		key, err := decodeKey(keyText)
+		if err != nil || len(key) != masterKeyLen || bytes.Equal(key, activeKey) {
+			return nil, ErrBadMasterKey
+		}
+		for _, retained := range ring.keys {
+			if bytes.Equal(key, retained) {
+				return nil, ErrBadMasterKey
+			}
+		}
+		ring.keys[KeyVersion(version)] = key
+	}
+	ring.active = KeyVersion(len(entries) + 1)
+	ring.keys[ring.active] = activeKey
+	return ring, nil
 }
 
 // Active returns the key version used for new writes.

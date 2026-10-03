@@ -34,6 +34,9 @@ type Config struct {
 	MasterKey string `mapstructure:"master_key"`
 	// MasterKeyFile points to a file whose contents are the base64 master key (preferred in production via a mounted secret).
 	MasterKeyFile string `mapstructure:"master_key_file"`
+	// MasterKeyPrevious retains versioned historical keys for decryption and digest verification.
+	MasterKeyPrevious     string `mapstructure:"master_key_previous"`
+	MasterKeyPreviousFile string `mapstructure:"master_key_previous_file"`
 	// Argon2MaxConcurrent caps concurrent Argon2id hashes. Each hash costs ~64 MiB, so this bounds hashing memory independently of core count (defaults to 2).
 	Argon2MaxConcurrent int `mapstructure:"argon2_max_concurrent"`
 	// LoginBackoffThreshold is how many consecutive failed password attempts lock an account (ADR-0006 Parameters; default 5). The lockout window starts at LoginBackoffBase (default 1m) and doubles per further failure up to LoginBackoffCap (default 15m), with ±20% jitter on the expiry.
