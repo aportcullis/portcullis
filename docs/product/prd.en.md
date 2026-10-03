@@ -356,7 +356,7 @@ Use the 0.9.2 fixes for approved-command replacement and result-log exposure as 
 | Temporary SQL access | Post-MVP | Web console session reusing server execution, dialect-independent policy and result grid; audit each statement, matching kviklet `Connection.kt` per-execute `saveEvent`, code checked 2026-06-27; threat model §4.9 |
 | Multistage/role review gates | Post-MVP | Start with explicit quorum/role rules before a policy DSL |
 | EXPLAIN | M2 (basic read plans) | Distinguish read safety from `ANALYZE` execution per DB |
-| Google OIDC | MVP | Server callbacks, no frontend SDK; verified-email linking to admin-created users, no signup, ADR-0007 |
+| Google OIDC | MVP | Server callbacks, no frontend SDK; currently authoritative verified-email linking to admin-created users, no signup, ADR-0007 |
 | Other OIDC/LDAP and group-role sync | Post-MVP | External IdP as source of truth |
 | Native DB client proxy | Later/deferred | Web console replaces temporary access; reconsider only after strong native-client demand and complete wire policy/audit/credential design; kviklet 0.9 PG/MySQL/MariaDB is Enterprise beta, with separate dialect implementation/validation cost |
 | API keys | Later/after validation | Separate scope, expiry, and rotation from UI sessions |
@@ -769,7 +769,7 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
 - No public signup; admin-created users get a 24-hour one-time password-setup link, displayed once without MVP email delivery.
 - **Google OIDC:** Authorization Code + PKCE, mandatory state/nonce, ID-token signature/issuer/audience/expiry and `email_verified` validation.
   - Use server `/auth/google/start` and `/auth/google/callback`; frontend links to backend without Google SDK.
-  - Link by `(issuer, subject)` only when verified email matches an admin-created existing user; no automatic signup.
+  - Resolve existing `(issuer, subject)` links first. A new link requires verified email, current Google authority (Gmail or signed Workspace `hd`) and an admin-created existing user; historically verified third-party email alone is refused. No automatic signup or implicit third-party-email linking; explicit reauthenticated linking is future work (ADR-0007).
   - Pass short-lived state/nonce/PKCE verifier through an AEAD-encrypted `__Host-` cookie, ADR-0007.
 - Never disable/delete/demote the last active admin; audit disabling/role changes and revoke sessions immediately.
 - Disabled requesters cannot execute; revalidate unexecuted approvals from disabled users or users who lost approval permission.

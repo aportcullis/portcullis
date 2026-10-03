@@ -17,6 +17,7 @@ import (
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
 	"github.com/aportcullis/portcullis/internal/app/auth"
 	"github.com/aportcullis/portcullis/internal/app/authz"
+	"github.com/aportcullis/portcullis/internal/domain/audit"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
@@ -149,6 +150,7 @@ func (e *oidcTestEnv) mintCode(q url.Values, subject, email string) string {
 		Subject:       subject,
 		Email:         email,
 		EmailVerified: true,
+		HostedDomain:  "example.com",
 	})
 }
 
@@ -170,7 +172,7 @@ func (e *oidcTestEnv) assertFailureRedirect(t *testing.T, resp *http.Response) {
 	}
 }
 
-func (e *oidcTestEnv) countLoginAudit(t *testing.T, outcome string) int {
+func (e *oidcTestEnv) countLoginAudit(t *testing.T, outcome audit.Outcome) int {
 	t.Helper()
 	var n int
 	err := e.pool.QueryRow(context.Background(),
@@ -232,7 +234,7 @@ func TestOIDCLoginHappyPath(t *testing.T) {
 		`select count(*) from oidc_identities where subject = 'google-sub-1'`).Scan(&linked); err != nil || linked != 1 {
 		t.Errorf("oidc_identities rows = %d (%v), want 1", linked, err)
 	}
-	if n := env.countLoginAudit(t, "SUCCEEDED"); n != 1 {
+	if n := env.countLoginAudit(t, audit.OutcomeSucceeded); n != 1 {
 		t.Errorf("AUTH_LOGIN/SUCCEEDED method=google audit rows = %d, want 1", n)
 	}
 }
@@ -244,7 +246,7 @@ func TestOIDCCallbackRejectsWrongState(t *testing.T) {
 	code := env.mintCode(q, "google-sub-1", oidcAdminEmail)
 
 	env.assertFailureRedirect(t, env.callback(t, "attacker-forged-state", code))
-	if n := env.countLoginAudit(t, "FAILED"); n != 1 {
+	if n := env.countLoginAudit(t, audit.OutcomeFailed); n != 1 {
 		t.Errorf("AUTH_LOGIN/FAILED method=google audit rows = %d, want 1", n)
 	}
 }
@@ -254,7 +256,7 @@ func TestOIDCCallbackRejectsMissingPendingCookie(t *testing.T) {
 	env.bootstrapAdmin(t)
 
 	env.assertFailureRedirect(t, env.callback(t, "some-state", "some-code"))
-	if n := env.countLoginAudit(t, "FAILED"); n != 1 {
+	if n := env.countLoginAudit(t, audit.OutcomeFailed); n != 1 {
 		t.Errorf("AUTH_LOGIN/FAILED method=google audit rows = %d, want 1", n)
 	}
 }
@@ -312,5 +314,40 @@ func TestOIDCStartRateLimited(t *testing.T) {
 	}
 	if !throttled {
 		t.Error("repeated /auth/google/start requests were never rate-limited")
+	}
+}
+
+func TestOIDCCallbackRefusesHistoricallyVerifiedThirdPartyEmail(t *testing.T) {
+	env := newOIDCTestEnv(t)
+	env.bootstrapAdmin(t)
+	q := env.startFlow(t)
+	code := env.issuer.MintCode(oidctest.CodeOptions{Challenge: q.Get("code_challenge"), Nonce: q.Get("nonce"), Audience: oidcClientID, Subject: "untrusted-email-owner", Email: oidcAdminEmail, EmailVerified: true})
+	env.assertFailureRedirect(t, env.callback(t, q.Get("state"), code))
+	var links int
+	if err := env.pool.QueryRow(context.Background(), `select count(*) from public.oidc_identities where subject=$1`, "untrusted-email-owner").Scan(&links); err != nil {
+		t.Fatal(err)
+	}
+	if links != 0 {
+		t.Fatalf("refused subject links=%d", links)
+	}
+	if failures := env.countLoginAudit(t, audit.OutcomeFailed); failures != 1 {
+		t.Fatalf("login failures=%d", failures)
+	}
+}
+
+func TestOIDCCallbackLinksGmailWithoutAHostedDomainClaim(t *testing.T) {
+	env := newOIDCTestEnv(t)
+	_, err := env.authClient.Bootstrap(context.Background(), connect.NewRequest(&portcullisv1.BootstrapRequest{Email: "admin@gmail.com", Password: "hunter2-secretz", DisplayName: "Admin"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := env.startFlow(t)
+	code := env.issuer.MintCode(oidctest.CodeOptions{Challenge: q.Get("code_challenge"), Nonce: q.Get("nonce"), Audience: oidcClientID, Subject: "gmail-owner", Email: "admin@gmail.com", EmailVerified: true})
+	response := env.callback(t, q.Get("state"), code)
+	if response.Header.Get("Location") != "/" || cookieFromJar(env.jar, env.serverURL, "__Host-portcullis_session") == "" {
+		t.Fatal("Gmail ownership did not issue a session")
+	}
+	if successes := env.countLoginAudit(t, audit.OutcomeSucceeded); successes != 1 {
+		t.Fatalf("login successes=%d", successes)
 	}
 }

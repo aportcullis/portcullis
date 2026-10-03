@@ -27,6 +27,7 @@ type CodeOptions struct {
 	Subject       string
 	Email         string
 	EmailVerified bool
+	HostedDomain  string
 	// Audience is the aud claim (the client id).
 	Audience string
 	// ExpiresIn offsets the token's exp from now (default 5 minutes; negative mints an already-expired token).

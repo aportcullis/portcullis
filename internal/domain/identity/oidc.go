@@ -17,5 +17,7 @@ type OIDCClaims struct {
 	Subject       string
 	Email         string
 	EmailVerified bool
-	Nonce         string
+	// EmailAuthoritative asserts current ownership, not only historical verification.
+	EmailAuthoritative bool
+	Nonce              string
 }

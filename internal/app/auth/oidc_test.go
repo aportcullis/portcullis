@@ -76,8 +76,8 @@ func startFlow(t *testing.T, svc *auth.Service, p *fakeProvider) auth.OIDCPendin
 	return pending
 }
 
-func verifiedClaims(email string) identity.OIDCClaims {
-	return identity.OIDCClaims{Issuer: googleIssuer, Subject: "sub-1", Email: email, EmailVerified: true}
+func authoritativeClaims(email string) identity.OIDCClaims {
+	return identity.OIDCClaims{Issuer: googleIssuer, Subject: "sub-1", Email: email, EmailVerified: true, EmailAuthoritative: true}
 }
 
 func TestStartGoogleLoginMintsPendingState(t *testing.T) {
@@ -139,7 +139,7 @@ func TestGoogleLoginLinkedSubjectSignsIn(t *testing.T) {
 	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 		t.Fatal(err)
 	}
-	p.claims = verifiedClaims("admin@example.com")
+	p.claims = authoritativeClaims("admin@example.com")
 	pending := startFlow(t, svc, p)
 
 	sess, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending)
@@ -174,7 +174,7 @@ func TestGoogleFirstLoginRollsBackIdentityLinkWhenSessionCommitFails(t *testing.
 	ctx := context.Background()
 	repo := newFake()
 	repo.failOIDCComplete = true
-	p := &fakeProvider{claims: verifiedClaims("admin@example.com")}
+	p := &fakeProvider{claims: authoritativeClaims("admin@example.com")}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	u := bootstrapUser(t, svc)
 	pending := startFlow(t, svc, p)
@@ -205,7 +205,7 @@ func TestGoogleLoginIgnoresLockout(t *testing.T) {
 	lockedUntil := time.Now().Add(10 * time.Minute)
 	repo.backoff[u.ID] = identity.LoginBackoff{FailureCount: 7, LockedUntil: &lockedUntil}
 
-	p.claims = verifiedClaims("admin@example.com")
+	p.claims = authoritativeClaims("admin@example.com")
 	pending := startFlow(t, svc, p)
 	sess, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending)
 	if err != nil {
@@ -222,7 +222,7 @@ func TestGoogleLoginIgnoresLockout(t *testing.T) {
 	}
 }
 
-func TestGoogleLoginLinksVerifiedEmailOnFirstLogin(t *testing.T) {
+func TestGoogleLoginLinksAuthoritativeEmailOnFirstLogin(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := newFake()
@@ -230,7 +230,7 @@ func TestGoogleLoginLinksVerifiedEmailOnFirstLogin(t *testing.T) {
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	u := bootstrapUser(t, svc)
 	// The provider asserts a differently-cased email — it must match the stored (normalized) address.
-	p.claims = verifiedClaims("ADMIN@Example.com")
+	p.claims = authoritativeClaims("ADMIN@Example.com")
 	pending := startFlow(t, svc, p)
 
 	sess, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending)
@@ -244,7 +244,8 @@ func TestGoogleLoginLinksVerifiedEmailOnFirstLogin(t *testing.T) {
 		t.Errorf("identity not linked: oidc[%q] = %v, want %v", googleIssuer+"|sub-1", got, u.ID)
 	}
 
-	p.claims = verifiedClaims("renamed@example.com")
+	p.claims = authoritativeClaims("renamed@example.com")
+	p.claims.EmailAuthoritative = false
 	pending = startFlow(t, svc, p)
 	sess, err = svc.LoginWithGoogle(ctx, pending.State, "code-2", pending)
 	if err != nil {
@@ -262,7 +263,7 @@ func TestGoogleLoginRejectsUnverifiedEmailWithoutLinking(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	bootstrapUser(t, svc)
-	p.claims = verifiedClaims("admin@example.com")
+	p.claims = authoritativeClaims("admin@example.com")
 	p.claims.EmailVerified = false
 	pending := startFlow(t, svc, p)
 
@@ -281,7 +282,7 @@ func TestGoogleLoginRejectsUnknownEmail(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 	bootstrapUser(t, svc)
-	p.claims = verifiedClaims("stranger@example.com")
+	p.claims = authoritativeClaims("stranger@example.com")
 	pending := startFlow(t, svc, p)
 
 	if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrNoLinkedAccount) {
@@ -316,7 +317,7 @@ func TestGoogleLoginRejectsDisabledUser(t *testing.T) {
 			t.Fatal(err)
 		}
 		disable(repo, "admin@example.com")
-		p.claims = verifiedClaims("admin@example.com")
+		p.claims = authoritativeClaims("admin@example.com")
 		pending := startFlow(t, svc, p)
 		if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrUserDisabled) {
 			t.Errorf("disabled linked user = %v, want ErrUserDisabled", err)
@@ -330,7 +331,7 @@ func TestGoogleLoginRejectsDisabledUser(t *testing.T) {
 		svc := newOIDCService(t, repo, &capturingRecorder{}, p)
 		bootstrapUser(t, svc)
 		disable(repo, "admin@example.com")
-		p.claims = verifiedClaims("admin@example.com")
+		p.claims = authoritativeClaims("admin@example.com")
 		pending := startFlow(t, svc, p)
 		if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrUserDisabled) {
 			t.Errorf("disabled email match = %v, want ErrUserDisabled", err)
@@ -373,7 +374,7 @@ func TestGoogleLoginRejectsBadPendingBeforeExchange(t *testing.T) {
 			if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 				t.Fatal(err)
 			}
-			p.claims = verifiedClaims("admin@example.com")
+			p.claims = authoritativeClaims("admin@example.com")
 			pending := startFlow(t, svc, p)
 			state := pending.State
 			tc.mutate(&pending, &state, &clock)
@@ -399,7 +400,7 @@ func TestGoogleLoginRejectsNonceMismatch(t *testing.T) {
 	if err := repo.linkIdentity(identity.OIDCIdentity{UserID: u.ID, Issuer: googleIssuer, Subject: "sub-1"}); err != nil {
 		t.Fatal(err)
 	}
-	p.claims = verifiedClaims("admin@example.com")
+	p.claims = authoritativeClaims("admin@example.com")
 	pending := startFlow(t, svc, p)
 
 	p.claims.Nonce = "replayed-nonce"
@@ -432,7 +433,7 @@ func TestGoogleLoginRejectsLinkRace(t *testing.T) {
 	p := &fakeProvider{}
 	svc := newOIDCService(t, linkRaceRepo{repo}, &capturingRecorder{}, p)
 	bootstrapUser(t, svc)
-	p.claims = verifiedClaims("admin@example.com")
+	p.claims = authoritativeClaims("admin@example.com")
 	pending := startFlow(t, svc, p)
 
 	if _, err := svc.LoginWithGoogle(ctx, pending.State, "code-1", pending); !errors.Is(err, identity.ErrIdentityLinkedToAnotherUser) {
@@ -464,7 +465,7 @@ func TestGoogleLoginEveryFailureEmitsOneAuditEvent(t *testing.T) {
 		{"nonce mismatch", func(t *testing.T, rec auth.AuditRecorder) error {
 			p := &fakeProvider{}
 			svc := newOIDCService(t, newFake(), rec, p)
-			p.claims = verifiedClaims("admin@example.com")
+			p.claims = authoritativeClaims("admin@example.com")
 			pending := startFlow(t, svc, p)
 			p.claims.Nonce = "other"
 			_, err := svc.LoginWithGoogle(ctx, pending.State, "code", pending)
@@ -481,7 +482,7 @@ func TestGoogleLoginEveryFailureEmitsOneAuditEvent(t *testing.T) {
 			p := &fakeProvider{}
 			svc := newOIDCService(t, newFake(), rec, p)
 			bootstrapUser(t, svc)
-			p.claims = verifiedClaims("admin@example.com")
+			p.claims = authoritativeClaims("admin@example.com")
 			p.claims.EmailVerified = false
 			pending := startFlow(t, svc, p)
 			_, err := svc.LoginWithGoogle(ctx, pending.State, "code", pending)
@@ -490,7 +491,7 @@ func TestGoogleLoginEveryFailureEmitsOneAuditEvent(t *testing.T) {
 		{"unknown email", func(t *testing.T, rec auth.AuditRecorder) error {
 			p := &fakeProvider{}
 			svc := newOIDCService(t, newFake(), rec, p)
-			p.claims = verifiedClaims("ghost@example.com")
+			p.claims = authoritativeClaims("ghost@example.com")
 			pending := startFlow(t, svc, p)
 			_, err := svc.LoginWithGoogle(ctx, pending.State, "code", pending)
 			return err
@@ -524,5 +525,35 @@ func TestGoogleLoginEveryFailureEmitsOneAuditEvent(t *testing.T) {
 				t.Error("scenario must still fail with a broken audit store")
 			}
 		})
+	}
+}
+
+func TestGoogleVerifiedThirdPartyEmailCannotAttachAnExistingAccount(t *testing.T) {
+	t.Parallel()
+	repo := newFake()
+	recorder := &capturingRecorder{}
+	provider := &fakeProvider{}
+	service := newOIDCService(t, repo, recorder, provider)
+	bootstrapUser(t, service)
+	provider.claims = authoritativeClaims("admin@example.com")
+	provider.claims.EmailAuthoritative = false
+	pending := startFlow(t, service, provider)
+	if _, err := service.LoginWithGoogle(context.Background(), pending.State, "code", pending); !errors.Is(err, identity.ErrNoLinkedAccount) {
+		t.Fatalf("historically verified email acquired an account: %v", err)
+	}
+	if len(repo.oidc) != 0 {
+		t.Fatal("refused subject was linked")
+	}
+	failures := 0
+	for _, event := range recorder.all() {
+		if event.Action == audit.ActionAuthLogin {
+			if event.Outcome != audit.OutcomeFailed {
+				t.Fatal("refused login emitted success")
+			}
+			failures++
+		}
+	}
+	if failures != 1 {
+		t.Fatalf("login failure evidence=%d, want 1", failures)
 	}
 }

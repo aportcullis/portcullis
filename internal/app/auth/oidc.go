@@ -37,7 +37,7 @@ func (s *Service) StartGoogleLogin(_ context.Context) (string, OIDCPending, erro
 	return s.oidc.AuthCodeURL(state, nonce, verifier), pending, nil
 }
 
-// LoginWithGoogle verifies state and nonce, links only existing accounts by subject or verified email, then rotates the session with transactional audit (ADR-0007).
+// LoginWithGoogle verifies flow secrets and resolves a subject or authoritative email before issuing an audited session.
 func (s *Service) LoginWithGoogle(ctx context.Context, state, code string, pending OIDCPending) (_ Session, err error) {
 	if s.oidc == nil {
 		return Session{}, ErrOIDCNotConfigured
@@ -77,7 +77,7 @@ func (s *Service) LoginWithGoogle(ctx context.Context, state, code string, pendi
 	return s.issueSession(ctx, u, meta, link)
 }
 
-// resolveOIDCUser maps verified claims to a local user: the (issuer, subject) link is the stable key; a first login may attach to an existing account by provider-verified email, and nothing is ever auto-created (ADR-0007). The failure event is attributed as soon as a user resolves.
+// resolveOIDCUser resolves stable subject links or currently authoritative emails without creating users.
 func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaims, failed *audit.Event) (identity.User, *identity.OIDCIdentity, error) {
 	u, err := s.repo.FindUserBySubject(ctx, claims.Issuer, claims.Subject)
 	switch {
@@ -91,9 +91,12 @@ func (s *Service) resolveOIDCUser(ctx context.Context, claims identity.OIDCClaim
 		return identity.User{}, nil, err
 	}
 
-	// First login for this subject: only a provider-verified email may attach it to an existing account.
+	// Historical email verification alone cannot attach a new authenticator.
 	if !claims.EmailVerified {
 		return identity.User{}, nil, ErrOIDCEmailUnverified
+	}
+	if !claims.EmailAuthoritative {
+		return identity.User{}, nil, identity.ErrNoLinkedAccount
 	}
 	u, err = s.repo.GetUserByEmail(ctx, identity.NormalizeEmail(claims.Email))
 	if err != nil {

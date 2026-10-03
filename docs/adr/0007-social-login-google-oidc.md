@@ -11,7 +11,7 @@ Broader OIDC/LDAP/SAML/SCIM and group-role sync stay post-MVP — only Google si
 Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 - Use the **Authorization Code flow with PKCE**; OIDC adds an ID token with verified identity.
 - **`state`** (binds the callback to the user's session, prevents CSRF) and **`nonce`** (prevents ID-token replay) are both mandatory; `coreos/go-oidc` verifies the ID token signature/iss/aud/exp but **nonce validation is the caller's responsibility**.
-- The stable identity is the **`sub`** (subject), unique per issuer and never reassigned; email can change, so link by `(issuer, sub)` and only trust email when **`email_verified`** is true.
+- The stable identity is the **`sub`** (subject), unique per issuer and never reassigned; email can change, so link by `(issuer, sub)` and historical **`email_verified`** alone does not establish current email ownership for first-time account linking.
 
 ## Decision
 
@@ -28,7 +28,7 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 
 ### Account model — link, never auto-create
 - Identity link stored in **`oidc_identities(user_id, issuer, subject, email, created_at)`**, unique `(issuer, subject)`.
-- Callback resolution: (1) `(issuer, sub)` already linked → that user; (2) else, if `email_verified` and the email matches an **existing admin-created user**, link `(issuer, sub)` to it on first login; (3) else **reject** — no public signup (PRD §8.3).
+- Callback resolution: (1) `(issuer, sub)` already linked → that user; (2) else, require verified email and current Google authority (`@gmail.com`, or a nonempty signed `hd` Workspace claim) matching an **existing admin-created user**, then link `(issuer, sub)` on first login; (3) else **reject** — no public signup (PRD §8.3).
   Disabled users are rejected.
 - On success, create a session via ADR-0006 (same cookie/CSRF machinery) and redirect to the app.
   For a first link, the identity insert, session rotation, and successful login audit event commit atomically (ADR-0009); `identity_linked=true` in that event is the self-contained link trail.
@@ -39,6 +39,12 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 - The backend owns the redirect dance and, on success, sets the session cookie and 302-redirects back to the SPA at the fixed path **`/`** (never a client-supplied return URL — no open-redirect surface; the SPA routes from its own state after `Me`).
   Failures redirect to **`/login?error=oidc`** with no detail (specifics go to the server log only).
   So the frontend stays dumb and UI changes are trivial — the button is just an anchor; sign-in state is read from the session (the `Me` RPC).
+
+### Current email ownership (amended 2026-10-03)
+
+The Google adapter derives `EmailAuthoritative` only after ID-token verification, with a valid normalized address and `email_verified=true`, from Gmail's exact domain or a nonempty signed Workspace `hd` claim. The application requires both verification and authority before any first-time email lookup/link. Neither an email suffix resembling Gmail nor an authorization-request `hd` hint supplies authority. Keep issuer/subject resolution first, so an existing linked account remains independent of changed email claims. Deny other first-time email links with the same generic login rejection, without creating a user, link or session; record only the existing safe login-failure evidence. An explicit reauthenticated third-party-email linking flow is future work, not an automatic bypass.
+
+This follows [Google's ID-token ownership guidance](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token), checked 2026-10-03: a third-party email may have changed owner since its historical verification. `hd` is provider-verified ownership evidence here, not authorization to any Portcullis organization or role.
 
 ### Config (Google login is optional)
 - `PORTCULLIS_GOOGLE_CLIENT_ID`, `PORTCULLIS_GOOGLE_CLIENT_SECRET`, `PORTCULLIS_GOOGLE_REDIRECT_URL`.

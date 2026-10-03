@@ -162,3 +162,34 @@ func TestExchangeErrorOmitsSecrets(t *testing.T) {
 		}
 	}
 }
+
+func TestExchangeDistinguishesCurrentEmailOwnershipFromHistoricalVerification(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []struct {
+		name, email, domain     string
+		verified, authoritative bool
+	}{
+		{"Gmail", "user@gmail.com", "", true, true},
+		{"case folded Gmail", "User@GMAIL.COM", "", true, true},
+		{"third party", "user@example.com", "", true, false},
+		{"Gmail suffix spoof", "user@gmail.com.example.com", "", true, false},
+		{"Workspace", "user@example.com", "example.com", true, true},
+		{"unverified Workspace", "user@example.com", "example.com", false, false},
+		{"unverified Gmail", "user@gmail.com", "", false, false},
+		{"empty email", "", "example.com", true, false},
+		{"blank hosted domain", "user@example.com", " ", true, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+			client, issuer := newClient(t)
+			code := issuer.MintCode(oidctest.CodeOptions{Challenge: challenge(), Nonce: "nonce", Audience: clientID, Subject: "subject", Email: scenario.email, EmailVerified: scenario.verified, HostedDomain: scenario.domain})
+			claims, err := client.Exchange(context.Background(), code, verifier)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if claims.EmailAuthoritative != scenario.authoritative {
+				t.Fatalf("current ownership=%v, want %v", claims.EmailAuthoritative, scenario.authoritative)
+			}
+		})
+	}
+}

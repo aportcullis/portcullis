@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -53,16 +54,21 @@ func (c *Client) Exchange(ctx context.Context, code, verifier string) (identity.
 	var extra struct {
 		Email         string `json:"email"`
 		EmailVerified bool   `json:"email_verified"`
+		HostedDomain  string `json:"hd"`
 	}
 	if err := idToken.Claims(&extra); err != nil {
 		return identity.OIDCClaims{}, fmt.Errorf("googleoidc: parse claims: %w", err)
 	}
+	email := identity.NormalizeEmail(extra.Email)
+	authoritative := extra.EmailVerified && identity.ValidateEmail(email) == nil &&
+		(strings.HasSuffix(email, "@gmail.com") || strings.TrimSpace(extra.HostedDomain) != "")
 	return identity.OIDCClaims{
-		Issuer:        idToken.Issuer,
-		Subject:       idToken.Subject,
-		Email:         extra.Email,
-		EmailVerified: extra.EmailVerified,
-		Nonce:         idToken.Nonce,
+		Issuer:             idToken.Issuer,
+		Subject:            idToken.Subject,
+		Email:              extra.Email,
+		EmailVerified:      extra.EmailVerified,
+		EmailAuthoritative: authoritative,
+		Nonce:              idToken.Nonce,
 	}, nil
 }
 

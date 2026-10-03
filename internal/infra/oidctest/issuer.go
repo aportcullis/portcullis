@@ -123,6 +123,9 @@ func (i *Issuer) signIDToken(opts CodeOptions) (string, error) {
 		"email":          opts.Email,
 		"email_verified": opts.EmailVerified,
 	}
+	if opts.HostedDomain != "" {
+		claims["hd"] = opts.HostedDomain
+	}
 	header := map[string]any{"alg": "RS256", "typ": "JWT", "kid": keyID}
 	signingInput := encodeSegment(header) + "." + encodeSegment(claims)
 
