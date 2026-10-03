@@ -18,9 +18,10 @@ Ships as one Go binary with the SolidJS SPA embedded.
 5. Aim for **clean architecture (ports & adapters)** and implement in the **DDD × TDD cycle**: domain model → port (consumer-defined interface) → **red scenario test** (TDD verifies *scenarios* — observable use-case behavior, not implementation) → green → refactor → wire the adapter in `cmd/portcullis`.
    See [code.md — Development order](docs/conventions/code.md).
 6. Keep commits small and focused on one concern. Complete the scenario's red→green cycle, review the staged diff immediately before each commit, and run checks appropriate to that change. Record remaining failed gates explicitly; committing work does not establish milestone completion.
+7. Commit each completed, verified and reviewed concern immediately before starting the next concern. Queue incoming requests until that commit is complete; do not leave completed changes uncommitted while moving on. An explicit instruction to stop or a destructive action still takes precedence.
 
 ## Definition of done
-`go build ./...`, `go vet ./...`, `make lint` (0 issues), `make test`, and `make e2e` (browser e2e — Playwright against the real binary) all green; `make verify` runs the whole gate.
+`make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, load-check and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Run change-appropriate checks before each small commit; all gates must be green before declaring a milestone complete.
 
 ## Conventions — see `docs/conventions/`
 - [code.md](docs/conventions/code.md) — layered DDD, file-split, tests/TDD, minimize-hardcoding.
