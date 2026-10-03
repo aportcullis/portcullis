@@ -64,7 +64,7 @@ Turn useful SQL into reusable assets: saved queries, versions, favorites, organi
 
 **Planned — access governance beyond a single request.**
 
-Validate temporary web-console access, multistage approval and broader identity integration sequentially. A session must retain per-statement governance and immediate revocation; it must not become a way around the request policy.
+First implement versioned sensitive-data disclosure policies and server-side masking/withholding across result APIs, full cells, CSV and SQL/catalog/plan metadata. Existing SQL audit redaction is a separate capability. Validate leak-free outputs, policy changes/cache reuse and fail-closed handling before any agent integration. Then validate temporary web-console access, multistage approval and broader identity integration sequentially. A session must retain per-statement governance and immediate revocation; it must not become a way around the request policy.
 
 **To advance:** Revalidate demand and the console threat model before implementing each capability. The [temporary-access contract](product/prd.en.md#49-temporary-web-sql-console-threat-model-m4-gate-decided-2026-07-04) defines expiry, concurrency, revocation, transaction boundaries, and audit. Native database proxy access remains a Later candidate.
 
@@ -84,7 +84,7 @@ Complete the M3 preview workflow with distinct approval → apply → verify and
 
 Extend deployment to Helm and CloudNativePG, then provide Terraform/OpenTofu integration after the API is stable. Keep metadata, keys, upgrades, and recovery manageable for self-hosted operators.
 
-**Deferred integration track:** Add browser WebMCP after M5 and stable query/review APIs. Preserve ADR-0024's permissions, explicit user intent, distinct review, lifecycle fencing and native-browser/fallback acceptance. WebMCP is outside MVP; remote/headless MCP remains Later. See [PRD §4.10](product/prd.en.md#410-webmcp-query-assistance-m6--reach).
+**Deferred integration track:** After M5 and the M4 masking gate, provide organization-owned agent registration first: owner, allowed tools/connections, protected-output policy, explicit expiring grants and revocation. Then connect authenticated registered agents through browser WebMCP over stable query/review APIs. Effective access intersects user, agent, connection and masking permissions; labels alone do not authenticate callers. A transport ADR must prove registration binding before protected tools are exposed. Preserve ADR-0024's permissions, explicit user intent, distinct review, lifecycle fencing and native-browser/fallback acceptance. WebMCP is outside MVP; remote/headless MCP remains Later. See [PRD §4.10](product/prd.en.md#410-webmcp-query-assistance-m6--reach) and [masking/registration contract](adr/0027-masking-before-agent-registration.md).
 
 **To advance:** Establish API stability and the operational contracts for deployment, backup, upgrades, and accepted result-cache loss before promising provider compatibility. Deployment options do not by themselves imply high availability.
 

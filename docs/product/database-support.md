@@ -29,7 +29,9 @@
 | Schema migration status and SQL dry-run preview | Planned (M3; no apply) | Planned (M3; no apply) |
 | Deterministic schema impact facts | Planned (M3; estimates/unknowns) | Planned (M3; estimates/unknowns) |
 | EXPLAIN ANALYZE / execute-then-rollback query dry-run | Deferred; no support claim | Deferred; no support claim |
-| Browser WebMCP query assistance | Deferred to M6 after M5 | Deferred to M6 after M5 |
+| Server-side sensitive-data masking (cells/API/CSV/metadata) | Planned (M4; separate from SQL audit redaction) | Planned (M4) |
+| Agent registration, scoped grants and revocation | Planned (M6 after masking gate) | Planned (M6 after masking gate) |
+| Registered-agent WebMCP integration | Deferred to M6 after M5, masking and registration | Deferred to M6 after M5, masking and registration |
 | Charts/dashboards | Later candidate | Later candidate |
 | Git-sourced schema migration governance | Planned (M5; object matrix pending) | Planned (M5; object matrix pending) |
 | Native DB client proxy / temporary web SQL console | Proxy deferred; console planned (M4) | Proxy deferred; console planned (M4) |
