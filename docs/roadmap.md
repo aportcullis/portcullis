@@ -84,7 +84,9 @@ Complete the M3 preview workflow with distinct approval → apply → verify and
 
 Extend deployment to Helm and CloudNativePG, then provide Terraform/OpenTofu integration after the API is stable. Keep metadata, keys, upgrades, and recovery manageable for self-hosted operators.
 
-**Deferred integration track:** After M5 and the M4 masking gate, provide organization-owned agent registration first: owner, allowed tools/connections, protected-output policy, explicit expiring grants and revocation. Then connect authenticated registered agents through browser WebMCP over stable query/review APIs. Effective access intersects user, agent, connection and masking permissions; labels alone do not authenticate callers. A transport ADR must prove registration binding before protected tools are exposed. Preserve ADR-0024's permissions, explicit user intent, distinct review, lifecycle fencing and native-browser/fallback acceptance. WebMCP is outside MVP; remote/headless MCP remains Later. See [PRD §4.10](product/prd.en.md#410-webmcp-query-assistance-m6--reach) and [masking/registration contract](adr/0027-masking-before-agent-registration.md).
+**Deferred integration track:** After M5 and the M4 masking gate, provide organization-owned agent registration and expiring scoped grants, then a standard MCP Gateway for local clients, Claude Code, Codex and other compatible clients. Use Streamable HTTP plus a local stdio bridge over the same governed application use cases. Publish a real client/version/protocol/auth compatibility matrix before support claims. Browser WebMCP is an optional follow-up, not the initial Gateway prerequisite. MCP remains outside MVP.
+
+**Infrastructure boundary:** Portcullis owns identity validation, masking, authorization, human approval, single-use execution and audit. Operators may supply ingress/TLS, a compatible authorization provider, Secret rotation, network restrictions and observability. Provide Helm/Kustomize deployment examples with discovery routing and proxy limits; do not build an agent runner or assume Kubernetes infrastructure replaces app policy enforcement. See [Gateway direction](adr/0028-agent-neutral-mcp-gateway.md) and [PRD §4.13](product/prd.en.md#413-agent-neutral-mcp-gateway-and-deployment-m6).
 
 **To advance:** Establish API stability and the operational contracts for deployment, backup, upgrades, and accepted result-cache loss before promising provider compatibility. Deployment options do not by themselves imply high availability.
 
@@ -92,7 +94,7 @@ Extend deployment to Helm and CloudNativePG, then provide Terraform/OpenTofu int
 
 **Exploration — candidates with no delivery commitment.**
 
-Longer-term directions include charts and dashboards, declarative GitOps, CloudNativePG discovery, SIEM integration, ML/AI Review, and a remote/headless Agent Gateway beyond Reach’s browser WebMCP workflow. They remain candidates until demand, goals, prerequisites, and acceptance criteria are validated. Adding an idea here does not make it an available feature.
+Longer-term directions include charts and dashboards, declarative GitOps, CloudNativePG discovery, SIEM integration, ML/AI Review. They remain candidates until demand, goals, prerequisites, and acceptance criteria are validated. Adding an idea here does not make it an available feature.
 
 ## How the roadmap evolves
 

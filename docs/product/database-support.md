@@ -31,7 +31,10 @@
 | EXPLAIN ANALYZE / execute-then-rollback query dry-run | Deferred; no support claim | Deferred; no support claim |
 | Server-side sensitive-data masking (cells/API/CSV/metadata) | Planned (M4; separate from SQL audit redaction) | Planned (M4) |
 | Agent registration, scoped grants and revocation | Planned (M6 after masking gate) | Planned (M6 after masking gate) |
-| Registered-agent WebMCP integration | Deferred to M6 after M5, masking and registration | Deferred to M6 after M5, masking and registration |
+| Registered-agent MCP Gateway (HTTP + local stdio bridge) | Planned M6 after M5, masking and registration | Planned M6 after M5, masking and registration |
+| Local clients / Claude Code / Codex | M6 compatibility targets; not verified | M6 compatibility targets; not verified |
+| Optional browser WebMCP adapter | Follow-up after Gateway; identity gate required | Follow-up after Gateway; identity gate required |
+| Gateway Helm/Kustomize deployment examples | Planned M6; Kubernetes acceptance pending | Planned M6; Kubernetes acceptance pending |
 | Charts/dashboards | Later candidate | Later candidate |
 | Git-sourced schema migration governance | Planned (M5; object matrix pending) | Planned (M5; object matrix pending) |
 | Native DB client proxy / temporary web SQL console | Proxy deferred; console planned (M4) | Proxy deferred; console planned (M4) |
@@ -45,7 +48,7 @@ Verified does not mean every SQL statement, extension or engine version is accep
 | PostgreSQL | [Full M1 verification](../operations/m1-validation.md), including actual CSV saving/readback | PostgreSQL 18 in the tested stack; ADR-0001's ≥14 design floor is not an all-version certification |
 | MySQL | Native CLI engine experiments only; product adapter pending | MySQL 8.4 LTS is the primary planned CI target; measured experiment was 8.4.10, not a production-version recommendation |
 
-The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. WebMCP is excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
+The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. MCP Gateway/WebMCP are excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
 
 ## Additional engines and excluded scope
 
