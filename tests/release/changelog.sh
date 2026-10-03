@@ -6,7 +6,7 @@ source .github/scripts/git-cliff-image.sh
 run_id="$(date +%s)-$$-$RANDOM"
 image="portcullis-changelog-check:$run_id"
 container="portcullis-changelog-check-$run_id"
-docker build --build-arg "GIT_CLIFF_IMAGE=$GIT_CLIFF_IMAGE" \
+docker build --build-context "git-cliff=docker-image://$GIT_CLIFF_IMAGE" \
   --tag "$image" --file tests/release/Dockerfile.changelog tests/release
 cleanup_changelog_resources() {
   if docker container inspect "$container" >/dev/null 2>&1; then

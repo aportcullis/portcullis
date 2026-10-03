@@ -1,6 +1,5 @@
-# The caller supplies the single digest-pinned git-cliff image definition.
-ARG GIT_CLIFF_IMAGE
-FROM ${GIT_CLIFF_IMAGE}
+# The caller supplies the single digest-pinned git-cliff image as the named build context `git-cliff`.
+FROM git-cliff
 USER root
 # Git and Python are fixture tools, installed from the base distribution's signed repositories.
 RUN apt-get update \

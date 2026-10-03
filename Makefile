@@ -1,6 +1,6 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
-.PHONY: keygen-check release-check changelog changelog-check release-notes image-check
+.PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -134,11 +134,15 @@ image-check:
 changelog-check:
 	bash tests/release/changelog.sh
 
+dockerfile-check:
+	bash tests/release/dockerfile-check.sh
+
 release-check:
 	bash tests/release/tags.sh
 
 verify:
 	$(MAKE) release-check
+	$(MAKE) dockerfile-check
 	$(MAKE) changelog-check
 	go build ./...
 	go vet ./...
