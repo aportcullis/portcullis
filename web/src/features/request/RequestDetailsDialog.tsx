@@ -182,7 +182,7 @@ export const RequestDetailsDialog: Component<{
               </form>
             }
           >
-          <div class="flex flex-col gap-4">
+          <div class="flex min-w-0 flex-col gap-4">
             <Show when={detail()?.payload} fallback={
               <div class="flex flex-col gap-1">
                 <span class="text-sm font-medium">SQL (redacted)</span>

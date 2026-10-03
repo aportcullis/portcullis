@@ -101,4 +101,30 @@ test.describe.serial("access requests", () => {
       page.getByRole("row", { name: /ReqTarget/ }).filter({ hasText: "Draft" }),
     ).toHaveCount(0);
   });
+  test("long SQL stays scrollable without pushing request actions out of the dialog", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/connections$/);
+    await page.getByRole("link", { name: /Requests/ }).click();
+    await page.getByRole("button", { name: "New request" }).click();
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    const sql = `SELECT 2 -- ${"long-sql-".repeat(100)}`;
+    await page.getByLabel("SQL").fill(sql);
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    const row = page.getByRole("row", { name: /ReqTarget/ }).filter({ hasText: "Draft" });
+    await row.getByRole("button", { name: "Details", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    const submit = dialog.getByRole("button", { name: "Submit", exact: true });
+    await expect(submit).toBeVisible();
+    const bounds = await dialog.boundingBox();
+    const action = await submit.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(action).not.toBeNull();
+    if (!bounds || !action) throw new Error("Request dialog and submit action must be laid out");
+    expect(action.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(action.x + action.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+    await expect(dialog.locator("pre")).toHaveText(sql);
+  });
 });
