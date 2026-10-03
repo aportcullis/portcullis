@@ -628,7 +628,7 @@ audit_events
     connection 정책의 더 낮은 상한을 우선 적용한다(신규 정책 기본 byte 상한 16MiB, ADR-0015/0021).
     디코드 전에 셀·행 구조체 메모리를 별도로 제한하므로 값 바이트가 작은 넓은 NULL 결과도 더 일찍 truncate될 수 있다(ADR-0021).
   - 전체 result store 상한은 기본 512MiB이며 LRU로 만료.
-    사용자별 quota(기본 64MiB)와 축출→거부 우선순위는 ADR-0011로 확정.
+    사용자별 quota(기본 64MiB)와 축출 계획→수용 가능 시 원자적 적용·불가 시 유효 결과를 보존하는 거부 정책은 ADR-0011로 확정.
     TTL 만료·상한 축출 시 UI에 만료 상태 표시.
   - 원래 순서의 페이지 조회와 CSV는 필요한 chunk만 순차 복호화한다.
     CSV는 전체 snapshot을 메모리에 올리지 않고 stream한다.
@@ -695,7 +695,7 @@ audit_events
   방어는 ① 분류 시점 **함수·연산자 allow-list** — 목록 밖·사용자 정의·스키마 수식 이름은 fail-closed 거부이고, **클래스와 무관하게 ddl 포함 모든 문장에 적용**한다(2026-07-25 증보: ddl은 등급만 최종이고 부작용 검사를 면제하지 않는다 — CTAS·표현식 인덱스·컬럼 DEFAULT가 함수를 품는다) ② 실행 시 명시적으로 참조된 함수·연산자의 **후보 OID 전체를 검증**(고정 `search_path` + 신뢰 카탈로그 대조; 사용자 overload가 하나라도 있으면 거부하는 보수적 대안, ADR-0021) ③ 대상 DB 계정 최소권한(§8.1)이다.
   `pg_proc.provolatile`은 **경계가 아니다**(2026-07-25 정정): PG 문서는 volatility를 *"a promise to the optimizer"* 로 규정하고 *"not a completely bulletproof test, since such functions could still call VOLATILE functions that modify the database"* 라고 명시한다 — 서버가 강제하지 않으므로 함수 생성 권한자는 부작용 있는 본문을 STABLE로 선언할 수 있다.
   정직하게 선언된 volatile builtin을 걸러내는 **위생 검사**로만 남긴다. read-only 트랜잭션도 경계가 아니라 보조 수단이다.
-- row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 → 전역 LRU 축출(사용자별 최소 1개 보존) → 그래도 부족하면 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
+- row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 계획 → 전역 LRU 축출 계획(다른 사용자별 최소 1개 보존) → 수용 가능하면 축출·신규 저장을 원자적으로 적용하고, 불가능하면 유효한 기존 결과를 모두 보존하며 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
 - **대상 DB 실행 경로 circuit breaker(ADR-0010):** connection별로 연속 실패 5회 초과 시 60초 open(half-open probe 1회).
   차단된 호출은 lease를 잡지 않고 `Unavailable`로 반환하며 자동 재시도하지 않는다.
   사용자 취소·context deadline·로컬 응답 크기 제한은 대상 건강 집계에서 제외하고 기존 장애 횟수를 초기화하지 않는다. 실행 결과의 불확실성은 계속 `outcome_unknown`으로 기록한다(ADR-0010).
@@ -846,7 +846,7 @@ UX가 차별점이므로 API와 화면을 동시에 맞춘다.
 | master key 파일 형식·rotation·key 유실 정책 | **ADR-0003** (base64 단일 파일, `_PREVIOUS` 다중 버전 형식, eager batch rotation, 유실 시 복구 불가 명시; envelope/AAD/Argon2 전체 파라미터 포함) |
 | metadata RLS | **ADR-0004** (MVP 미적용, RLS-ready 유지, cross-org 테스트 필수) |
 | result 타입 계약 | **ADR-0005** (proto + 엔진별 scan-type→LogicalType 매핑표, NULL 정렬·tie-breaker 고정) |
-| result store quota·축출/거부·autovacuum | **ADR-0011** (사용자 64MiB, 만료→본인LRU→전역LRU→거부; 수치는 Core 2 부하 테스트로 재확인하는 잠정치) |
+| result store quota·축출/거부·autovacuum | **ADR-0011** (사용자 64MiB, 만료→본인·전역 LRU 계획→원자적 수용 또는 유효 결과 보존 거부; 수치는 Core 2 부하 테스트로 재확인하는 잠정치) |
 | 임시 접근 위협 모델 | **§4.9** (세션 권한·만료·동시 실행·회수·transaction 경계) |
 | Atlas pin·배포/NOTICE/checksum·compatibility matrix | **ADR-0012** (Community v1.2 라인, 정확한 patch는 M5 착수 시 pin) |
 | migration artifact backend·크기·보존·`schema_apply_timeout`·lock 복구 | **ADR-0012** (metadata PG + AEAD, 파일 1MiB/artifact 10MiB/500파일, terminal+90일, 10분/상한 60분, lease row 복구) |

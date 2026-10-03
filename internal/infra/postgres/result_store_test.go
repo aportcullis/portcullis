@@ -7,6 +7,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/domain/query"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
+	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
 	"github.com/google/uuid"
 	"testing"
@@ -72,5 +73,61 @@ func TestResultStoreOwnerTTLAndCiphertextBoundaries(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatal("expired ciphertext retained")
+	}
+}
+
+func TestResultStoreRefusalPreservesLiveChunksAndDoesNotAuditEvictions(t *testing.T) {
+	pool := dbtest.FreshPostgres(t)
+	ctx := context.Background()
+	if err := postgres.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	identities := postgres.NewIdentityStore(pool)
+	org, err := identities.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := postgres.NewResultStore(pool)
+	newOwner := func() identity.UserID {
+		t.Helper()
+		owner, err := identities.CreateUser(ctx, uuid.NewString()+"@example.com", "Quota fixture")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return owner.ID
+	}
+	result := func(owner identity.UserID, bytes int64) query.SealedResult {
+		return query.SealedResult{Metadata: query.SnapshotMetadata{ID: uuid.NewString(), OrganizationID: org, OwnerID: owner, ByteCount: bytes}, KeyVersion: 1, WrappedDEK: []byte("quota-fixture-envelope"), Chunks: []query.SealedResultChunk{{Index: 0, Nonce: []byte("nonce-123456"), Ciphertext: []byte("quota-fixture-ciphertext")}}}
+	}
+	// Exercise logical admission accounting without allocating 500 MiB of ciphertext.
+	for range 20 {
+		if err := store.Put(ctx, result(newOwner(), query.MaxSnapshotBytes)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	owner := newOwner()
+	existing := result(owner, 2<<20)
+	if err := store.Put(ctx, existing); err != nil {
+		t.Fatal(err)
+	}
+	incoming := result(owner, 20<<20)
+	if err := store.Put(ctx, incoming); !errors.Is(err, query.ErrResultStoreFull) {
+		t.Fatalf("refusal = %v", err)
+	}
+	if _, err := store.Get(ctx, org, owner, existing.Metadata.ID); err != nil {
+		t.Fatalf("live result lost on refusal: %v", err)
+	}
+	if _, err := store.GetChunk(ctx, org, owner, existing.Metadata.ID, 0); err != nil {
+		t.Fatalf("live chunk lost on refusal: %v", err)
+	}
+	if _, err := store.Get(ctx, org, owner, incoming.Metadata.ID); !errors.Is(err, query.ErrResultUnavailable) {
+		t.Fatalf("refused result remained readable: %v", err)
+	}
+	var evictions int
+	if err := pool.QueryRow(ctx, `select count(*) from audit_events where action='RESULT_EVICTED'`).Scan(&evictions); err != nil {
+		t.Fatal(err)
+	}
+	if evictions != 0 {
+		t.Fatalf("refusal emitted %d live-eviction audit events", evictions)
 	}
 }

@@ -31,3 +31,19 @@ func TestResultAdmissionEvictsExpiredThenOwnLRUAndPreservesOtherOwners(t *testin
 		t.Fatalf("last-result floors not enforced: %v", err)
 	}
 }
+
+func TestRefusedResultAdmissionPreservesLiveSnapshots(t *testing.T) {
+	at := time.Now()
+	current := []query.CachedResult{
+		{SnapshotMetadata: query.SnapshotMetadata{ID: "expired", OwnerID: "me", ByteCount: 5, ExpiresAt: at.Add(-time.Second)}},
+		{SnapshotMetadata: query.SnapshotMetadata{ID: "own", OwnerID: "me", ByteCount: 10, ExpiresAt: at.Add(time.Hour)}},
+		{SnapshotMetadata: query.SnapshotMetadata{ID: "other-only", OwnerID: "other", ByteCount: 90, ExpiresAt: at.Add(time.Hour)}},
+	}
+	evictions, err := query.PlanResultAdmission(current, query.SnapshotMetadata{OwnerID: "me", ByteCount: 20}, at, 25, 100)
+	if !errors.Is(err, query.ErrResultStoreFull) {
+		t.Fatalf("expected refusal, got %v", err)
+	}
+	if len(evictions) != 1 || evictions[0].Result.ID != "expired" || evictions[0].Cause != "expired" {
+		t.Fatalf("refused incoming result removed live data: %+v", evictions)
+	}
+}

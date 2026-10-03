@@ -733,7 +733,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - `pg_proc.provolatile` is an optimizer promise, not enforcement, corrected 2026-07-25; authors can declare side-effecting bodies STABLE and call volatile functions.
   - Use volatility only as hygiene for honestly declared builtins; read-only transactions are supplemental protection.
 - **Size/storage:** Enforce byte and row caps against large-cell exhaustion.
-  - ADR-0011 order: delete expired results → own LRU → global LRU preserving at least one result per user → reject only the new snapshot as `result_store_full`, with execution itself completed.
+  - ADR-0011 order: delete expired results → plan own LRU → plan global LRU preserving at least one result per other user → atomically evict and insert only if admission fits; otherwise reject only the new snapshot as `result_store_full`, preserving every live result with execution itself completed.
 - **Circuit breaker, ADR-0010:** Per connection, more than 5 consecutive failures opens for 60 seconds with one half-open probe.
   - Blocked calls return `Unavailable` before leasing, without retries.
   - User cancellation, context deadlines and local response limits are excluded from target-health measurements without clearing existing failures; execution uncertainty still records `outcome_unknown` (ADR-0010).
@@ -881,7 +881,7 @@ Resolved items; their ADRs are binding specifications.
 | Master-key format/rotation/loss | ADR-0003: single base64 file, `_PREVIOUS` versions, eager batch rotation, unrecoverable key loss; envelope/AAD/Argon2 parameters |
 | Metadata RLS | ADR-0004: excluded in MVP, RLS-ready schema, mandatory cross-org tests |
 | Result type contract | ADR-0005: proto/native scan-type→LogicalType mappings, fixed NULL sorting/tie-breakers |
-| Result quotas/eviction/rejection/autovacuum | ADR-0011: user 64MiB, expiry→own LRU→global LRU→reject; provisional pending Core 2 load validation |
+| Result quotas/eviction/rejection/autovacuum | ADR-0011: user 64MiB, expiry→plan own/global LRU→admit atomically or reject preserving live data; provisional pending Core 2 load validation |
 | Temporary-access threat model | §4.9: scope, expiry, concurrency, revocation, transaction boundary |
 | Atlas pin/distribution/NOTICE/checksum/matrix | ADR-0012: Community v1.2 line, exact patch pinned at M5 start |
 | Artifact storage/limits/retention/apply timeout/lock recovery | ADR-0012: metadata PG + AEAD; 1MiB/file, 10MiB/artifact, 500 files, terminal+90 days; 10-minute timeout/max 60 minutes; lease-row recovery |

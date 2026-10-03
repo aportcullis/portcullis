@@ -14,7 +14,7 @@ type ResultEviction struct {
 	Cause  string
 }
 
-// PlanResultAdmission expires old rows, evicts own LRU, and preserves other users' last result.
+// PlanResultAdmission plans expiry and LRU removal, preserving live results when admission fails.
 func PlanResultAdmission(current []CachedResult, incoming SnapshotMetadata, at time.Time, userQuota, globalQuota int64) ([]ResultEviction, error) {
 	if incoming.ByteCount < 0 || incoming.ByteCount > userQuota || incoming.ByteCount > globalQuota {
 		return nil, ErrResultStoreFull
@@ -35,6 +35,7 @@ func PlanResultAdmission(current []CachedResult, incoming SnapshotMetadata, at t
 			ownBytes += row.ByteCount
 		}
 	}
+	expiredCount := len(evictions)
 	evict := func(idx int, cause string) {
 		row := current[idx]
 		live[idx] = false
@@ -62,7 +63,7 @@ func PlanResultAdmission(current []CachedResult, incoming SnapshotMetadata, at t
 		}
 	}
 	if totalBytes+incoming.ByteCount > globalQuota {
-		return evictions, ErrResultStoreFull
+		return evictions[:expiredCount], ErrResultStoreFull
 	}
 	return evictions, nil
 }
