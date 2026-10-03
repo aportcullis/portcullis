@@ -4,7 +4,7 @@
 
 Portcullis is evolving from a PostgreSQL governance tool into a self-hosted platform for database access, changes, and analysis. This roadmap explains the outcomes we are working toward, how they depend on one another, and what must be true before a milestone is complete.
 
-![Portcullis roadmap: Foundation baseline; Gate in progress; Bridge next; Library completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
+![Portcullis roadmap: Foundation baseline; Gate in progress; Bridge adds WebMCP then database parity; Library completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
 
 **Updated: 2026-10-03. Current focus: Gate (M1).** Implementation is present in the development checkout, but the release gate is not complete. Native CSV file saving still needs a passing browser verification. See the [validation evidence](operations/m1-validation.md).
 
@@ -12,9 +12,9 @@ Portcullis is evolving from a PostgreSQL governance tool into a self-hosted plat
 
 | Direction | The outcome we want | Milestones |
 | --- | --- | --- |
-| Govern | Every access decision and database change has a policy, a reviewer where required, and durable evidence | Foundation, Gate, Watch, Forge |
+| Govern | Every access decision and database change has a policy, a reviewer where required, and durable evidence | Foundation, Gate, Bridge, Watch, Forge |
 | Reuse | A useful query becomes a repeatable, shareable analysis asset | Bridge, Library, Horizon |
-| Operate | Teams can run and integrate Portcullis in their own infrastructure | Foundation, Reach, Horizon |
+| Operate | Teams can run and integrate Portcullis in their own infrastructure | Foundation, Bridge, Reach, Horizon |
 
 The names below describe product outcomes. The M0–M7 identifiers retain the milestone boundaries in [PRD §11](product/prd.en.md#11-roadmap); they are not a new delivery schedule. The map is a direction of travel rather than a calendar commitment.
 
@@ -40,11 +40,13 @@ Give teams one complete path from connection registration through policy, reques
 
 **Next — after Gate is accepted.**
 
-Extend the same governance loop to MySQL and SQLite. Users should recognize the same workflow across databases while intentional dialect differences remain visible.
+First, add browser WebMCP assistance to the PostgreSQL workflow: discover a connection, compose visible SQL and typed parameters, explicitly save/submit a request, inspect approval state, execute an approved request as its requester, and inspect bounded results. Preserve the same permissions and distinct review; tools do not automatically approve requests. Keep the normal web interface usable in browsers without native WebMCP support.
 
-**To complete:** All three adapters must pass the shared behavior and security contracts. The matrix must document MySQL implicit-commit DDL behavior and SQLite path, symlink, and concurrent-write protections. A new adapter must preserve policy checks, limits, cancellation, audit, and unknown-outcome handling.
+Then extend the same governance loop to MySQL and SQLite. Users should recognize the same workflow across databases while intentional dialect differences remain visible. Saved-query discovery and reuse follow Library when those assets exist.
 
-**Specification:** [Dialect boundary](product/prd.en.md#53-database-dialect-boundary), [safe execution](product/prd.en.md#82-sql-execution-safety).
+**To complete:** Verify the assisted query journey in a real supported browser, including denied/revoked access, cross-user isolation, replay refusal, cancellation, exact/bounded results, and unsupported-browser fallback. Reverify the evolving browser API at implementation time. All three adapters must pass the shared behavior and security contracts. The matrix must document MySQL implicit-commit DDL behavior and SQLite path, symlink, and concurrent-write protections. A new adapter must preserve policy checks, limits, cancellation, audit, and unknown-outcome handling.
+
+**Specification:** [WebMCP query assistance](product/prd.en.md#410-webmcp-query-assistance-m2--bridge), [scope and browser boundary](adr/0024-webmcp-next-milestone.md), [Dialect boundary](product/prd.en.md#53-database-dialect-boundary), [safe execution](product/prd.en.md#82-sql-execution-safety).
 
 ## Library · M3
 
@@ -86,7 +88,7 @@ Extend deployment to Helm and CloudNativePG, then provide Terraform/OpenTofu int
 
 **Exploration — candidates with no delivery commitment.**
 
-Longer-term directions include charts and dashboards, declarative GitOps, CloudNativePG discovery, SIEM integration, ML/AI Review, and an Agent Gateway. They remain candidates until demand, goals, prerequisites, and acceptance criteria are validated. Adding an idea here does not make it an available feature.
+Longer-term directions include charts and dashboards, declarative GitOps, CloudNativePG discovery, SIEM integration, ML/AI Review, and a remote/headless Agent Gateway beyond Bridge’s browser WebMCP workflow. They remain candidates until demand, goals, prerequisites, and acceptance criteria are validated. Adding an idea here does not make it an available feature.
 
 ## How the roadmap evolves
 
