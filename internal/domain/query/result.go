@@ -59,5 +59,6 @@ type ResultStream interface {
 	Row() []CellValue
 	Err() error
 	RowsAffected() int64
+	Truncated() bool
 	Close() error
 }

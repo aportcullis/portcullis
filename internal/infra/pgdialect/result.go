@@ -29,6 +29,8 @@ type resultStream struct {
 	finished     bool // transaction ended, connection closed (or abandoned via Close)
 }
 
+func (s *resultStream) Truncated() bool { return false }
+
 func (s *resultStream) Columns() []query.Column { return s.columns }
 func (s *resultStream) Row() []query.CellValue  { return s.current }
 func (s *resultStream) Err() error              { return s.err }
