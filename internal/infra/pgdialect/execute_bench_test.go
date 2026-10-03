@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"slices"
-	"strconv"
 	"testing"
 	"time"
 
@@ -31,14 +29,11 @@ type querySample struct {
 }
 
 func BenchmarkQueryWorkloads(b *testing.B) {
-	seedRows := 100_000
-	if value := os.Getenv("PORTCULLIS_BENCH_ROWS"); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed < 10_000 || parsed > 1_000_000 {
-			b.Fatal("PORTCULLIS_BENCH_ROWS must be between 10000 and 1000000")
-		}
-		seedRows = parsed
+	settings, err := loadBenchmarkSettings()
+	if err != nil {
+		b.Fatal(err)
 	}
+	seedRows := settings.Rows
 	pool := dbtest.FreshTargetPostgres(b)
 	ctx := context.Background()
 	seedSQL := fmt.Sprintf(`
