@@ -18,13 +18,13 @@ Alex is the requester; Sam is the reviewer. The demo reviewer is provisioned thr
 
 ## Explore results
 
-Browse pages, sort numeric columns, filter values, and inspect full cells. Large integers and decimals retain their precision, and columns display both their logical and database types.
+Browse pages, sort columns by their declared data types, filter values, and inspect full cells. Large integers and decimals retain their precision; temporal sorting accounts for fractional seconds and timezone offsets. Choose a column and direction, or restore the original query order. Sorting covers the entire cached snapshot without executing SQL again, keeps equal values in their original order, and places NULL values last.
 
-![Synthetic order results with exact large integers, regions, decimal amounts, and typed columns](docs/media/results.png)
+![Actual result sorting controls with exact large integers and descending timestamps](docs/media/results.png)
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
 
-CSV preparation uses the entire cached snapshot, independently of the current page or filter. The walkthrough stops at the prepared download link; it does not demonstrate successful native file saving. Cached results expire after 15 minutes and may be evicted earlier under quota pressure.
+CSV preparation uses the entire cached snapshot in original query order, independently of the current page, sort, or filter. The walkthrough stops at the prepared download link; it does not demonstrate successful native file saving. Cached results expire after 15 minutes and may be evicted earlier under quota pressure.
 
 ## Database support
 
