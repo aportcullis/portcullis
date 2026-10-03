@@ -2,6 +2,8 @@
 # Local-only docs
 # ─────────────────────────────────────────────
 todo.md
+# Review ledgers list unpatched findings; vulnerabilities are reported privately (ADR-0050).
+docs/review-*.md
 
 # ─────────────────────────────────────────────
 # Go

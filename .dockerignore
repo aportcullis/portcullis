@@ -27,6 +27,7 @@ coverage.*
 internal/platform/assets/dist
 prd.md
 todo.md
+docs/review-*.md
 **/.env
 **/.env.*
 !**/.env.example
