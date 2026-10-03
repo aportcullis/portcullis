@@ -771,6 +771,8 @@ audit_events
 
 ## 9. 배포
 
+태그 기반 이미지 게시(ADR-0047)는 태그 커밋의 CI 검증 후 단일 `linux/amd64` 이미지를 GHCR에 올린다. build metadata 없는 `vMAJOR.MINOR.PATCH[-PRERELEASE]`를 허용하고 전체 버전·커밋 SHA 태그와 정식 버전만의 major.minor 별칭을 제공하며 암묵적 latest는 만들지 않는다. SBOM/provenance 증명을 포함하며 앱을 배포하지 않는다. 운영자는 패키지 공개 범위와 릴리스 태그를 관리하고 production에서는 digest를 고정한다. [컨테이너 릴리스 안내](../operations/container-releases.md)를 따른다.
+
 권장 production 구성은 Portcullis와 DB를 내부망에 두고, 원격 사용자가 조직 등록 Cloudflare WARP와 private-network Tunnel 라우팅 또는 명시적 grants를 설정한 Tailscale을 통해 앱 HTTPS endpoint만 접근하도록 한다. 네트워크 가입은 앱 로그인·RBAC·승인·감사를 대체하지 않는다. 내부망 노출 제한·라우팅·DNS·TLS는 운영자가 적용하며, 이 권장사항은 로컬 demo 설정을 변경하지 않는다(ADR-0042; [권장 배포 아키텍처](../operations/recommended-architecture.md)).
 
 | 채널 | 내용 |
