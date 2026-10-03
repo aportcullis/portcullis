@@ -1,9 +1,10 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.8 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
+> **Shared revision:** v0.9 / 2026-10-03. Update requirements and section numbers in both languages in the same change.
 > **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
-> **Status:** Draft v0.8 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
+> **Deployment sequencing (ADR-0035):** M2 is MySQL parity → Kubernetes (Helm/Kustomize) and CNPG → SQL review/EXPLAIN.
+> **Status:** Draft v0.9 (2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -67,7 +68,7 @@ Expand BI gradually from MVP saved queries and result grids.
 - Provide DevSecOps access/change controls and BI analysis/visualization/sharing in one product flow.
   - MVP provides query assets and result exploration; later stages add charts and dashboards.
 - Govern migration files from Git or other remote storage through status → dry-run → review → approve → apply → verify, using the access core's governance pattern.
-- Ship the MVP through Docker Compose, followed by Helm and Terraform/OpenTofu providers.
+- Ship Docker Compose first, then Kubernetes via Helm/Kustomize and CloudNativePG integration immediately after MySQL parity in M2; Terraform/OpenTofu follows API stability in M6.
 - Deliver Core 1/2 in one Portcullis binary.
   - Images including Schema Governance also contain a pinned Atlas Community CLI.
 - Prevent unapproved SQL or SQL changed after approval from reaching the target DB through any execution path.
@@ -85,7 +86,7 @@ Expand BI gradually from MVP saved queries and result grids.
 #### Included
 
 - **Target databases:** PostgreSQL and MySQL; metadata always uses PostgreSQL.
-- **Deployment:** Docker Compose quickstart with one server instance and PostgreSQL.
+- **Deployment:** Docker Compose quickstart; M2 adds single-instance Kubernetes deployment through Helm/Kustomize and external or CloudNativePG-managed metadata PostgreSQL.
 - **Authentication:** Local email/password with argon2id, Google OIDC, server-side sessions, and initial admin bootstrap.
 - **Requests:** Approval of one SQL statement against one connection with exact parameter values.
 - **Policy:** Per-connection `read`/`write`/`ddl` `required_approvals`, default 1 and 0 for automatic approval, no self-approval, default 24-hour approval validity, and one execution per approval.
@@ -100,7 +101,7 @@ Expand BI gradually from MVP saved queries and result grids.
 - Team/role approval rules, ordered multistage approvals, and break-glass.
   - Quorum approval by N people with the same role is included.
 - OIDC providers other than Google, LDAP, SAML, SCIM, and IdP group-role sync.
-- HA, Helm, and Terraform/OpenTofu providers.
+- Application HA and Terraform/OpenTofu providers. CNPG automatic target discovery remains Later.
 - Schema Change Governance, reserved for the **Schema milestone** after the first MVP.
 
 ### 2.4 Success criteria
@@ -441,7 +442,7 @@ Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026
 
 ### 4.11 Early SQL review and schema preview (M2–M3)
 
-ADR-0026 advances review tools before agent integration. In M2, after MySQL parity, show deterministic statement class, identifiable referenced objects and applicable policy/limits, with explicit unknowns. Add basic native EXPLAIN only for supported read statements, using typed parameters and fixed server-controlled options; reject ANALYZE, unsafe functions/operators and unclassified forms. Require org/connection authorization, archived-target checks, target/config/policy validation, bounded planning timeout/output, cancellation, requester-only plan access and audit. Planning does not approve or execute a request. Tie evidence to SQL/parameter digest, target/config, engine version and observation time; invalidate changed inputs and label costs/rows as estimates. Accept only after parser rejection, side-effect defenses, denied/cross-org access, stale inputs, sensitive plan output and real-engine scenarios pass for both DBs.
+ADR-0026 advances review tools before agent integration. In M2, after MySQL parity and the Kubernetes/CNPG deployment gate (ADR-0035), show deterministic statement class, identifiable referenced objects and applicable policy/limits, with explicit unknowns. Add basic native EXPLAIN only for supported read statements, using typed parameters and fixed server-controlled options; reject ANALYZE, unsafe functions/operators and unclassified forms. Require org/connection authorization, archived-target checks, target/config/policy validation, bounded planning timeout/output, cancellation, requester-only plan access and audit. Planning does not approve or execute a request. Tie evidence to SQL/parameter digest, target/config, engine version and observation time; invalidate changed inputs and label costs/rows as estimates. Accept only after parser rejection, side-effect defenses, denied/cross-org access, stale inputs, sensitive plan output and real-engine scenarios pass for both DBs.
 
 M3 adds the §4.5/ADR-0012 schema status → dry-run → deterministic review slice over a pinned immutable Git/Atlas artifact. Enforce the per-DB object matrix, permissions, audit and bounded subprocess/catalog operations. Display fact sources, observation time, estimates and unknowns. No migration apply endpoint is exposed until M5; preview does not simulate changes or guarantee rollback/lock safety. Actual apply must revalidate artifact and target state.
 
@@ -479,7 +480,7 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | Router | `net/http`, Go 1.22+ | Minimal dependencies, built-in `GET /x/{id}` routing |
 | API transport | Connect RPC/protobuf | `connect-go` on net/http; one schema generates Go server and TS client with end-to-end type safety |
 | Real-time | Connect server-streaming | One mechanism for migration views, approval notifications, and later session monitoring; no separate SSE/WebSocket; after reconnect, fetch current state through unary RPC before resubscribing |
-| Metadata | PostgreSQL | Container in MVP Compose; external PG/Helm later |
+| Metadata | PostgreSQL | Compose initially; external PG or CNPG-managed PG through Helm/Kustomize in M2 |
 | Metadata access | `sqlc` on `pgx` | Raw SQL with type safety, no ORM |
 | Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL differences |
 | Authentication | argon2id passwords, Google OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; other OIDC/SAML later |
@@ -794,11 +795,13 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
 | Channel | Scope |
 |---|---|
 | Docker Compose, MVP | Server + PG; separate local quickstart and production mounted-secret examples |
-| Helm, post-MVP | In-cluster PG with optional CNPG, or external PG; existingSecret, ServiceAccount/least RBAC, probes, PodSecurityContext |
+| Helm + Kustomize, M2 immediately after MySQL parity | Single Portcullis replica; external or CNPG-managed metadata PostgreSQL 18; existing Secrets/mounted keys, verified TLS, least privilege, probes and resource/security settings |
 | Terraform/OpenTofu, after API stability | CRUD product resources such as connections/policies using terraform-plugin-framework + Connect unary HTTP, or REST gateway if needed; publish to both registries |
 
 The container image is the deployment source of truth.
 Align Compose `.env` and Helm `values.yaml` keys to reduce documentation/support cost; build providers after the API stabilizes.
+
+M2 deployment acceptance (ADR-0035) requires Helm chart and Kustomize base/overlays with equivalent configuration, installation/upgrade/restart scenarios, Secret and certificate rotation, master-key preservation, backup/restore and result-cache-loss runbooks. Separate the migration owner Job from the restricted runtime role; CNPG's generated database-owner credentials must not become runtime credentials. Use the primary read-write Service DNS with certificate verification for metadata and governed PostgreSQL targets, within the existing database-version matrix. Failover must preserve unknown-outcome handling without retrying target SQL; lost UNLOGGED results return `result_unavailable`. Pin and publish the tested Kubernetes/CNPG/tool versions at implementation. CNPG HA does not establish application HA; automatic target discovery remains M7. M6 adds Gateway-specific deployment examples to this M2 baseline.
 
 Protobuf is the API source of truth: generate Go handlers and SolidJS TS clients together from `proto/`.
 The provider plan assumes REST/OpenAPI, so choose direct Connect unary or generate an OpenAPI/REST gateway from protobuf when starting provider work; accept this transition cost after API stability.
@@ -822,17 +825,17 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 ```text
 0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice
-2  Bridge       PostgreSQL/MySQL parity; deterministic SQL review and basic read EXPLAIN
+2  Bridge       PostgreSQL/MySQL parity → Kubernetes (Helm/Kustomize) + CNPG → deterministic SQL review and basic read EXPLAIN
 3  Core 2       Saved queries/reuse across both DBs; schema status/dry-run/impact preview (no apply)
    ── MVP ──
 4  Access       Sensitive-data masking first; temporary web console, multistage approval, OIDC/LDAP
 5  Schema       Complete pinned schema approval/apply/recovery/verify using M3 preview contracts
-6  Deployment   Helm/CNPG, Terraform/OpenTofu after API stability; agent registration/grants then MCP Gateway after M5 and masking (WebMCP optional)
+6  Reach        Terraform/OpenTofu after API stability; agent registration/grants then MCP Gateway after M5 and masking (WebMCP optional)
 7  Later        BI analysis/sharing (charts/dashboards), declarative GitOps, CNPG discovery, SIEM, ML/AI Review (§4.8)
 ```
 
 Stage 1, PostgreSQL-only Core 1, is the **first releasable alpha**.
-MVP means stage 3 completion, including MySQL parity, SQL review/EXPLAIN and Core 2 with schema preview, excluding MCP Gateway/WebMCP, subject to interview-driven Core 2 adjustments (§1.4).
+MVP means stage 3 completion, including MySQL parity, Kubernetes/CNPG deployment, SQL review/EXPLAIN and Core 2 with schema preview, excluding MCP Gateway/WebMCP, subject to interview-driven Core 2 adjustments (§1.4).
 After foundation, develop vertical features with server APIs and SolidJS screens together, because UX is central to differentiation.
 
 **Roadmap management:** Record new directions as Later candidates first, then promote them to concrete milestones after validating demand, goals, and prerequisites.

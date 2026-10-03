@@ -4,7 +4,7 @@
 
 Portcullis is evolving from a PostgreSQL governance tool into a self-hosted platform for database access, changes, and analysis. This roadmap explains the outcomes we are working toward, how they depend on one another, and what must be true before a milestone is complete.
 
-![Portcullis roadmap: Foundation baseline; Gate verified; Bridge adds MySQL parity and SQL review; Library adds schema preview and completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
+![Portcullis roadmap: Foundation baseline; Gate verified; Bridge adds MySQL parity, Kubernetes/CNPG deployment and SQL review; Library adds schema preview and completes MVP; Watch, Forge, and Reach follow; Horizon contains longer-term candidates](roadmap/overview.svg)
 
 **Updated: 2026-10-03. Gate (M1) verified; Bridge (M2) is next.** The complete `make verify` gate passed with Docker-hosted Chromium, including native CSV saving and saved-file readback. See the [validation evidence](operations/m1-validation.md) for the tested environment and separate capacity qualification.
 
@@ -42,9 +42,11 @@ Give teams one complete path from connection registration through policy, reques
 
 First, complete MySQL's connection → policy → request → distinct review → single-use execution → bounded results/CSV → audit journey alongside PostgreSQL. Users should recognize the same workflow across engines while intentional dialect differences remain visible. SQLite is excluded from supported-target scope. MariaDB and other SQL engines remain separately qualified candidates, not committed MVP targets.
 
-Then add deterministic SQL review information and basic read-query EXPLAIN: show statement class, identifiable referenced objects, policy/limits and bounded native plans with estimates clearly labeled. Planning must preserve authorization, function safety, target checks, cancellation, audit and confidential output. It does not approve or execute the request; EXPLAIN ANALYZE stays deferred.
+Immediately after MySQL parity, deliver Kubernetes deployment via Helm and Kustomize with external or CloudNativePG-managed metadata PostgreSQL 18. Include CNPG-managed PostgreSQL targets through their primary Service DNS and verified TLS, retaining the existing engine-version matrix. Separate migration-owner and runtime credentials; preserve mounted keys, backup/restore and result-cache-loss handling. Start with one Portcullis replica. CNPG automatic target discovery remains Horizon. See [deployment sequencing](adr/0035-kubernetes-cnpg-after-mysql.md).
 
-**To complete:** Both adapters pass the shared security/behavior matrix, including MySQL implicit-commit DDL disclosure, exact types, TLS, limits and unknown outcomes. SQL review/planning must pass denied/cross-org access, stale-input, sensitive-output, unsafe-expression and real-engine scenarios. See the [DB feature matrix](product/database-support.md).
+After deployment acceptance, add deterministic SQL review information and basic read-query EXPLAIN: show statement class, identifiable referenced objects, policy/limits and bounded native plans with estimates clearly labeled. Planning must preserve authorization, function safety, target checks, cancellation, audit and confidential output. It does not approve or execute the request; EXPLAIN ANALYZE stays deferred.
+
+**To complete:** Both adapters pass the shared security/behavior matrix, including MySQL implicit-commit DDL disclosure, exact types, TLS, limits and unknown outcomes. Helm/Kustomize installation, upgrade/restart, Secret/certificate rotation, key preservation, backup/restore and CNPG failover scenarios must pass on a published pinned version matrix; failover must never replay target SQL. SQL review/planning must pass denied/cross-org access, stale-input, sensitive-output, unsafe-expression and real-engine scenarios. See the [DB feature matrix](product/database-support.md).
 
 **Specification:** [Early review and preview](product/prd.en.md#411-early-sql-review-and-schema-preview-m2m3), [priority decision](adr/0026-review-tools-before-agent-integration.md), [dialect boundary](product/prd.en.md#53-database-dialect-boundary), [safe execution](product/prd.en.md#82-sql-execution-safety).
 
@@ -82,7 +84,7 @@ Complete the M3 preview workflow with distinct approval → apply → verify and
 
 **Planned — operating and integrating Portcullis after Forge.**
 
-Extend deployment to Helm and CloudNativePG, then provide Terraform/OpenTofu integration after the API is stable. Keep metadata, keys, upgrades, and recovery manageable for self-hosted operators.
+Build on the M2 Kubernetes/CNPG deployment baseline and provide Terraform/OpenTofu integration after the API is stable. Keep metadata, keys, upgrades, and recovery manageable for self-hosted operators.
 
 **Deferred integration track:** After M5 and the M4 masking gate, provide organization-owned agent registration and expiring scoped grants, then a standard MCP Gateway for local clients, Claude Code, Codex and other compatible clients. Use Streamable HTTP plus a local stdio bridge over the same governed application use cases. Publish a real client/version/protocol/auth compatibility matrix before support claims. Browser WebMCP is an optional follow-up, not the initial Gateway prerequisite. MCP remains outside MVP.
 

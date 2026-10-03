@@ -1,9 +1,10 @@
 # Portcullis — Product Requirements Document
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
-> **동기화 기준:** v0.8 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
+> **동기화 기준:** v0.9 / 2026-10-03. 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
 > **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
-> **상태:** Draft v0.8 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
+> **배포 순서 변경(ADR-0035):** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN 순서다.
+> **상태:** Draft v0.9 (2026-07-04: §12.2 미결정 항목을 ADR-0001~0012로 해소, 수치·계약 정량화, §4.9 임시 접근 위협 모델 추가)
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -59,7 +60,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - DevSecOps의 접근·변경 통제와 BI의 분석·시각화·공유를 하나의 제품 흐름으로 제공한다.
   - MVP는 쿼리 자산과 결과 탐색을 제공하고, 후속 단계에서 차트·대시보드를 추가한다.
 - 스키마 변경(git 등 remote storage의 migration 파일)을 access core와 동일한 거버넌스 루프(status→dry-run→review→approve→apply→verify)에 태운다.
-- MVP는 Docker Compose로 배포하고, 이후 Helm과 Terraform·OpenTofu provider로 확장한다.
+- Docker Compose를 먼저 제공하고 M2의 MySQL parity 직후 Kubernetes(Helm/Kustomize)·CloudNativePG 연동을 제공한다. Terraform·OpenTofu provider는 M6의 API 안정화 이후로 유지한다.
 - Core 1/2는 단일 Portcullis 바이너리로 제공한다.
   Schema Governance가 추가되는 이미지는 pinned Atlas Community CLI를 함께 포함한다.
 - 승인되지 않았거나 승인 후 내용이 바뀐 SQL은 어떤 실행 경로에서도 대상 DB에 도달하지 못하게 한다.
@@ -76,7 +77,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 #### 포함
 - **관리 대상 DB:** PostgreSQL, MySQL.
   제품 메타데이터 DB는 관리 대상 종류와 무관하게 PostgreSQL.
-- **배포:** 단일 서버 인스턴스 + PostgreSQL로 구성된 Docker Compose quickstart.
+- **배포:** Docker Compose quickstart. M2에서 Helm/Kustomize 기반 단일 인스턴스 Kubernetes 배포와 외부 또는 CloudNativePG 관리 메타데이터 PostgreSQL 연동을 추가한다.
 - **인증:** 로컬 이메일/비밀번호(argon2id)와 **Google 소셜 로그인(OIDC)**, 서버사이드 세션.
   최초 admin bootstrap 절차 제공.
 - **접근 요청:** 하나의 connection을 대상으로 한 단일 SQL statement와 정확한 파라미터 값의 승인 요청.
@@ -92,7 +93,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - team/role별 승인 규칙, 순서가 있는 다단계 승인, break-glass.
   동일 역할의 N명 정족수 승인은 MVP에 포함.
 - Google 외 OIDC provider/LDAP, SAML, SCIM 및 IdP group-role sync.
-- 고가용성, Helm, Terraform/OpenTofu provider.
+- 애플리케이션 고가용성, Terraform/OpenTofu provider. CNPG 관리 대상 자동 발견은 Later로 유지한다.
 - Schema Change Governance(첫 MVP 다음의 **Schema 마일스톤** 범위).
 
 ### 2.4 성공 기준
@@ -409,7 +410,7 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 
 ### 4.11 SQL 검토와 스키마 미리보기 조기 제공 (M2–M3)
 
-ADR-0026으로 에이전트 연동보다 검토 도구를 앞당긴다. M2는 MySQL parity 이후 statement 종류, 식별 가능한 참조 object, 적용 policy·limit을 결정론적으로 표시하고 미확인 항목은 unknown으로 둔다. 지원 Read 문장만 typed parameter와 서버 고정 옵션으로 기본 native EXPLAIN을 제공하며 ANALYZE, 위험 함수·연산자, 미분류 구문은 거부한다. 조직·connection 인가, archive 검사, target/config/policy 검증, 제한된 planning timeout·출력, 취소, 요청자만의 plan 접근과 audit가 필수다. 계획 조회는 승인이나 요청 실행이 아니다. SQL·parameter digest, target/config, 엔진 버전, 관측 시각을 근거에 연결하고 입력 변경 시 무효화하며 cost·row 수는 추정으로 표시한다. 두 DB 모두 parser 거절, 부작용 방어, 권한 거부·타 조직 접근, 오래된 입력, 민감 plan 출력 및 실제 엔진 시나리오 통과 후 제공한다.
+ADR-0026으로 에이전트 연동보다 검토 도구를 앞당긴다. M2는 MySQL parity와 Kubernetes/CNPG 배포 인수(ADR-0035) 이후 statement 종류, 식별 가능한 참조 object, 적용 policy·limit을 결정론적으로 표시하고 미확인 항목은 unknown으로 둔다. 지원 Read 문장만 typed parameter와 서버 고정 옵션으로 기본 native EXPLAIN을 제공하며 ANALYZE, 위험 함수·연산자, 미분류 구문은 거부한다. 조직·connection 인가, archive 검사, target/config/policy 검증, 제한된 planning timeout·출력, 취소, 요청자만의 plan 접근과 audit가 필수다. 계획 조회는 승인이나 요청 실행이 아니다. SQL·parameter digest, target/config, 엔진 버전, 관측 시각을 근거에 연결하고 입력 변경 시 무효화하며 cost·row 수는 추정으로 표시한다. 두 DB 모두 parser 거절, 부작용 방어, 권한 거부·타 조직 접근, 오래된 입력, 민감 plan 출력 및 실제 엔진 시나리오 통과 후 제공한다.
 
 M3는 4.5/ADR-0012의 고정된 불변 Git/Atlas artifact로 schema status → dry-run → 결정론 review만 제공한다. DB별 object matrix, 인가, audit, 제한된 subprocess·catalog 작업을 강제한다. fact 산출원·관측 시각·추정·unknown을 표시한다. M5 전에는 migration apply endpoint를 제공하지 않으며 미리보기는 변경 시뮬레이션이나 rollback·lock 안전성 보장이 아니다. 실제 apply 전 artifact와 target 상태를 재검증한다.
 
@@ -447,7 +448,7 @@ Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만�
 | 라우터 | `net/http` (Go 1.22+) | 의존성 최소, `GET /x/{id}` 라우팅 내장 |
 | API 전송 | **Connect RPC** (protobuf) | `connect-go`는 `net/http` 기반. protobuf 단일 명세로 Go 서버 + TS 클라이언트 생성, end-to-end 타입 안전 |
 | 실시간 | **Connect server-streaming** | migration 워크플로 라이브 뷰·승인 알림·(향후)임시 세션 모니터링을 한 메커니즘으로. SSE/WebSocket 불필요. stream은 끊길 수 있으므로 **재연결 시 현재 상태를 unary로 다시 조회한 뒤 stream을 재구독**하는 recovery 규칙을 둔다 |
-| 메타데이터 DB | PostgreSQL | MVP compose=컨테이너, 외부 PG/Helm은 이후 |
+| 메타데이터 DB | PostgreSQL | 초기 Compose; M2에서 Helm/Kustomize 기반 외부 PG 또는 CNPG 관리 PG |
 | 메타데이터 DB 접근 | `sqlc` on `pgx` | raw SQL + 타입 안전. ORM 미사용 |
 | 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL 차이를 명시적으로 격리 |
 | 인증 | password(argon2id) + Google OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 그 외 OIDC/SAML은 이후 |
@@ -754,10 +755,12 @@ audit_events
 | 채널 | 내용 |
 |---|---|
 | Docker Compose (**MVP**) | server + PostgreSQL. local quickstart와 mounted secret 기반 production 예제 분리. |
-| Helm Chart (**post-MVP**) | 클러스터 내 PostgreSQL(CNPG 옵션) + 외부 PG. `existingSecret`, ServiceAccount+최소 RBAC, probe, PodSecurityContext. |
+| Helm + Kustomize (**M2, MySQL parity 직후**) | Portcullis 단일 replica + 외부 또는 CNPG 관리 메타데이터 PostgreSQL 18. 기존 Secret·mounted key, 검증된 TLS, 최소 권한, probe·resource·security 설정. |
 | Terraform / OpenTofu Provider (**API 안정화 후**) | 제품 *안의 리소스*(connection/policy 등)를 CRUD. `terraform-plugin-framework` + Connect unary(HTTP) 클라이언트, 필요 시 REST gateway 경유. 양 레지스트리 등록. |
 
 **단일 진실 공급원은 컨테이너 이미지.** compose `.env` 키와 Helm `values.yaml` 키를 동일하게 맞춰 문서/지원 부담을 줄인다. provider는 API가 안정된 뒤에 만든다(먼저 만들면 계속 깨짐).
+
+M2 배포 인수(ADR-0035)는 동일 설정의 Helm chart와 Kustomize base/overlay, 설치·업그레이드·재시작, Secret·인증서 rotation, master key 보존, backup/restore와 결과 cache 유실 runbook을 요구한다. migration owner Job과 제한된 runtime role을 분리하며 CNPG가 생성하는 DB owner credential을 runtime에 사용하지 않는다. 메타데이터와 관리 대상 PostgreSQL 연결은 기존 DB 버전 matrix 안에서 primary read-write Service DNS와 인증서 검증을 사용한다. failover에서도 대상 SQL을 재실행하지 않고 unknown outcome을 유지하며 UNLOGGED 결과 유실은 `result_unavailable`로 처리한다. 구현 시 검증한 Kubernetes/CNPG·도구 버전을 pin하고 공개한다. CNPG HA는 애플리케이션 HA를 의미하지 않으며 자동 대상 발견은 M7로 유지한다. M6는 M2 배포 기반에 Gateway 전용 예제를 추가한다.
 
 **API 명세는 protobuf 단일 소스**다.
 `proto/`에서 Connect Go 핸들러 인터페이스와 SolidJS용 TS 클라이언트를 함께 생성해 end-to-end 타입을 맞춘다.
@@ -782,17 +785,17 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 ```
 0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현
-2  Bridge       PostgreSQL/MySQL parity → 결정론 SQL 검토·기본 Read EXPLAIN
+2  Bridge       PostgreSQL/MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → 결정론 SQL 검토·기본 Read EXPLAIN
 3  Core 2       두 DB 쿼리 저장·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
    ── MVP ──
 4  access 확장  민감정보 마스킹 우선 → 임시 접근·다단계 승인·OIDC/LDAP
 5  schema       M3 미리보기 계약 기반 schema 승인·apply·복구·verify 완성
-6  배포          Helm(CNPG) 정비, API 안정화 후 Terraform/OpenTofu provider; M5·마스킹 이후 에이전트 등록·권한 → MCP Gateway (WebMCP 선택 후속)
+6  Reach        API 안정화 후 Terraform/OpenTofu provider; M5·마스킹 이후 에이전트 등록·권한 → MCP Gateway (WebMCP 선택 후속)
 7  later        BI 분석·공유(차트·대시보드), declarative GitOps, CNPG 자동발견, SIEM, ML/AI Review(4.8)
 ```
 
 **출하 경계:** 단계 1(Core 1-PG, PostgreSQL 단독 거버넌스 루프)을 **first releasable alpha 경계**로 둔다.
-문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity·SQL 검토·EXPLAIN(2)와 schema 미리보기를 포함한 Core 2(3)를 포함하며 MCP Gateway/WebMCP는 제외한다.
+문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity·Kubernetes/CNPG 배포·SQL 검토·EXPLAIN(2)와 schema 미리보기를 포함한 Core 2(3)를 포함하며 MCP Gateway/WebMCP는 제외한다.
 인터뷰 결과(1.4)에 따라 Core 2 범위를 조정할 여지는 남긴다.
 
 개발 원칙: 토대 이후로는 **기능 단위 수직 개발**(서버 API + SolidJS 화면을 함께).

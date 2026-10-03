@@ -24,7 +24,9 @@
 | Organization isolation, permissions and append-only audit | Verified | Planned |
 | Real-engine integration tests and real-binary browser E2E | Verified (Testcontainers; Docker Chromium) | Planned (Testcontainers) |
 | Saved queries, versions, favorites and sharing | Planned (M3) | Planned (M3) |
-| Deterministic SQL review facts | Planned (M2 after parity) | Planned (M2 after parity) |
+| Kubernetes deployment (Helm/Kustomize) | Planned M2 immediately after MySQL parity | Planned M2 immediately after MySQL parity |
+| CNPG integration | Planned M2: metadata PG 18 and governed PG targets; no automatic discovery | External MySQL target from Kubernetes; CNPG manages PostgreSQL only |
+| Deterministic SQL review facts | Planned (M2 after deployment gate) | Planned (M2 after deployment gate) |
 | Basic EXPLAIN for supported read queries | Planned (M2; no ANALYZE) | Planned (M2; no ANALYZE) |
 | Schema migration status and SQL dry-run preview | Planned (M3; no apply) | Planned (M3; no apply) |
 | Deterministic schema impact facts | Planned (M3; estimates/unknowns) | Planned (M3; estimates/unknowns) |
@@ -60,7 +62,7 @@ Use current security patches in each qualified family and pin test images by dig
 
 Primary sources checked 2026-10-03: [PostgreSQL versions](https://www.postgresql.org/support/versioning/), [19 schedule](https://wiki.postgresql.org/wiki/PostgreSQL_19_Open_Items), [MySQL release tracks](https://dev.mysql.com/doc/refman/9.7/en/mysql-releases.html), [26.7 notes](https://dev.mysql.com/doc/relnotes/mysql/26.7/en/) and [8.0 lifecycle](https://www.mysql.com/support/eol-notice.html).
 
-The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. MCP Gateway/WebMCP are excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
+The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, Kubernetes/CNPG deployment, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. MCP Gateway/WebMCP are excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
 
 ## Additional engines and excluded scope
 

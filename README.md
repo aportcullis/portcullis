@@ -69,7 +69,7 @@ Compose preserves metadata and master keys in volumes. Its sample credentials an
 | Explore the direction | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
 | Work on the project | [Contributing](CONTRIBUTING.md) · [Development guide](docs/development.md) |
 
-The [documentation index](docs/README.md) contains the complete repository documentation. MySQL parity, SQL review/EXPLAIN, and saved queries with schema preview are the next milestones. Sensitive-data masking precedes later agent integration. Deployment and integration plans, including Helm/Kustomize, are tracked in the roadmap.
+The [documentation index](docs/README.md) contains the complete repository documentation. The next sequence is MySQL parity → Kubernetes through Helm/Kustomize and CloudNativePG integration → SQL review/EXPLAIN → saved queries with schema preview. Sensitive-data masking precedes later agent integration. Deployment and integration plans, including Helm/Kustomize, are tracked in the roadmap.
 
 ## Community
 
