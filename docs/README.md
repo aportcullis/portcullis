@@ -10,7 +10,7 @@ Product requirements are maintained in Korean and English; other documents adopt
 | Product requirements | [한국어 PRD](product/prd.ko.md) · [English PRD](product/prd.en.md) | Korean / English |
 | Database support | [Feature matrix and evidence boundaries](product/database-support.md) | English |
 | Database research | [Container-backed candidates and engine experiments](product/database-candidates.md) | English |
-| Architecture | [Layers and boundaries](ARCHITECTURE.md) | English |
+| Architecture | [Code layers and query flow](ARCHITECTURE.md) | English |
 | Deployment architecture | [Private-network topology with WARP or Tailscale](operations/recommended-architecture.md) | English |
 | Decisions | [ADR index](adr/README.md) | English |
 | Development | [Code](conventions/code.md) · [Data](conventions/data.md) · [Security](conventions/security.md) · [Tooling](conventions/tooling.md) · [Frontend](conventions/frontend.md) | English |
