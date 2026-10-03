@@ -24,6 +24,12 @@ During README capture, long SQL was found to push request-detail actions beyond 
 
 The README walkthrough capture additionally exercised a distinct requester and reviewer, single-use approved execution, exact-value result paging/sorting/filtering and preparation of all 30 synthetic CSV rows despite a 10-row filter. Screenshots and GIFs document those interactions; they do not certify native file saving or substitute for `make verify`.
 
+## Page-first workflow verification
+
+ADR-0022 is implemented: request composition, details/review and results have reloadable routes and back links; connection creation, descriptor details/edits and policy settings use in-page panels. Only credential-destroying connection archive confirmation remains modal. The request navigation scenario first failed because New request stayed at `/requests`, then passed after routing was implemented. The connection scenario first failed because creation rendered one dialog, then passed after in-page conversion. Browser verification also exposed a rapid edit re-entry race; duplicate edit admission is now disabled until the current panel closes, and the scenario waits for actual save completion.
+
+The final `make verify` after these changes passed build, vet, lint (zero issues), all Go tests including Testcontainers database coverage, frontend typecheck/lint, 104 frontend tests and load-script typecheck. Browser E2E passed 9 of 10, including direct reload/history, long SQL, draft recovery and connection/policy flows. Its sole remaining failure is native CSV saving returning `canceled`; suggested filename and prepared whole-snapshot content pass, and native file-content readback remains enabled. The actual README screenshots and the six-frame workflow/five-frame result GIFs were regenerated and inspected for these page layouts.
+
 ## Reproduction
 
 Use a project-local Docker configuration with `{"auths":{}}` to avoid reading unrelated home configuration. Point `DOCKER_CONFIG` at it and `DOCKER_HOST` at the explicitly permitted Docker socket. Set `CI=true` for the noninteractive pnpm install and `PLAYWRIGHT_BROWSERS_PATH` to a project-local browser installation, then run `make verify`. Playwright's configured download directory is project-local as well. The Docker socket and Go build cache require the path-specific permissions established for this session.

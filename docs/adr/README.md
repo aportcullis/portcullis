@@ -36,7 +36,6 @@ These must be `Accepted` before Core 1 coding begins.
 | [0019](0019-kviklet-baseline-refresh.md) | kviklet 0.9.2 baseline — workflow comparison, execution and logging safeguards | Accepted |
 | [0020](0020-scenario-load-testing.md) | Scenario load testing — k6 capacity gates and measured deployment sizing | Accepted |
 | [0021](0021-governed-query-execution.md) | Governed PostgreSQL execution, leases, catalog gate, and results | Accepted |
-
 | [0022](0022-page-first-workflows.md) | Page-first workflows, routed request composition/review/results | Accepted |
 
 ## Template
