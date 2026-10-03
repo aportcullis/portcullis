@@ -23,6 +23,7 @@ go.work.sum
 # Build/vendor caches
 /vendor/
 .codex-review
+.test-docker/
 
 # ─────────────────────────────────────────────
 # Generated code — committed
