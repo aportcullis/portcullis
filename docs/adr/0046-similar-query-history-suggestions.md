@@ -1,6 +1,6 @@
 # ADR-0046: Similar-query history suggestions
 
-- **Status:** Accepted
+- **Status:** Accepted (implementation pending)
 - **Date:** 2026-10-04
 
 ## Context

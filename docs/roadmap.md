@@ -34,7 +34,7 @@ Give teams one complete path from connection registration through policy, reques
 
 **Acceptance evidence:** The PostgreSQL vertical slice passed the full `make verify` gate: build, vet, lint, all Go tests, 109 frontend tests and all 11 real browser scenarios, including result exploration and native CSV saving/readback. The quickstart describes the first governed execution. See the [M1 validation record](operations/m1-validation.md) for the Docker-hosted browser environment and the undiagnosed host-native saving failure. Performance/soak qualification remains separate.
 
-**Explore:** [Actual workflow and screenshots](../README.md#request-review-execute-once), [alpha quickstart](operations/pg-alpha-quickstart.md), [execution contracts](adr/0021-governed-query-execution.md).
+**Explore:** [Actual workflow and screenshots](../README.md#see-it-in-action), [alpha quickstart](operations/pg-alpha-quickstart.md), [execution contracts](adr/0021-governed-query-execution.md).
 
 ## Bridge · M2
 

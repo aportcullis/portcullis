@@ -25,8 +25,8 @@ These must be `Accepted` before Core 1 coding begins.
 | [0008](0008-rbac-roles-and-permissions.md) | RBAC — permissions in SQL catalog, roles in DB | Accepted |
 | [0009](0009-audit-integrity.md) | Audit integrity — same-tx delivery, runtime role boundary | Accepted |
 | [0010](0010-runtime-and-transport-defaults.md) | Runtime & transport defaults (timeouts, caps, rate limits, boot) | Accepted |
-| [0011](0011-result-store-quota-and-eviction.md) | Result store quota & eviction (gates Core 2) | Accepted |
-| [0012](0012-schema-governance-ops.md) | Schema governance ops — Atlas pin, artifacts, apply safety (gates M5) | Accepted |
+| [0011](0011-result-store-quota-and-eviction.md) | Result store quota & eviction (gates Core 2) | Accepted (values provisional) |
+| [0012](0012-schema-governance-ops.md) | Schema governance ops — Atlas pin, artifacts, apply safety (gates M5) | Accepted (values provisional) |
 | [0013](0013-spa-ui-foundation.md) | SPA UI foundation — light FSD, vendored solid-ui | Accepted |
 | [0014](0014-connection-registration-and-tls.md) | Connection registration, credential envelope & TLS validation | Accepted |
 | [0015](0015-connection-policies.md) | Connection policies — per-class approvals, limits, immutable versions | Accepted |
@@ -60,10 +60,11 @@ These must be `Accepted` before Core 1 coding begins.
 | [0043](0043-load-package-imports.md) | Portable package-root imports for TypeScript k6 tests | Accepted |
 | [0044](0044-postgresql-string-interpretation.md) | Pin execution string interpretation and reject mismatched server reports | Accepted |
 | [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted |
-| [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted |
+| [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted (implementation pending) |
 | [0047](0047-tagged-container-publication.md) | Verified tag releases to GHCR | Accepted |
 | [0048](0048-commit-based-changelog.md) | Reviewed Conventional Commit changelogs with offline git-cliff | Accepted |
 | [0049](0049-multiarchitecture-container-builds.md) | AMD64/ARM64 cross-compilation and native image smoke gates | Accepted |
+| [0050](0050-private-vulnerability-reporting.md) | GitHub private vulnerability reporting | Accepted |
 
 ## Template
 ```markdown
