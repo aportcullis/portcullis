@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
 
@@ -9,10 +10,7 @@ test.describe.serial("access requests", () => {
 
   test("auto-approve, disallowed class leaves a draft, then cancel", async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await signInForScenario(page, email, password);
 
 
     const target = await loadTarget();
@@ -109,10 +107,7 @@ test.describe.serial("access requests", () => {
   });
   test("long SQL stays scrollable without pushing request actions outside the page", async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await signInForScenario(page, email, password);
     await page.getByRole("link", { name: /Requests/ }).click();
     await page.getByRole("button", { name: "New request" }).click();
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
@@ -134,10 +129,7 @@ test.describe.serial("access requests", () => {
   });
   test("request composition and details use reloadable pages with browser history", async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await signInForScenario(page, email, password);
     await page.goto("/requests");
     await page.getByRole("button", { name: "New request" }).click();
     await expect(page).toHaveURL(/\/requests\/new$/);
@@ -162,12 +154,22 @@ test.describe.serial("access requests", () => {
     await expect(page).toHaveURL(detailURL);
     await expect(page.locator("pre")).toHaveText(sql);
   });
-  test("SQL formatting is automatic, reversible and saved only through explicit draft actions", async ({ page }) => {
+  test("SQL formatting is automatic, reversible and saved only through explicit draft actions", async ({ page, request }) => {
+    // Separate API cookies preserve the browser's unauthenticated form while exhausting the real shared credential bucket.
+    let throttled = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const response = await request.post("/portcullis.v1.Auth/Login", { data: { email, password } });
+      const status = response.status();
+      await response.dispose();
+      if (status === 429) {
+        throttled = true;
+        break;
+      }
+      expect(status, "valid credentials must not cause account lockout").toBe(200);
+    }
+    expect(throttled, "formatting scenario starts with a depleted credential bucket").toBe(true);
     await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await signInForScenario(page, email, password);
     await page.goto("/requests/new");
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
     const original = "select 42 as answer from (select 1) as source where 1 = 1";

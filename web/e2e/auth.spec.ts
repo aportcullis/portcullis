@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { signInForScenario } from "@e2e/login";
+
 
 test.describe.serial("auth vertical", () => {
   const email = "admin@example.com";
@@ -37,7 +39,7 @@ test.describe.serial("auth vertical", () => {
 
 
     await expect(page).toHaveURL(/\/login$/);
-    await signIn(page, password);
+    await signInForScenario(page, email, password);
     await expect(page).toHaveURL(/\/connections$/);
     await expect(page.getByText(displayName, { exact: true })).toBeVisible();
 
@@ -56,7 +58,7 @@ test.describe.serial("auth vertical", () => {
   test("a stale CSRF cookie routes to login, not a stuck state", async ({ page }) => {
     // Missing CSRF invalidates the session view and routes to login, rather than outage retry.
     await page.goto("/login");
-    await signIn(page, password);
+    await signInForScenario(page, email, password);
     await expect(page.getByText(displayName, { exact: true })).toBeVisible();
 
     await page.context().clearCookies({ name: "__Host-portcullis_csrf" });

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { signInForScenario } from "@e2e/login";
+
 import { loadTarget } from "@e2e/target";
 
 
@@ -9,10 +11,7 @@ test.describe.serial("connection policies", () => {
 
   test("defaults → enable write with warning → new version → archive freeze", async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await signInForScenario(page, email, password);
 
 
     const target = await loadTarget();

@@ -1,12 +1,11 @@
 import { expect, test } from "@playwright/test";
+
+import { signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
 test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({ page }) => {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("admin@example.com");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/connections$/);
+  await signInForScenario(page, "admin@example.com", "correct-horse-battery");
   const target = await loadTarget();
   await page.getByRole("button", { name: "New connection" }).click();
   await page.getByLabel("Display name").fill("ExecutionTarget");

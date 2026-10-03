@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { signInForScenario } from "@e2e/login";
+
 import type { Target } from "@e2e/target";
 import { loadTarget } from "@e2e/target";
 
@@ -27,11 +29,7 @@ test.describe.serial("connections vertical", () => {
     const target = await loadTarget();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-
-    await expect(page).toHaveURL(/\/connections$/);
+    await signInForScenario(page, email, password);
     await expect(page.getByText("Admin", { exact: true })).toBeVisible();
     await expect(page.getByText("No connections yet")).toBeVisible();
 
