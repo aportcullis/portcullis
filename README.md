@@ -34,43 +34,31 @@ CSV preparation uses the entire cached snapshot, independently of the current pa
 | Audit and authorization | Server-side permission checks and append-only evidence of state transitions and execution |
 | Authentication | First-administrator setup, email/password sign-in, and Google OIDC when configured |
 
-<details>
-<summary>Connection management</summary>
+### Connection management
 
 Both connections use an isolated demo database. The `production` label illustrates environment marking; this is not a production database.
 
 ![PostgreSQL connections labeled as development and production](docs/media/connections.png)
 
-</details>
-
-<details>
-<summary>Execution policies</summary>
+### Execution policies
 
 The default policy allows reads and requires one distinct reviewer. An administrator must explicitly enable writes and DDL.
 
 ![Read, Write, and DDL permissions, approval counts, and execution limits](docs/media/policy.png)
 
-</details>
-
-<details>
-<summary>Request review</summary>
+### Request review
 
 Reviewers inspect the submitted SQL, target connection snapshot, and approval status before approving or rejecting with a reason.
 
 ![A distinct reviewer inspecting submitted SQL and choosing approval or rejection](docs/media/review.png)
 
-</details>
-
-<details>
-<summary>Sign-in and first-run setup</summary>
+### Sign-in and first-run setup
 
 Create the first administrator, then sign in with an email and password. Google sign-in is available when Google OIDC is configured.
 
 ![Portcullis-branded email and password sign-in screen](docs/media/login.png)
 
 ![Portcullis-branded first-administrator setup screen](docs/media/bootstrap.png)
-
-</details>
 
 ## Get started locally
 
