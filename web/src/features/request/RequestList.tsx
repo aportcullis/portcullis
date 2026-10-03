@@ -1,7 +1,7 @@
+import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
+import { For, Show, onMount, onCleanup } from "solid-js";
 
-import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
 
 import { stateBadge, stateLabel } from "@/entities/request/model";
 import { hasPermission } from "@/entities/session/store";
@@ -19,12 +19,10 @@ import {
   totalCount,
   totalPages,
 } from "@/entities/request/store";
-import { RequestDetailsDialog } from "@/features/request/RequestDetailsDialog";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
-import { ResultDialog } from "@/features/request/ResultDialog";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
+import { Button, buttonVariants } from "@/shared/ui/button";
 import {
   Table,
   TableBody,
@@ -57,16 +55,6 @@ export const RequestList: Component = () => {
       document.removeEventListener("visibilitychange", refresh);
     });
   });
-  const [resultId, setResultId] = createSignal<string>();
-  // Own the draft dialog outside keyed rows and resolve its target by ID so refreshes update data without destroying input.
-  const [showing, setShowing] = createSignal<AccessRequest | undefined>();
-  const shown = () => {
-    const captured = showing();
-    if (!captured) return undefined;
-    // Falling back to the captured row keeps the dialog alive when a failed reload empties the list.
-    return accessRequests().find((row) => row.id === captured.id) ?? captured;
-  };
-
   const start = () => rangeStart(page(), pageSize(), totalCount());
   const end = () => rangeEnd(page(), pageSize(), accessRequests().length, totalCount());
 
@@ -136,11 +124,11 @@ export const RequestList: Component = () => {
                     <span class="inline-flex items-center gap-2">
                       {/* Details reads through Get, which the server gates on requests.get — a role with list but not get would otherwise get a button that only ever fails. The owner's Submit/Cancel need requests.create instead, so they hang off the row itself. */}
                       <Show when={hasPermission("requests.get")}>
-                        <Button variant="ghost" size="sm" onClick={() => setShowing(r)}>
+                        <A class={buttonVariants({ variant: "ghost", size: "sm" })} href={`/requests/${r.id}`}>
                           Details
-                        </Button>
+                        </A>
                       </Show>
-                      <RequestRowActions request={r} onResult={() => setResultId(r.id)} />
+                      <RequestRowActions request={r} />
                     </span>
                   </TableCell>
                 </TableRow>
@@ -172,9 +160,6 @@ export const RequestList: Component = () => {
         </div>
       </Show>
 
-      {/* Mounted outside the table — see the note on `showing` above. */}
-      <RequestDetailsDialog target={shown()} onClose={() => setShowing(undefined)} />
-      <ResultDialog requestId={resultId()} onClose={() => setResultId(undefined)} />
     </>
   );
 };

@@ -1,8 +1,9 @@
+import { A } from "@solidjs/router";
 import { create } from "@bufbuild/protobuf";
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 
-import type { AccessRequest, GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
+import type { GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestSchema } from "@/gen/portcullis/v1/access_requests_pb";
 import { loginConfig } from "@/entities/instance/config";
 import { stateBadge, stateLabel } from "@/entities/request/model";
@@ -31,7 +32,7 @@ import { ParamEditor } from "@/features/request/ParamEditor";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
 // The stand-in for "no request is open" — see current() below.
@@ -40,10 +41,9 @@ const noRequest = create(AccessRequestSchema, {});
 const actorLabel = (a?: { displayName: string; email: string }): string =>
   a ? a.displayName || a.email : "—";
 
-// The list owns the draft-edit dialog so row refreshes preserve typed SQL. Server authorization controls payload visibility and mutations.
-export const RequestDetailsDialog: Component<{
-  target: AccessRequest | undefined;
-  onClose: () => void;
+/** Reads and reviews one request without replacing SQL edits during refresh. */
+export const RequestDetailsPanel: Component<{
+  requestId: string;
 }> = (props) => {
   const [detail, setDetail] = createSignal<GetAccessRequestResponse | undefined>();
   const [reason, setReason] = createSignal("");
@@ -53,37 +53,43 @@ export const RequestDetailsDialog: Component<{
   const [editDraft, setEditDraft] = createSignal<RequestDraft>({ sql: "", params: [] });
 
   const requestRead = createOpenFetch(
-    () => getAccessRequest(props.target?.id ?? ""),
+    () => getAccessRequest(props.requestId),
     (res) => {
       setDetail(res);
       setEditing(false);
+      setReason("");
     },
     errorMessage,
   );
 
-  // Read when the dialog starts showing a DIFFERENT request — not when the row object changes under a refresh. The id goes through createMemo because an inline accessor re-runs the effect on every list change, which would discard the session mid-save and re-fetch over the draft being edited.
-  const shownId = createMemo(() => props.target?.id);
+  // Read when the page starts showing a DIFFERENT request — not when the row object changes under a refresh. The id goes through createMemo because an inline accessor re-runs the effect on every list change, which would discard the session mid-save and re-fetch over the draft being edited.
+  const shownId = createMemo(() => props.requestId);
   createEffect(
     on(shownId, (id) => {
       if (id === undefined) return;
       setDetail();
+      setReason("");
+      setEditing(false);
       setBusy(false);
       setActionError("");
       requestRead.handleOpenChange(true);
     }),
   );
 
-  // Closing ends the session, so anything in flight will report "superseded" and deliberately touch nothing — which means the form's own flags have to be released HERE, or a dialog reopened during a slow request would sit disabled behind a busy() that nobody is coming back to clear.
-  const handleOpenChange = (next: boolean) => {
-    if (next) return;
-    setBusy(false);
-    setActionError("");
-    requestRead.handleOpenChange(false);
-    props.onClose();
-  };
-
-  // A closed dialog has no request. Its body is never rendered then, but the accessor stays total so no call site needs a non-null assertion.
-  const current = () => detail()?.request ?? props.target ?? noRequest;
+  const refresh = () => requestRead.handleOpenChange(true);
+  onCleanup(() => requestRead.handleOpenChange(false));
+  onMount(() => {
+    const refreshIfIdle = () => { if (!document.hidden && !editing() && reason() === "" && !busy() && !requestRead.loading()) refresh(); };
+    const timer = setInterval(refreshIfIdle, 30_000);
+    window.addEventListener("online", refreshIfIdle);
+    document.addEventListener("visibilitychange", refreshIfIdle);
+    onCleanup(() => {
+      clearInterval(timer);
+      window.removeEventListener("online", refreshIfIdle);
+      document.removeEventListener("visibilitychange", refreshIfIdle);
+    });
+  });
+  const current = () => detail()?.request ?? noRequest;
   const isOwner = () => {
     const s = session();
     return s.status === "authenticated" && s.user.id === current().requester?.id;
@@ -103,6 +109,7 @@ export const RequestDetailsDialog: Component<{
   const startEditing = () => {
     const payload = detail()?.payload;
     if (!payload) return;
+    requestRead.handleOpenChange(false);
     setEditDraft(createRequestDraftFromPayload(payload));
     setActionError("");
     setEditing(true);
@@ -114,16 +121,16 @@ export const RequestDetailsDialog: Component<{
       setActionError(problem);
       return;
     }
-    await runAndClose(
+    await runAndRefresh(
       () =>
         updateDraft(current().id, current().version, editDraft().sql, toTypedRequestParameters(editDraft())).then(
           () => undefined,
         ),
-      () => handleOpenChange(false),
+      refresh,
     );
   };
-  // Fence mutation results by dialog session; superseded responses touch no state because closing already reset it.
-  const runAndClose = async (work: () => Promise<void>, close: () => void) => {
+  // Fence mutation results by page session; superseded responses touch no state because closing already reset it.
+  const runAndRefresh = async (work: () => Promise<void>, after: () => void) => {
     setActionError("");
     setBusy(true);
     const outcome = await requestRead.runInSession(work);
@@ -133,24 +140,18 @@ export const RequestDetailsDialog: Component<{
       setActionError(errorMessage(outcome.error));
       return;
     }
-    close();
+    after();
   };
 
   return (
-    <Dialog open={props.target !== undefined} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle class="flex items-center gap-2">
-            Request
-            <Badge variant={stateBadge(current().effectiveState)}>
-              {stateLabel(current().effectiveState)}
-            </Badge>
-          </DialogTitle>
-          <DialogDescription>
-            {current().connectionName} · requested by {actorLabel(current().requester)}
-          </DialogDescription>
-        </DialogHeader>
-
+    <section aria-label="Request details" class="flex min-w-0 flex-col gap-6">
+      <header>
+        <A href="/requests" class="text-sm underline">Back to requests</A>
+        <h1 class="mt-3 flex items-center gap-2 text-2xl font-semibold">Request <Badge variant={stateBadge(current().effectiveState)}>{stateLabel(current().effectiveState)}</Badge></h1>
+        <p class="text-sm text-muted-foreground">{current().connectionName} · requested by {actorLabel(current().requester)}</p>
+        <p class="break-all font-mono text-xs text-muted-foreground">{props.requestId}</p>
+      </header>
+      <Show when={requestRead.loading()}><p role="status">Loading request…</p></Show>
         <Show when={requestRead.error() === ""} fallback={<Alert variant="destructive"><AlertDescription>{requestRead.error()}</AlertDescription></Alert>}>
           <Show
             when={!editing()}
@@ -161,7 +162,7 @@ export const RequestDetailsDialog: Component<{
                   <TextFieldLabel for="edit-sql">SQL</TextFieldLabel>
                   <TextFieldTextArea
                     id="edit-sql"
-                    class="min-h-32 font-mono"
+                    class="min-h-80 font-mono"
                     value={editDraft().sql}
                     disabled={busy()}
                     onInput={(e) => setEditDraft({ ...editDraft(), sql: e.currentTarget.value })}
@@ -172,7 +173,7 @@ export const RequestDetailsDialog: Component<{
                   <Alert variant="destructive"><AlertDescription>{actionError()}</AlertDescription></Alert>
                 </Show>
                 <div class="flex justify-end gap-2">
-                  <Button type="button" variant="outline" disabled={busy()} onClick={() => setEditing(false)}>
+                  <Button type="button" variant="outline" disabled={busy()} onClick={() => { setEditing(false); refresh(); }}>
                     Cancel edit
                   </Button>
                   <Button type="button" disabled={busy()} onClick={() => void saveEdit()}>
@@ -266,9 +267,10 @@ export const RequestDetailsDialog: Component<{
                   id="decision-reason"
                   value={reason()}
                   disabled={busy()}
-                  onInput={(e) =>
-                    setReason(truncateReasonCodePoints(e.currentTarget.value, loginConfig()?.maxApprovalReasonChars))
-                  }
+                  onInput={(e) => {
+                    requestRead.handleOpenChange(false);
+                    setReason(truncateReasonCodePoints(e.currentTarget.value, loginConfig()?.maxApprovalReasonChars));
+                  }}
                 />
                 <Show when={loginConfig()?.maxApprovalReasonChars !== undefined}>
                   <p class="text-xs text-muted-foreground">
@@ -282,6 +284,7 @@ export const RequestDetailsDialog: Component<{
               <Alert variant="destructive"><AlertDescription>{actionError()}</AlertDescription></Alert>
             </Show>
 
+            <RequestRowActions request={current()} onChanged={refresh} executionOnly />
             <div class="flex justify-end gap-2">
               <Show when={showEditDraft()}>
                 <Button variant="outline" disabled={busy()} onClick={startEditing}>
@@ -292,7 +295,7 @@ export const RequestDetailsDialog: Component<{
                 <Button
                   variant="destructive"
                   disabled={busy()}
-                  onClick={() => void runAndClose(() => rejectAccessRequest(current().id, reason()), () => handleOpenChange(false))}
+                  onClick={() => void runAndRefresh(() => rejectAccessRequest(current().id, reason()), refresh)}
                 >
                   Reject
                 </Button>
@@ -300,7 +303,7 @@ export const RequestDetailsDialog: Component<{
               <Show when={showApprove()}>
                 <Button
                   disabled={busy()}
-                  onClick={() => void runAndClose(() => approveAccessRequest(current().id, reason()), () => handleOpenChange(false))}
+                  onClick={() => void runAndRefresh(() => approveAccessRequest(current().id, reason()), refresh)}
                 >
                   Approve
                 </Button>
@@ -309,7 +312,7 @@ export const RequestDetailsDialog: Component<{
                 <Button
                   variant="outline"
                   disabled={busy()}
-                  onClick={() => void runAndClose(() => cancelAccessRequest(current().id), () => handleOpenChange(false))}
+                  onClick={() => void runAndRefresh(() => cancelAccessRequest(current().id), refresh)}
                 >
                   Cancel request
                 </Button>
@@ -319,9 +322,9 @@ export const RequestDetailsDialog: Component<{
                 <Button
                   disabled={busy()}
                   onClick={() =>
-                    void runAndClose(
+                    void runAndRefresh(
                       () => submitAccessRequest(current().id, current().version),
-                      () => handleOpenChange(false),
+                      refresh,
                     )
                   }
                 >
@@ -332,7 +335,6 @@ export const RequestDetailsDialog: Component<{
           </div>
           </Show>
         </Show>
-      </DialogContent>
-    </Dialog>
+    </section>
   );
 };

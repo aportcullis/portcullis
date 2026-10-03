@@ -27,13 +27,15 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await page.getByLabel("Connection").selectOption({ label: "ExecutionTarget" });
   await page.getByLabel("SQL").fill("SELECT (9007199254740993::bigint + g) AS exact_value, '=formula'::text AS note FROM generate_series(1,25) AS g");
   await page.getByRole("button", { name: "Submit", exact: true }).click();
-  const row = page.getByRole("row", { name: /ExecutionTarget/ });
+  const row = page.getByRole("region", { name: "Request details" });
   await expect(row.getByText("Approved", { exact: true })).toBeVisible();
   await row.getByRole("button", { name: "Execute", exact: true }).click();
   await expect(row.getByText("Succeeded", { exact: true })).toBeVisible();
   await expect(row.getByRole("button", { name: "Execute", exact: true })).toHaveCount(0);
-  await row.getByRole("button", { name: "Result", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  await row.getByRole("link", { name: "Result", exact: true }).click();
+  await expect(page).toHaveURL(/\/requests\/[0-9a-f-]+\/result$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const dialog = page.getByRole("region", { name: "Query results" });
   await expect(dialog.getByText("9007199254740994", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(dialog.getByText("9007199254741018", { exact: true })).toBeVisible();

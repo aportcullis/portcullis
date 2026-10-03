@@ -1,12 +1,15 @@
+import { useNavigate } from "@solidjs/router";
+import { Button } from "@/shared/ui/button";
 import type { Component } from "solid-js";
 import { Show } from "solid-js";
 
 import { hasPermission } from "@/entities/session/store";
-import { CreateRequestDialog } from "@/features/request/CreateRequestDialog";
 import { RequestList } from "@/features/request/RequestList";
 
 // RequestsPage is assembly only (frontend.md): the header and the create + list features. The route guard lives in AppShell; affordances are hidden by can() while the server keeps enforcing every RPC (ADR-0008).
-const RequestsPage: Component = () => (
+const RequestsPage: Component = () => {
+  const navigate = useNavigate();
+  return (
   <>
     <div class="flex items-center justify-between">
       <div>
@@ -16,7 +19,7 @@ const RequestsPage: Component = () => (
         </p>
       </div>
       <Show when={hasPermission("requests.create")}>
-        <CreateRequestDialog />
+        <Button onClick={() => navigate("/requests/new")}>New request</Button>
       </Show>
     </div>
 
@@ -34,5 +37,6 @@ const RequestsPage: Component = () => (
     </Show>
   </>
 );
+};
 
 export default RequestsPage;

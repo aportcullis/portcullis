@@ -12,6 +12,9 @@ import { hasPermission, session } from "@/entities/session/store";
 import BootstrapPage from "@/pages/BootstrapPage";
 import ConnectionsPage from "@/pages/ConnectionsPage";
 import LoginPage from "@/pages/LoginPage";
+import NewRequestPage from "@/pages/NewRequestPage";
+import RequestDetailsPage from "@/pages/RequestDetailsPage";
+import RequestResultPage from "@/pages/RequestResultPage";
 import RequestsPage from "@/pages/RequestsPage";
 import { load } from "@/entities/session/store";
 
@@ -44,6 +47,9 @@ const App: Component = () => {
         <Route path="/" component={() => <Navigate href={landing()} />} />
         <Route path="/connections" component={ConnectionsPage} />
         <Route path="/requests" component={RequestsPage} />
+        <Route path="/requests/new" component={NewRequestPage} />
+        <Route path="/requests/:id" component={RequestDetailsPage} />
+        <Route path="/requests/:id/result" component={RequestResultPage} />
       </Route>
     </Router>
   );

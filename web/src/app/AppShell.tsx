@@ -26,7 +26,7 @@ const AppShell: Component<RouteSectionProps> = (props) => {
       <Match when={session().status === "authenticated"}>
         <div class="flex min-h-screen flex-col">
           <header class="border-b">
-            <div class="mx-auto flex w-full max-w-4xl items-center justify-between gap-6 px-6 py-3">
+            <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-6 px-6 py-3">
               <div class="flex items-center gap-6">
                 <BrandLogo class="h-8" />
                 <nav aria-label="Main" class="flex items-center gap-4">
@@ -64,7 +64,7 @@ const AppShell: Component<RouteSectionProps> = (props) => {
               </div>
             </div>
           </header>
-          <main class="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">{props.children}</main>
+          <main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">{props.children}</main>
         </div>
       </Match>
     </Switch>

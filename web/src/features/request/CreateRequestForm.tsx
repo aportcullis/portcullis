@@ -1,5 +1,6 @@
+import { A, useNavigate } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
 
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import {
@@ -32,29 +33,23 @@ import type { SessionOutcome } from "@/shared/lib/dialogSession";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/shared/ui/dialog";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
 const selectClass =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
-// CreateRequestDialog is the "New request" flow (PRD §4.4): pick a connection, write the SQL and typed parameters, then either Save draft (stays editable) or Submit (freezes the payload and enters the approval flow). Drafts are the only editable state, so both affordances are offered (user decision).
-export const CreateRequestDialog: Component = () => {
-  // This dialog can be closed mid-save — the shared close button never disables — and the user may immediately start a NEW request. Every await below is fenced on the session that started it, so a late answer cannot close the new dialog, wipe the SQL being typed, or graft the previous draft's id onto it.
+/** Composes and saves a request before navigating to its stored detail page. */
+export const CreateRequestForm: Component = () => {
+  // Leaving the route fences responses so they cannot affect another form.
   const { discardSession, runInSession } = createDialogSession();
-  const [open, setOpen] = createSignal(false);
+  const navigate = useNavigate();
+  onMount(() => openList());
+  onCleanup(discardSession);
   const [connectionId, setConnectionId] = createSignal("");
   const [draft, setDraft] = createSignal<RequestDraft>(createEmptyRequestDraft());
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
-  // Reuse the draft created in this dialog session on retries to avoid orphan drafts.
+  // Reuse the draft created in this page session on retries to avoid orphan drafts.
   const [savedId, setSavedId] = createSignal("");
   const [savedVersion, setSavedVersion] = createSignal(0n);
   // settled: the server says this draft is already finished (the archive cascade cancelled it), so the only honest affordance left is closing.
@@ -70,7 +65,7 @@ export const CreateRequestDialog: Component = () => {
   // Recheck target selection only after a successful refresh; network failure must not invalidate a saved draft’s fixed connection.
   const refreshTargets = async (): Promise<void> => {
     const reload = await runInSession(loadTargets);
-    // Two different questions that both answer "ok": whether this dialog session is still the one on screen, and whether the reload itself succeeded.
+    // Two different questions that both answer "ok": whether this page session is still the one on screen, and whether the reload itself succeeded.
     if (reload.status !== "ok") return;
     if (reload.value !== "ok") return;
     if (isSelectedTargetAvailable(targets(), connectionId())) return;
@@ -117,7 +112,7 @@ export const CreateRequestDialog: Component = () => {
       return;
     }
     reset();
-    setOpen(false);
+    navigate("/requests");
   };
 
   const reset = () => {
@@ -127,15 +122,6 @@ export const CreateRequestDialog: Component = () => {
     setSavedId("");
     setSavedVersion(0n);
     setSettled(false);
-  };
-
-  const handleOpenChange = (next: boolean) => {
-    // Both directions end the session in progress: a close must not let its answers land on the next form, and an open must not inherit the previous one's. Because a superseded answer touches nothing, busy is released here too — otherwise a dialog reopened during a slow save would stay disabled.
-    discardSession();
-    setBusy(false);
-    setOpen(next);
-    if (next) openList();
-    else reset();
   };
 
   // persist writes the current form to the draft — creating it the first time, updating the same draft on every subsequent call — and returns its id and current version. A saved draft, or undefined when the store fenced the response itself (a different principal signed in mid-flight) — there is then no id to submit.
@@ -162,7 +148,7 @@ export const CreateRequestDialog: Component = () => {
     return { status: "ok", value: { id: updated.value.id, version: updated.value.version } };
   };
 
-  // refused reports a failure on the form that asked for it. The refusal also marked the target cache stale; refresh it while the dialog is still open so the picker reflects the world the server just showed us, instead of waiting for a close/reopen that would discard the SQL.
+  // refused reports a failure on the form that asked for it. The refusal also marked the target cache stale; refresh it while the page is still open so the picker reflects the world the server just showed us, instead of waiting for a close/reopen that would discard the SQL.
   const refused = (error: unknown) => {
     setBusy(false);
     setError(errorMessage(error));
@@ -201,21 +187,16 @@ export const CreateRequestDialog: Component = () => {
       }
     }
     setBusy(false);
-    reset();
-    setOpen(false);
+    if (draftRow) navigate(hasPermission("requests.get") ? `/requests/${draftRow.id}` : "/requests");
   };
 
   return (
-    <Dialog open={open()} onOpenChange={handleOpenChange}>
-      <DialogTrigger as={Button}>New request</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New access request</DialogTitle>
-          <DialogDescription>
-            Write one SQL statement. Save it as a draft to keep editing, or submit it for approval —
-            a submitted request is frozen and cannot be changed.
-          </DialogDescription>
-        </DialogHeader>
+    <section aria-label="Request composition" class="flex min-w-0 flex-col gap-6">
+      <header>
+        <A href="/requests" class="text-sm underline">Back to requests</A>
+        <h1 class="mt-3 text-2xl font-semibold">New access request</h1>
+        <p class="text-sm text-muted-foreground">Write one SQL statement. Save a draft to keep editing, or submit it for approval.</p>
+      </header>
         <form class="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
           <div class="flex flex-col gap-1">
             <label class="text-sm font-medium" for="req-connection">
@@ -241,7 +222,7 @@ export const CreateRequestDialog: Component = () => {
               <Alert variant="destructive">
                 <AlertDescription class="flex items-center justify-between gap-3">
                   <span>{targetError()}</span>
-                  {/* The same path as opening the dialog: reload AND re-check the choice, or a target that vanished stays selected and fails again on submit. */}
+                  {/* The same path as opening the page: reload AND re-check the choice, or a target that vanished stays selected and fails again on submit. */}
                   <Button variant="outline" size="sm" onClick={() => void refreshTargets()}>
                     Retry
                   </Button>
@@ -258,7 +239,7 @@ export const CreateRequestDialog: Component = () => {
             <TextFieldLabel for="req-sql">SQL</TextFieldLabel>
             <TextFieldTextArea
               id="req-sql"
-              class="min-h-32 font-mono"
+              class="min-h-80 font-mono"
               value={draft().sql}
               disabled={busy()}
               onInput={(e) => setDraft({ ...draft(), sql: e.currentTarget.value })}
@@ -275,7 +256,7 @@ export const CreateRequestDialog: Component = () => {
             <Show
               when={!settled()}
               fallback={
-                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                <Button type="button" variant="outline" onClick={() => navigate("/requests")}>
                   Close
                 </Button>
               }
@@ -308,7 +289,6 @@ export const CreateRequestDialog: Component = () => {
             </Show>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+    </section>
   );
 };
