@@ -56,8 +56,8 @@ func TestGovernedOversizedCellRefusesProtocolBeforeReturningRows(t *testing.T) {
 	if stream != nil {
 		_ = stream.Close()
 	}
-	if err == nil {
-		t.Fatal("oversized single cell bypassed protocol allocation limit")
+	if !errors.Is(err, query.ErrResponseLimit) {
+		t.Fatalf("oversized cell must report a local response limit, got %v", err)
 	}
 }
 

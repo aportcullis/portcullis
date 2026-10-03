@@ -698,6 +698,7 @@ audit_events
 - row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 → 전역 LRU 축출(사용자별 최소 1개 보존) → 그래도 부족하면 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
 - **대상 DB 실행 경로 circuit breaker(ADR-0010):** connection별로 연속 실패 5회 초과 시 60초 open(half-open probe 1회).
   차단된 호출은 lease를 잡지 않고 `Unavailable`로 반환하며 자동 재시도하지 않는다.
+  사용자 취소·context deadline·로컬 응답 크기 제한은 대상 건강 집계에서 제외하고 기존 장애 횟수를 초기화하지 않는다. 실행 결과의 불확실성은 계속 `outcome_unknown`으로 기록한다(ADR-0010).
 - 사용자 cancel과 context timeout 시 driver cancel을 시도하지만, 결과를 확인할 수 없으면 성공/실패를 추측하지 않고 `outcome_unknown`으로 기록.
 - 대상 DB 실행에는 자동 retry를 적용하지 않음.
   API idempotency key는 동일 실행 attempt 조회에만 사용하고 새 DB 실행을 만들지 않음.

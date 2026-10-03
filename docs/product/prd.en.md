@@ -736,6 +736,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - ADR-0011 order: delete expired results → own LRU → global LRU preserving at least one result per user → reject only the new snapshot as `result_store_full`, with execution itself completed.
 - **Circuit breaker, ADR-0010:** Per connection, more than 5 consecutive failures opens for 60 seconds with one half-open probe.
   - Blocked calls return `Unavailable` before leasing, without retries.
+  - User cancellation, context deadlines and local response limits are excluded from target-health measurements without clearing existing failures; execution uncertainty still records `outcome_unknown` (ADR-0010).
 - Attempt driver cancellation on user cancel/context timeout; unconfirmed outcome is `outcome_unknown`, never guessed success/failure.
 - Never automatically retry target execution; API idempotency keys only retrieve the existing attempt, never create another execution.
 

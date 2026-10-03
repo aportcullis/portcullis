@@ -208,6 +208,9 @@ func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Reque
 }
 
 func targetHealthAfterFailure(err error) TargetOutcome {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, query.ErrResponseLimit) {
+		return TargetInconclusive
+	}
 	var connectionFailure *connection.TestError
 	if errors.As(err, &connectionFailure) || failedExecutionState(err) == access.StateOutcomeUnknown {
 		return TargetUnhealthy

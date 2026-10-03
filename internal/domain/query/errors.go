@@ -14,6 +14,7 @@ var (
 	ErrPositionalParams   = errors.New("positional $N parameters are not accepted; use :name")
 	ErrInvalidParamName   = errors.New("invalid or duplicate parameter name")
 	ErrInvalidParamValue  = errors.New("invalid parameter value")
+	ErrResponseLimit      = errors.New("query: target response exceeds local memory limit")
 )
 
 // ParseFailure reports that the input did not parse. It carries only a byte offset — parser error messages can quote the input and are never propagated (ADR-0016).

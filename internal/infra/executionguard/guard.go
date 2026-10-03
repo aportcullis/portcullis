@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-var errTargetNotAttempted = errors.New("executionguard: target not attempted")
+var errTargetUnmeasured = errors.New("executionguard: target health not measured")
 
 // Guard maintains a process-local circuit breaker for each target connection.
 type Guard struct {
@@ -27,7 +27,7 @@ func (g *Guard) Allow(id connection.ConnectionID) (func(execution.TargetOutcome)
 	g.mu.Lock()
 	breaker := g.breakers[id]
 	if breaker == nil {
-		breaker = gobreaker.NewTwoStepCircuitBreaker[any](gobreaker.Settings{Name: string(id), IsExcluded: func(err error) bool { return errors.Is(err, errTargetNotAttempted) }})
+		breaker = gobreaker.NewTwoStepCircuitBreaker[any](gobreaker.Settings{Name: string(id), IsExcluded: func(err error) bool { return errors.Is(err, errTargetUnmeasured) }})
 		g.breakers[id] = breaker
 	}
 	g.mu.Unlock()
@@ -37,8 +37,8 @@ func (g *Guard) Allow(id connection.ConnectionID) (func(execution.TargetOutcome)
 	}
 	return func(outcome execution.TargetOutcome) {
 		switch outcome {
-		case execution.TargetNotAttempted:
-			done(errTargetNotAttempted)
+		case execution.TargetNotAttempted, execution.TargetInconclusive:
+			done(errTargetUnmeasured)
 		case execution.TargetHealthy:
 			done(nil)
 		default:

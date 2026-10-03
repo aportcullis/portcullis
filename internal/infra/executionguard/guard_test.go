@@ -41,10 +41,12 @@ func TestUnattemptedLeaseDoesNotResetTargetFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	done(execution.TargetNotAttempted)
-	done, err = guard.Allow("target")
-	if err != nil {
-		t.Fatal(err)
+	for _, outcome := range []execution.TargetOutcome{execution.TargetNotAttempted, execution.TargetInconclusive} {
+		done(outcome)
+		done, err = guard.Allow("target")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	done(execution.TargetUnhealthy)
 	if _, err := guard.Allow("target"); !errors.Is(err, access.ErrTargetUnavailable) {

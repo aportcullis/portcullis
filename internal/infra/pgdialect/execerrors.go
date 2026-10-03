@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
@@ -20,6 +21,10 @@ func redactExecError(ctx context.Context, err error) error {
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("execution interrupted: %w", err)
+	}
+	var responseLimit *pgproto3.ExceededMaxBodyLenErr
+	if errors.As(err, &responseLimit) {
+		return query.ErrResponseLimit
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
