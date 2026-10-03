@@ -23,8 +23,10 @@ import (
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
 	executionapp "github.com/aportcullis/portcullis/internal/app/execution"
 	resultapp "github.com/aportcullis/portcullis/internal/app/result"
+	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
+	"github.com/aportcullis/portcullis/internal/infra/dialectregistry"
 	"github.com/aportcullis/portcullis/internal/infra/executionguard"
 	"github.com/aportcullis/portcullis/internal/infra/googleoidc"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
@@ -229,6 +231,10 @@ func run() error {
 
 	// Connections vertical (ADR-0014): the postgres store, the keyring-backed credential codec, and the PostgreSQL dialect adapter (its ValidateConnection satisfies the ConnectionValidator port, PRD §5.3) behind the connections.* gated RPCs.
 	pgDialect := pgdialect.New(pgdialect.Options{ValidateTimeout: cfg.ConnectionTestTimeout})
+	sqlDialects, err := dialectregistry.New(dialectregistry.Registration{Engine: connection.DBTypePostgreSQL, Adapter: pgDialect})
+	if err != nil {
+		return err
+	}
 	connSvc, err := connapp.New(
 		postgres.NewConnectionStore(pool),
 		pgDialect,
@@ -252,11 +258,11 @@ func run() error {
 
 	// Access requests vertical (ADR-0018): the state machine + approvals behind the requests.* gated RPCs. It reuses the dialect adapter (parse/classify/ bind/redact at submit) and a keyring-backed payload codec. The store satisfies both ports — request storage and the (separate, ISP-narrow) request-target listing — so one adapter covers both.
 	requestStore := postgres.NewAccessRequestStore(pool)
-	requestSvc, err := accessreq.New(
+	requestSvc, err := accessreq.NewWithDialects(
 		requestStore,
 		requestStore,
 		crypto.NewAccessRequestPayloadCodec(keyring),
-		pgDialect,
+		sqlDialects,
 		cfg.ApprovalValidity,
 	)
 	if err != nil {
@@ -270,7 +276,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	executionSvc, err := executionapp.New(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgDialect, resultSvc, uuid.NewString(), 2)
+	executionSvc, err := executionapp.NewWithDialects(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), sqlDialects, resultSvc, uuid.NewString(), 2)
 	if err != nil {
 		return err
 	}

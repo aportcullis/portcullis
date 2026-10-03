@@ -3,6 +3,7 @@ package accessrequest_test
 import (
 	"context"
 	"errors"
+	"github.com/aportcullis/portcullis/internal/infra/dialectregistry"
 	"testing"
 	"time"
 
@@ -40,7 +41,11 @@ func TestUnregisteredEngineCannotSubmitThroughPostgreSQLDialect(t *testing.T) {
 		t.Run(engine, func(t *testing.T) {
 			repo := newRepo()
 			dialect := &observedSubmissionDialect{}
-			svc, err := accessrequest.New(engineTargetRepository{repo, engine}, repo, fakeCodec{digestKV: 1}, dialect, time.Hour)
+			registry, err := dialectregistry.New(dialectregistry.Registration{Engine: connection.DBTypePostgreSQL, Adapter: &registeredSubmissionAdapter{dialect}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc, err := accessrequest.NewWithDialects(engineTargetRepository{repo, engine}, repo, fakeCodec{digestKV: 1}, registry, time.Hour)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -56,5 +61,37 @@ func TestUnregisteredEngineCannotSubmitThroughPostgreSQLDialect(t *testing.T) {
 				t.Fatal("refusal changed draft state")
 			}
 		})
+	}
+}
+
+type registeredSubmissionAdapter struct{ *observedSubmissionDialect }
+
+func (*registeredSubmissionAdapter) Execute(context.Context, connection.Target, connection.TLSMode, connection.Credential, query.Execution) (query.ResultStream, error) {
+	return nil, errors.New("submission cannot execute")
+}
+
+func TestRegisteredEngineSubmissionPinsTheSelectedEngine(t *testing.T) {
+	t.Parallel()
+	repo := newRepo()
+	selected := &registeredSubmissionAdapter{&observedSubmissionDialect{}}
+	unused := &registeredSubmissionAdapter{&observedSubmissionDialect{}}
+	registry, err := dialectregistry.New(dialectregistry.Registration{Engine: "mysql", Adapter: selected}, dialectregistry.Registration{Engine: "postgresql", Adapter: unused})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := accessrequest.NewWithDialects(engineTargetRepository{repo, "mysql"}, repo, fakeCodec{digestKV: 1}, registry, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := createDraft(t, svc, connRead, "select 1")
+	result, err := svc.Submit(context.Background(), requester, draft.ID, draft.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Request.ConnectionDBType != "mysql" || result.Request.State != access.StatePending {
+		t.Fatalf("wrong approval snapshot: %+v", result.Request)
+	}
+	if selected.binds != 1 || unused.binds != 0 {
+		t.Fatalf("wrong engine binder: selected=%d unused=%d", selected.binds, unused.binds)
 	}
 }
