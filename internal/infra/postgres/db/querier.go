@@ -105,6 +105,9 @@ type Querier interface {
 	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
 	LockQueryExecution(ctx context.Context, arg LockQueryExecutionParams) (QueryExecution, error)
 	LockResultAdmission(ctx context.Context) error
+	LockRotationCredentials(ctx context.Context, arg LockRotationCredentialsParams) ([]LockRotationCredentialsRow, error)
+	LockRotationPayloads(ctx context.Context, arg LockRotationPayloadsParams) ([]LockRotationPayloadsRow, error)
+	LockRotationResultKeys(ctx context.Context, arg LockRotationResultKeysParams) ([]LockRotationResultKeysRow, error)
 	// Lock cascade request rows before observing time. The caller’s exclusive connection lock prevents new requests from appearing behind the sweep.
 	LockSweptRequestsForConnection(ctx context.Context, arg LockSweptRequestsForConnectionParams) ([]pgtype.UUID, error)
 	// Observe time in a separate statement after all locks; an inline UPDATE timestamp may be evaluated before its lock wait.
@@ -123,6 +126,9 @@ type Querier interface {
 	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
 	// The display name of the user's role within one organization — a UI label (ADR-0008: authorization decisions never consult role names). The same soft-delete join rule as PermissionsForUser applies.
 	RoleNameForUser(ctx context.Context, arg RoleNameForUserParams) (string, error)
+	RotateCredentialEnvelope(ctx context.Context, arg RotateCredentialEnvelopeParams) error
+	RotatePayloadEnvelope(ctx context.Context, arg RotatePayloadEnvelopeParams) error
+	RotateResultEnvelope(ctx context.Context, arg RotateResultEnvelopeParams) error
 	// Stamp submission, updated_at, and quorum-zero approval expiry from one post-lock database instant; reuse it in derived audit evidence.
 	SubmitAccessRequest(ctx context.Context, arg SubmitAccessRequestParams) (AccessRequest, error)
 	TouchResultSet(ctx context.Context, arg TouchResultSetParams) error
