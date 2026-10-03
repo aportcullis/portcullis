@@ -15,6 +15,11 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
+// Verify checks the approval digest using its original integrity-key version.
+func (c *AccessRequestPayloadCodec) Verify(canonical, digest []byte, version uint32) (bool, error) {
+	return c.kr.VerifyDigest(canonical, Digest{KeyVersion: KeyVersion(version), Sum: digest})
+}
+
 // This file adapts the crypto primitives to the small interfaces the application layer depends on (auth.PasswordHasher, auth.CSRFProtector, connection.CredentialCodec). The adapters satisfy those interfaces structurally, so this package does not import the app layer; the composition root (cmd/portcullis) wires them in.
 
 // Argon2Hasher hashes and verifies passwords with a fixed Argon2id profile. A semaphore caps concurrent hashes so a login flood can't exhaust memory: each Argon2id op costs Memory bytes, so at most maxConcurrent × Memory is in flight (excess callers block until a slot frees).
