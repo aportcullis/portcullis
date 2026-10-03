@@ -31,7 +31,8 @@ Ships as one Go binary with the SolidJS SPA embedded.
 - [tooling.md](docs/conventions/tooling.md) — make commands, codegen, dependencies, commit style.
 - [frontend.md](docs/conventions/frontend.md) — light FSD layers (app/pages/features/entities/shared), `@/` imports, vendored UI, pnpm only.
 
-Function names describe the operation and subject; declaration comments give one short behavior summary for IDE hovers.
+Function names describe the operation and subject so the name alone tells what the function does; declaration comments give one short behavior summary for IDE hovers.
+Variable names are never single letters, apart from the receiver and test-handle exceptions in code.md; abbreviate no further than `idx` or `ind`. Every change and refactor follows all SOLID principles (see [code.md](docs/conventions/code.md)).
 Use Go doc comments and TypeScript JSDoc, with detailed rationale in ADRs and only essential inline invariants.
 
 ## Map

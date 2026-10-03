@@ -9,7 +9,9 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Dependency inversion & wiring (ports and adapters)
 We aim for **clean architecture in the ports & adapters (hexagonal) sense**: the domain and use cases are the inside, every I/O technology is an adapter on the outside, and the boundary is always a port owned by the inside.
-Go isn't a pure OOP language, but follow the OOP/SOLID ideas where they fit — **loose coupling, high cohesion**.
+Go isn't a pure OOP language, but follow every SOLID principle — **loose coupling, high cohesion**.
+Each type and function has one reason to change (SRP); extend behavior through registries, descriptors and fixtures instead of widening special cases (OCP); every implementation honors its port's full contract (LSP); ports stay narrow (ISP); and layers depend on abstractions (DIP).
+Every new change and every refactor preserves these principles.
 Depend on **abstractions, not concretions** (DIP): a layer takes the behavior it needs as a **small, consumer-defined interface** (ISP — define it in the package that *uses* it, list only the methods that package calls), and the concrete implementation is **injected** via the constructor.
 "Accept interfaces, return structs."
 
@@ -78,11 +80,13 @@ A bare `requests` does not in a product full of HTTP requests — `accessRequest
 Prefer the domain noun over a generic one, spell it out instead of abbreviating, and name an injected callback after the question it answers (`PermissionCheck`, not `CanFn`).
 
 - **Functions describe their operation and subject.**
+  - A reader must know what the function does from its name alone, without opening its body or comment.
   - Prefer `readCSRFTokenCookie` over `csrfToken` and `toConnectionStatementClass` over `mapClass`.
   - Use `is`, `has`, or `can` for boolean predicates; use `validate` for checks returning an error.
   - Include units or data sources when they affect behavior, such as `countReasonCodePoints` or `loadRequestViewInTransaction`.
   - Keep established interface names and standard constructors when their package or receiver already provides the subject.
 - **Variables and parameters reveal their role.**
+  - Never use single-letter names such as `i`, `j`, `n`, `e`, `v` or `x`; abbreviate no further than `idx` or `ind` for an index.
   - Use `idx` for an index and `rowIdx`/`columnIdx` for distinct dimensions; use `attempt` for retries.
   - Prefer `parameter`, `target`, `requestID`, or `statementClass` over contextless single letters or abbreviations.
   - Include units where needed, such as `byteCount` and `timeoutSeconds`.
