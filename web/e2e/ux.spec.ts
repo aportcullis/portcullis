@@ -22,6 +22,13 @@ test("narrow screens keep navigation and request actions reachable with a curren
     expect(box!.x + box!.width).toBeLessThanOrEqual(320);
   }
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.screenshot({ path: "../.test-docker/readme-media/narrow-light.png", fullPage: true });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await expect(page.getByRole("img", { name: "Portcullis" })).toHaveAttribute("src", "/brand/logo-dark.svg");
+  const foreground = await page.locator("body").evaluate(element => getComputedStyle(element).color);
+  await expect.poll(() => page.getByRole("button", { name: "Sign out", exact: true }).evaluate(element => getComputedStyle(element).color)).toBe(foreground);
+  await page.screenshot({ path: "../.test-docker/readme-media/narrow-dark.png", fullPage: true });
 });
 
 // Hold a real response to distinguish pending data from empty or failed data.
@@ -43,12 +50,13 @@ test("request loading is bounded and expands the actual workflow inline after da
     release();
     await expect(loading).toHaveCount(0);
     const disclosure = page.getByRole("button", { name: "Query review", exact: true }).first();
-    await disclosure.click();
+    await disclosure.focus();
+    await disclosure.press("Enter");
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
     const workflow = page.getByRole("region", { name: "Workflow for Query review" });
     await expect(workflow.getByRole("list", { name: "Request stages" }).getByRole("listitem")).toHaveCount(4);
     await expect(workflow).toContainText("Execution");
-    await disclosure.click();
+    await disclosure.press("Enter");
     await expect(workflow).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally { release(); }

@@ -4,11 +4,20 @@ import { cn } from "@/shared/lib/utils";
 
 /** Displays the shared Portcullis wordmark at the caller's layout size. */
 export const BrandLogo: Component<{ class?: string }> = (props) => (
+  <>
   <img
     src="/brand/logo.svg"
     alt="Portcullis"
     width="460"
     height="128"
-    class={cn("h-10 w-auto shrink-0", props.class)}
+    class={cn("h-10 w-auto shrink-0 dark:hidden", props.class)}
   />
+  <img
+    src="/brand/logo-dark.svg"
+    alt="Portcullis"
+    width="460"
+    height="128"
+    class={cn("hidden h-10 w-auto shrink-0 dark:block", props.class)}
+  />
+  </>
 );
