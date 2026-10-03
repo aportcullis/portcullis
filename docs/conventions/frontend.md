@@ -71,6 +71,7 @@ Each component family lives in its own directory with an explicit `index.ts`, im
 - Type safety is enforced by `pnpm -C web typecheck` (TypeScript 7 native `tsc`).
 - Unit tests: vitest (`make web-test`, part of `make verify`), colocated as `*.test.ts`, node environment (`web/vitest.config.ts` mirrors the `@/` alias).
   Reserved for pure logic Playwright cannot schedule deterministically — store/state race interleavings are the canonical case (`entities/connection/store.test.ts`); component rendering stays with e2e.
+- Every scenario has at least three or four success cases and three or four failure cases, and the [naming rules](code.md#naming--the-name-is-the-interface) apply to TypeScript too: no single-letter callback or event parameters (`event`, `parameterType`, not `e`, `t`).
 
 ## Page-first workflows
 
@@ -84,6 +85,6 @@ Change application layout in [`layout.css`](../../web/src/app/layout.css) and [`
 
 Restyle owned primitives in `shared/ui`; assemble features in `pages`. Branding is centralized through `BrandLogo` and `web/public/brand/` assets. UI asset changes should update README media when they alter the documented appearance. This is a source customization guide; a runtime theme picker and organization branding are separate product work (ADR-0036).
 
-For example, edit `--content-width: 80rem` and `--page-padding: 2rem` in `theme.css` to widen the application and add space. Set `--radius: 0.75rem` to adjust shared rounded controls. Edit the light and dark semantic colors together and check text, errors and focus visibility in both. Run `pnpm -C web typecheck`, `lint`, `test`, `build`, and the relevant browser workflows before committing.
+For example, edit `--content-width: 80rem` and `--page-padding: 2rem` in `theme.css` to widen the application and add space. Set `--radius: 0.75rem` to adjust shared rounded controls. Edit the light and dark semantic colors together and check text, errors and focus visibility in both. Make every test pass before committing, including `make verify`'s web checks and all browser workflows.
 
 Use the [UX research and evaluation protocol](../design/ux-evidence.md) when changing workflow hierarchy. Loading skeletons use fixed decorative bars; keep paging, error and empty-state contracts independent of loading presentation.

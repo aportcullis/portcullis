@@ -30,8 +30,8 @@ Unless explicitly stated otherwise, contributions intentionally submitted for in
 Follow the [development guide](docs/development.md), [AGENTS.md](AGENTS.md), and the [code conventions](docs/conventions/code.md). Keep development details in those guides rather than duplicating them here.
 
 1. Start with the relevant product requirements and existing architectural decisions.
-2. Follow the domain → consumer-defined port → failing observable scenario → implementation → refactor → adapter cycle.
-3. Keep commits small and focused. Review the staged diff immediately before each commit and run checks appropriate to the change.
+2. Follow the domain → consumer-defined port → failing observable scenario → implementation → refactor → adapter cycle, with at least three or four success cases and three or four failure cases per scenario.
+3. Keep commits small and focused on one concern. Review the staged diff immediately before each commit, and make every test pass before committing.
 4. Run `make verify` for the complete build, lint, unit/integration, and real-browser gate. Docker is required for the Testcontainers-backed tests. Record any failing checks explicitly.
 5. Open a pull request describing the user-visible problem, resulting behavior, and validation. Keep generated files aligned with their sources when changing APIs or database queries.
 
