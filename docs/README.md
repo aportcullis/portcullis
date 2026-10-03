@@ -15,7 +15,7 @@ Product requirements are maintained in Korean and English; other documents adopt
 | Development | [Code](conventions/code.md) · [Data](conventions/data.md) · [Security](conventions/security.md) · [Tooling](conventions/tooling.md) · [Frontend](conventions/frontend.md) | English |
 | Performance | [Scenarios and sizing](performance/README.md) · [Query measurements](performance/benchmarks/2026-09-30-query-workloads.md) | English |
 | Operations | [PG alpha quickstart](operations/pg-alpha-quickstart.md) · [M1 validation](operations/m1-validation.md) · [Docker browser E2E](operations/browser-e2e.md) · [Encryption key rotation](operations/key-rotation.md) | English |
-| UX design | [Research evidence and evaluation protocol](design/ux-evidence.md) | English |
+| UX design | [Research evidence and evaluation protocol](design/ux-evidence.md) · [UI component catalog and reuse](../web/src/shared/ui/README.md) | English |
 | Branding | [Logo assets and placement](branding.md) · [Product tour](media/product-tour.md) · [UI screenshots and GIFs](media/README.md) | English |
 | Roadmap | [Milestones and product direction](roadmap.md) | English |
 | Community | [Participation paths](../COMMUNITY.md) · [Launch checklist and first-issue drafts](community/launch-checklist.md) | English |

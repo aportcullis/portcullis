@@ -8,7 +8,7 @@ The logo combines a gate with three teal bars and two abstract crow wings. The i
 - [Dark wordmark](../web/public/brand/logo-dark.svg): light ink for dark backgrounds.
 - [README logo](media/logo.png): PNG with a warm background for Markdown previews; its editable source is [logo.svg](media/logo.svg).
 - [Icon](../web/public/brand/icon.svg): browser favicon. Its warm background keeps the navy silhouette visible in both light and dark browser chrome.
-- `shared/ui/BrandLogo.tsx`: the common application image with an accessible name and intrinsic dimensions.
+- `shared/ui/BrandLogo/BrandLogo.tsx`: the common application image with an accessible name and intrinsic dimensions; import it through `@/shared/ui/BrandLogo`.
 
 These are native SVG interpretations of the approved direction, rather than embedded raster previews. The `frame`, `gate`, `wings` and `wordmark` groups remain individually editable. The wordmark uses a system font stack, so letter shapes vary slightly across platforms. All SVGs are self-contained and contain no scripts, remote resources or external font dependencies. When changing the symbol, update the matching groups in all variants.
 

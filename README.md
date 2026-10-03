@@ -103,7 +103,7 @@ More screenshots and workflow explanations: [product tour](docs/media/product-to
 | Check database support | [Features and version evidence](docs/product/database-support.md) |
 | Understand the system | [Architecture](docs/ARCHITECTURE.md) · [Operations validation](docs/operations/m1-validation.md) |
 | Explore what's next | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
-| Develop or customize the UI | [Development guide](docs/development.md) · [UI customization](docs/conventions/frontend.md#changing-the-ui) |
+| Develop or customize the UI | [Development guide](docs/development.md) · [UI customization](docs/conventions/frontend.md#changing-the-ui) · [Component catalog](web/src/shared/ui/README.md) |
 
 Browse the [documentation index](docs/README.md) for the full reference.
 
