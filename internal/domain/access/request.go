@@ -140,9 +140,14 @@ func (r Request) ValidateCancellation() error {
 	return ErrNotCancellable
 }
 
+// ApprovalExpiredAt reports whether the approval window has closed at the instant: it closes exactly at ExpiresAt, and a missing deadline counts as closed (ADR-0018).
+func (r Request) ApprovalExpiredAt(at time.Time) bool {
+	return r.ExpiresAt == nil || !at.Before(*r.ExpiresAt)
+}
+
 // EffectiveState derives approval expiry without changing the stored request.
 func (r Request) EffectiveState(now time.Time) (State, Reason) {
-	if r.State == StateApproved && r.ExpiresAt != nil && r.ExpiresAt.Before(now) {
+	if r.State == StateApproved && r.ApprovalExpiredAt(now) {
 		return StateExpired, ReasonTTLExpired
 	}
 	return r.State, r.Reason

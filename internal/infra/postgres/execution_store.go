@@ -55,7 +55,7 @@ func (s *AccessRequestStore) AcquireExecution(ctx context.Context, org identity.
 		}
 		reason := access.Reason("")
 		switch {
-		case r.ExpiresAt == nil || !at.Before(*r.ExpiresAt):
+		case r.ApprovalExpiredAt(at):
 			reason = access.ReasonTTLExpired
 		case r.PolicyVersion != target.CurrentPolicyVersion:
 			reason = access.ReasonPolicyChanged

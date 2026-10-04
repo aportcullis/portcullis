@@ -271,6 +271,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
 - **가시성 스코프 (2026-07-23 증보; 2026-07-24 개정, ADR-0018):** **reviewer = `requests.approve` 또는 `requests.reject` 보유자**는 organization 전체 요청을 조회하고 payload를 복호할 수 있으며, 그 외 requester는 **자신의 요청만** 조회한다(서버측 강제). approve/reject는 custom role이 독립적으로 부여할 수 있는 별개 권한이라, 반려만 가능한 사용자도 대상 요청을 볼 수 있어야 하므로 가시성은 두 결정 권한의 합집합이다.
   원문 SQL·파라미터 복호화도 요청자 본인 또는 reviewer에게만 허용하고, 그 외에는 redacted SQL만 제공한다(§8.4).
   목록/집계는 **effective state**(만료 지난 approved=expired) 기준으로 필터·계산해 화면 상태와 일치시킨다.
+  승인은 표시·결정·실행 모두에서 정확히 `expires_at` 시점에 만료된다(2026-10-04 개정, ADR-0018).
   요청 **대상 connection 선택**은 `requests.create`로 게이트된 전용 목록(활성 connection·폼 필드만)으로 제공한다 — requester/approver는 `connections.*`를 보유하지 않으므로 관리용 connection 목록에 의존하면 기본 역할이 요청 자체를 만들 수 없다(2026-07-24 증보, ADR-0008/0018).
   SPA 내비게이션·랜딩도 권한 인지로 동작한다.
 - **submit 파이프라인·payload 고정 (2026-07-23 증보; 2026-07-24 개정, ADR-0018):** submit은 `BindNamed(:name→$N, 파라미터 검증) → parse → classify → 현재 정책 pin(class 허용 여부·required_approvals) → redact → digest → seal` 순으로 payload를 확정한다.

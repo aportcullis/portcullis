@@ -204,6 +204,32 @@ func TestQueriesQualifyMetadataRelations(t *testing.T) {
 	}
 }
 
+// The approval window closes exactly at expires_at, as access.Request.ApprovalExpiredAt does (ADR-0018).
+func TestApprovalExpiryComparisonsMatchTheDomainBoundary(t *testing.T) {
+	body, err := os.ReadFile("queries/access_requests.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	strict := regexp.MustCompile(`expires_at\s*<\s*[^=]`)
+	inclusive := regexp.MustCompile(`expires_at is null or r?\.?expires_at\s*<=|expires_at is null or expires_at\s*<=`)
+	checked := 0
+	for name, sql := range namedStatements(string(body)) {
+		if !strings.Contains(sql, "expires_at <") && !strings.Contains(sql, "expires_at<") {
+			continue
+		}
+		checked++
+		if strict.MatchString(sql) {
+			t.Errorf("%s compares expires_at strictly; an approval is expired at its deadline", name)
+		}
+		if !inclusive.MatchString(sql) {
+			t.Errorf("%s does not treat a missing deadline as expired", name)
+		}
+	}
+	if checked < 5 {
+		t.Errorf("checked %d expiry comparisons, want the view, list, count and overdue statements", checked)
+	}
+}
+
 func TestUnqualifiedRelationDetector(t *testing.T) {
 	for _, tc := range []struct {
 		sql  string

@@ -67,7 +67,9 @@ A pin test compares the SQL predicate against `PermissionsForUser` results so th
 
 ### Expiry — lazy observation, no sweeper
 - `expires_at` is set only by the `→approved` transition (Nth approval or auto-approval): `now() + validity`.
-- Reads never mutate: `Get`/`List` derive an **effective state** (`approved` with `expires_at < now()` renders as `expired`/`ttl_expired`), so read RPCs stay idempotent and cheap.
+- Reads never mutate: `Get`/`List` derive an **effective state** (`approved` with `expires_at <= now()` renders as `expired`/`ttl_expired`), so read RPCs stay idempotent and cheap.
+- **One boundary rule** (amended 2026-10-04): the window closes exactly at `expires_at` and an approval without a deadline counts as closed (`access.Request.ApprovalExpiredAt`).
+  The read badge, list filters and counts, the lazy expiry under lock, and the execution gate all apply it; the reads and the lazy expiry used a strict `<` while the gate already expired at equality, so a request at its deadline could be shown approved and refused execution in the same instant.
 - The observed transition (conditional UPDATE + same-tx `ACCESS_REQUEST_EXPIRED` event, actor=system) happens at the next mutating touch: `Approve`/`Reject`/`Cancel` run the expire-overdue statement **inside their own transaction, immediately behind the `FOR UPDATE` read**, and the execution slice's admission re-check is the authoritative gate.
   Amended 2026-07-25 (external review round 4): the observation used to run in a separate transaction *before* the acting one, which was a check-then-act — a TTL lapsing while the actor waited for the row lock went unnoticed and the request was recorded as cancelled or decided instead of expired.
   Two things make the in-transaction version correct: when the expiry fires the transaction still **commits** (the transition is the call's real outcome; the refused mutation is reported afterwards), and the deadline is compared against `clock_timestamp()`, not `now()` — `now()` is the *transaction's start* time and would judge by an instant preceding the lock wait.

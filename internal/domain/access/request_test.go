@@ -145,6 +145,52 @@ func TestCancellable(t *testing.T) {
 	}
 }
 
+func TestApprovalExpiresExactlyAtItsDeadline(t *testing.T) {
+	t.Parallel()
+	approved, err := submitted(t, 1).Approved(t0, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := t0.Add(time.Hour)
+	for _, tc := range []struct {
+		name    string
+		at      time.Time
+		expired bool
+	}{
+		{"one nanosecond before the deadline", deadline.Add(-time.Nanosecond), false},
+		{"halfway through the window", t0.Add(30 * time.Minute), false},
+		{"at the approval instant", t0, false},
+		{"exactly at the deadline", deadline, true},
+		{"one nanosecond after the deadline", deadline.Add(time.Nanosecond), true},
+		{"a day after the deadline", deadline.Add(24 * time.Hour), true},
+	} {
+		if got := approved.ApprovalExpiredAt(tc.at); got != tc.expired {
+			t.Errorf("ApprovalExpiredAt(%s) = %t, want %t", tc.name, got, tc.expired)
+		}
+		state, reason := approved.EffectiveState(tc.at)
+		if tc.expired && (state != access.StateExpired || reason != access.ReasonTTLExpired) {
+			t.Errorf("EffectiveState(%s) = %s/%s, want expired/ttl_expired", tc.name, state, reason)
+		}
+		if !tc.expired && (state != access.StateApproved || reason != "") {
+			t.Errorf("EffectiveState(%s) = %s/%s, want approved", tc.name, state, reason)
+		}
+	}
+
+	unbounded := approved
+	unbounded.ExpiresAt = nil
+	if !unbounded.ApprovalExpiredAt(t0) {
+		t.Error("an approval without a deadline is treated as open; it must be treated as expired")
+	}
+	if state, _ := unbounded.EffectiveState(t0); state != access.StateExpired {
+		t.Errorf("EffectiveState of an approval without a deadline = %s, want expired", state)
+	}
+	pending := submitted(t, 2)
+	pending.ExpiresAt = &deadline
+	if state, _ := pending.EffectiveState(deadline.Add(time.Hour)); state != access.StatePending {
+		t.Errorf("a pending request with a stray deadline became %s", state)
+	}
+}
+
 func TestEffectiveState(t *testing.T) {
 	t.Parallel()
 	appr, _ := submitted(t, 1).Approved(t0, time.Hour)

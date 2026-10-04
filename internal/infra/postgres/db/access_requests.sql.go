@@ -109,7 +109,7 @@ const countAccessRequests = `-- name: CountAccessRequests :one
 select count(*) from public.access_requests r
 where r.organization_id = $1
   and ($2::text is null
-       or (case when r.state = 'approved' and r.expires_at < now() then 'expired' else r.state end) = $2)
+       or (case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'expired' else r.state end) = $2)
   and ($3::uuid is null or r.requester_id = $3)
 `
 
@@ -255,7 +255,8 @@ update public.access_requests
 set state = 'expired', state_reason = 'ttl_expired', version = version + 1,
     updated_at = (select at from observed)
 where id = $1 and organization_id = $2
-  and state = 'approved' and expires_at < (select at from observed)
+  -- The window closes exactly at expires_at (access.Request.ApprovalExpiredAt, ADR-0018).
+  and state = 'approved' and (expires_at is null or expires_at <= (select at from observed))
 returning id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title
 `
 
@@ -410,10 +411,10 @@ select
     -- The name this request was SUBMITTED against wins; a draft has no snapshot yet, so it shows the connection as it is now (PRD §4.3 — renaming a connection must not rewrite what a past request was approved for).
     coalesce(r.connection_display_name, c.display_name) as connection_name,
     -- The badge, decided HERE. The same expression filters and counts below, so one evaluation of now() settles all three; recomputing it in the response from the app's clock let a row be counted approved and rendered expired (ADR-0018 §92), and any skew between the two machines widened the gap.
-    (case when r.state = 'approved' and r.expires_at < now() then 'expired' else r.state end)::text
+    (case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'expired' else r.state end)::text
         as effective_state,
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
-    coalesce(case when r.state = 'approved' and r.expires_at < now() then 'ttl_expired' else r.state_reason end, '')::text
+    coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
     (
         select count(*) from public.approvals a
@@ -597,10 +598,10 @@ select
     -- The name this request was SUBMITTED against wins; a draft has no snapshot yet, so it shows the connection as it is now (PRD §4.3 — renaming a connection must not rewrite what a past request was approved for).
     coalesce(r.connection_display_name, c.display_name) as connection_name,
     -- The badge, decided HERE. The same expression filters and counts below, so one evaluation of now() settles all three; recomputing it in the response from the app's clock let a row be counted approved and rendered expired (ADR-0018 §92), and any skew between the two machines widened the gap.
-    (case when r.state = 'approved' and r.expires_at < now() then 'expired' else r.state end)::text
+    (case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'expired' else r.state end)::text
         as effective_state,
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
-    coalesce(case when r.state = 'approved' and r.expires_at < now() then 'ttl_expired' else r.state_reason end, '')::text
+    coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
     (
         select count(*) from public.approvals a
@@ -622,7 +623,7 @@ join public.users u on u.id = r.requester_id
 join public.connections c on c.id = r.connection_id
 where r.organization_id = $1
   and ($2::text is null
-       or (case when r.state = 'approved' and r.expires_at < now() then 'expired' else r.state end) = $2)
+       or (case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'expired' else r.state end) = $2)
   and ($3::uuid is null or r.requester_id = $3)
 order by r.created_at asc, r.id asc
 limit $5::bigint offset $4::bigint
@@ -740,10 +741,10 @@ select
     -- The name this request was SUBMITTED against wins; a draft has no snapshot yet, so it shows the connection as it is now (PRD §4.3 — renaming a connection must not rewrite what a past request was approved for).
     coalesce(r.connection_display_name, c.display_name) as connection_name,
     -- The badge, decided HERE. The same expression filters and counts below, so one evaluation of now() settles all three; recomputing it in the response from the app's clock let a row be counted approved and rendered expired (ADR-0018 §92), and any skew between the two machines widened the gap.
-    (case when r.state = 'approved' and r.expires_at < now() then 'expired' else r.state end)::text
+    (case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'expired' else r.state end)::text
         as effective_state,
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
-    coalesce(case when r.state = 'approved' and r.expires_at < now() then 'ttl_expired' else r.state_reason end, '')::text
+    coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
     (
         select count(*) from public.approvals a
@@ -765,7 +766,7 @@ join public.users u on u.id = r.requester_id
 join public.connections c on c.id = r.connection_id
 where r.organization_id = $1
   and ($2::text is null
-       or (case when r.state = 'approved' and r.expires_at < now() then 'expired' else r.state end) = $2)
+       or (case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'expired' else r.state end) = $2)
   and ($3::uuid is null or r.requester_id = $3)
 order by r.created_at desc, r.id desc
 limit $5::bigint offset $4::bigint

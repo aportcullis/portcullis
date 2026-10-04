@@ -294,6 +294,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
   - Independent custom-role decision permissions require the union: reject-only users also need visibility.
   - Only the owner/reviewer may decrypt raw SQL/parameters; other viewers receive redacted SQL (§8.4).
   - Lists/counts use **effective state**, treating expired approved requests as expired, matching the UI.
+  - An approval expires exactly at its `expires_at` for display, decisions and execution alike, amended 2026-10-04, ADR-0018.
   - Target selection uses a dedicated `requests.create`-gated list containing active connections and form fields, added 2026-07-24, ADR-0008/0018.
   - Default requester/approver roles lack `connections.*`; creation must not depend on the admin connection list.
   - SPA navigation and landing are permission-aware.
