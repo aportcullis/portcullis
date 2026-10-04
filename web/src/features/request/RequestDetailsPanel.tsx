@@ -160,7 +160,16 @@ export const RequestDetailsPanel: Component<{
         <p class="break-all font-mono text-xs text-muted-foreground">{props.requestId}</p>
       </header>
       <Show when={requestRead.loading() && !detail()}><LoadingSkeleton label="Loading request…" /></Show>
-        <Show when={requestRead.error() === ""} fallback={<Alert variant="destructive"><AlertDescription>{requestRead.error()}</AlertDescription></Alert>}>
+        {/* A failed background refresh reports above the details it could not replace; only a failed first read has nothing to keep. */}
+        <Show when={requestRead.error() !== ""}>
+          <Alert variant="destructive">
+            <AlertDescription>
+              <Show when={detail()} fallback={requestRead.error()}>
+                Refresh failed: {requestRead.error()} Showing the last loaded details.
+              </Show>
+            </AlertDescription>
+          </Alert>
+        </Show>
           <Show when={detail()}>
           <Show
             when={!editing()}
@@ -357,7 +366,6 @@ export const RequestDetailsPanel: Component<{
           </div>
           </Show>
           </Show>
-        </Show>
     </section>
   );
 };

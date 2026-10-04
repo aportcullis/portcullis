@@ -183,6 +183,30 @@ test.describe("application resilience", () => {
     }
   });
 
+  test("a failed background detail refresh keeps the details and says so", async ({ page }) => {
+    await page.goto("/requests");
+    await page.getByRole("row", { name: /Row state check/ }).getByRole("link", { name: "Details" }).click();
+    await expect(page.getByRole("heading", { name: "Request evidence" })).toBeVisible();
+    const detailURL = page.url();
+
+    const restore = await failProcedure(page, "AccessRequests/Get", "unavailable");
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.getByText(/Refresh failed: simulated failure Showing the last loaded details\./)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Request evidence" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Review and execution" })).toBeVisible();
+
+    await page.goto(detailURL);
+    await expect(page.getByText("simulated failure", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Refresh failed/)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Request evidence" })).toHaveCount(0);
+
+    await restore();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Request evidence" })).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.getByText(/Refresh failed/)).toHaveCount(0);
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");
