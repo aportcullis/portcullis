@@ -25,6 +25,11 @@ describe("sanitizeReturnPath", () => {
     ["empty value", ""],
     ["sign-in loop", "/login?returnTo=/requests"],
     ["bootstrap page", "/bootstrap"],
+    ["dot segment rebuilding a protocol-relative host", "/.//evil.example/requests"],
+    ["parent segment rebuilding a protocol-relative host", "/..//evil.example/requests"],
+    ["encoded dot segment rebuilding a protocol-relative host", "/%2e//evil.example/requests"],
+    ["nested parent segment rebuilding a protocol-relative host", "/a/..//evil.example/requests"],
+    ["dot segment rebuilding a backslash host", "/./\\evil.example/requests"],
   ])("refuses a %s", (_kind, raw) => {
     expect(sanitizeReturnPath(raw)).toBe("/");
   });

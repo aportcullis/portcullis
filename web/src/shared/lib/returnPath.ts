@@ -15,14 +15,20 @@ function hasControlOrSpace(value: string): boolean {
   });
 }
 
+/** Reports whether the value is not a single-slash path on this origin; "//host" and "/\host" are host references. */
+function isHostReference(path: string): boolean {
+  return !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\");
+}
+
 /** Returns the requested same-origin path to continue at after sign-in, or "/" when it is absent or unsafe. */
 export function sanitizeReturnPath(raw: string | string[] | undefined): string {
   if (typeof raw !== "string") return startPath;
-  // A single leading slash followed by neither another slash nor a backslash is a path on this origin; "//host" and "/\host" are host references.
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return startPath;
+  if (isHostReference(raw)) return startPath;
   if (hasControlOrSpace(raw)) return startPath;
   const parsed = new URL(raw, placeholderOrigin);
   if (parsed.origin !== placeholderOrigin) return startPath;
+  // Dot segments are resolved during parsing, so "/.//host" only becomes a host reference afterwards; check the path that would be used.
+  if (isHostReference(parsed.pathname)) return startPath;
   if (unauthenticatedPaths.includes(parsed.pathname)) return startPath;
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }

@@ -22,7 +22,7 @@ test.describe("sign-in return path", () => {
 
   test("a crafted return path never leaves the application", async ({ page, baseURL }) => {
     const applicationHost = new URL(baseURL ?? "http://127.0.0.1:18080").host;
-    for (const crafted of ["//evil.example/requests", "/\\evil.example/requests", "https://evil.example/", "javascript:alert(1)", "/\t/evil.example/requests", "/login?returnTo=%2Frequests"]) {
+    for (const crafted of ["//evil.example/requests", "/\\evil.example/requests", "https://evil.example/", "javascript:alert(1)", "/\t/evil.example/requests", "/login?returnTo=%2Frequests", "/.//evil.example/requests", "/%2e//evil.example/requests"]) {
       await page.context().clearCookies();
       await page.goto(`/login?returnTo=${encodeURIComponent(crafted)}`);
       await signInForScenario(page, email, password);
