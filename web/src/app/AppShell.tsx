@@ -12,6 +12,7 @@ import { hasPermission, session } from "@/entities/session/store";
 import { LogoutButton } from "@/features/auth/LogoutButton";
 import { ApplicationFrame } from "@/shared/ui/ApplicationFrame";
 import { BrandLogo } from "@/shared/ui/BrandLogo";
+import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Badge } from "@/shared/ui/badge";
 import { Avatar } from "@/shared/ui/avatar";
 
@@ -37,6 +38,11 @@ const AppShell: Component<RouteSectionProps> = (props) => {
     <Switch>
       <Match when={anonymousCause()}>
         {(cause) => <Navigate href={signInRedirectFor(cause(), location)} />}
+      </Match>
+      <Match when={session().status === "loading"}>
+        <main class="flex min-h-screen items-center justify-center p-4">
+          <div class="w-full max-w-sm"><LoadingSkeleton label="Loading your session…" /></div>
+        </main>
       </Match>
       <Match when={session().status === "unreachable"}>
         <UnreachableCard />

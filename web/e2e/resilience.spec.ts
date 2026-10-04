@@ -39,6 +39,32 @@ test.describe("sign-in return path", () => {
   });
 });
 
+test("a pending session check shows a loading status instead of a blank page", async ({ page }) => {
+  await page.goto("/login");
+  await signInForScenario(page, email, password);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/portcullis.v1.Auth/Me", async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.goto("/requests/new");
+    const loading = page.getByRole("status").filter({ hasText: "Loading your session…" });
+    await expect(loading).toHaveAttribute("aria-busy", "true");
+    await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
+    await expect(page.getByLabel("Title", { exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/requests\/new$/);
+    release();
+    await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading your session…" })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  } finally {
+    release();
+    await page.unroute("**/portcullis.v1.Auth/Me");
+  }
+});
+
 test.describe("application resilience", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");

@@ -13,7 +13,7 @@ Use the existing owned components and design tokens. Establish a quiet page back
 
 Group request composition into context (connection/title/body), SQL/parameters and save/submit actions. On wide screens, provide a separate concise review guide; stack it on narrow screens. Preserve field labels, explicit save/submit behavior, formatting undo and authorization/session fencing. Explain that submitting does not execute SQL. Separate request evidence from a clearly labeled review/execution decision panel. Keep the panel sticky on wide screens and inline on narrow screens, show approval before rejection, and keep an explicit return-to-list link. Keep risky confirmations separate and routine actions within pages.
 
-Use bounded three-line loading skeletons on initial list/detail/result reads, with accessible status text and hidden decorative bars. Preserve known detail content during background refresh; distinguish loading, empty and error states.
+Use bounded three-line loading skeletons on initial list/detail/result reads, with accessible status text and hidden decorative bars. The authenticated shell shows the same skeleton while the session is still being resolved, so a slow session check never renders a blank page. Preserve known detail content during background refresh; distinguish loading, empty and error states.
 
 A failed background refresh is news about the refresh, not about the data (amended 2026-10-04). The request list keeps the rows of the same page, size and filter when a refresh fails for a transient reason and labels them as the last loaded data; it clears them on a principal change, on `PermissionDenied`/`Unauthenticated`, or when the failed read asked a different query, so retained rows never pose as another query's answer.
 
