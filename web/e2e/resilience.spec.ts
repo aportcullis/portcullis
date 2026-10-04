@@ -287,6 +287,56 @@ test.describe("application resilience", () => {
     await expect(save).toHaveCount(0);
   });
 
+  test("a failed result view change keeps the controls on the view still shown", async ({ page }) => {
+    await page.goto("/requests/new");
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill(`View rollback ${Date.now()}`);
+    await page.getByLabel("SQL", { exact: true }).fill("select 1000 + g as marker from generate_series(1, 25) as g order by g");
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    const details = page.getByRole("region", { name: "Request details" });
+    await details.getByRole("button", { name: "Execute", exact: true }).click();
+    await details.getByRole("link", { name: "Result", exact: true }).click();
+    const results = page.getByRole("region", { name: "Query results" });
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+    const markerHeader = results.getByRole("columnheader", { name: /marker/ });
+
+    // Page: a refused Next keeps page 1 selected, so the retry shows page 2 rather than skipping to page 3.
+    let restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
+    await results.getByRole("button", { name: "Next page", exact: true }).click();
+    await expect(results.getByText("simulated failure")).toBeVisible();
+    await expect(results.getByText(/Page 1 of/)).toBeVisible();
+    await restore();
+    await results.getByRole("button", { name: "Next page", exact: true }).click();
+    await expect(results.getByText("1021", { exact: true })).toBeVisible();
+    await results.getByRole("button", { name: "Previous page", exact: true }).click();
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+
+    // Sort: a refused sort leaves the header announcing the order of the rows still shown.
+    restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
+    await results.getByLabel("Sort by").selectOption({ index: 1 });
+    await expect(results.getByText("simulated failure")).toBeVisible();
+    await expect(markerHeader).not.toHaveAttribute("aria-sort", /.+/);
+    await expect(results.getByLabel("Sort by")).toHaveValue("");
+    await restore();
+
+    // Filter: a refused filter keeps the applied (empty) filter, so the next page still pages the whole snapshot.
+    restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
+    await results.getByLabel("Filter results").fill("1025");
+    await results.getByRole("button", { name: "Filter results", exact: true }).click();
+    await expect(results.getByText("simulated failure")).toBeVisible();
+    await restore();
+    await results.getByRole("button", { name: "Next page", exact: true }).click();
+    await expect(results.getByText("1021", { exact: true })).toBeVisible();
+    await results.getByRole("button", { name: "Previous page", exact: true }).click();
+
+    // Page size: a refused size change keeps the selected size of the rows still shown.
+    restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
+    await results.getByLabel("Rows per page").selectOption("50");
+    await expect(results.getByText("simulated failure")).toBeVisible();
+    await expect(results.getByLabel("Rows per page")).toHaveValue("20");
+    await restore();
+  });
+
   test("a CSV export survives changing the shown page, sort or filter while it streams", async ({ page }) => {
     // This scenario creates its own executed request so it runs alone as well as in sequence.
     await page.goto("/requests/new");

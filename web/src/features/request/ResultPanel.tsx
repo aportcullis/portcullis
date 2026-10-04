@@ -44,17 +44,29 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   let revision = 0;
   // requestRevision changes only when another request is shown; view reloads leave it alone.
   let requestRevision = 0;
+  // The controls change before a read, so a refused read returns them to the view whose rows are still shown.
+  type ResultView = { page: number; pageSize: number; sortColumn: number | undefined; descending: boolean; filter: string };
+  const requestedView = (): ResultView => ({ page: page(), pageSize: pageSize(), sortColumn: sortColumn(), descending: descending(), filter: filter() });
+  let appliedView: ResultView | undefined;
+  const restoreView = (view: ResultView) => {
+    setPage(view.page); setPageSize(view.pageSize); setSortColumn(view.sortColumn); setDescending(view.descending); setFilter(view.filter); setFilterDraft(view.filter);
+  };
   const read = createOpenFetch(async () => {
+    const view = requestedView();
     const info = await executionsClient.get({ requestId: props.requestId ?? "" });
     const snapshot = info.resultAvailable ? await executionsClient.getResult({
-      requestId: props.requestId ?? "", page: page(), pageSize: pageSize(), sortColumn: sortColumn(), descending: descending(), filter: filter(),
+      requestId: props.requestId ?? "", page: view.page, pageSize: view.pageSize, sortColumn: view.sortColumn, descending: view.descending, filter: view.filter,
     }) : undefined;
-    return { info, snapshot };
-  }, ({ info, snapshot }) => { setExecution(info); setResult(snapshot); }, (err) => describeResultError(err, errorMessage));
+    return { info, snapshot, view };
+  }, ({ info, snapshot, view }) => { setExecution(info); setResult(snapshot); appliedView = view; }, (err) => describeResultError(err, errorMessage));
+  createEffect(on(read.error, (message) => {
+    if (message !== "" && appliedView !== undefined && result() !== undefined) restoreView(appliedView);
+  }, { defer: true }));
   const id = createMemo(() => props.requestId);
   createEffect(on(id, (next) => {
     revision++;
     requestRevision++;
+    appliedView = undefined;
     discardDownload();
     read.handleOpenChange(false);
     setExecution(); setResult(); setFullCell(); setExporting(false); setExportError(""); setView("table"); setCopying(false); setCopyMessage("");
