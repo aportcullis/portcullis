@@ -239,6 +239,35 @@ func insertAuditTx(ctx context.Context, q *db.Queries, evt audit.Event) error {
 	return q.InsertAuditEvent(ctx, p)
 }
 
+// insertAuditBatch validates every event first, then appends them in one pipelined batch on the transaction-bound queries; any failure fails the caller's transaction.
+func insertAuditBatch(ctx context.Context, q *db.Queries, events []audit.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	params := make([]db.InsertAuditEventsParams, 0, len(events))
+	for _, evt := range events {
+		if evt.OrganizationID == "" {
+			return audit.ErrOrganizationRequired
+		}
+		eventParams, err := auditEventParams(evt)
+		if err != nil {
+			return err
+		}
+		params = append(params, db.InsertAuditEventsParams(eventParams))
+	}
+	var batchErr error
+	results := q.InsertAuditEvents(ctx, params)
+	results.Exec(func(_ int, err error) {
+		if err != nil && batchErr == nil {
+			batchErr = err
+		}
+	})
+	if err := results.Close(); err != nil && batchErr == nil {
+		batchErr = err
+	}
+	return batchErr
+}
+
 // auditEventParams maps a domain event onto the insert parameters. Shared by the best-effort store above and by IdentityStore's transactional writes (ADR-0009). The source IP travels in the metadata JSONB (the schema has no dedicated column); occurred_at is the insert-time DB default.
 func auditEventParams(e audit.Event) (db.InsertAuditEventParams, error) {
 	org, err := stringToUUID(string(e.OrganizationID))

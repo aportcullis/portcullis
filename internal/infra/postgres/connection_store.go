@@ -379,16 +379,15 @@ func (s *ConnectionStore) missingArchivedOrConflict(ctx context.Context, q *db.Q
 
 // insertEvents writes the mutation's audit events in the mutation's organization on the transaction-bound queries so they commit with the change (ADR-0004, ADR-0009).
 func insertEvents(ctx context.Context, q *db.Queries, org identity.OrganizationID, events []audit.Event) error {
+	scoped := make([]audit.Event, 0, len(events))
 	for _, evt := range events {
-		scoped, err := scopeEventToOrganization(evt, org)
+		attributed, err := scopeEventToOrganization(evt, org)
 		if err != nil {
 			return err
 		}
-		if err := insertAuditTx(ctx, q, scoped); err != nil {
-			return err
-		}
+		scoped = append(scoped, attributed)
 	}
-	return nil
+	return insertAuditBatch(ctx, q, scoped)
 }
 
 // scopeEventToOrganization attributes an unscoped event to the mutation's organization and refuses an event naming another one.

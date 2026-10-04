@@ -610,12 +610,11 @@ func sweepRequestsForArchive(ctx context.Context, q *db.Queries, cid, organizati
 	if err != nil {
 		return err
 	}
+	events := make([]audit.Event, 0, len(cancelled))
 	for _, row := range cancelled {
 		evt := access.CancelledEvent(toAccessRequest(row), access.StateDraft, access.ReasonConnectionArchived, access.ActorArchiveCascade, correlate)
 		evt.OccurredAt = at
-		if err := insertAuditTx(ctx, q, evt); err != nil {
-			return err
-		}
+		events = append(events, evt)
 	}
 	expired, err := q.ExpireLiveRequestsForConnection(ctx, db.ExpireLiveRequestsForConnectionParams{
 		ConnectionID: cid, OrganizationID: organizationUUID, StateReason: ptr(string(access.ReasonConnectionArchived)), At: timeToTS(at),
@@ -623,7 +622,8 @@ func sweepRequestsForArchive(ctx context.Context, q *db.Queries, cid, organizati
 	if err != nil {
 		return err
 	}
-	return insertExpiredEvents(ctx, q, expired, at, access.ReasonConnectionArchived, access.ActorArchiveCascade, correlate)
+	events = append(events, expiredEvents(expired, at, access.ReasonConnectionArchived, access.ActorArchiveCascade, correlate)...)
+	return insertAuditBatch(ctx, q, events)
 }
 
 // expireRequestsForPolicyChange expires unexecuted requests in the policy transaction.
@@ -643,11 +643,12 @@ func expireLiveRequests(ctx context.Context, q *db.Queries, cid, organizationUUI
 	if err != nil {
 		return err
 	}
-	return insertExpiredEvents(ctx, q, expired, at, reason, actor, correlate)
+	return insertAuditBatch(ctx, q, expiredEvents(expired, at, reason, actor, correlate))
 }
 
-// insertExpiredEvents records a system expiry event for each affected request.
-func insertExpiredEvents(ctx context.Context, q *db.Queries, rows []db.AccessRequest, at time.Time, reason access.Reason, actor string, correlate audit.Event) error {
+// expiredEvents builds a system expiry event for each affected request.
+func expiredEvents(rows []db.AccessRequest, at time.Time, reason access.Reason, actor string, correlate audit.Event) []audit.Event {
+	events := make([]audit.Event, 0, len(rows))
 	for _, row := range rows {
 		from := access.StatePending
 		if row.ExpiresAt.Valid {
@@ -656,11 +657,9 @@ func insertExpiredEvents(ctx context.Context, q *db.Queries, rows []db.AccessReq
 		evt := access.ExpiredEvent(toAccessRequest(row), from, reason, actor, correlate)
 		// The sweep's observed instant, not the column DEFAULT: now() would be this transaction's start time (see observeCascadeInstant).
 		evt.OccurredAt = at
-		if err := insertAuditTx(ctx, q, evt); err != nil {
-			return err
-		}
+		events = append(events, evt)
 	}
-	return nil
+	return events
 }
 
 // transition applies a guarded state change to a locked request.

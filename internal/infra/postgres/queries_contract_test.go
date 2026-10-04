@@ -16,6 +16,7 @@ var nowAllowedInWrites = map[string]string{
 	"RevokeSession":      "session revocation is uncontended and its trail is the auth event, not revoked_at",
 	"RevokeUserSessions": "same as RevokeSession, for the fan-out on a role change",
 	"InsertAuditEvent":   "the fallback for events whose transaction observed no instant; stamped callers pass occurred_at",
+	"InsertAuditEvents":  "the batched form of InsertAuditEvent with the same fallback",
 }
 
 var eventTimeColumns = []string{
@@ -33,6 +34,7 @@ var observedInstantParam = regexp.MustCompile(`(?i)^\s*(@at\b|sqlc\.arg\(\s*at\s
 var callerEventTimeAllowed = map[string]string{
 	"InsertAuditEvent": "the narg fallback: a caller that observed an instant passes occurred_at, and one that " +
 		"did not falls back to the column default — the fallback itself is covered by nowAllowedInWrites",
+	"InsertAuditEvents": "the batched form of InsertAuditEvent with the same narg fallback",
 }
 
 var (

@@ -78,6 +78,8 @@ type Querier interface {
 	InsertApproval(ctx context.Context, arg InsertApprovalParams) (pgtype.Timestamptz, error)
 	// Ordinary events use database time; derived events reuse the observation instant so expiry audit cannot precede its deadline (ADR-0009).
 	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
+	// The same insert sent as one pipelined batch, so a cascade appends its derived events in one round trip while holding row locks (ADR-0009).
+	InsertAuditEvents(ctx context.Context, arg []InsertAuditEventsParams) *InsertAuditEventsBatchResults
 	// Create policy v1 in the same transaction to satisfy the deferred FK. Use post-lock database time for row and audit ordering (ADR-0009).
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).

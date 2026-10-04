@@ -7,6 +7,15 @@ insert into public.audit_events (
     payload_digest, payload_digest_key_version, metadata, rows_affected, duration_ms
 ) values ($1, coalesce(sqlc.narg('occurred_at')::timestamptz, now()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);
 
+-- name: InsertAuditEvents :batchexec
+-- The same insert sent as one pipelined batch, so a cascade appends its derived events in one round trip while holding row locks (ADR-0009).
+insert into public.audit_events (
+    organization_id, occurred_at, actor_type, actor_user_id, actor_service,
+    action, target_type, target_id, outcome, request_id,
+    previous_state, next_state, connection_id, query_type,
+    payload_digest, payload_digest_key_version, metadata, rows_affected, duration_ms
+) values ($1, coalesce(sqlc.narg('occurred_at')::timestamptz, now()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);
+
 -- name: GetAuditEvent :one
 -- Detail remains organization-scoped; audit.get must never become an IDOR path. total_count is literally 1 here and goes unused — it keeps the row shape structurally identical to the list rows, so one mapper serves all three.
 select
