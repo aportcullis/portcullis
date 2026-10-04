@@ -14,6 +14,7 @@
 - **Release history**
   - `make changelog` generates the reviewed English `CHANGELOG.md` snapshot with digest-pinned git-cliff in Docker; run before release tagging and review the diff.
   - `make dockerfile-check` runs Docker build checks on every tracked Dockerfile and on accepted and refused fixtures; included in `make verify`. Supply base images that come from a single pinned definition as named build contexts instead of `ARG`s in `FROM`.
+  - `make ignore-check` proves that the committed `.gitignore` and `.dockerignore` exclude package-manager configuration, keys, environment files, private load output and review ledgers while keeping generated sources, migrations and `.env.example`; included in `make verify`.
   - `make changelog-check` exercises real Git history and release boundaries; included in `make verify`. `make release-notes` renders only the current tag for the GHCR publication summary.
 - **Dependency security**
   - `make vuln` runs pinned govulncheck; `make audit` also runs pnpm audit. `make supply-chain` verifies Go modules, audits both npm lockfiles and checks fresh-install script rejection; CI runs it after the functional gate.

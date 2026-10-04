@@ -22,6 +22,8 @@ coverage.*
 *.log
 **/*.key
 **/*.pem
+**/.npmrc
+tests/load/private
 # The frontend build output is produced by the web build stage; excluding the
 # local copy avoids merging stale hashed assets into the image.
 internal/platform/assets/dist

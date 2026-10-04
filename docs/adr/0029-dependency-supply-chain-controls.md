@@ -59,6 +59,8 @@ Exclude local test/runtime artifacts before sending a Docker build context: `.te
 
 A small synthetic context using the actual `.dockerignore` reproduced the cache-marker inclusion before the fix. The real Docker `COPY`/`RUN` check then passed for excluded cache/load/browser/environment markers and retained Go/TypeScript generated sources, sqlc files, migrations and `.env.example`. No real credentials or repository cache contents were sent. This packaging regression does not constitute a complete image build or image scan.
 
+Revised 2026-10-04: package-manager `.npmrc` files (registry tokens and machine-specific store paths), key/PEM files, private load output and the review cache are excluded from both git and Docker contexts through the committed ignore files rather than per-clone excludes. `make ignore-check`, part of `make verify`, repeats the synthetic-context check on every run and evaluates `.gitignore` in an isolated repository so a contributor's private exclude file cannot make it pass.
+
 ### GitHub Actions Node 24 runtime (2026-10-03)
 
 The CI and PostgreSQL compatibility jobs reported deprecated Node 20 action runtimes. `setup-node`'s `node-version: 24` selects the application's Node version; it does not change the runtime declared by other actions. Update both workflows to immutable SHAs for checkout v7.0.1, setup-go v7.0.0, setup-node v7.0.0 and pnpm/action-setup v6.1.0. Their exact-SHA `action.yml` files declare `runs.using: node24`; official release tags resolve to the pinned, verified commits. All four releases satisfy the existing seven-day release-age policy.

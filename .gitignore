@@ -65,7 +65,13 @@ internal/platform/assets/dist/*
 .env
 .env.*
 !.env.example
+# Package-manager configuration can hold registry tokens and machine-specific store paths.
+.npmrc
+*.key
+*.pem
 *.local
+/tests/load/private/
+/.review-cache/
 tests/load/*.local.json
 tests/load/results/
 tests/load/dist/
