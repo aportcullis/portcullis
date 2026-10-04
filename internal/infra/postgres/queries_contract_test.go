@@ -149,6 +149,82 @@ var (
 	insertColumn = regexp.MustCompile(`(?is)\binsert\s+into\s+[\w.]+\s*\((.*?)\)\s*values`)
 )
 
+var (
+	relationReference = regexp.MustCompile(`(?i)\b(from|join|into|update)\s+([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)?)\b`)
+	commonTableName   = regexp.MustCompile(`(?i)\b([a-z_][a-z0-9_]*)\s+as\s+(?:not\s+)?(?:materialized\s+)?\(`)
+	extractField      = regexp.MustCompile(`(?i)\bextract\s*\(\s*[a-z]+\s+from\b`)
+)
+
+var relationClauseWords = map[string]bool{"set": true, "skip": true, "nowait": true, "of": true}
+
+// unqualifiedRelations lists relation names a statement reads or writes without a schema, ignoring its own CTE names.
+func unqualifiedRelations(sql string) []string {
+	sql = extractField.ReplaceAllString(sql, "extract(field ")
+	local := map[string]bool{}
+	for _, match := range commonTableName.FindAllStringSubmatch(sql, -1) {
+		local[strings.ToLower(match[1])] = true
+	}
+	var unqualified []string
+	for _, match := range relationReference.FindAllStringSubmatch(sql, -1) {
+		relation := strings.ToLower(match[2])
+		// "do update set" and "for update skip locked/nowait/of" are clauses, not relations.
+		if strings.Contains(relation, ".") || local[relation] || relationClauseWords[relation] {
+			continue
+		}
+		unqualified = append(unqualified, relation)
+	}
+	return unqualified
+}
+
+func TestQueriesQualifyMetadataRelations(t *testing.T) {
+	entries, err := os.ReadDir("queries")
+	if err != nil {
+		t.Fatalf("read queries: %v", err)
+	}
+	checked := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join("queries", entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, sql := range namedStatements(string(body)) {
+			checked++
+			for _, relation := range unqualifiedRelations(sql) {
+				t.Errorf("%s (%s) references %q without a schema; qualify metadata relations with public. so a temporary or search_path relation cannot shadow them (data.md)", name, entry.Name(), relation)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no named queries were checked")
+	}
+}
+
+func TestUnqualifiedRelationDetector(t *testing.T) {
+	for _, tc := range []struct {
+		sql  string
+		want []string
+	}{
+		{`select * from public.users u join public.roles r on true`, nil},
+		{`with stamped as materialized (select clock_timestamp() as at) insert into public.sessions select 1 from stamped`, nil},
+		{`select extract(epoch from expires_at) from result_cache.result_sets`, nil},
+		{`with observed as (select clock_timestamp() as at) update public.access_requests set updated_at = (select at from observed)`, nil},
+		{`insert into public.auth_methods (id) values (1) on conflict (id) do update set secret = excluded.secret`, nil},
+		{`select id from result_cache.result_sets limit 1 for update skip locked`, nil},
+		{`select * from connection_policy_versions p`, []string{"connection_policy_versions"}},
+		{`insert into audit_events (id) values (1)`, []string{"audit_events"}},
+		{`update sessions set revoked_at = now()`, []string{"sessions"}},
+		{`select 1 from public.connections c join organizations o on true`, []string{"organizations"}},
+	} {
+		got := unqualifiedRelations(tc.sql)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("unqualifiedRelations(%q) = %v, want %v", tc.sql, got, tc.want)
+		}
+	}
+}
+
 func updateAssignments(sql string) string {
 	m := updateSet.FindStringSubmatch(sql)
 	if m == nil {

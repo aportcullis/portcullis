@@ -57,7 +57,7 @@ func (q *Queries) BumpConnectionPolicyVersion(ctx context.Context, arg BumpConne
 }
 
 const getCurrentConnectionPolicy = `-- name: GetCurrentConnectionPolicy :one
-select p.connection_id, p.organization_id, p.version, p.read_allowed, p.write_allowed, p.ddl_allowed, p.read_required_approvals, p.write_required_approvals, p.ddl_required_approvals, p.query_timeout_seconds, p.max_rows, p.max_result_bytes, p.created_by, p.created_at from connection_policy_versions p
+select p.connection_id, p.organization_id, p.version, p.read_allowed, p.write_allowed, p.ddl_allowed, p.read_required_approvals, p.write_required_approvals, p.ddl_required_approvals, p.query_timeout_seconds, p.max_rows, p.max_result_bytes, p.created_by, p.created_at from public.connection_policy_versions p
 join public.connections c
   on c.id = p.connection_id and c.current_policy_version = p.version
 where c.id = $1 and c.organization_id = $2
@@ -92,7 +92,7 @@ func (q *Queries) GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrent
 }
 
 const insertConnectionPolicyVersion = `-- name: InsertConnectionPolicyVersion :exec
-insert into connection_policy_versions (
+insert into public.connection_policy_versions (
     connection_id, organization_id, version,
     read_allowed, write_allowed, ddl_allowed,
     read_required_approvals, write_required_approvals, ddl_required_approvals,

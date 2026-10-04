@@ -1,6 +1,6 @@
 -- name: InsertConnectionPolicyVersion :exec
 -- Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
-insert into connection_policy_versions (
+insert into public.connection_policy_versions (
     connection_id, organization_id, version,
     read_allowed, write_allowed, ddl_allowed,
     read_required_approvals, write_required_approvals, ddl_required_approvals,
@@ -17,7 +17,7 @@ insert into connection_policy_versions (
 
 -- name: GetCurrentConnectionPolicy :one
 -- The connection's current policy snapshot, resolved through the pointer. Works for archived connections too: the policy is part of the historical snapshot (ADR-0015).
-select p.* from connection_policy_versions p
+select p.* from public.connection_policy_versions p
 join public.connections c
   on c.id = p.connection_id and c.current_policy_version = p.version
 where c.id = $1 and c.organization_id = $2;
