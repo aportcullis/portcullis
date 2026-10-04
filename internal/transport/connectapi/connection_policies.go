@@ -102,7 +102,7 @@ func policyError(err error) error {
 	case errors.Is(err, connection.ErrInvalidPolicy):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
-		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+		return newInternalError(err)
 	}
 }
 

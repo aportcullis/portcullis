@@ -60,7 +60,7 @@ func (a *AuditService) List(
 		if errors.Is(err, appaudit.ErrInvalidSortField) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid sort field"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
+		return nil, newInternalError(err)
 	}
 
 	events := make([]*portcullisv1.AuditEventSummary, 0, len(page.Events))
@@ -91,7 +91,7 @@ func (a *AuditService) Get(
 		if errors.Is(err, domainaudit.ErrEventNotFound) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("audit event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
+		return nil, newInternalError(err)
 	}
 	return connect.NewResponse(&portcullisv1.GetAuditEventResponse{Event: toProtoAuditEvent(event)}), nil
 }

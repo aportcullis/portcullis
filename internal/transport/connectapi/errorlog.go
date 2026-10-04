@@ -2,7 +2,6 @@ package connectapi
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"connectrpc.com/connect"
@@ -18,20 +17,47 @@ func isServerFault(code connect.Code) bool {
 	}
 }
 
-// NewErrorLogInterceptor logs server-fault procedure, code, and error type without sensitive messages. Wire it outermost to observe all interceptor failures.
-func NewErrorLogInterceptor(logger *slog.Logger) connect.UnaryInterceptorFunc {
-	return func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			resp, err := next(ctx, req)
-			if err != nil {
-				if code := connect.CodeOf(err); isServerFault(code) {
-					logger.ErrorContext(ctx, "rpc failed",
-						"procedure", req.Spec().Procedure,
-						"code", code.String(),
-						"error_type", fmt.Sprintf("%T", err))
-				}
-			}
-			return resp, err
-		}
+// ErrorLogInterceptor logs server faults of unary and streaming RPCs with their procedure, code, and classified cause, never their messages.
+type ErrorLogInterceptor struct {
+	logger *slog.Logger
+}
+
+// NewErrorLogInterceptor builds the error log interceptor. Wire it outermost to observe all interceptor failures.
+func NewErrorLogInterceptor(logger *slog.Logger) *ErrorLogInterceptor {
+	return &ErrorLogInterceptor{logger: logger}
+}
+
+// WrapUnary logs a unary server fault.
+func (i *ErrorLogInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		resp, err := next(ctx, req)
+		i.logServerFault(ctx, req.Spec().Procedure, err)
+		return resp, err
 	}
+}
+
+// WrapStreamingClient leaves outbound calls unchanged.
+func (i *ErrorLogInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// WrapStreamingHandler logs the terminal server fault of a streaming handler.
+func (i *ErrorLogInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		err := next(ctx, conn)
+		i.logServerFault(ctx, conn.Spec().Procedure, err)
+		return err
+	}
+}
+
+// logServerFault writes one line for a server-fault error and ignores success and client faults.
+func (i *ErrorLogInterceptor) logServerFault(ctx context.Context, procedure string, err error) {
+	if err == nil {
+		return
+	}
+	code := connect.CodeOf(err)
+	if !isServerFault(code) {
+		return
+	}
+	i.logger.ErrorContext(ctx, "rpc failed", append([]any{"procedure", procedure, "code", code.String()}, classifyErrorCause(err)...)...)
 }

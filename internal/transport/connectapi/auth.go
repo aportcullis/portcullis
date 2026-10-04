@@ -183,6 +183,6 @@ func authError(err error) error {
 	case errors.Is(err, identity.ErrInvalidDisplayName):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid display name"))
 	default:
-		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+		return newInternalError(err)
 	}
 }

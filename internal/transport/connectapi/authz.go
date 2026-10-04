@@ -27,7 +27,7 @@ func requirePermission(ctx context.Context, az authorizer, want identity.Permiss
 	case errors.Is(err, authz.ErrPermissionDenied):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	default:
-		return connect.NewError(connect.CodeInternal, errors.New("authorization error"))
+		return newServerFaultError(connect.CodeInternal, "authorization error", err)
 	}
 }
 
@@ -39,6 +39,6 @@ func hasPermission(ctx context.Context, az authorizer, user identity.User, want 
 	case errors.Is(err, authz.ErrPermissionDenied):
 		return false, nil
 	default:
-		return false, connect.NewError(connect.CodeInternal, errors.New("authorization error"))
+		return false, newServerFaultError(connect.CodeInternal, "authorization error", err)
 	}
 }

@@ -242,7 +242,7 @@ func connectionError(err error) error {
 		errors.Is(err, connection.ErrInvalidConnection):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
-		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+		return newInternalError(err)
 	}
 }
 

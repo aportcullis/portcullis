@@ -65,6 +65,13 @@ Values marked **(config)** are operator-tunable env vars; everything else is a c
   Returning it verbatim would let a spoofed `X-Forwarded-For` mint an arbitrary, unbounded rate-limit key (and a bogus audit `source_ip`); instead, stop trusting the chain at the malformed hop and attribute the request to the peer.
   (Supersedes the earlier "unparsable entries are returned as the client key".)
 - Config rejects a `/0` trusted-proxy CIDR at startup: "trust everything" makes XFF fully spoofable and defeats per-IP limiting — always a misconfig.
+- **Shared session pipeline** (amended 2026-10-04): the unary Auth interceptor and the stream security interceptor call one function for session lookup, cookie/header CSRF equality, HMAC verification and the post-CSRF idle slide, so both transports keep the ADR-0006 ordering and error mapping; the stream adds only its admission bucket, 30-minute lifetime and periodic revalidation.
+
+### Server-fault logging (`internal/transport/connectapi`, amended 2026-10-04)
+- The error log interceptor wraps unary **and streaming** handlers outermost and writes one `rpc failed` line per server fault (`Internal`, `Unavailable`, `Unknown`, `DataLoss`) with procedure and code; client faults and successes are not logged.
+- Mapping an unexpected error to a generic wire message keeps the root cause reachable through `errors.Unwrap`, so the log line classifies it as the innermost error type, any SQLSTATE (through the driver's `SQLState()` method, without importing the driver into transport), and `canceled`/`deadline_exceeded`.
+  Error messages are never logged or sent, because driver and storage messages can echo SQL, parameters, DSNs or credentials (security conventions); this is the same rule as the PostgreSQL adapter's `ErrorLogFields`.
+- Stream handler panics propagate to the shared recover option, which logs procedure and panic type exactly as for unary handlers and returns a generic `Internal`.
 
 ### Rate limiting (`internal/transport/connectapi`)
 For the **public** procedures (Bootstrap, Login) two **independent** token-bucket stores — keyed by client IP and by normalized email — must both admit the request, **before any hashing**; over limit → Connect `ResourceExhausted`.

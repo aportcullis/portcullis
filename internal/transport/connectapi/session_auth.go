@@ -57,7 +57,7 @@ func sessionAuthenticationError(err error) error {
 	if isAuthFailure(err) {
 		return newAuthenticationRequiredError()
 	}
-	return connect.NewError(connect.CodeUnavailable, errors.New("temporarily unavailable"))
+	return newServerFaultError(connect.CodeUnavailable, "temporarily unavailable", err)
 }
 
 // newAuthenticationRequiredError builds the generic Unauthenticated refusal.

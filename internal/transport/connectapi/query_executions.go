@@ -173,7 +173,7 @@ func executionError(err error) error {
 	}
 	switch {
 	case errors.Is(err, access.ErrTargetUnavailable):
-		return connect.NewError(connect.CodeUnavailable, errors.New("target temporarily unavailable"))
+		return newServerFaultError(connect.CodeUnavailable, "target temporarily unavailable", err)
 	case errors.Is(err, query.ErrResultBusy):
 		response := connect.NewError(connect.CodeResourceExhausted, errors.New("temporarily busy"))
 		response.Meta().Set("Retry-After", "1")

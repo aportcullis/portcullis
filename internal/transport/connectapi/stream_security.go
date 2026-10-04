@@ -31,14 +31,9 @@ func (s *StreamSecurityInterceptor) WrapStreamingClient(next connect.StreamingCl
 	return next
 }
 
-// WrapStreamingHandler runs the shared session pipeline before a stream handler runs, then bounds the stream's lifetime and revalidates the session while sending.
+// WrapStreamingHandler runs the shared session pipeline before a stream handler runs, then bounds the stream's lifetime and revalidates the session while sending. Panics propagate to the handler's recover option (NewRecoverOption), which logs them like unary panics.
 func (s *StreamSecurityInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return func(ctx context.Context, conn connect.StreamingHandlerConn) (returned error) {
-		defer func() {
-			if recover() != nil {
-				returned = connect.NewError(connect.CodeInternal, errors.New("stream failed"))
-			}
-		}()
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		ip := canonicalIP(clientIP(conn.Peer().Addr, conn.RequestHeader(), s.trusted))
 		if !s.limiter.allow(ip) {
 			return connect.NewError(connect.CodeResourceExhausted, errors.New("temporarily busy"))

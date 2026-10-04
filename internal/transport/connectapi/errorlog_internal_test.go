@@ -17,7 +17,7 @@ func runWithErrorLog(t *testing.T, retErr error) string {
 	t.Helper()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	wrapped := NewErrorLogInterceptor(logger)(func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
+	wrapped := NewErrorLogInterceptor(logger).WrapUnary(func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
 		return nil, retErr
 	})
 	_, _ = wrapped(context.Background(), connect.NewRequest(&portcullisv1.AuditListRequest{}))
