@@ -6,7 +6,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import type { GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestSchema } from "@/gen/portcullis/v1/access_requests_pb";
 import { instanceConfig } from "@/entities/instance/config";
-import { stateBadge, stateLabel } from "@/entities/request/model";
+import { isExecutionOutcomeState, isLiveRequestState, stateBadge, stateLabel } from "@/entities/request/model";
 import { truncateReasonCodePoints, countReasonCodePoints } from "@/entities/request/reason";
 import {
   approveAccessRequest,
@@ -36,7 +36,6 @@ import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
-import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { RequestExecutionSummary } from "@/features/request/RequestExecutionSummary";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
@@ -88,7 +87,9 @@ export const RequestDetailsPanel: Component<{
   const refresh = () => requestRead.handleOpenChange(true);
   onCleanup(() => requestRead.handleOpenChange(false));
   onMount(() => {
-    const refreshIfIdle = () => { if (!document.hidden && !editing() && reason() === "" && !busy() && !requestRead.loading()) refresh(); };
+    // A finished request never changes again, so background refreshes stop once the loaded state is terminal.
+    const isStillChanging = () => detail() === undefined || isLiveRequestState(current().effectiveState);
+    const refreshIfIdle = () => { if (!document.hidden && isStillChanging() && !editing() && reason() === "" && !busy() && !requestRead.loading()) refresh(); };
     const timer = setInterval(refreshIfIdle, 30_000);
     window.addEventListener("online", refreshIfIdle);
     document.addEventListener("visibilitychange", refreshIfIdle);
@@ -197,7 +198,7 @@ export const RequestDetailsPanel: Component<{
               </form>
             }
           >
-          <Show when={isOwner() && hasPermission("requests.get") && [AccessRequestState.SUCCEEDED, AccessRequestState.FAILED, AccessRequestState.OUTCOME_UNKNOWN].includes(current().effectiveState)}>
+          <Show when={isOwner() && hasPermission("requests.get") && isExecutionOutcomeState(current().effectiveState)}>
             <RequestExecutionSummary requestId={props.requestId} />
           </Show>
           <div class="request-review-layout">

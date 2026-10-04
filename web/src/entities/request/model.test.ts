@@ -1,6 +1,74 @@
 import { describe, expect, it } from "vitest";
 
-import { requestStateFilterOptions } from "@/entities/request/model";
+import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
+import { hasLiveRequests, isExecutionOutcomeState, isLiveRequestState, requestStateFilterOptions, shouldPollRequestList } from "@/entities/request/model";
+
+// Background polling only pays off while a request can still change; finished requests never move again (PRD §4.4).
+describe("live request states", () => {
+  it.each([
+    ["draft", AccessRequestState.DRAFT],
+    ["pending", AccessRequestState.PENDING],
+    ["approved", AccessRequestState.APPROVED],
+    ["executing", AccessRequestState.EXECUTING],
+  ])("treats %s as live", (_name, state) => {
+    expect(isLiveRequestState(state)).toBe(true);
+  });
+
+  it.each([
+    ["rejected", AccessRequestState.REJECTED],
+    ["expired", AccessRequestState.EXPIRED],
+    ["cancelled", AccessRequestState.CANCELLED],
+    ["succeeded", AccessRequestState.SUCCEEDED],
+    ["failed", AccessRequestState.FAILED],
+    ["outcome unknown", AccessRequestState.OUTCOME_UNKNOWN],
+  ])("treats %s as finished", (_name, state) => {
+    expect(isLiveRequestState(state)).toBe(false);
+  });
+
+  it("polls a page that mixes finished and live requests", () => {
+    expect(hasLiveRequests([{ effectiveState: AccessRequestState.SUCCEEDED }, { effectiveState: AccessRequestState.PENDING }])).toBe(true);
+  });
+
+  it("stops polling a page of finished requests", () => {
+    expect(hasLiveRequests([{ effectiveState: AccessRequestState.SUCCEEDED }, { effectiveState: AccessRequestState.REJECTED }])).toBe(false);
+  });
+
+  it("does not poll an empty page", () => {
+    expect(hasLiveRequests([])).toBe(false);
+  });
+});
+
+// The list polls to show newly submitted requests too, and the newest-first first page is where they arrive (PRD §7.4).
+describe("request list polling", () => {
+  const finished = { effectiveState: AccessRequestState.SUCCEEDED };
+  const pending = { effectiveState: AccessRequestState.PENDING };
+  it.each([
+    ["the first page of finished requests, where new requests arrive", [finished], 1],
+    ["an empty first page awaiting the first request", [], 1],
+    ["a later page that still shows a pending request", [finished, pending], 3],
+    ["the first page with a pending request", [pending], 1],
+  ])("polls %s", (_name, rows, page) => {
+    expect(shouldPollRequestList(rows, page)).toBe(true);
+  });
+  it.each([
+    ["a later page of finished requests", [finished, finished], 2],
+    ["a later empty page", [], 4],
+    ["a later page of rejected and expired requests", [{ effectiveState: AccessRequestState.REJECTED }, { effectiveState: AccessRequestState.EXPIRED }], 2],
+    ["a later page of cancelled and unknown outcomes", [{ effectiveState: AccessRequestState.CANCELLED }, { effectiveState: AccessRequestState.OUTCOME_UNKNOWN }], 5],
+  ])("does not poll %s", (_name, rows, page) => {
+    expect(shouldPollRequestList(rows, page)).toBe(false);
+  });
+});
+
+describe("execution outcome states", () => {
+  it.each([AccessRequestState.SUCCEEDED, AccessRequestState.FAILED, AccessRequestState.OUTCOME_UNKNOWN])("recognizes outcome state %i", (state) => {
+    expect(isExecutionOutcomeState(state)).toBe(true);
+  });
+
+  it.each([AccessRequestState.APPROVED, AccessRequestState.EXECUTING, AccessRequestState.CANCELLED, AccessRequestState.UNSPECIFIED])("refuses non-outcome state %i", (state) => {
+    expect(isExecutionOutcomeState(state)).toBe(false);
+  });
+});
 
 // The filter shows the same words as the state badges while sending the server's own vocabulary.
 const labelOf = (value: string) => requestStateFilterOptions.find((option) => option.value === value)?.label;

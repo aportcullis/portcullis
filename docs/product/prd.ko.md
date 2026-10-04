@@ -676,6 +676,7 @@ audit_events
 - 승인 turnaround는 성공지표(2.4: `pending→approved|rejected` 중앙값 30분 이하)에 직결되므로 **in-app 알림이 MVP 범위**다.
 - approver에게는 pending 요청 수 badge와 목록, requester에게는 승인/반려/만료 상태 변화 표시.
   Connect server-streaming(또는 폴백 폴링)으로 갱신.
+  폴백 폴링은 새 요청이 보이도록 목록 첫 페이지를 계속 갱신하고, 그 밖에는 표시된 요청 중 아직 바뀔 수 있는 요청이 있을 때만 갱신한다. 종료 상태 요청의 상세는 폴링하지 않는다(ADR-0037).
 - 이메일·Slack 등 외부 채널 알림은 post-MVP(외부 발송 인프라·설정과 함께). 2.2의 "알림 엔진" 비목표는 BI성 알림을 가리키며 이 승인 알림과 구분된다.
 
 ---

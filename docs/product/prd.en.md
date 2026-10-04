@@ -708,7 +708,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 ### 7.4 Approval notifications (MVP minimum)
 
 - In-app notifications belong to MVP because approval turnaround directly affects the ≤30-minute median decision target (§2.4).
-- Approvers see pending badges/lists; requesters see approval/rejection/expiry changes, refreshed through streaming or fallback polling.
+- Approvers see pending badges/lists; requesters see approval/rejection/expiry changes, refreshed through streaming or fallback polling. Fallback polling keeps the first list page current so new requests appear, and otherwise runs only while a shown request can still change; a terminal request's details are not polled (ADR-0037).
 - Email/Slack delivery and its infrastructure/settings are post-MVP; the §2.2 alert-engine exclusion refers to BI alerts, not approval notifications.
 
 ---

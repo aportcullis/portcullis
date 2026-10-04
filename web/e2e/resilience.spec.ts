@@ -411,6 +411,63 @@ test.describe("application resilience", () => {
     await page.unroute("**/portcullis.v1.QueryExecutions/GetResult");
   });
 
+  test("background refreshes stop for finished requests and continue for live ones", async ({ page }) => {
+    // Own requests: an earlier scenario saves the connection policy, which correctly expires every live request shared through the file.
+    const suffix = Date.now();
+    const finishedTitle = `Polling finished ${suffix}`;
+    const liveTitle = `Polling live ${suffix}`;
+    for (const title of [finishedTitle, liveTitle]) {
+      await page.goto("/requests/new");
+      await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+      await page.getByLabel("Title", { exact: true }).fill(title);
+      await page.getByLabel("SQL", { exact: true }).fill("select 1");
+      await page.getByRole("button", { name: "Submit", exact: true }).click();
+      await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+      if (title === finishedTitle) {
+        await page.getByRole("region", { name: "Request details" }).getByRole("button", { name: "Execute", exact: true }).click();
+        await expect(page.getByText("Succeeded", { exact: true }).first()).toBeVisible();
+      }
+    }
+    let detailReads = 0;
+    let listReads = 0;
+    page.on("request", (request) => {
+      if (request.url().endsWith("/portcullis.v1.AccessRequests/Get")) detailReads++;
+      // The navigation badge polls pending requests on its own schedule; only the list page's reads count here.
+      const isPendingBadgeRead = request.postDataBuffer()?.includes("pending") ?? false;
+      if (request.url().endsWith("/portcullis.v1.AccessRequests/List") && !isPendingBadgeRead) listReads++;
+    });
+    await page.clock.install();
+    await page.goto("/requests");
+
+    await page.getByRole("row", { name: new RegExp(finishedTitle) }).getByRole("link", { name: "Details" }).click();
+    await expect(page.getByText("Succeeded", { exact: true }).first()).toBeVisible();
+    const finishedReads = detailReads;
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await page.clock.runFor(31_000);
+    expect(detailReads).toBe(finishedReads);
+
+    await page.goto("/requests");
+    await page.getByRole("row", { name: new RegExp(liveTitle) }).getByRole("link", { name: "Details" }).click();
+    await expect(page.getByRole("heading", { name: "Request evidence" })).toBeVisible();
+    const liveReads = detailReads;
+    await page.clock.runFor(31_000);
+    await expect.poll(() => detailReads).toBeGreaterThan(liveReads);
+
+    await page.goto("/requests");
+    await page.getByLabel("Filter", { exact: true }).selectOption({ label: "Succeeded" });
+    await expect(page.getByRole("row", { name: new RegExp(finishedTitle) })).toBeVisible();
+    // The first page keeps polling even when every shown request is finished, because new requests arrive there; later finished pages stop (unit-tested).
+    const firstPageListReads = listReads;
+    await page.clock.runFor(31_000);
+    await expect.poll(() => listReads).toBeGreaterThan(firstPageListReads);
+
+    await page.getByLabel("Filter", { exact: true }).selectOption({ label: "Approved" });
+    await expect(page.getByRole("row", { name: new RegExp(liveTitle) })).toBeVisible();
+    const liveListReads = listReads;
+    await page.clock.runFor(31_000);
+    await expect.poll(() => listReads).toBeGreaterThan(liveListReads);
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");

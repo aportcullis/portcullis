@@ -2,7 +2,7 @@ import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
 import { For, Show, createEffect, createSignal, on, onMount, onCleanup } from "solid-js";
 
-import { requestStateFilterOptions, stateBadge, stateLabel } from "@/entities/request/model";
+import { requestStateFilterOptions, shouldPollRequestList, stateBadge, stateLabel } from "@/entities/request/model";
 import { hasPermission, session } from "@/entities/session/store";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { rangeEnd, rangeStart } from "@/entities/request/pagination";
@@ -50,7 +50,8 @@ export const RequestList: Component = () => {
   onMount(() => {
     void loadAccessRequests();
     const refresh = () => { if (!document.hidden) void loadAccessRequests(); };
-    const timer = setInterval(refresh, 30_000);
+    // The timer polls the first page, where new requests arrive, and other pages only while a shown request can still change; returning to the tab or reconnecting always refreshes.
+    const timer = setInterval(() => { if (shouldPollRequestList(accessRequests(), page())) refresh(); }, 30_000);
     window.addEventListener("online", refresh);
     document.addEventListener("visibilitychange", refresh);
     onCleanup(() => {

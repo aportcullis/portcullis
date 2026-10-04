@@ -8,6 +8,7 @@ import {
   submitAccessRequest,
   loadAccessRequests,
 } from "@/entities/request/store";
+import { isExecutionOutcomeState } from "@/entities/request/model";
 import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { hasPermission, session } from "@/entities/session/store";
@@ -40,7 +41,7 @@ export const RequestRowActions: Component<{
   const showCancel = () => !props.executionOnly && mayCancel(props.request, isOwner(), hasPermission);
   const showExecute = () => isOwner() && hasPermission("requests.execute") && props.request.effectiveState === AccessRequestState.APPROVED;
   const showStop = () => isOwner() && hasPermission("requests.execute") && props.request.effectiveState === AccessRequestState.EXECUTING;
-  const showResult = () => isOwner() && hasPermission("requests.get") && [AccessRequestState.SUCCEEDED, AccessRequestState.FAILED, AccessRequestState.OUTCOME_UNKNOWN].includes(props.request.effectiveState);
+  const showResult = () => isOwner() && hasPermission("requests.get") && isExecutionOutcomeState(props.request.effectiveState);
 
   // Settles against the request ID rather than this component, which a list refresh may already have replaced; a principal change discards the outcome.
   const act = async (work: () => Promise<unknown>) => {

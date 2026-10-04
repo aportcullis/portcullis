@@ -56,6 +56,40 @@ export function stateLabel(state: AccessRequestState): string {
   }
 }
 
+// A finished execution's states; with rejection, expiry and cancellation they are terminal and never revisited (PRD §4.4).
+const executionOutcomeStates: readonly AccessRequestState[] = [
+  AccessRequestState.SUCCEEDED,
+  AccessRequestState.FAILED,
+  AccessRequestState.OUTCOME_UNKNOWN,
+];
+
+const terminalStates: readonly AccessRequestState[] = [
+  AccessRequestState.REJECTED,
+  AccessRequestState.EXPIRED,
+  AccessRequestState.CANCELLED,
+  ...executionOutcomeStates,
+];
+
+/** Reports whether a request in this state can still change, so a background refresh may show something new. */
+export function isLiveRequestState(state: AccessRequestState): boolean {
+  return !terminalStates.includes(state);
+}
+
+/** Reports whether any of the shown requests can still change. */
+export function hasLiveRequests(requests: readonly { effectiveState: AccessRequestState }[]): boolean {
+  return requests.some((request) => isLiveRequestState(request.effectiveState));
+}
+
+/** Reports whether the request list should poll: always on the newest-first first page, where new requests arrive, and elsewhere only while a shown request can still change. */
+export function shouldPollRequestList(requests: readonly { effectiveState: AccessRequestState }[], page: number): boolean {
+  return page === 1 || hasLiveRequests(requests);
+}
+
+/** Reports whether the state records a finished execution whose outcome and result the owner may inspect. */
+export function isExecutionOutcomeState(state: AccessRequestState): boolean {
+  return executionOutcomeStates.includes(state);
+}
+
 /** One option of the request list's state filter: the wire value the server filters on and its human label. */
 export type RequestStateFilterOption = { value: string; label: string };
 
