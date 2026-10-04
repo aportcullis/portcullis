@@ -13,12 +13,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// Permissions gating the ConnectionPolicies RPCs (ADR-0008: named at the exact enforcement site). The keys were seeded by migration 0002.
-const (
-	permPoliciesGet    identity.Permission = "policies.get"
-	permPoliciesUpdate identity.Permission = "policies.update"
-)
-
 // policyApp is the slice of the connection-policy application service this handler consumes (DIP/ISP).
 type policyApp interface {
 	Get(ctx context.Context, id connection.ConnectionID) (connection.Policy, error)
@@ -40,7 +34,7 @@ func (c *ConnectionPoliciesService) Get(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.GetConnectionPolicyRequest],
 ) (*connect.Response[portcullisv1.GetConnectionPolicyResponse], error) {
-	if err := requirePermission(ctx, c.authz, permPoliciesGet); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionPoliciesGet); err != nil {
 		return nil, err
 	}
 	id, err := parseConnectionID(req.Msg.GetConnectionId())
@@ -58,7 +52,7 @@ func (c *ConnectionPoliciesService) Update(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.UpdateConnectionPolicyRequest],
 ) (*connect.Response[portcullisv1.UpdateConnectionPolicyResponse], error) {
-	if err := requirePermission(ctx, c.authz, permPoliciesUpdate); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionPoliciesUpdate); err != nil {
 		return nil, err
 	}
 	user, ok := userFromContext(ctx)

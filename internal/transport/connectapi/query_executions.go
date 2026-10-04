@@ -40,7 +40,7 @@ func (s *QueryExecutionsService) Execute(ctx context.Context, req *connect.Reque
 	if len(req.Msg.ProtoReflect().GetUnknown()) != 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid execution message"))
 	}
-	if err := requirePermission(ctx, s.authz, "requests.execute"); err != nil {
+	if err := requirePermission(ctx, s.authz, identity.PermissionRequestsExecute); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -59,7 +59,7 @@ func (s *QueryExecutionsService) Execute(ctx context.Context, req *connect.Reque
 }
 
 func (s *QueryExecutionsService) Get(ctx context.Context, req *connect.Request[portcullisv1.GetQueryExecutionRequest]) (*connect.Response[portcullisv1.QueryExecution], error) {
-	if err := requirePermission(ctx, s.authz, "requests.get"); err != nil {
+	if err := requirePermission(ctx, s.authz, identity.PermissionRequestsGet); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -78,7 +78,7 @@ func (s *QueryExecutionsService) Get(ctx context.Context, req *connect.Request[p
 }
 
 func (s *QueryExecutionsService) Cancel(ctx context.Context, req *connect.Request[portcullisv1.CancelQueryExecutionRequest]) (*connect.Response[portcullisv1.CancelQueryExecutionResponse], error) {
-	if err := requirePermission(ctx, s.authz, "requests.execute"); err != nil {
+	if err := requirePermission(ctx, s.authz, identity.PermissionRequestsExecute); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -96,7 +96,7 @@ func (s *QueryExecutionsService) Cancel(ctx context.Context, req *connect.Reques
 }
 
 func (s *QueryExecutionsService) GetResult(ctx context.Context, req *connect.Request[portcullisv1.GetQueryResultRequest]) (*connect.Response[portcullisv1.QueryResultPage], error) {
-	if err := requirePermission(ctx, s.authz, "requests.get"); err != nil {
+	if err := requirePermission(ctx, s.authz, identity.PermissionRequestsGet); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -126,7 +126,7 @@ func (s *QueryExecutionsService) GetResult(ctx context.Context, req *connect.Req
 }
 
 func (s *QueryExecutionsService) ExportCSV(ctx context.Context, req *connect.Request[portcullisv1.ExportQueryCSVRequest], stream *connect.ServerStream[portcullisv1.QueryCSVChunk]) error {
-	if err := requirePermission(ctx, s.authz, "requests.get"); err != nil {
+	if err := requirePermission(ctx, s.authz, identity.PermissionRequestsGet); err != nil {
 		return err
 	}
 	user, err := requireUser(ctx)
@@ -142,7 +142,7 @@ func (s *QueryExecutionsService) ExportCSV(ctx context.Context, req *connect.Req
 		return executionError(err)
 	}
 	writer := csvStreamWriter{write: func(data []byte) error {
-		if err := requirePermission(ctx, s.authz, "requests.get"); err != nil {
+		if err := requirePermission(ctx, s.authz, identity.PermissionRequestsGet); err != nil {
 			return err
 		}
 		return stream.Send(&portcullisv1.QueryCSVChunk{Data: data})

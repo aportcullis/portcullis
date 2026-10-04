@@ -195,6 +195,7 @@ Turn approved, executed queries into assets.
   - Renaming preserves approval because it changes the descriptor, not the target; use separate `config_version` rather than descriptor `version`.
 - **RBAC, ADR-0008:** SQL-seeded permissions form a Google-IAM-style `resource.verb` catalog; roles are DB-stored permission bundles.
   - Authorize by permission, never role name.
+  - Startup refuses to serve when a permission key enforced in code is missing from the loaded catalog.
   - Seed roles are defaults, not a closed set; admins can create custom roles.
   - `requester` manages own requests/assets, `approver` additionally reviews others' requests, and `admin` additionally manages users/connections/policies/audit with all permissions.
   - Admins cannot approve their own requests.

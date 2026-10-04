@@ -1,6 +1,6 @@
 # ADR-0008: RBAC — permissions in code, roles in the database
 
-- **Status:** Accepted (amended 2026-07-04: the seeded catalog and system-role grants are transcribed as the normative appendix; column/name fixes to match the shipped schema)
+- **Status:** Accepted (amended 2026-07-04: the seeded catalog and system-role grants are transcribed as the normative appendix; column/name fixes to match the shipped schema; amended 2026-10-04: enforced-key constants and startup catalog coverage check)
 - **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
@@ -20,8 +20,11 @@ Standards verified 2026-06-28 (OWASP/oso/WorkOS/Kubernetes RBAC): permissions ar
   Mutation responses use the same summary shape, so `create`/`update`/`delete` never accidentally become a detail-read grant.
 - The **catalog lives in SQL**: a seeded `permissions(key, description)` table is the source of truth (FK integrity for `role_permissions`; the role UI lists available permissions from it).
   The app **loads the catalog from the database at startup** rather than hardcoding it.
-- Go keeps only the `Permission` type.
-  We do **not** maintain a code-side catalog/enum; a specific key is referenced only at the exact site that enforces it, when that feature ships.
+- Go keeps the `Permission` type and, since 2026-10-04, one set of **enforced-key constants** in `internal/domain/identity` (`EnforcedPermissions`).
+  This is not a code-side catalog: the catalog, its descriptions and role grants still come only from SQL, and a key enters the constant set only when an enforcement site that checks it ships.
+  Keys previously spelled as string literals or per-handler constants could drift from the catalog, and a typo surfaced only as `Internal` on the first request that reached it (`ErrUnknownPermission`).
+  Startup now runs `ValidatePermissionCatalog` after loading the catalog and **refuses to serve** when any enforced key is missing, the same fail-fast stance as the keyring and runtime-connection checks.
+  A source-level test requires every transport enforcement site to pass one of these constants, and storage adapters that check a key in SQL should adopt the same constants.
 
 ### Roles = database rows (custom roles allowed)
 - `roles(id, organization_id, name, is_system, is_bootstrap_default, created_at, deleted_at)` — soft-deleted, never hard-deleted (`docs/conventions/data.md`), plus `unique (id, organization_id)` as the composite-FK target so a membership's role must belong to the membership's own org (ADR-0004).

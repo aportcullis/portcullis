@@ -183,6 +183,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   단순 rename은 대상 변경이 아니므로 승인을 죽이지 않는다(그래서 descriptor `version`이 아니라 별도의 `config_version`이다).
 - **역할/권한(RBAC, ADR-0008):** 권한은 Google-IAM 스타일 `resource.verb`로 세분화된 **카탈로그(SQL seed)**이고, 역할은 **DB에 저장된 권한 묶음**이다.
   인가는 역할 이름이 아니라 **권한으로 검사**한다.
+  코드가 검사하는 권한 키가 로드된 카탈로그에 없으면 서버는 기동을 거부한다.
   시드 시스템 역할 3개는 **default**일 뿐 닫힌 집합이 아니며 admin이 **custom role을 생성**할 수 있다 — `requester`(자기 요청·saved query 관리), `approver`(+ 타인 요청 검토), `admin`(+ 사용자·connection·정책·audit 관리, 전 권한). admin도 자신의 요청은 승인할 수 없음.
 - **실행 권한:** 요청자만 자신의 승인된 요청을 실행할 수 있음. admin 대리 실행은 MVP에서 허용하지 않음. kviklet은 0.8.0부터 단일 실행 요청에 타 execute 권한자의 실행을 허용하지만, Portcullis는 requester를 승인 단위와 결과 권한에 포함하는 기존 계약을 유지한다(ADR-0019).
 - **소규모 팀 데드락 (결정됨):** 자기 승인 금지(admin 포함) 정책상, 권한자가 1명뿐인 셀프호스트는 자기 요청을 승인할 주체가 없어 실행이 막힌다. connection·종류별 `required_approvals=0` 설정으로 이 데드락을 해소한다.

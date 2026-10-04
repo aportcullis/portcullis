@@ -202,6 +202,11 @@ func run() error {
 		logger.Error("permission catalog unavailable", "err", err, "hint", "apply migrations (`portcullis migrate`) — 0002 seeds the permission catalog")
 		return err
 	}
+	// Every key an enforcement site checks must exist in the catalog; a missing one would otherwise surface as Internal on each affected request.
+	if err := identity.ValidatePermissionCatalog(catalog); err != nil {
+		logger.Error("permission catalog incomplete", "err", err, "hint", "apply every migration (`portcullis migrate`) before serving this release")
+		return err
+	}
 	authzSvc, err := authz.New(store, catalog)
 	if err != nil {
 		logger.Error("authz init failed", "err", err)

@@ -15,15 +15,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// Permissions gating the AccessRequests RPCs (ADR-0008: named at the exact enforcement site). All six keys were seeded by migration 0002.
-const (
-	permRequestsList    identity.Permission = "requests.list"
-	permRequestsGet     identity.Permission = "requests.get"
-	permRequestsCreate  identity.Permission = "requests.create"
-	permRequestsApprove identity.Permission = "requests.approve"
-	permRequestsReject  identity.Permission = "requests.reject"
-)
-
 // requestApp is the slice of the access-request application service this handler consumes (DIP/ISP). canReviewAll widens visibility from own-requests to org-wide and unlocks payload decryption for non-owners (§8.4).
 type requestApp interface {
 	Create(ctx context.Context, requester identity.UserID, p accessrequest.CreateParams) (access.RequestView, error)
@@ -52,7 +43,7 @@ func (a *AccessRequestsService) Create(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.CreateAccessRequestRequest],
 ) (*connect.Response[portcullisv1.CreateAccessRequestResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsCreate); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsCreate); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -80,7 +71,7 @@ func (a *AccessRequestsService) UpdateDraft(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.UpdateAccessRequestDraftRequest],
 ) (*connect.Response[portcullisv1.UpdateAccessRequestDraftResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsCreate); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsCreate); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -108,7 +99,7 @@ func (a *AccessRequestsService) Submit(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.SubmitAccessRequestRequest],
 ) (*connect.Response[portcullisv1.SubmitAccessRequestResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsCreate); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsCreate); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -130,7 +121,7 @@ func (a *AccessRequestsService) Cancel(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.CancelAccessRequestRequest],
 ) (*connect.Response[portcullisv1.CancelAccessRequestResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsCreate); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsCreate); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -152,7 +143,7 @@ func (a *AccessRequestsService) Approve(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.ApproveAccessRequestRequest],
 ) (*connect.Response[portcullisv1.ApproveAccessRequestResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsApprove); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsApprove); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -174,7 +165,7 @@ func (a *AccessRequestsService) Reject(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.RejectAccessRequestRequest],
 ) (*connect.Response[portcullisv1.RejectAccessRequestResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsReject); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsReject); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -196,7 +187,7 @@ func (a *AccessRequestsService) Get(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.GetAccessRequestRequest],
 ) (*connect.Response[portcullisv1.GetAccessRequestResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsGet); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsGet); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -226,7 +217,7 @@ func (a *AccessRequestsService) List(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.ListAccessRequestsRequest],
 ) (*connect.Response[portcullisv1.ListAccessRequestsResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsList); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsList); err != nil {
 		return nil, err
 	}
 	user, err := requireUser(ctx)
@@ -269,7 +260,7 @@ func (a *AccessRequestsService) ListRequestableConnections(
 	ctx context.Context,
 	_ *connect.Request[portcullisv1.ListRequestableConnectionsRequest],
 ) (*connect.Response[portcullisv1.ListRequestableConnectionsResponse], error) {
-	if err := requirePermission(ctx, a.authz, permRequestsCreate); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionRequestsCreate); err != nil {
 		return nil, err
 	}
 	conns, err := a.svc.ListRequestableConnections(ctx)
@@ -325,14 +316,14 @@ func requestError(err error) error {
 
 // canReview widens visibility for either requests.approve or requests.reject; resolver errors fail closed (ADR-0018).
 func canReview(ctx context.Context, az authorizer, user identity.User) (bool, error) {
-	approve, err := hasPermission(ctx, az, user, permRequestsApprove)
+	approve, err := hasPermission(ctx, az, user, identity.PermissionRequestsApprove)
 	if err != nil {
 		return false, err
 	}
 	if approve {
 		return true, nil
 	}
-	return hasPermission(ctx, az, user, permRequestsReject)
+	return hasPermission(ctx, az, user, identity.PermissionRequestsReject)
 }
 
 // requireUser returns the interceptor-injected user or an Unauthenticated error (a defensive backstop; the interceptor guarantees one).

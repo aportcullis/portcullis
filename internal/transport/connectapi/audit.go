@@ -15,12 +15,6 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
-// Per ADR-0008 each key is named at its exact enforcement site: list sees only collection summaries, while get unlocks one event's correlation/detail data.
-const (
-	permAuditList identity.Permission = "audit.list"
-	permAuditGet  identity.Permission = "audit.get"
-)
-
 // AuditService implements the Audit RPC: reading the append-only trail behind an audit.list permission check (ADR-0008), with OFFSET pagination (PRD §7.1). The authorizer and the read service are injected so the handler holds no storage or authz detail of its own.
 type AuditService struct {
 	authz  authorizer
@@ -42,7 +36,7 @@ func (a *AuditService) List(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.AuditListRequest],
 ) (*connect.Response[portcullisv1.AuditListResponse], error) {
-	if err := requirePermission(ctx, a.authz, permAuditList); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionAuditList); err != nil {
 		return nil, err
 	}
 	q := appaudit.Query{
@@ -80,7 +74,7 @@ func (a *AuditService) Get(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.GetAuditEventRequest],
 ) (*connect.Response[portcullisv1.GetAuditEventResponse], error) {
-	if err := requirePermission(ctx, a.authz, permAuditGet); err != nil {
+	if err := requirePermission(ctx, a.authz, identity.PermissionAuditGet); err != nil {
 		return nil, err
 	}
 	if _, err := uuid.Parse(req.Msg.GetId()); err != nil {

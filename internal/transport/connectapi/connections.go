@@ -23,16 +23,6 @@ func parseConnectionID(raw string) (connection.ConnectionID, error) {
 	return connection.ConnectionID(parsed.String()), nil
 }
 
-// Permissions gating the Connections RPCs. Per ADR-0008 each key is named here, at its exact enforcement site, and nowhere else. The catalog's delete verb gates Archive — "delete" IS archive; no hard delete exists (PRD §4.3).
-const (
-	permConnectionsList   identity.Permission = "connections.list"
-	permConnectionsGet    identity.Permission = "connections.get"
-	permConnectionsCreate identity.Permission = "connections.create"
-	permConnectionsUpdate identity.Permission = "connections.update"
-	permConnectionsTest   identity.Permission = "connections.test"
-	permConnectionsDelete identity.Permission = "connections.delete"
-)
-
 // connectionApp is the slice of the connection application service this handler consumes (DIP/ISP — depend on the called methods, not the concrete *appconn.Service).
 type connectionApp interface {
 	List(ctx context.Context, includeArchived bool) ([]connection.Connection, error)
@@ -59,7 +49,7 @@ func (c *ConnectionsService) List(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.ListConnectionsRequest],
 ) (*connect.Response[portcullisv1.ListConnectionsResponse], error) {
-	if err := requirePermission(ctx, c.authz, permConnectionsList); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionConnectionsList); err != nil {
 		return nil, err
 	}
 	conns, err := c.svc.List(ctx, req.Msg.GetIncludeArchived())
@@ -77,7 +67,7 @@ func (c *ConnectionsService) Get(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.GetConnectionRequest],
 ) (*connect.Response[portcullisv1.GetConnectionResponse], error) {
-	if err := requirePermission(ctx, c.authz, permConnectionsGet); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionConnectionsGet); err != nil {
 		return nil, err
 	}
 	id, err := parseConnectionID(req.Msg.GetId())
@@ -95,7 +85,7 @@ func (c *ConnectionsService) Create(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.CreateConnectionRequest],
 ) (*connect.Response[portcullisv1.CreateConnectionResponse], error) {
-	if err := requirePermission(ctx, c.authz, permConnectionsCreate); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionConnectionsCreate); err != nil {
 		return nil, err
 	}
 	user, ok := userFromContext(ctx)
@@ -118,7 +108,7 @@ func (c *ConnectionsService) Update(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.UpdateConnectionRequest],
 ) (*connect.Response[portcullisv1.UpdateConnectionResponse], error) {
-	if err := requirePermission(ctx, c.authz, permConnectionsUpdate); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionConnectionsUpdate); err != nil {
 		return nil, err
 	}
 	user, ok := userFromContext(ctx)
@@ -158,7 +148,7 @@ func (c *ConnectionsService) Test(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.TestConnectionRequest],
 ) (*connect.Response[portcullisv1.TestConnectionResponse], error) {
-	if err := requirePermission(ctx, c.authz, permConnectionsTest); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionConnectionsTest); err != nil {
 		return nil, err
 	}
 	user, ok := userFromContext(ctx)
@@ -194,7 +184,7 @@ func (c *ConnectionsService) Archive(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.ArchiveConnectionRequest],
 ) (*connect.Response[portcullisv1.ArchiveConnectionResponse], error) {
-	if err := requirePermission(ctx, c.authz, permConnectionsDelete); err != nil {
+	if err := requirePermission(ctx, c.authz, identity.PermissionConnectionsDelete); err != nil {
 		return nil, err
 	}
 	user, ok := userFromContext(ctx)

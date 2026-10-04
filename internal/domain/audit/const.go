@@ -39,6 +39,11 @@ const (
 	ActionExecutionStarted       Action = "EXECUTION_STARTED"
 	ActionExecutionFinished      Action = "EXECUTION_FINISHED"
 	ActionLateCompletionObserved Action = "LATE_COMPLETION_OBSERVED"
+
+	// ActionResultEvicted records the eviction of a live result snapshot by the result store (ADR-0011); metadata carries the cause.
+	ActionResultEvicted Action = "RESULT_EVICTED"
+	// ActionKeyRotationBatch records one committed key-rotation batch for an organization (ADR-0003); metadata carries the active version and row count.
+	ActionKeyRotationBatch Action = "KEY_ROTATION_BATCH"
 )
 
 // outcome values — the terminal result of an action.
@@ -57,4 +62,8 @@ const (
 	TargetTypeSetting = "setting"
 	// TargetTypeAccessRequest is the target_type for ACCESS_REQUEST_* events; target_id carries the request UUID (ADR-0018).
 	TargetTypeAccessRequest = "access_request"
+	// TargetTypeResultSet is the target_type for RESULT_EVICTED events; target_id carries the result snapshot UUID (ADR-0011).
+	TargetTypeResultSet = "result_set"
+	// TargetTypeEncryption is the target_type for KEY_ROTATION_BATCH events, which act on an organization's encrypted records as a whole (ADR-0003).
+	TargetTypeEncryption = "encryption"
 )
