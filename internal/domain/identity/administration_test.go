@@ -81,3 +81,44 @@ func TestValidateNotSelfRefusesOnlyTheActorsOwnAccount(t *testing.T) {
 		t.Errorf("own account: ValidateNotSelf = %v, want ErrSelfAdministration", err)
 	}
 }
+
+func TestDelegationAuthorizeAdmitsAnActiveActorStillHoldingItsAuthority(t *testing.T) {
+	t.Parallel()
+	held := []identity.Permission{identity.PermissionUsersUpdate, identity.PermissionUsersDisable, identity.PermissionAuditList}
+	delegation := identity.Delegation{Actor: "actor-1", Gate: identity.PermissionUsersUpdate}
+	cases := map[string][][]identity.Permission{
+		"gate alone":                      nil,
+		"target role held":                {{identity.PermissionAuditList}},
+		"current and new roles both held": {{identity.PermissionAuditList}, {identity.PermissionUsersDisable}},
+		"empty affected role":             {{}},
+	}
+	for name, affected := range cases {
+		if err := delegation.Authorize(true, held, affected...); err != nil {
+			t.Errorf("%s: Authorize = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestDelegationAuthorizeRefusesAnActorWhoseAuthorityChanged(t *testing.T) {
+	t.Parallel()
+	held := []identity.Permission{identity.PermissionUsersUpdate, identity.PermissionAuditList}
+	delegation := identity.Delegation{Actor: "actor-1", Gate: identity.PermissionUsersUpdate}
+	cases := []struct {
+		name     string
+		active   bool
+		held     []identity.Permission
+		affected [][]identity.Permission
+		want     error
+	}{
+		{name: "actor disabled meanwhile", active: false, held: held, want: identity.ErrActorNotAuthorized},
+		{name: "actor lost the gate permission", active: true, held: []identity.Permission{identity.PermissionAuditList}, want: identity.ErrActorNotAuthorized},
+		{name: "actor lost every permission", active: true, held: nil, want: identity.ErrActorNotAuthorized},
+		{name: "target promoted beyond the actor", active: true, held: held, affected: [][]identity.Permission{{identity.PermissionUsersDisable}}, want: identity.ErrPrivilegeEscalation},
+		{name: "new role grants what the actor lacks", active: true, held: held, affected: [][]identity.Permission{{identity.PermissionAuditList}, {identity.PermissionRolesDelete}}, want: identity.ErrPrivilegeEscalation},
+	}
+	for _, scenario := range cases {
+		if err := delegation.Authorize(scenario.active, scenario.held, scenario.affected...); !errors.Is(err, scenario.want) {
+			t.Errorf("%s: Authorize = %v, want %v", scenario.name, err, scenario.want)
+		}
+	}
+}

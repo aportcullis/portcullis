@@ -58,6 +58,16 @@ type fakeStore struct {
 	committedEvents    []audit.Event
 	sessionRevocations map[identity.UserID]int
 	nextID             int
+	delegations        []identity.Delegation
+	// lockedRefusal is returned once by the next mutation.
+	lockedRefusal error
+}
+
+func (f *fakeStore) reauthorize(delegation identity.Delegation) error {
+	f.delegations = append(f.delegations, delegation)
+	refusal := f.lockedRefusal
+	f.lockedRefusal = nil
+	return refusal
 }
 
 func newFakeStore() *fakeStore {
@@ -163,7 +173,10 @@ func (f *fakeStore) GetMember(_ context.Context, org identity.OrganizationID, us
 	return f.memberView(member), nil
 }
 
-func (f *fakeStore) CreateMember(_ context.Context, org identity.OrganizationID, member identity.NewMember, setup identity.PasswordSetupIssue, event audit.Event) (identity.Member, identity.PasswordSetup, error) {
+func (f *fakeStore) CreateMember(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, member identity.NewMember, setup identity.PasswordSetupIssue, event audit.Event) (identity.Member, identity.PasswordSetup, error) {
+	if err := f.reauthorize(delegation); err != nil {
+		return identity.Member{}, identity.PasswordSetup{}, err
+	}
 	for _, existing := range f.members {
 		if existing.user.Email == member.Email {
 			return identity.Member{}, identity.PasswordSetup{}, identity.ErrEmailTaken
@@ -186,7 +199,10 @@ func (f *fakeStore) CreateMember(_ context.Context, org identity.OrganizationID,
 	return f.memberView(created), identity.PasswordSetup{UserID: id, OrganizationID: org, ExpiresAt: fakeNow.Add(setup.Validity)}, nil
 }
 
-func (f *fakeStore) IssuePasswordSetup(_ context.Context, org identity.OrganizationID, user identity.UserID, setup identity.PasswordSetupIssue, event audit.Event) (identity.PasswordSetup, error) {
+func (f *fakeStore) IssuePasswordSetup(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, user identity.UserID, setup identity.PasswordSetupIssue, event audit.Event) (identity.PasswordSetup, error) {
+	if err := f.reauthorize(delegation); err != nil {
+		return identity.PasswordSetup{}, err
+	}
 	member, ok := f.members[user]
 	switch {
 	case !ok || member.organization != org:
@@ -201,7 +217,10 @@ func (f *fakeStore) IssuePasswordSetup(_ context.Context, org identity.Organizat
 	return identity.PasswordSetup{UserID: user, OrganizationID: org, ExpiresAt: fakeNow.Add(setup.Validity)}, nil
 }
 
-func (f *fakeStore) SetMemberStatus(_ context.Context, org identity.OrganizationID, user identity.UserID, status identity.UserStatus, event audit.Event) (identity.Member, error) {
+func (f *fakeStore) SetMemberStatus(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, user identity.UserID, status identity.UserStatus, event audit.Event) (identity.Member, error) {
+	if err := f.reauthorize(delegation); err != nil {
+		return identity.Member{}, err
+	}
 	member, ok := f.members[user]
 	if !ok || member.organization != org {
 		return identity.Member{}, identity.ErrUserNotFound
@@ -220,7 +239,10 @@ func (f *fakeStore) SetMemberStatus(_ context.Context, org identity.Organization
 	return f.memberView(member), nil
 }
 
-func (f *fakeStore) AssignMemberRole(_ context.Context, org identity.OrganizationID, user identity.UserID, role identity.RoleID, event audit.Event) (identity.Member, error) {
+func (f *fakeStore) AssignMemberRole(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, user identity.UserID, role identity.RoleID, event audit.Event) (identity.Member, error) {
+	if err := f.reauthorize(delegation); err != nil {
+		return identity.Member{}, err
+	}
 	member, ok := f.members[user]
 	if !ok || member.organization != org {
 		return identity.Member{}, identity.ErrUserNotFound
@@ -258,7 +280,10 @@ func (f *fakeStore) ListRoles(_ context.Context, org identity.OrganizationID) ([
 	return roles, nil
 }
 
-func (f *fakeStore) CreateRole(_ context.Context, org identity.OrganizationID, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
+func (f *fakeStore) CreateRole(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
+	if err := f.reauthorize(delegation); err != nil {
+		return identity.Role{}, err
+	}
 	for _, stored := range f.roles {
 		if stored.organization == org && !stored.deleted && stored.role.Name == definition.Name {
 			return identity.Role{}, identity.ErrRoleNameTaken
@@ -272,7 +297,10 @@ func (f *fakeStore) CreateRole(_ context.Context, org identity.OrganizationID, d
 	return f.roleView(f.roles[id]), nil
 }
 
-func (f *fakeStore) UpdateRole(_ context.Context, org identity.OrganizationID, role identity.RoleID, expectedVersion int64, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
+func (f *fakeStore) UpdateRole(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, role identity.RoleID, expectedVersion int64, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
+	if err := f.reauthorize(delegation); err != nil {
+		return identity.Role{}, err
+	}
 	stored, ok := f.roles[role]
 	switch {
 	case !ok || stored.organization != org || stored.deleted:
@@ -299,7 +327,10 @@ func (f *fakeStore) UpdateRole(_ context.Context, org identity.OrganizationID, r
 	return f.roleView(stored), nil
 }
 
-func (f *fakeStore) DeleteRole(_ context.Context, org identity.OrganizationID, role identity.RoleID, expectedVersion int64, event audit.Event) error {
+func (f *fakeStore) DeleteRole(_ context.Context, org identity.OrganizationID, delegation identity.Delegation, role identity.RoleID, expectedVersion int64, event audit.Event) error {
+	if err := f.reauthorize(delegation); err != nil {
+		return err
+	}
 	stored, ok := f.roles[role]
 	switch {
 	case !ok || stored.organization != org || stored.deleted:

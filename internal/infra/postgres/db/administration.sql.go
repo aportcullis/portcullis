@@ -36,6 +36,38 @@ func (q *Queries) CountActiveAdministrators(ctx context.Context, arg CountActive
 	return count, err
 }
 
+const getActorAuthority = `-- name: GetActorAuthority :one
+select u.status,
+       coalesce(array(
+           select distinct rp.permission_key
+           from public.organization_memberships m
+           join public.roles r on r.id = m.role_id and r.deleted_at is null
+           join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
+           where m.organization_id = $1 and m.user_id = u.id
+           order by rp.permission_key
+       ), '{}')::text[] as permissions
+from public.users u
+where u.id = $2
+`
+
+type GetActorAuthorityParams struct {
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+}
+
+type GetActorAuthorityRow struct {
+	Status      string
+	Permissions []string
+}
+
+// Actor status and live permissions, read under the administration lock (ADR-0053).
+func (q *Queries) GetActorAuthority(ctx context.Context, arg GetActorAuthorityParams) (GetActorAuthorityRow, error) {
+	row := q.db.QueryRow(ctx, getActorAuthority, arg.OrganizationID, arg.UserID)
+	var i GetActorAuthorityRow
+	err := row.Scan(&i.Status, &i.Permissions)
+	return i, err
+}
+
 const getMember = `-- name: GetMember :one
 select u.id, u.email, u.display_name, u.status, u.created_at, m.role_id, r.name as role_name,
        exists (select 1 from public.auth_methods am where am.user_id = u.id and am.type = 'password')::boolean as has_password

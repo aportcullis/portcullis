@@ -32,6 +32,34 @@ func (s *IdentityStore) withAdministrationTx(ctx context.Context, org identity.O
 	})
 }
 
+// Per docs/adr/0053-user-and-role-administration.md (Safeguards), re-checks the delegation against the actor's state read in this locked transaction.
+func reauthorizeDelegation(ctx context.Context, queries *db.Queries, orgID pgtype.UUID, delegation identity.Delegation, affected ...[]identity.Permission) error {
+	actorID, err := stringToUUID(string(delegation.Actor))
+	if err != nil {
+		return identity.ErrActorNotAuthorized
+	}
+	authority, err := queries.GetActorAuthority(ctx, db.GetActorAuthorityParams{OrganizationID: orgID, UserID: actorID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return identity.ErrActorNotAuthorized
+	}
+	if err != nil {
+		return err
+	}
+	return delegation.Authorize(identity.UserStatus(authority.Status) == identity.StatusActive, toPermissions(authority.Permissions), affected...)
+}
+
+func lockedMemberRolePermissions(ctx context.Context, queries *db.Queries, org identity.OrganizationID, user identity.UserID) ([]identity.Permission, error) {
+	member, err := getMember(ctx, queries, org, user)
+	if err != nil {
+		return nil, err
+	}
+	role, err := getRole(ctx, queries, org, member.RoleID)
+	if err != nil {
+		return nil, err
+	}
+	return role.Permissions, nil
+}
+
 // requireActiveAdministrator rolls the transaction back with ErrLastAdministrator when no active member's role holds every administrator permission.
 func requireActiveAdministrator(ctx context.Context, q *db.Queries, orgID pgtype.UUID) error {
 	administrators, err := q.CountActiveAdministrators(ctx, db.CountActiveAdministratorsParams{
@@ -194,12 +222,15 @@ func (s *IdentityStore) ListRoles(ctx context.Context, org identity.Organization
 }
 
 // CreateMember inserts the user, membership and open setup link with the audit event, under the administration lock so a concurrent delete cannot remove the role.
-func (s *IdentityStore) CreateMember(ctx context.Context, org identity.OrganizationID, member identity.NewMember, setup identity.PasswordSetupIssue, event audit.Event) (identity.Member, identity.PasswordSetup, error) {
+func (s *IdentityStore) CreateMember(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, member identity.NewMember, setup identity.PasswordSetupIssue, event audit.Event) (identity.Member, identity.PasswordSetup, error) {
 	var created identity.Member
 	var issued identity.PasswordSetup
 	err := s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
 		role, err := getRole(ctx, q, org, member.RoleID)
 		if err != nil {
+			return err
+		}
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation, role.Permissions); err != nil {
 			return err
 		}
 		roleID, err := stringToUUID(string(role.ID))
@@ -231,11 +262,18 @@ func (s *IdentityStore) CreateMember(ctx context.Context, org identity.Organizat
 }
 
 // IssuePasswordSetup replaces the user's open setup link with the audit event; disabled users and users with a password are refused.
-func (s *IdentityStore) IssuePasswordSetup(ctx context.Context, org identity.OrganizationID, user identity.UserID, setup identity.PasswordSetupIssue, event audit.Event) (identity.PasswordSetup, error) {
+func (s *IdentityStore) IssuePasswordSetup(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, user identity.UserID, setup identity.PasswordSetupIssue, event audit.Event) (identity.PasswordSetup, error) {
 	var issued identity.PasswordSetup
 	err := s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
 		userID, state, err := lockMember(ctx, q, orgID, user)
 		if err != nil {
+			return err
+		}
+		current, err := lockedMemberRolePermissions(ctx, q, org, user)
+		if err != nil {
+			return err
+		}
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation, current); err != nil {
 			return err
 		}
 		switch {
@@ -273,11 +311,18 @@ func lockMember(ctx context.Context, q *db.Queries, orgID pgtype.UUID, user iden
 }
 
 // SetMemberStatus changes the account status, revokes its sessions (and on disable its open setup link), and rolls back when no active administrator would remain.
-func (s *IdentityStore) SetMemberStatus(ctx context.Context, org identity.OrganizationID, user identity.UserID, status identity.UserStatus, event audit.Event) (identity.Member, error) {
+func (s *IdentityStore) SetMemberStatus(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, user identity.UserID, status identity.UserStatus, event audit.Event) (identity.Member, error) {
 	var updated identity.Member
 	err := s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
 		userID, _, err := lockMember(ctx, q, orgID, user)
 		if err != nil {
+			return err
+		}
+		current, err := lockedMemberRolePermissions(ctx, q, org, user)
+		if err != nil {
+			return err
+		}
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation, current); err != nil {
 			return err
 		}
 		if err := q.SetUserStatus(ctx, db.SetUserStatusParams{Status: string(status), UserID: userID}); err != nil {
@@ -305,7 +350,7 @@ func (s *IdentityStore) SetMemberStatus(ctx context.Context, org identity.Organi
 }
 
 // AssignMemberRole replaces the membership role, revokes the member's sessions, and rolls back when no active administrator would remain.
-func (s *IdentityStore) AssignMemberRole(ctx context.Context, org identity.OrganizationID, user identity.UserID, role identity.RoleID, event audit.Event) (identity.Member, error) {
+func (s *IdentityStore) AssignMemberRole(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, user identity.UserID, role identity.RoleID, event audit.Event) (identity.Member, error) {
 	var updated identity.Member
 	err := s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
 		userID, _, err := lockMember(ctx, q, orgID, user)
@@ -314,6 +359,13 @@ func (s *IdentityStore) AssignMemberRole(ctx context.Context, org identity.Organ
 		}
 		live, err := getRole(ctx, q, org, role)
 		if err != nil {
+			return err
+		}
+		current, err := lockedMemberRolePermissions(ctx, q, org, user)
+		if err != nil {
+			return err
+		}
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation, current, live.Permissions); err != nil {
 			return err
 		}
 		roleID, err := stringToUUID(string(live.ID))
@@ -340,9 +392,12 @@ func (s *IdentityStore) AssignMemberRole(ctx context.Context, org identity.Organ
 }
 
 // CreateRole inserts a custom role and its permissions with the audit event.
-func (s *IdentityStore) CreateRole(ctx context.Context, org identity.OrganizationID, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
+func (s *IdentityStore) CreateRole(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
 	var created identity.Role
 	err := s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation, definition.Permissions); err != nil {
+			return err
+		}
 		roleID, err := q.InsertRole(ctx, db.InsertRoleParams{OrganizationID: orgID, Name: definition.Name, At: timeToTS(at)})
 		if err != nil {
 			return onUniqueViolation(err, rolesOrgNameIndex, identity.ErrRoleNameTaken)
@@ -361,12 +416,25 @@ func (s *IdentityStore) CreateRole(ctx context.Context, org identity.Organizatio
 }
 
 // UpdateRole replaces a custom role's name and permissions at the expected version, revokes its members' sessions, and rolls back when no active administrator would remain.
-func (s *IdentityStore) UpdateRole(ctx context.Context, org identity.OrganizationID, role identity.RoleID, expectedVersion int64, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
+func (s *IdentityStore) UpdateRole(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, role identity.RoleID, expectedVersion int64, definition identity.RoleDefinition, event audit.Event) (identity.Role, error) {
 	var updated identity.Role
 	err := s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
 		roleID, err := stringToUUID(string(role))
 		if err != nil {
 			return identity.ErrRoleNotFound
+		}
+		stored, err := getRole(ctx, q, org, role)
+		if errors.Is(err, identity.ErrRoleNotFound) {
+			return explainRefusedRoleChange(ctx, q, orgID, roleID, expectedVersion)
+		}
+		if err != nil {
+			return err
+		}
+		if stored.IsSystem {
+			return identity.ErrSystemRoleImmutable
+		}
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation, stored.Permissions, definition.Permissions); err != nil {
+			return err
 		}
 		changed, err := q.UpdateCustomRole(ctx, db.UpdateCustomRoleParams{Name: definition.Name, OrganizationID: orgID, RoleID: roleID, ExpectedVersion: expectedVersion})
 		if err != nil {
@@ -399,11 +467,14 @@ func (s *IdentityStore) UpdateRole(ctx context.Context, org identity.Organizatio
 }
 
 // DeleteRole soft-deletes an unassigned custom role at the expected version with the audit event.
-func (s *IdentityStore) DeleteRole(ctx context.Context, org identity.OrganizationID, role identity.RoleID, expectedVersion int64, event audit.Event) error {
+func (s *IdentityStore) DeleteRole(ctx context.Context, org identity.OrganizationID, delegation identity.Delegation, role identity.RoleID, expectedVersion int64, event audit.Event) error {
 	return s.withAdministrationTx(ctx, org, func(q *db.Queries, orgID pgtype.UUID, at time.Time) error {
 		roleID, err := stringToUUID(string(role))
 		if err != nil {
 			return identity.ErrRoleNotFound
+		}
+		if err := reauthorizeDelegation(ctx, q, orgID, delegation); err != nil {
+			return err
 		}
 		deleted, err := q.SoftDeleteCustomRole(ctx, db.SoftDeleteCustomRoleParams{At: timeToTS(at), OrganizationID: orgID, RoleID: roleID, ExpectedVersion: expectedVersion})
 		if err != nil {

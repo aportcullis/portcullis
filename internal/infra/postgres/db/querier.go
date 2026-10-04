@@ -57,6 +57,8 @@ type Querier interface {
 	GetAccessRequestForUpdate(ctx context.Context, arg GetAccessRequestForUpdateParams) (AccessRequest, error)
 	// Return requester, target, and current valid-approval count together. Keep detail and list projections aligned for their shared Go row type.
 	GetAccessRequestView(ctx context.Context, arg GetAccessRequestViewParams) (GetAccessRequestViewRow, error)
+	// Actor status and live permissions, read under the administration lock (ADR-0053).
+	GetActorAuthority(ctx context.Context, arg GetActorAuthorityParams) (GetActorAuthorityRow, error)
 	// Detail remains organization-scoped; audit.get must never become an IDOR path. total_count is literally 1 here and goes unused — it keeps the row shape structurally identical to the list rows, so one mapper serves all three.
 	GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)

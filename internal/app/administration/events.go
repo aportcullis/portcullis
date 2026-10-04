@@ -39,6 +39,8 @@ func refusalReason(err error) (string, bool) {
 		return "self_administration", true
 	case errors.Is(err, identity.ErrLastAdministrator):
 		return "last_administrator", true
+	case errors.Is(err, identity.ErrActorNotAuthorized):
+		return "actor_not_authorized", true
 	default:
 		return "", false
 	}

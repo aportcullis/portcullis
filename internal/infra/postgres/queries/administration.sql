@@ -25,6 +25,20 @@ join public.users u on u.id = m.user_id
 where m.organization_id = @organization_id and m.user_id = @user_id
 for update of u, m;
 
+-- name: GetActorAuthority :one
+-- Actor status and live permissions, read under the administration lock (ADR-0053).
+select u.status,
+       coalesce(array(
+           select distinct rp.permission_key
+           from public.organization_memberships m
+           join public.roles r on r.id = m.role_id and r.deleted_at is null
+           join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
+           where m.organization_id = @organization_id and m.user_id = u.id
+           order by rp.permission_key
+       ), '{}')::text[] as permissions
+from public.users u
+where u.id = @user_id;
+
 -- name: SetUserStatus :exec
 update public.users set status = @status where id = @user_id;
 

@@ -72,9 +72,10 @@ func (s *UserService) Create(ctx context.Context, actor identity.UserID, params 
 	}
 	event := newSucceededEvent(ctx, actor, org, target)
 	event.Metadata = map[string]any{"role_id": string(role.ID)}
-	member, setup, err := s.repo.CreateMember(ctx, org, identity.NewMember{Email: email, DisplayName: params.DisplayName, RoleID: role.ID}, issue, event)
+	delegation := identity.Delegation{Actor: actor, Gate: identity.PermissionUsersCreate}
+	member, setup, err := s.repo.CreateMember(ctx, org, delegation, identity.NewMember{Email: email, DisplayName: params.DisplayName, RoleID: role.ID}, issue, event)
 	if err != nil {
-		return CreatedUser{}, err
+		return CreatedUser{}, s.guard.recordRefusal(ctx, actor, org, target, err)
 	}
 	return CreatedUser{Member: member, SetupLink: SetupLink{Token: token, ExpiresAt: setup.ExpiresAt}}, nil
 }
@@ -93,9 +94,10 @@ func (s *UserService) IssueSetupLink(ctx context.Context, actor, user identity.U
 	if err != nil {
 		return SetupLink{}, err
 	}
-	setup, err := s.repo.IssuePasswordSetup(ctx, org, user, issue, newSucceededEvent(ctx, actor, org, target))
+	delegation := identity.Delegation{Actor: actor, Gate: identity.PermissionUsersUpdate}
+	setup, err := s.repo.IssuePasswordSetup(ctx, org, delegation, user, issue, newSucceededEvent(ctx, actor, org, target))
 	if err != nil {
-		return SetupLink{}, err
+		return SetupLink{}, s.guard.recordRefusal(ctx, actor, org, target, err)
 	}
 	return SetupLink{Token: token, ExpiresAt: setup.ExpiresAt}, nil
 }
@@ -133,7 +135,7 @@ func (s *UserService) AssignRole(ctx context.Context, actor, user identity.UserI
 	}
 	event := newSucceededEvent(ctx, actor, org, target)
 	event.Metadata = map[string]any{"previous_role_id": string(member.RoleID), "role_id": string(next.ID)}
-	updated, err := s.repo.AssignMemberRole(ctx, org, user, next.ID, event)
+	updated, err := s.repo.AssignMemberRole(ctx, org, identity.Delegation{Actor: actor, Gate: identity.PermissionUsersUpdate}, user, next.ID, event)
 	if err != nil {
 		return identity.Member{}, s.guard.recordRefusal(ctx, actor, org, target, err)
 	}
@@ -157,7 +159,7 @@ func (s *UserService) changeStatus(ctx context.Context, actor, user identity.Use
 	if member.User.Status == status {
 		return member, nil
 	}
-	updated, err := s.repo.SetMemberStatus(ctx, org, user, status, newSucceededEvent(ctx, actor, org, target))
+	updated, err := s.repo.SetMemberStatus(ctx, org, identity.Delegation{Actor: actor, Gate: identity.PermissionUsersDisable}, user, status, newSucceededEvent(ctx, actor, org, target))
 	if err != nil {
 		return identity.Member{}, s.guard.recordRefusal(ctx, actor, org, target, err)
 	}

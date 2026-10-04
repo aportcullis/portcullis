@@ -15,7 +15,24 @@ var (
 
 	// ErrLastAdministrator means the change would leave the organization without an active administrator.
 	ErrLastAdministrator = errors.New("identity: change would remove the last active administrator")
+
+	// ErrActorNotAuthorized means the actor was disabled or lost the permission that admitted the request.
+	ErrActorNotAuthorized = errors.New("identity: actor is no longer authorized")
 )
+
+// Delegation is the actor and the permission (Gate) an administration request was admitted with (ADR-0053).
+type Delegation struct {
+	Actor UserID
+	Gate  Permission
+}
+
+// Authorize returns ErrActorNotAuthorized unless the actor is active and holds Gate, then ValidateDelegation over the affected sets.
+func (d Delegation) Authorize(actorActive bool, held []Permission, affected ...[]Permission) error {
+	if !actorActive || !slices.Contains(held, d.Gate) {
+		return ErrActorNotAuthorized
+	}
+	return ValidateDelegation(held, affected...)
+}
 
 // AdministratorPermissions returns the permission keys that together make an active member an administrator (ADR-0008).
 func AdministratorPermissions() []Permission {

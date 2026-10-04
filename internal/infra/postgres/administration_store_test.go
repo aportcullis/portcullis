@@ -69,7 +69,7 @@ func (e administrationEnv) createMember(t *testing.T, email, systemRole string) 
 
 func (e administrationEnv) createMemberWithRole(t *testing.T, email string, role identity.RoleID) identity.Member {
 	t.Helper()
-	member, _, err := e.store.CreateMember(context.Background(), e.org, identity.NewMember{Email: email, DisplayName: email, RoleID: role}, setupIssue(email), administrationEvent(e.admin.ID, audit.ActionUserCreated, audit.TargetTypeUser))
+	member, _, err := e.store.CreateMember(context.Background(), e.org, identity.Delegation{Actor: e.admin.ID, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: email, DisplayName: email, RoleID: role}, setupIssue(email), administrationEvent(e.admin.ID, audit.ActionUserCreated, audit.TargetTypeUser))
 	if err != nil {
 		t.Fatalf("CreateMember(%s): %v", email, err)
 	}
@@ -123,7 +123,7 @@ func TestCreateMemberPersistsAccountMembershipSetupLinkAndAudit(t *testing.T) {
 	env := newAdministrationEnv(t)
 	ctx := context.Background()
 	before := time.Now()
-	member, setup, err := env.store.CreateMember(ctx, env.org, identity.NewMember{Email: "reviewer@example.com", DisplayName: "Reviewer", RoleID: env.roles["approver"]}, setupIssue("reviewer-token"), administrationEvent(env.admin.ID, audit.ActionUserCreated, audit.TargetTypeUser))
+	member, setup, err := env.store.CreateMember(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: "reviewer@example.com", DisplayName: "Reviewer", RoleID: env.roles["approver"]}, setupIssue("reviewer-token"), administrationEvent(env.admin.ID, audit.ActionUserCreated, audit.TargetTypeUser))
 	if err != nil {
 		t.Fatalf("CreateMember: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestCreateMemberRefusesTakenEmailForeignAndDeletedRoles(t *testing.T) {
 	ctx := context.Background()
 	_, foreignRole, _ := env.foreignOrganization(t)
 	deleted := env.createCustomRole(t, "short lived", identity.PermissionAuditList)
-	if err := env.store.DeleteRole(ctx, env.org, deleted.ID, deleted.Version, administrationEvent(env.admin.ID, audit.ActionRoleDeleted, audit.TargetTypeRole)); err != nil {
+	if err := env.store.DeleteRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesDelete}, deleted.ID, deleted.Version, administrationEvent(env.admin.ID, audit.ActionRoleDeleted, audit.TargetTypeRole)); err != nil {
 		t.Fatalf("DeleteRole: %v", err)
 	}
 	cases := []struct {
@@ -182,7 +182,7 @@ func TestCreateMemberRefusesTakenEmailForeignAndDeletedRoles(t *testing.T) {
 		{"malformed role id", "new@example.com", "not-a-uuid", identity.ErrRoleNotFound},
 	}
 	for _, tc := range cases {
-		_, _, err := env.store.CreateMember(ctx, env.org, identity.NewMember{Email: tc.email, DisplayName: "X", RoleID: tc.role}, setupIssue(tc.name), administrationEvent(env.admin.ID, audit.ActionUserCreated, audit.TargetTypeUser))
+		_, _, err := env.store.CreateMember(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: tc.email, DisplayName: "X", RoleID: tc.role}, setupIssue(tc.name), administrationEvent(env.admin.ID, audit.ActionUserCreated, audit.TargetTypeUser))
 		if !errors.Is(err, tc.want) {
 			t.Errorf("%s: CreateMember = %v, want %v", tc.name, err, tc.want)
 		}
@@ -200,7 +200,7 @@ func TestIssuePasswordSetupKeepsOneOpenLink(t *testing.T) {
 	ctx := context.Background()
 	pending := env.createMember(t, "pending@example.com", "requester")
 	for _, token := range []string{"second-token", "third-token"} {
-		if _, err := env.store.IssuePasswordSetup(ctx, env.org, pending.User.ID, setupIssue(token), administrationEvent(env.admin.ID, audit.ActionUserSetupLinkIssued, audit.TargetTypeUser)); err != nil {
+		if _, err := env.store.IssuePasswordSetup(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, pending.User.ID, setupIssue(token), administrationEvent(env.admin.ID, audit.ActionUserSetupLinkIssued, audit.TargetTypeUser)); err != nil {
 			t.Fatalf("IssuePasswordSetup(%s): %v", token, err)
 		}
 	}
@@ -216,7 +216,7 @@ func TestIssuePasswordSetupKeepsOneOpenLink(t *testing.T) {
 
 	_, _, foreignUser := env.foreignOrganization(t)
 	disabled := env.createMember(t, "disabled@example.com", "requester")
-	if _, err := env.store.SetMemberStatus(ctx, env.org, disabled.User.ID, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); err != nil {
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersDisable}, disabled.User.ID, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -230,7 +230,7 @@ func TestIssuePasswordSetupKeepsOneOpenLink(t *testing.T) {
 		{"malformed id", "nope", identity.ErrUserNotFound},
 	}
 	for _, tc := range cases {
-		if _, err := env.store.IssuePasswordSetup(ctx, env.org, tc.user, setupIssue(tc.name), administrationEvent(env.admin.ID, audit.ActionUserSetupLinkIssued, audit.TargetTypeUser)); !errors.Is(err, tc.want) {
+		if _, err := env.store.IssuePasswordSetup(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, tc.user, setupIssue(tc.name), administrationEvent(env.admin.ID, audit.ActionUserSetupLinkIssued, audit.TargetTypeUser)); !errors.Is(err, tc.want) {
 			t.Errorf("%s: IssuePasswordSetup = %v, want %v", tc.name, err, tc.want)
 		}
 	}
@@ -243,7 +243,7 @@ func TestSetMemberStatusRevokesSessionsAndGuardsTheLastAdministrator(t *testing.
 	env.openSession(t, member.User.ID)
 	env.openSession(t, env.admin.ID)
 
-	disabled, err := env.store.SetMemberStatus(ctx, env.org, member.User.ID, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser))
+	disabled, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersDisable}, member.User.ID, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser))
 	if err != nil {
 		t.Fatalf("disable: %v", err)
 	}
@@ -256,13 +256,12 @@ func TestSetMemberStatusRevokesSessionsAndGuardsTheLastAdministrator(t *testing.
 	if got := env.count(t, `select count(*) from audit_events where action = 'USER_DISABLED' and (metadata->>'revoked_sessions')::int = 1`); got != 1 {
 		t.Errorf("USER_DISABLED with revoked_sessions=1 = %d, want 1", got)
 	}
-	enabled, err := env.store.SetMemberStatus(ctx, env.org, member.User.ID, identity.StatusActive, administrationEvent(env.admin.ID, audit.ActionUserEnabled, audit.TargetTypeUser))
+	enabled, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersDisable}, member.User.ID, identity.StatusActive, administrationEvent(env.admin.ID, audit.ActionUserEnabled, audit.TargetTypeUser))
 	if err != nil || !enabled.User.Active() {
 		t.Fatalf("enable = %+v, %v", enabled, err)
 	}
 
-	// Refusal: disabling the only administrator rolls back status, sessions and audit.
-	if _, err := env.store.SetMemberStatus(ctx, env.org, env.admin.ID, identity.StatusDisabled, administrationEvent(member.User.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); !errors.Is(err, identity.ErrLastAdministrator) {
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersDisable}, env.admin.ID, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); !errors.Is(err, identity.ErrLastAdministrator) {
 		t.Fatalf("disable last admin = %v, want ErrLastAdministrator", err)
 	}
 	adminView, err := env.store.GetMember(ctx, env.org, env.admin.ID)
@@ -273,7 +272,7 @@ func TestSetMemberStatusRevokesSessionsAndGuardsTheLastAdministrator(t *testing.
 		t.Errorf("USER_DISABLED events = %d, want only the member's", got)
 	}
 	_, _, foreignUser := env.foreignOrganization(t)
-	if _, err := env.store.SetMemberStatus(ctx, env.org, foreignUser, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); !errors.Is(err, identity.ErrUserNotFound) {
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersDisable}, foreignUser, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); !errors.Is(err, identity.ErrUserNotFound) {
 		t.Errorf("disable foreign user = %v, want ErrUserNotFound", err)
 	}
 }
@@ -282,8 +281,8 @@ func TestConcurrentAdministratorsCannotDisableEachOther(t *testing.T) {
 	env := newAdministrationEnv(t)
 	ctx := context.Background()
 	second := env.createMember(t, "second-admin@example.com", "admin")
-	pairs := [][2]identity.UserID{{env.admin.ID, second.User.ID}, {second.User.ID, env.admin.ID}}
-	// Several released-together rounds make the two transactions overlap; without the organization lock each would count the other as still active.
+	type mutualDisable struct{ actor, target identity.UserID }
+	pairs := []mutualDisable{{actor: env.admin.ID, target: second.User.ID}, {actor: second.User.ID, target: env.admin.ID}}
 	for round := range 20 {
 		if _, err := env.pool.Exec(ctx, `update users set status = 'active'`); err != nil {
 			t.Fatal(err)
@@ -298,7 +297,7 @@ func TestConcurrentAdministratorsCannotDisableEachOther(t *testing.T) {
 				callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
 				<-start
-				_, results[idx] = env.store.SetMemberStatus(callCtx, env.org, pair[1], identity.StatusDisabled, administrationEvent(pair[0], audit.ActionUserDisabled, audit.TargetTypeUser))
+				_, results[idx] = env.store.SetMemberStatus(callCtx, env.org, identity.Delegation{Actor: pair.actor, Gate: identity.PermissionUsersDisable}, pair.target, identity.StatusDisabled, administrationEvent(pair.actor, audit.ActionUserDisabled, audit.TargetTypeUser))
 			}()
 		}
 		close(start)
@@ -308,7 +307,7 @@ func TestConcurrentAdministratorsCannotDisableEachOther(t *testing.T) {
 			switch {
 			case err == nil:
 				succeeded++
-			case errors.Is(err, identity.ErrLastAdministrator):
+			case errors.Is(err, identity.ErrActorNotAuthorized):
 				refused++
 			default:
 				t.Fatalf("round %d: unexpected error: %v", round, err)
@@ -328,7 +327,7 @@ func TestAssignMemberRoleRevokesSessionsAndGuardsTheLastAdministrator(t *testing
 	ctx := context.Background()
 	member := env.createMember(t, "member@example.com", "requester")
 	env.openSession(t, member.User.ID)
-	updated, err := env.store.AssignMemberRole(ctx, env.org, member.User.ID, env.roles["approver"], administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser))
+	updated, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, member.User.ID, env.roles["approver"], administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser))
 	if err != nil || updated.RoleName != "approver" {
 		t.Fatalf("AssignMemberRole = %+v, %v", updated, err)
 	}
@@ -339,18 +338,18 @@ func TestAssignMemberRoleRevokesSessionsAndGuardsTheLastAdministrator(t *testing
 	if err != nil || !slices.Contains(permissions, identity.PermissionRequestsApprove) {
 		t.Errorf("permissions after assignment = %v, %v", permissions, err)
 	}
-	if _, err := env.store.AssignMemberRole(ctx, env.org, member.User.ID, env.roles["admin"], administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
+	deleted := env.createCustomRole(t, "gone", identity.PermissionAuditList)
+	if err := env.store.DeleteRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesDelete}, deleted.ID, deleted.Version, administrationEvent(env.admin.ID, audit.ActionRoleDeleted, audit.TargetTypeRole)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, member.User.ID, env.roles["admin"], administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
 		t.Fatalf("promote to admin: %v", err)
 	}
-	if _, err := env.store.AssignMemberRole(ctx, env.org, env.admin.ID, env.roles["requester"], administrationEvent(member.User.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
+	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: member.User.ID, Gate: identity.PermissionUsersUpdate}, env.admin.ID, env.roles["requester"], administrationEvent(member.User.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
 		t.Fatalf("demote original admin while another remains: %v", err)
 	}
 
 	_, foreignRole, foreignUser := env.foreignOrganization(t)
-	deleted := env.createCustomRole(t, "gone", identity.PermissionAuditList)
-	if err := env.store.DeleteRole(ctx, env.org, deleted.ID, deleted.Version, administrationEvent(env.admin.ID, audit.ActionRoleDeleted, audit.TargetTypeRole)); err != nil {
-		t.Fatal(err)
-	}
 	cases := []struct {
 		name string
 		user identity.UserID
@@ -363,7 +362,7 @@ func TestAssignMemberRoleRevokesSessionsAndGuardsTheLastAdministrator(t *testing
 		{"user of another organization", foreignUser, env.roles["requester"], identity.ErrUserNotFound},
 	}
 	for _, tc := range cases {
-		if _, err := env.store.AssignMemberRole(ctx, env.org, tc.user, tc.role, administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); !errors.Is(err, tc.want) {
+		if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: member.User.ID, Gate: identity.PermissionUsersUpdate}, tc.user, tc.role, administrationEvent(member.User.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); !errors.Is(err, tc.want) {
 			t.Errorf("%s: AssignMemberRole = %v, want %v", tc.name, err, tc.want)
 		}
 	}
@@ -374,7 +373,7 @@ func TestAssignMemberRoleRevokesSessionsAndGuardsTheLastAdministrator(t *testing
 
 func (e administrationEnv) createCustomRole(t *testing.T, name string, permissions ...identity.Permission) identity.Role {
 	t.Helper()
-	role, err := e.store.CreateRole(context.Background(), e.org, identity.RoleDefinition{Name: name, Permissions: permissions}, administrationEvent(e.admin.ID, audit.ActionRoleCreated, audit.TargetTypeRole))
+	role, err := e.store.CreateRole(context.Background(), e.org, identity.Delegation{Actor: e.admin.ID, Gate: identity.PermissionRolesCreate}, identity.RoleDefinition{Name: name, Permissions: permissions}, administrationEvent(e.admin.ID, audit.ActionRoleCreated, audit.TargetTypeRole))
 	if err != nil {
 		t.Fatalf("CreateRole(%s): %v", name, err)
 	}
@@ -389,12 +388,12 @@ func TestRoleLifecycleReplacesPermissionsAndSoftDeletes(t *testing.T) {
 		t.Errorf("created role = %+v", auditor)
 	}
 	member := env.createMember(t, "auditor@example.com", "requester")
-	if _, err := env.store.AssignMemberRole(ctx, env.org, member.User.ID, auditor.ID, administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
+	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, member.User.ID, auditor.ID, administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
 		t.Fatal(err)
 	}
 	env.openSession(t, member.User.ID)
 
-	updated, err := env.store.UpdateRole(ctx, env.org, auditor.ID, 1, identity.RoleDefinition{Name: "senior auditor", Permissions: []identity.Permission{identity.PermissionAuditGet, identity.PermissionUsersList}}, administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole))
+	updated, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesUpdate}, auditor.ID, 1, identity.RoleDefinition{Name: "senior auditor", Permissions: []identity.Permission{identity.PermissionAuditGet, identity.PermissionUsersList}}, administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole))
 	if err != nil {
 		t.Fatalf("UpdateRole: %v", err)
 	}
@@ -412,7 +411,7 @@ func TestRoleLifecycleReplacesPermissionsAndSoftDeletes(t *testing.T) {
 	if got := env.count(t, `select count(*) from role_permissions where role_id = $1::uuid and permission_key = 'audit.list' and deleted_at is not null`, string(auditor.ID)); got != 1 {
 		t.Errorf("removed permission rows soft-deleted = %d, want 1", got)
 	}
-	restored, err := env.store.UpdateRole(ctx, env.org, auditor.ID, 2, identity.RoleDefinition{Name: "senior auditor", Permissions: []identity.Permission{identity.PermissionAuditGet, identity.PermissionAuditList, identity.PermissionUsersList}}, administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole))
+	restored, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesUpdate}, auditor.ID, 2, identity.RoleDefinition{Name: "senior auditor", Permissions: []identity.Permission{identity.PermissionAuditGet, identity.PermissionAuditList, identity.PermissionUsersList}}, administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole))
 	if err != nil || restored.Version != 3 || len(restored.Permissions) != 3 {
 		t.Fatalf("re-adding a removed permission = %+v, %v", restored, err)
 	}
@@ -426,7 +425,7 @@ func TestRoleLifecycleReplacesPermissionsAndSoftDeletes(t *testing.T) {
 		t.Errorf("re-added permission not granted: %v, %v", permissions, err)
 	}
 	emptied := env.createCustomRole(t, "emptied", identity.PermissionAuditList, identity.PermissionAuditGet)
-	cleared, err := env.store.UpdateRole(ctx, env.org, emptied.ID, 1, identity.RoleDefinition{Name: "emptied"}, administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole))
+	cleared, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesUpdate}, emptied.ID, 1, identity.RoleDefinition{Name: "emptied"}, administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole))
 	if err != nil || len(cleared.Permissions) != 0 {
 		t.Errorf("clearing every permission = %+v, %v", cleared, err)
 	}
@@ -435,7 +434,7 @@ func TestRoleLifecycleReplacesPermissionsAndSoftDeletes(t *testing.T) {
 	}
 
 	unused := env.createCustomRole(t, "unused")
-	if err := env.store.DeleteRole(ctx, env.org, unused.ID, 1, administrationEvent(env.admin.ID, audit.ActionRoleDeleted, audit.TargetTypeRole)); err != nil {
+	if err := env.store.DeleteRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesDelete}, unused.ID, 1, administrationEvent(env.admin.ID, audit.ActionRoleDeleted, audit.TargetTypeRole)); err != nil {
 		t.Fatalf("DeleteRole: %v", err)
 	}
 	if _, err := env.store.GetRole(ctx, env.org, unused.ID); !errors.Is(err, identity.ErrRoleNotFound) {
@@ -463,12 +462,12 @@ func TestRoleMutationsRefuseNamesSystemStaleAssignedForeignAndLastAdministrator(
 	env.createMemberWithRole(t, "assigned@example.com", assigned.ID)
 	_, foreignRole, _ := env.foreignOrganization(t)
 	owner := env.createCustomRole(t, "owner", identity.EnforcedPermissions()...)
-	if _, err := env.store.AssignMemberRole(ctx, env.org, env.admin.ID, owner.ID, administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
+	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, env.admin.ID, owner.ID, administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
 		t.Fatal(err)
 	}
 	event := administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole)
 
-	if _, err := env.store.CreateRole(ctx, env.org, identity.RoleDefinition{Name: "auditor"}, event); !errors.Is(err, identity.ErrRoleNameTaken) {
+	if _, err := env.store.CreateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesCreate}, identity.RoleDefinition{Name: "auditor"}, event); !errors.Is(err, identity.ErrRoleNameTaken) {
 		t.Errorf("duplicate CreateRole = %v, want ErrRoleNameTaken", err)
 	}
 	updates := []struct {
@@ -485,7 +484,7 @@ func TestRoleMutationsRefuseNamesSystemStaleAssignedForeignAndLastAdministrator(
 		{"last administrator role loses users.disable", owner.ID, 1, identity.RoleDefinition{Name: "owner", Permissions: []identity.Permission{identity.PermissionUsersUpdate}}, identity.ErrLastAdministrator},
 	}
 	for _, tc := range updates {
-		if _, err := env.store.UpdateRole(ctx, env.org, tc.role, tc.version, tc.roleDef, event); !errors.Is(err, tc.want) {
+		if _, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesUpdate}, tc.role, tc.version, tc.roleDef, event); !errors.Is(err, tc.want) {
 			t.Errorf("%s: UpdateRole = %v, want %v", tc.name, err, tc.want)
 		}
 	}
@@ -505,12 +504,89 @@ func TestRoleMutationsRefuseNamesSystemStaleAssignedForeignAndLastAdministrator(
 		{"role of another organization", foreignRole, 1, identity.ErrRoleNotFound},
 	}
 	for _, tc := range deletes {
-		if err := env.store.DeleteRole(ctx, env.org, tc.role, tc.version, event); !errors.Is(err, tc.want) {
+		if err := env.store.DeleteRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesDelete}, tc.role, tc.version, event); !errors.Is(err, tc.want) {
 			t.Errorf("%s: DeleteRole = %v, want %v", tc.name, err, tc.want)
 		}
 	}
 	if got := env.auditCount(t, audit.ActionRoleUpdated) + env.auditCount(t, audit.ActionRoleDeleted); got != 0 {
 		t.Errorf("refused role mutations committed %d events", got)
+	}
+}
+
+func TestMutationsReauthorizeTheActorUnderTheOrganizationLock(t *testing.T) {
+	env := newAdministrationEnv(t)
+	ctx := context.Background()
+	requesterRole, err := env.store.GetRole(ctx, env.org, env.roles["requester"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerPermissions := append(slices.Clone(requesterRole.Permissions),
+		identity.PermissionUsersList, identity.PermissionUsersGet, identity.PermissionUsersCreate, identity.PermissionUsersUpdate, identity.PermissionUsersDisable,
+		identity.PermissionRolesCreate, identity.PermissionRolesUpdate)
+	managerRole := env.createCustomRole(t, "user manager", managerPermissions...)
+	manager := env.createMemberWithRole(t, "manager@example.com", managerRole.ID).User.ID
+	bystander := env.createMember(t, "bystander@example.com", "requester").User.ID
+	userEvent := func(action audit.Action) audit.Event {
+		return administrationEvent(manager, action, audit.TargetTypeUser)
+	}
+	roleEvent := administrationEvent(manager, audit.ActionRoleUpdated, audit.TargetTypeRole)
+
+	created, _, err := env.store.CreateMember(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: "created@example.com", DisplayName: "Created", RoleID: env.roles["requester"]}, setupIssue("created"), userEvent(audit.ActionUserCreated))
+	if err != nil {
+		t.Fatalf("CreateMember by an authorized manager: %v", err)
+	}
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersDisable}, created.User.ID, identity.StatusDisabled, userEvent(audit.ActionUserDisabled)); err != nil {
+		t.Fatalf("disable by an authorized manager: %v", err)
+	}
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersDisable}, created.User.ID, identity.StatusActive, userEvent(audit.ActionUserEnabled)); err != nil {
+		t.Fatalf("enable by an authorized manager: %v", err)
+	}
+	narrow := env.createCustomRole(t, "narrow", identity.PermissionRequestsList)
+	if _, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionRolesUpdate}, narrow.ID, 1, identity.RoleDefinition{Name: "narrow", Permissions: []identity.Permission{identity.PermissionRequestsList, identity.PermissionRequestsGet}}, roleEvent); err != nil {
+		t.Fatalf("UpdateRole by an authorized manager: %v", err)
+	}
+	committed := env.count(t, `select count(*) from audit_events where actor_user_id = $1::uuid`, string(manager))
+
+	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, created.User.ID, env.roles["approver"], administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersDisable}, created.User.ID, identity.StatusDisabled, userEvent(audit.ActionUserDisabled)); !errors.Is(err, identity.ErrPrivilegeEscalation) {
+		t.Errorf("disable a member promoted meanwhile = %v, want ErrPrivilegeEscalation", err)
+	}
+	if member, err := env.store.GetMember(ctx, env.org, created.User.ID); err != nil || !member.User.Active() {
+		t.Errorf("refused disable changed the member: %+v, %v", member, err)
+	}
+	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersUpdate}, bystander, env.roles["approver"], userEvent(audit.ActionUserRoleAssigned)); !errors.Is(err, identity.ErrPrivilegeEscalation) {
+		t.Errorf("assign a role beyond the actor = %v, want ErrPrivilegeEscalation", err)
+	}
+	adminRoleEvent := administrationEvent(env.admin.ID, audit.ActionRoleUpdated, audit.TargetTypeRole)
+	if _, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesUpdate}, narrow.ID, 2, identity.RoleDefinition{Name: "narrow", Permissions: []identity.Permission{identity.PermissionRequestsList, identity.PermissionAuditList}}, adminRoleEvent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionRolesUpdate}, narrow.ID, 3, identity.RoleDefinition{Name: "narrow"}, roleEvent); !errors.Is(err, identity.ErrPrivilegeEscalation) {
+		t.Errorf("update a role that grew meanwhile = %v, want ErrPrivilegeEscalation", err)
+	}
+	if role, err := env.store.GetRole(ctx, env.org, narrow.ID); err != nil || role.Version != 3 {
+		t.Errorf("refused role update changed the role: %+v, %v", role, err)
+	}
+	withoutDisable := slices.DeleteFunc(slices.Clone(managerPermissions), func(permission identity.Permission) bool { return permission == identity.PermissionUsersDisable })
+	if _, err := env.store.UpdateRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionRolesUpdate}, managerRole.ID, 1, identity.RoleDefinition{Name: "user manager", Permissions: withoutDisable}, adminRoleEvent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersDisable}, bystander, identity.StatusDisabled, userEvent(audit.ActionUserDisabled)); !errors.Is(err, identity.ErrActorNotAuthorized) {
+		t.Errorf("disable after the actor lost users.disable = %v, want ErrActorNotAuthorized", err)
+	}
+	if _, err := env.store.SetMemberStatus(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersDisable}, manager, identity.StatusDisabled, administrationEvent(env.admin.ID, audit.ActionUserDisabled, audit.TargetTypeUser)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := env.store.CreateMember(ctx, env.org, identity.Delegation{Actor: manager, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: "late@example.com", DisplayName: "Late", RoleID: env.roles["requester"]}, setupIssue("late"), userEvent(audit.ActionUserCreated)); !errors.Is(err, identity.ErrActorNotAuthorized) {
+		t.Errorf("create by a disabled actor = %v, want ErrActorNotAuthorized", err)
+	}
+	if got := env.count(t, `select count(*) from users where email = 'late@example.com'`); got != 0 {
+		t.Error("a refused creation left an account behind")
+	}
+	if got := env.count(t, `select count(*) from audit_events where actor_user_id = $1::uuid`, string(manager)); got != committed {
+		t.Errorf("refused mutations committed %d audit events", got-committed)
 	}
 }
 

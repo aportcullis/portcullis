@@ -72,7 +72,11 @@ func (s *RoleService) Create(ctx context.Context, actor identity.UserID, params 
 	}
 	event := newSucceededEvent(ctx, actor, org, target)
 	event.Metadata = map[string]any{"permissions": permissionKeys(definition.Permissions)}
-	return s.repo.CreateRole(ctx, org, definition, event)
+	created, err := s.repo.CreateRole(ctx, org, identity.Delegation{Actor: actor, Gate: identity.PermissionRolesCreate}, definition, event)
+	if err != nil {
+		return identity.Role{}, s.guard.recordRefusal(ctx, actor, org, target, err)
+	}
+	return created, nil
 }
 
 // Update replaces a custom role's name and permissions when the actor holds both the old and the new set.
@@ -101,7 +105,7 @@ func (s *RoleService) Update(ctx context.Context, actor identity.UserID, role id
 		"added_permissions":   permissionKeys(added),
 		"removed_permissions": permissionKeys(removed),
 	}
-	updated, err := s.repo.UpdateRole(ctx, org, role, expectedVersion, definition, event)
+	updated, err := s.repo.UpdateRole(ctx, org, identity.Delegation{Actor: actor, Gate: identity.PermissionRolesUpdate}, role, expectedVersion, definition, event)
 	if err != nil {
 		return identity.Role{}, s.guard.recordRefusal(ctx, actor, org, target, err)
 	}
@@ -118,7 +122,10 @@ func (s *RoleService) Delete(ctx context.Context, actor identity.UserID, role id
 		return err
 	}
 	target := administrationTarget{action: audit.ActionRoleDeleted, targetType: audit.TargetTypeRole, targetID: string(role)}
-	return s.repo.DeleteRole(ctx, org, role, expectedVersion, newSucceededEvent(ctx, actor, org, target))
+	if err := s.repo.DeleteRole(ctx, org, identity.Delegation{Actor: actor, Gate: identity.PermissionRolesDelete}, role, expectedVersion, newSucceededEvent(ctx, actor, org, target)); err != nil {
+		return s.guard.recordRefusal(ctx, actor, org, target, err)
+	}
+	return nil
 }
 
 // loadCustomRole returns a live custom role at the expected version; system roles and stale versions are refused before any mutation.
