@@ -1,6 +1,6 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
-.PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check
+.PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check generate-check proto-breaking
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -57,8 +57,13 @@ devkey:
 
 
 generate:
-	buf generate
-	sqlc generate
+	bash .github/scripts/generate.sh
+
+generate-check:
+	bash tests/release/generate-check.sh
+
+proto-breaking:
+	bash tests/release/proto-breaking.sh
 
 
 web-install:
@@ -155,6 +160,8 @@ verify:
 	$(MAKE) dockerfile-check
 	$(MAKE) ignore-check
 	$(MAKE) clean-check
+	$(MAKE) generate-check
+	$(MAKE) proto-breaking
 	$(MAKE) changelog-check
 	go build ./...
 	go vet ./...

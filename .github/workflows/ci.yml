@@ -39,6 +39,8 @@ jobs:
           cache-dependency-path: |
             web/pnpm-lock.yaml
             tests/load/pnpm-lock.yaml
+      # buf breaking compares the protobuf API with the default branch, which a shallow pull-request checkout lacks.
+      - run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
       - run: make verify
       - run: make supply-chain
 
