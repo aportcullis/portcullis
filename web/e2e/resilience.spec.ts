@@ -287,6 +287,36 @@ test.describe("application resilience", () => {
     await expect(save).toHaveCount(0);
   });
 
+  test("result errors name expiry only for a missing snapshot and keep export failures separate", async ({ page }) => {
+    await page.goto("/requests");
+    await page.getByRole("row", { name: /Result paging check/ }).getByRole("link", { name: "Result" }).click();
+    const results = page.getByRole("region", { name: "Query results" });
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+
+    const restoreExport = await failProcedure(page, "QueryExecutions/ExportCSV", "unavailable");
+    await results.getByRole("button", { name: "Export CSV", exact: true }).click();
+    // A streaming call may surface the HTTP status rather than the JSON message, so only the separate export prefix is asserted.
+    await expect(results.getByText(/^CSV export failed:/)).toBeVisible();
+    await expect(results.getByText(/expired or been evicted/)).toHaveCount(0);
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+    await restoreExport();
+
+    const restoreUnavailable = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
+    await results.getByRole("button", { name: "Next page", exact: true }).click();
+    await expect(results.getByRole("alert").filter({ hasText: "simulated failure" }).first()).toBeVisible();
+    await expect(results.getByText(/expired or been evicted/)).toHaveCount(0);
+    await restoreUnavailable();
+
+    await page.route("**/portcullis.v1.QueryExecutions/GetResult", (route) => route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "failed_precondition", message: "result unavailable or expired" }),
+    }));
+    await page.reload();
+    await expect(page.getByText("result unavailable or expired Results may have expired or been evicted.")).toBeVisible();
+    await page.unroute("**/portcullis.v1.QueryExecutions/GetResult");
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");

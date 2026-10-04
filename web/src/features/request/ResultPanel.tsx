@@ -10,6 +10,7 @@ import { errorMessage } from "@/entities/request/store";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";
+import { describeResultError } from "@/features/request/resultErrors";
 import { cellText, resultText, resultClipboard } from "@/features/request/resultPresentation";
 import { cycleResultSorting } from "@/features/request/sorting";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
@@ -31,6 +32,8 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   const [copying, setCopying] = createSignal(false);
   const [copyMessage, setCopyMessage] = createSignal("");
   const [exporting, setExporting] = createSignal(false);
+  // Export failures report beside the export controls; they say nothing about whether the shown page loaded.
+  const [exportError, setExportError] = createSignal("");
   const [downloadURL, setDownloadURL] = createSignal<string>();
   const discardDownload = () => {
     const url = downloadURL();
@@ -45,13 +48,13 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       requestId: props.requestId ?? "", page: page(), pageSize: pageSize(), sortColumn: sortColumn(), descending: descending(), filter: filter(),
     }) : undefined;
     return { info, snapshot };
-  }, ({ info, snapshot }) => { setExecution(info); setResult(snapshot); }, errorMessage);
+  }, ({ info, snapshot }) => { setExecution(info); setResult(snapshot); }, (err) => describeResultError(err, errorMessage));
   const id = createMemo(() => props.requestId);
   createEffect(on(id, (next) => {
     revision++;
     discardDownload();
     read.handleOpenChange(false);
-    setExecution(); setResult(); setFullCell(); setExporting(false); setView("table"); setCopying(false); setCopyMessage("");
+    setExecution(); setResult(); setFullCell(); setExporting(false); setExportError(""); setView("table"); setCopying(false); setCopyMessage("");
     setPage(1); setPageSize(20); setSortColumn(); setDescending(false); setFilter(""); setFilterDraft("");
     if (next !== undefined) read.handleOpenChange(true);
   }));
@@ -91,7 +94,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   const exportCSV = async () => {
     const captured = revision;
     const same = read.captureSession();
-    setExporting(true); read.setError("");
+    setExporting(true); setExportError("");
     discardDownload();
     try {
       const chunks: Uint8Array<ArrayBuffer>[] = [];
@@ -101,7 +104,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       }
       if (!same() || captured !== revision) return;
       setDownloadURL(URL.createObjectURL(new Blob(chunks, { type: "text/csv;charset=utf-8" })));
-    } catch (err) { if (same() && captured === revision) read.setError(errorMessage(err)); }
+    } catch (err) { if (same() && captured === revision) setExportError(describeResultError(err, errorMessage)); }
     finally { if (same() && captured === revision) setExporting(false); }
   };
   return <section aria-label="Query results" class="flex min-w-0 flex-col gap-6">
@@ -109,7 +112,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       <h1 class="mt-3 text-2xl font-semibold">Query result</h1></header>
       <Show when={execution()}>{shownExecution => <ExecutionSummary execution={shownExecution()} />}</Show>
       <Show when={read.loading() && result() === undefined}><LoadingSkeleton label="Loading result…" /></Show>
-      <Show when={read.error()}><p role="alert" class="text-destructive">{read.error()} Results may have expired or been evicted.</p></Show>
+      <Show when={read.error()}><p role="alert" class="text-destructive">{read.error()}</p></Show>
       <Show when={execution()?.state === AccessRequestState.OUTCOME_UNKNOWN}><p role="alert">Outcome unknown. Check the target database and audit history before creating another request. This execution will not retry.</p></Show>
       <Show when={execution()?.state === AccessRequestState.FAILED}><p role="alert">Execution failed. Submit a new request to try again.</p></Show>
       <Show when={execution()?.state === AccessRequestState.SUCCEEDED && !execution()?.resultAvailable}><p>Execution succeeded. The cached result is no longer available.</p></Show>
@@ -122,6 +125,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
           <Button type="button" variant="outline" disabled={copying()} onClick={() => void copyVisibleRows()}>Copy visible rows</Button>
           <Button type="button" variant="outline" disabled={exporting()} onClick={() => void exportCSV()}>Export CSV</Button>
           <Show when={downloadURL()}>{url => <a class="inline-flex items-center rounded-md border px-4 text-sm" href={url()} download="query-result.csv">Download CSV</a>}</Show>
+          <Show when={exportError()}><p role="alert" class="basis-full text-sm text-destructive">CSV export failed: {exportError()}</p></Show>
         </form>
         <div class="flex flex-wrap items-center gap-3">
           <label class="flex items-center gap-2 text-sm">Sort by
