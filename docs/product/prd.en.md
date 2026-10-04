@@ -817,7 +817,7 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
 ### 8.5 Operations
 
 - Terminate production TLS at proxy/ingress; ignore forwarded headers outside the trusted proxy list.
-- Separate `/livez` from metadata-dependent `/readyz`; graceful shutdown blocks new execution.
+- Separate `/livez` from metadata-dependent `/readyz`; graceful shutdown blocks new execution, lets admitted executions finish within the drain, and interrupts the rest with an audited cause inside a total budget of drain delay plus shutdown timeout (ADR-0010/0021).
   - Executions still running when the shutdown timeout expires are cancelled and their outcomes recorded before metadata connections close; `EXECUTION_FINISHED` carries `interruption_cause` (`server_shutdown`, `owner_cancel` or `lease_lost`) (ADR-0010, ADR-0021).
 - Structured logs/metrics contain request IDs, states, durations, and counts, excluding SQL/parameters/credentials by default.
 - Document pre-migration backups/restoration and provide upgrade tests between supported versions.

@@ -69,9 +69,6 @@ const (
 	ResultUnavailablePersistenceFailed ResultUnavailableReason = "result_persistence_failed"
 )
 
-// ExecutionShutdownTimeout bounds interrupting active executions and recording their outcomes during server shutdown.
-const ExecutionShutdownTimeout = 20 * time.Second
-
 // InterruptionCause names who interrupted an execution before it completed, recorded as audit evidence.
 type InterruptionCause string
 

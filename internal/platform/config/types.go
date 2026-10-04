@@ -26,6 +26,8 @@ type Config struct {
 	DrainDelay time.Duration `mapstructure:"drain_delay"`
 	// ShutdownTimeout bounds the graceful drain of in-flight requests.
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	// ShutdownInterruptTimeout is the part of ShutdownTimeout reserved for interrupting executions that outlive the HTTP drain and recording their outcomes.
+	ShutdownInterruptTimeout time.Duration `mapstructure:"shutdown_interrupt_timeout"`
 	// LogLevel is one of debug, info, warn, error.
 	LogLevel string `mapstructure:"log_level"`
 	// LogFormat is "json" (default) or "text".
@@ -76,6 +78,11 @@ type Config struct {
 
 // TrustedProxyNets returns the parsed trusted-proxy networks (see TrustedProxies).
 func (c Config) TrustedProxyNets() []*net.IPNet { return c.trustedProxyNets }
+
+// HTTPDrainTimeout is how long in-flight requests may drain before executions are interrupted.
+func (c Config) HTTPDrainTimeout() time.Duration {
+	return c.ShutdownTimeout - c.ShutdownInterruptTimeout
+}
 
 // GoogleEnabled reports whether Google login is configured. Load has already validated all-or-nothing, so the client id alone is decisive.
 func (c Config) GoogleEnabled() bool { return strings.TrimSpace(c.GoogleClientID) != "" }

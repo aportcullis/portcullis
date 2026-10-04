@@ -608,3 +608,61 @@ func TestExecutionLockTimeoutAcceptsDefaultAndInRangeValues(t *testing.T) {
 		}
 	}
 }
+
+func TestShutdownInterruptionFitsInsideTheShutdownTimeout(t *testing.T) {
+	for _, accepted := range []struct {
+		name          string
+		shutdown      string
+		interrupt     string
+		wantInterrupt time.Duration
+		wantHTTPDrain time.Duration
+	}{
+		{name: "defaults", wantInterrupt: 5 * time.Second, wantHTTPDrain: 10 * time.Second},
+		{name: "longer shutdown with the default interruption", shutdown: "25s", wantInterrupt: 5 * time.Second, wantHTTPDrain: 20 * time.Second},
+		{name: "explicit interruption", shutdown: "20s", interrupt: "8s", wantInterrupt: 8 * time.Second, wantHTTPDrain: 12 * time.Second},
+		{name: "one second of HTTP drain left", shutdown: "6s", interrupt: "5s", wantInterrupt: 5 * time.Second, wantHTTPDrain: time.Second},
+	} {
+		t.Run(accepted.name, func(t *testing.T) {
+			if accepted.shutdown != "" {
+				t.Setenv("PORTCULLIS_SHUTDOWN_TIMEOUT", accepted.shutdown)
+			}
+			if accepted.interrupt != "" {
+				t.Setenv("PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT", accepted.interrupt)
+			}
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.ShutdownInterruptTimeout != accepted.wantInterrupt || cfg.HTTPDrainTimeout() != accepted.wantHTTPDrain {
+				t.Fatalf("interrupt=%s httpDrain=%s, want %s and %s", cfg.ShutdownInterruptTimeout, cfg.HTTPDrainTimeout(), accepted.wantInterrupt, accepted.wantHTTPDrain)
+			}
+			// The whole shutdown, drain delay aside, never exceeds shutdown_timeout.
+			if cfg.HTTPDrainTimeout()+cfg.ShutdownInterruptTimeout != cfg.ShutdownTimeout {
+				t.Fatalf("budgets %s + %s exceed shutdown_timeout %s", cfg.HTTPDrainTimeout(), cfg.ShutdownInterruptTimeout, cfg.ShutdownTimeout)
+			}
+		})
+	}
+	for _, refused := range []struct {
+		name      string
+		shutdown  string
+		interrupt string
+	}{
+		{name: "interruption equal to the shutdown timeout", shutdown: "10s", interrupt: "10s"},
+		{name: "interruption longer than the shutdown timeout", shutdown: "10s", interrupt: "20s"},
+		{name: "zero interruption", interrupt: "0s"},
+		{name: "negative interruption", interrupt: "-1s"},
+		{name: "default interruption above a short shutdown timeout", shutdown: "5s"},
+	} {
+		t.Run("refuses "+refused.name, func(t *testing.T) {
+			if refused.shutdown != "" {
+				t.Setenv("PORTCULLIS_SHUTDOWN_TIMEOUT", refused.shutdown)
+			}
+			if refused.interrupt != "" {
+				t.Setenv("PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT", refused.interrupt)
+			}
+			if _, err := config.Load(); err == nil {
+				t.Fatalf("shutdown=%q interrupt=%q loaded, want refusal", refused.shutdown, refused.interrupt)
+			}
+		})
+	}
+}

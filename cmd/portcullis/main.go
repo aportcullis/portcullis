@@ -344,9 +344,9 @@ func run() error {
 
 	srv := server.New(cfg.Addr, logger, cfg.DrainDelay, mounts...)
 	srv.Health().Register("metadata-db", func(ctx context.Context) error { return pool.Ping(ctx) })
-	// Executions still running at the shutdown timeout are interrupted with an audited cause before their request contexts end and the pool closes.
+	// Executions still running when the HTTP drain ends are interrupted with an audited cause, within the rest of shutdown_timeout, before their request contexts end and the pool closes.
 	srv.OnShutdownTimeout(func(ctx context.Context) {
-		interruptCtx, cancel := context.WithTimeout(ctx, access.ExecutionShutdownTimeout)
+		interruptCtx, cancel := context.WithTimeout(ctx, cfg.ShutdownInterruptTimeout)
 		defer cancel()
 		if err := executionSvc.InterruptActive(interruptCtx); err != nil {
 			logger.Error("active executions did not stop before shutdown", postgres.ErrorLogFields(err)...)
@@ -392,9 +392,9 @@ func run() error {
 		return err
 	}
 
-	// Background, not a timeout: the drain delay and the shutdown timeout are sequential budgets (ADR-0010) — Server.Shutdown applies the timeout to the drain of in-flight requests only, after the delay has fully elapsed.
+	// Background, not a timeout: the drain delay and the shutdown timeout are sequential budgets (ADR-0010). The HTTP drain gets shutdown_timeout minus the interruption budget, so the whole shutdown stays within drain_delay + shutdown_timeout.
 	executionSvc.StopAdmission()
-	if err := srv.Shutdown(context.Background(), cfg.ShutdownTimeout); err != nil {
+	if err := srv.Shutdown(context.Background(), cfg.HTTPDrainTimeout()); err != nil {
 		logger.Error("graceful shutdown failed", "err", err)
 		return err
 	}

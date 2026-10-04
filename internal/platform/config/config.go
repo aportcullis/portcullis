@@ -20,6 +20,7 @@ func Load() (Config, error) {
 	v.SetDefault("addr", ":8080")
 	v.SetDefault("drain_delay", time.Duration(0))
 	v.SetDefault("shutdown_timeout", 15*time.Second)
+	v.SetDefault("shutdown_interrupt_timeout", 5*time.Second)
 	v.SetDefault("log_format", "json")
 	v.SetDefault("argon2_max_concurrent", 2)
 	v.SetDefault("runtime_role", "portcullis_runtime")
@@ -103,6 +104,10 @@ func Load() (Config, error) {
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return Config{}, fmt.Errorf("shutdown_timeout must be positive, got %s", cfg.ShutdownTimeout)
+	}
+	// Execution interruption is carved out of shutdown_timeout, so drain_delay + shutdown_timeout stays the whole shutdown budget (ADR-0010).
+	if cfg.ShutdownInterruptTimeout <= 0 || cfg.ShutdownInterruptTimeout >= cfg.ShutdownTimeout {
+		return Config{}, fmt.Errorf("shutdown_interrupt_timeout %s must be positive and shorter than shutdown_timeout %s", cfg.ShutdownInterruptTimeout, cfg.ShutdownTimeout)
 	}
 
 	// Google login is all-or-nothing (ADR-0007): everything unset ⇒ disabled (valid); a partial setup fails startup rather than surfacing on first use.
