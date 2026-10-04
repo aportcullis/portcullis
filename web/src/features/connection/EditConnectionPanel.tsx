@@ -32,9 +32,18 @@ export const EditConnectionPanel: Component<{
 
   // Memoize the target ID so row refreshes do not reset the draft or discard an in-flight panel session.
   const editedId = createMemo(() => props.target?.id);
+  // A typed replacement password lives only while the panel is open; every close path ends with the target cleared, and unmounting discards it too.
+  const discardReplacementConfig = () => {
+    config.reset();
+    setReplaceConfig(false);
+  };
+  onCleanup(discardReplacementConfig);
   createEffect(
     on(editedId, (id) => {
-      if (id === undefined) return;
+      if (id === undefined) {
+        discardReplacementConfig();
+        return;
+      }
       discardSession();
       setSaving(false);
       setDisplayName(props.target?.displayName ?? "");
@@ -51,11 +60,12 @@ export const EditConnectionPanel: Component<{
     // A save still in flight belongs to the session being left behind: it will report "superseded" and touch nothing, so saving is released here (see shared/lib/dialogSession).
     discardSession();
     setSaving(false);
+    discardReplacementConfig();
     props.onClose();
   };
 
-  const submit = async (e: SubmitEvent) => {
-    e.preventDefault();
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault();
     const target = props.target;
     if (!target) return;
     setError("");
@@ -78,6 +88,7 @@ export const EditConnectionPanel: Component<{
       void loadConnections();
       return;
     }
+    discardReplacementConfig();
     props.onClose();
   };
 
@@ -104,7 +115,7 @@ export const EditConnectionPanel: Component<{
               id="edit-conn-name"
               required
               value={displayName()}
-              onInput={(e) => setDisplayName(e.currentTarget.value)}
+              onInput={(event) => setDisplayName(event.currentTarget.value)}
             />
           </TextField>
           <DescriptorFields
@@ -120,7 +131,7 @@ export const EditConnectionPanel: Component<{
               <input
                 type="checkbox"
                 checked={replaceConfig()}
-                onChange={(e) => setReplaceConfig(e.currentTarget.checked)}
+                onChange={(event) => setReplaceConfig(event.currentTarget.checked)}
               />
               Replace connection config (re-enter the credential; re-tested on save)
             </label>

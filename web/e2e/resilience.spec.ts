@@ -241,6 +241,22 @@ test.describe("application resilience", () => {
     await expect(newConnection).toBeFocused();
   });
 
+  test("a typed replacement password does not survive closing the edit panel", async ({ page }) => {
+    const row = page.getByRole("row", { name: /ReqTarget/ });
+    const replace = page.getByRole("checkbox", { name: /Replace connection config/ });
+    await row.getByRole("button", { name: "Edit" }).click();
+    await replace.check();
+    await page.getByLabel("Password", { exact: true }).fill("typed-replacement-secret");
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+
+    await row.getByRole("button", { name: "Edit" }).click();
+    await expect(replace).not.toBeChecked();
+    await replace.check();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
+    await page.getByRole("button", { name: "Dismiss" }).click();
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");
