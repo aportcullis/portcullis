@@ -7,10 +7,6 @@ import (
 	"os"
 )
 
-// applicationLogPath keeps the application's output from the latest browser run for post-mortem reading.
-const applicationLogPath = ".test-docker/e2e/application.log"
-
-// applicationLogTailBytes bounds how much of the application log an early exit prints, enough for a startup failure without flooding the Playwright output.
 const applicationLogTailBytes = 64 << 10
 
 // copyLogTail copies the last maxBytes of the log at path to writer.

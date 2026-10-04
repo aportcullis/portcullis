@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -23,9 +24,6 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
-
-// setupTokenFile is where the application writes its first-run setup token; web/e2e/login.ts reads the same repository-relative path.
-const setupTokenFile = ".test-docker/e2e/setup-token"
 
 func main() {
 	if err := run(); err != nil {
@@ -115,8 +113,14 @@ func run() error {
 	if _, err := rand.Read(key); err != nil {
 		return err
 	}
+	// Per web/e2e/login.ts, which reads the setup token from this directory outside the checkout.
+	workDir := filepath.Join(os.TempDir(), "portcullis-e2e")
+	if err := os.MkdirAll(workDir, 0o700); err != nil {
+		return err
+	}
+	setupTokenFile := filepath.Join(workDir, "setup-token")
+	applicationLogPath := filepath.Join(workDir, "application.log")
 	server := exec.Command(".test-docker/e2e/portcullis")
-	// Playwright signals the harness group; forward one shutdown signal to the application.
 	server.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(value, "PORTCULLIS_") {
@@ -127,11 +131,8 @@ func run() error {
 		"PORTCULLIS_DATABASE_URL="+dsn, "PORTCULLIS_MASTER_KEY="+base64.StdEncoding.EncodeToString(key),
 		"PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true", "PORTCULLIS_STARTUP_MIGRATE=true",
 		"PORTCULLIS_ADDR=127.0.0.1:18080", "PORTCULLIS_SHUTDOWN_TIMEOUT=5s", "PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT=2s",
-		// The default destination policy refuses loopback; the Testcontainers target is published there (ADR-0051).
 		"PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","),
-		// The browser bootstrap scenario reads the first-run setup token from this owner-only file (ADR-0052).
 		"PORTCULLIS_SETUP_TOKEN_FILE="+setupTokenFile)
-	// Playwright discards the harness's stdout, so the application log is also kept on disk and its tail replayed on stderr when the application exits early.
 	applicationLog, err := os.Create(applicationLogPath)
 	if err != nil {
 		return err
