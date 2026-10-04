@@ -55,7 +55,9 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
     setPage(1); setPageSize(20); setSortColumn(); setDescending(false); setFilter(""); setFilterDraft("");
     if (next !== undefined) read.handleOpenChange(true);
   }));
-  const reload = () => { revision++; setCopyMessage(""); setCopying(false); setResult(); setFullCell(); read.handleOpenChange(true); };
+  // A page, size, sort or filter change keeps the shown snapshot until its replacement arrives; createOpenFetch drops every response but the latest request's.
+  const reload = () => { revision++; setCopyMessage(""); setCopying(false); setFullCell(); read.handleOpenChange(true); };
+  const refreshing = () => read.loading() && result() !== undefined;
   const applySorting = (column: number | undefined, sortDescending: boolean) => {
     setSortColumn(column);
     setDescending(sortDescending);
@@ -69,7 +71,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   onCleanup(() => { revision++; read.handleOpenChange(false); });
   const table = createSolidTable<QueryResultRow>({
     get data() { return result()?.rows ?? []; },
-    get columns() { return (result()?.columns ?? []).map((c, i) => ({ id: String(i), accessorFn: (row: QueryResultRow) => cellText(row.cells[i]), header: c.name })); },
+    get columns() { return (result()?.columns ?? []).map((column, columnIdx) => ({ id: String(columnIdx), accessorFn: (row: QueryResultRow) => cellText(row.cells[columnIdx]), header: column.name })); },
     getCoreRowModel: getCoreRowModel(), manualPagination: true, manualSorting: true, manualFiltering: true,
   });
   const copyVisibleRows = async () => {
@@ -105,8 +107,8 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   return <section aria-label="Query results" class="flex min-w-0 flex-col gap-6">
       <header><A href={`/requests/${props.requestId}`} class="text-sm underline">Back to request</A>
       <h1 class="mt-3 text-2xl font-semibold">Query result</h1></header>
-      <Show when={execution()}>{e => <ExecutionSummary execution={e()} />}</Show>
-      <Show when={read.loading()}><LoadingSkeleton label="Loading result…" /></Show>
+      <Show when={execution()}>{shownExecution => <ExecutionSummary execution={shownExecution()} />}</Show>
+      <Show when={read.loading() && result() === undefined}><LoadingSkeleton label="Loading result…" /></Show>
       <Show when={read.error()}><p role="alert" class="text-destructive">{read.error()} Results may have expired or been evicted.</p></Show>
       <Show when={execution()?.state === AccessRequestState.OUTCOME_UNKNOWN}><p role="alert">Outcome unknown. Check the target database and audit history before creating another request. This execution will not retry.</p></Show>
       <Show when={execution()?.state === AccessRequestState.FAILED}><p role="alert">Execution failed. Submit a new request to try again.</p></Show>
@@ -114,8 +116,8 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       <Show when={result()}>{snapshot => <>
         <Show when={snapshot().truncated}><p role="status">Result truncated by the row or byte limit. CSV contains only this cached snapshot.</p></Show>
         <p class="text-xs text-muted-foreground">Results expire after 15 minutes and may be evicted earlier.</p>
-        <form class="content-surface flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); setFilter(filterDraft()); setPage(1); reload(); }}>
-          <input aria-label="Filter results" class="rounded-md border px-3 text-sm" value={filterDraft()} maxLength={1000} onInput={e => setFilterDraft(e.currentTarget.value)} placeholder="Contains text in any column" />
+        <form class="content-surface flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); setFilter(filterDraft()); setPage(1); reload(); }}>
+          <input aria-label="Filter results" class="rounded-md border px-3 text-sm" value={filterDraft()} maxLength={1000} onInput={event => setFilterDraft(event.currentTarget.value)} placeholder="Contains text in any column" />
           <Button variant="outline" type="submit">Filter results</Button>
           <Button type="button" variant="outline" disabled={copying()} onClick={() => void copyVisibleRows()}>Copy visible rows</Button>
           <Button type="button" variant="outline" disabled={exporting()} onClick={() => void exportCSV()}>Export CSV</Button>
@@ -123,14 +125,14 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
         </form>
         <div class="flex flex-wrap items-center gap-3">
           <label class="flex items-center gap-2 text-sm">Sort by
-            <select aria-label="Sort by" class="h-10 rounded-md border bg-background px-3" value={sortColumn() === undefined ? "" : String(sortColumn())} onChange={e => applySorting(e.currentTarget.value === "" ? undefined : Number(e.currentTarget.value), false)}>
+            <select aria-label="Sort by" class="h-10 rounded-md border bg-background px-3" value={sortColumn() === undefined ? "" : String(sortColumn())} onChange={event => applySorting(event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value), false)}>
               <option value="">Original query order</option>
               <For each={snapshot().columns}>{(column, index) => <option value={String(index())}>{column.name} (column {index() + 1})</option>}</For>
             </select>
           </label>
           <Show when={sortColumn() !== undefined}>
             <label class="flex items-center gap-2 text-sm">Direction
-              <select aria-label="Sort direction" class="h-10 rounded-md border bg-background px-3" value={descending() ? "descending" : "ascending"} onChange={e => applySorting(sortColumn(), e.currentTarget.value === "descending")}>
+              <select aria-label="Sort direction" class="h-10 rounded-md border bg-background px-3" value={descending() ? "descending" : "ascending"} onChange={event => applySorting(sortColumn(), event.currentTarget.value === "descending")}>
                 <option value="ascending">Ascending</option><option value="descending">Descending</option>
               </select>
             </label>
@@ -151,6 +153,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
           <p class="text-xs text-muted-foreground">Copy includes this page only; formula-like text is escaped for spreadsheet paste.</p>
         </div>
         <Show when={copyMessage()}><p role="status" class="text-sm text-muted-foreground">{copyMessage()}</p></Show>
+        <Show when={refreshing()}><p role="status" aria-busy="true" class="text-sm text-muted-foreground">Updating results… The rows below are from the previous view.</p></Show>
         <Show when={view() === "table"} fallback={<pre aria-label="Text results" class="max-h-[36rem] overflow-auto rounded-lg border bg-card p-4 font-mono text-sm">{resultText(snapshot())}</pre>}>
         <div class="overflow-x-auto"><Table>
           <TableHeader><TableRow><For each={snapshot().columns}>{(column, index) => <TableHead aria-sort={sortColumn() === index() ? descending() ? "descending" : "ascending" : undefined}>
@@ -167,9 +170,9 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
         <Show when={fullCell() !== undefined}><div><Button variant="ghost" onClick={() => setFullCell()}>Close cell</Button><pre aria-label="Full cell" class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded border p-3">{fullCell()}</pre></div></Show>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="text-sm">{snapshot().totalCount.toString()} rows · Page {snapshot().page} of {Math.max(snapshot().totalPages, 1)}</span>
-          <select aria-label="Rows per page" value={pageSize()} onChange={e => { setPageSize(Number(e.currentTarget.value)); setPage(1); reload(); }}><For each={[10, 20, 50, 100]}>{size => <option value={size}>{size}</option>}</For></select>
-          <Button variant="outline" disabled={page() <= 1} onClick={() => { setPage(page() - 1); reload(); }}>Previous page</Button>
-          <Button variant="outline" disabled={page() >= snapshot().totalPages} onClick={() => { setPage(page() + 1); reload(); }}>Next page</Button>
+          <select aria-label="Rows per page" value={pageSize()} onChange={event => { setPageSize(Number(event.currentTarget.value)); setPage(1); reload(); }}><For each={[10, 20, 50, 100]}>{size => <option value={size}>{size}</option>}</For></select>
+          <Button variant="outline" disabled={refreshing() || page() <= 1} onClick={() => { setPage(page() - 1); reload(); }}>Previous page</Button>
+          <Button variant="outline" disabled={refreshing() || page() >= snapshot().totalPages} onClick={() => { setPage(page() + 1); reload(); }}>Next page</Button>
         </div>
       </>}</Show>
   </section>;

@@ -149,6 +149,40 @@ test.describe("application resilience", () => {
     await restore();
   });
 
+  test("changing the result page keeps the shown rows until the next page arrives", async ({ page }) => {
+    await page.goto("/requests/new");
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Result paging check");
+    await page.getByLabel("SQL", { exact: true }).fill("select 1000 + g as marker from generate_series(1, 25) as g order by g");
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    const details = page.getByRole("region", { name: "Request details" });
+    await details.getByRole("button", { name: "Execute", exact: true }).click();
+    await details.getByRole("link", { name: "Result", exact: true }).click();
+    const results = page.getByRole("region", { name: "Query results" });
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+
+    let release = () => {};
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/portcullis.v1.QueryExecutions/GetResult", async (route) => {
+      await held;
+      await route.continue();
+    });
+    try {
+      await results.getByRole("button", { name: "Next page", exact: true }).click();
+      await expect(results.getByRole("status").filter({ hasText: "Updating results…" })).toBeVisible();
+      await expect(results.getByText("1001", { exact: true })).toBeVisible();
+      await expect(results.getByRole("status").filter({ hasText: "Loading result…" })).toHaveCount(0);
+      await expect(results.getByRole("button", { name: "Next page", exact: true })).toBeDisabled();
+      release();
+      await expect(results.getByText("1021", { exact: true })).toBeVisible();
+      await expect(results.getByText("1001", { exact: true })).toHaveCount(0);
+      await expect(results.getByRole("status").filter({ hasText: "Updating results…" })).toHaveCount(0);
+    } finally {
+      release();
+      await page.unroute("**/portcullis.v1.QueryExecutions/GetResult");
+    }
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");
