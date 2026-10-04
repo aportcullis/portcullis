@@ -153,6 +153,17 @@ type OrganizationMembership struct {
 	RoleID         pgtype.UUID
 }
 
+type PasswordSetupToken struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	TokenHash      []byte
+	ExpiresAt      pgtype.Timestamptz
+	ConsumedAt     pgtype.Timestamptz
+	RevokedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+}
+
 type Permission struct {
 	Key         string
 	Description string
@@ -207,11 +218,13 @@ type Role struct {
 	IsBootstrapDefault bool
 	CreatedAt          pgtype.Timestamptz
 	DeletedAt          pgtype.Timestamptz
+	Version            int64
 }
 
 type RolePermission struct {
 	RoleID        pgtype.UUID
 	PermissionKey string
+	DeletedAt     pgtype.Timestamptz
 }
 
 type SchemaMigration struct {

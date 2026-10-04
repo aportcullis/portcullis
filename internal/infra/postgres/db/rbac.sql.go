@@ -52,7 +52,7 @@ const permissionsForUser = `-- name: PermissionsForUser :many
 select distinct rp.permission_key
 from public.organization_memberships m
 join public.roles r on r.id = m.role_id and r.deleted_at is null
-join public.role_permissions rp on rp.role_id = m.role_id
+join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
 where m.organization_id = $1 and m.user_id = $2
 `
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -426,6 +427,82 @@ func TestAccessRequestInvalidatedApprover(t *testing.T) {
 		if a.Approval.ApproverID == approverA && a.Valid {
 			t.Error("disabled approver's decision must not read as valid")
 		}
+	}
+}
+
+// setRolePermissionDeleted soft-deletes or revives one role permission the way a role update does (ADR-0053).
+func (f reqFixture) setRolePermissionDeleted(t *testing.T, user identity.UserID, permission string, deleted bool) {
+	t.Helper()
+	tag, err := f.pool.Exec(context.Background(), `
+		update role_permissions rp
+		set deleted_at = case when $3 then clock_timestamp() end
+		from organization_memberships m
+		where m.user_id = $1::uuid and m.organization_id = $4::uuid and rp.role_id = m.role_id and rp.permission_key = $2`,
+		string(user), permission, deleted, string(f.org))
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("set %s deleted=%t: %v (%d rows)", permission, deleted, err, tag.RowsAffected())
+	}
+}
+
+func TestSoftDeletedRolePermissionStopsGrantingApproval(t *testing.T) {
+	f := newReqFixture(t)
+	ctx := context.Background()
+	connID := f.liveConn(t, 2)
+	demoted := f.userWithCustomRole(t, "custom-approver", "requests.approve", "requests.reject")
+	steady := f.userWithRole(t, "approver")
+	pending := f.submitted(t, connID, 2)
+	if _, err := f.requests.Approve(ctx, f.org, pending.ID, demoted, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, pending.ID)); err != nil {
+		t.Fatalf("approve before demotion: %v", err)
+	}
+	f.setRolePermissionDeleted(t, demoted, "requests.approve", true)
+
+	// Refusal: the removed permission no longer admits a new approval (ApproverEligible).
+	other := f.submitted(t, connID, 2)
+	if _, err := f.requests.Approve(ctx, f.org, other.ID, demoted, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, other.ID)); !errors.Is(err, access.ErrApproverIneligible) {
+		t.Errorf("approve after soft-deleted permission = %v, want ErrApproverIneligible", err)
+	}
+	// Refusal: the earlier approval stops counting toward quorum (CountValidApprovals).
+	view, err := f.requests.Approve(ctx, f.org, pending.ID, steady, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, pending.ID))
+	if err != nil || view.Request.State != access.StatePending || view.ValidApprovals != 1 {
+		t.Fatalf("second approval = state %q valid %d (%v), want pending with 1 valid approval", view.Request.State, view.ValidApprovals, err)
+	}
+	// Refusal: the decision list marks it invalid (ListApprovalsForRequest).
+	for _, decision := range view.Approvals {
+		if decision.Approval.ApproverID == demoted && decision.Valid {
+			t.Error("an approval whose permission was soft-deleted must not read as valid")
+		}
+	}
+	// Refusal: the request view and list count the same way (GetAccessRequestView, ListAccessRequests*).
+	fetched, _, err := f.requests.Get(ctx, f.org, pending.ID)
+	if err != nil || fetched.ValidApprovals != 1 {
+		t.Errorf("Get valid approvals = %d (%v), want 1", fetched.ValidApprovals, err)
+	}
+	for _, descending := range []bool{true, false} {
+		page, err := f.requests.List(ctx, f.org, access.ListQuery{Page: 1, PageSize: 100, SortDescending: descending})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		for _, item := range page.Items {
+			if item.Request.ID == pending.ID && item.ValidApprovals != 1 {
+				t.Errorf("List(descending=%t) valid approvals = %d, want 1", descending, item.ValidApprovals)
+			}
+		}
+	}
+	// Refusal: the permission lookup every RPC gate uses no longer grants it (PermissionsForUser).
+	permissions, err := pg.NewIdentityStore(f.pool).PermissionsForUser(ctx, f.org, demoted)
+	if err != nil || slices.Contains(permissions, identity.PermissionRequestsApprove) || !slices.Contains(permissions, identity.Permission("requests.reject")) {
+		t.Errorf("permissions after soft delete = %v (%v), want requests.reject without requests.approve", permissions, err)
+	}
+
+	// Success: reviving the row restores eligibility, and the approval reaches quorum.
+	f.setRolePermissionDeleted(t, demoted, "requests.approve", false)
+	revived, err := f.requests.Approve(ctx, f.org, other.ID, demoted, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, other.ID))
+	if err != nil || revived.ValidApprovals != 1 {
+		t.Errorf("approve after revival = valid %d (%v), want 1", revived.ValidApprovals, err)
+	}
+	restored, _, err := f.requests.Get(ctx, f.org, pending.ID)
+	if err != nil || restored.ValidApprovals != 2 {
+		t.Errorf("revived approval valid count = %d (%v), want 2", restored.ValidApprovals, err)
 	}
 }
 

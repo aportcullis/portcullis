@@ -9,6 +9,8 @@ const (
 	lockClassMigrate   int32 = 3 // schema migration (one global lock, object 0)
 	// lockClassResultAdmission serializes result admission per organization (object = organization hash).
 	lockClassResultAdmission int32 = 4
+	// lockClassAdministration serializes user and role administration per organization so the last-administrator count cannot race (ADR-0053).
+	lockClassAdministration int32 = 5
 )
 
 // Result-cache bounds: chunk 0 holds the schema and chunks 1..100 hold up to 10,000 rows (ADR-0011); purge deletes expired rows in bounded batches.

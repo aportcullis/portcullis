@@ -39,7 +39,7 @@ The decision must keep authorization permission-based (ADR-0008), organization-s
 - A custom role has a name of 1–64 Unicode code points without control or format characters, unique among the organization's live roles, and any subset of the loaded permission catalog. Unknown keys are refused.
 - System roles are read-only: they cannot be renamed, changed or deleted.
 - Update is a full replacement under optimistic concurrency: a new `roles.version` column must equal the version the caller read, otherwise Aborted.
-- A removed permission's `role_permissions` row is soft-deleted (`deleted_at`) rather than erased, and re-adding the permission inserts a new row; a partial unique index keeps one live row per role and permission, and every permission read ignores deleted rows (`docs/conventions/data.md`).
+- A removed permission's `role_permissions` row is soft-deleted (`deleted_at`) rather than erased, and re-adding the permission clears `deleted_at` on that row, so the `(role_id, permission_key)` key keeps one row per pair; every permission read, including approver eligibility, ignores deleted rows (`docs/conventions/data.md`).
 - Delete is a soft delete (`deleted_at`) and is refused while any membership references the role, because a deleted role silently stops granting permissions to its members.
 
 ### Safeguards
@@ -63,7 +63,8 @@ PRD §11 schedules this slice at the start of M2, before MySQL parity: it closes
 
 ## Consequences
 
-- Migration 0022 adds `password_setup_tokens`, `roles.version` and `role_permissions.deleted_at`. The token table is runtime-writable current state (consume and revoke are updates); the audit log remains the evidence. Runtime DELETE stays revoked by the default privileges, including on `role_permissions`.
+- Migration 0022 adds `password_setup_tokens`, `roles.version` and `role_permissions.deleted_at`. The token table is runtime-writable current state (consume and revoke are updates); the audit log remains the evidence. Runtime DELETE stays revoked by the default privileges, including on `role_permissions`; `ROLE_UPDATED` metadata records the added and removed keys.
+- All administration mutations, including user creation and role deletion, hold the per-organization advisory lock, so a role cannot be deleted while a concurrent assignment references it. Writes are stamped with the instant observed after the lock (ADR-0009).
 - `identity.EnforcedPermissions` gains the `users.*` and `roles.*` keys, so startup refuses a catalog that lacks them.
 - Revalidating unexecuted approvals from users who were disabled or lost approval permission (PRD §8.3) is a separate execution-path change and is not part of this slice.
 - Deferred: multiple roles per membership, administrator-initiated password reset, email delivery, and configuration provisioning.

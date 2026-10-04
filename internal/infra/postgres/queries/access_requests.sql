@@ -159,7 +159,7 @@ select exists (
           select 1
           from public.organization_memberships m
           join public.roles r on r.id = m.role_id and r.deleted_at is null
-          join public.role_permissions rp on rp.role_id = m.role_id
+          join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
           where m.organization_id = @organization_id
             and m.user_id = @approver_id
             and rp.permission_key = @permission_key
@@ -184,7 +184,7 @@ where a.request_id = @request_id
       select 1
       from public.organization_memberships m
       join public.roles r on r.id = m.role_id and r.deleted_at is null
-      join public.role_permissions rp on rp.role_id = m.role_id
+      join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
       where m.organization_id = a.organization_id
         and m.user_id = a.approver_id
         and rp.permission_key = 'requests.approve'
@@ -204,7 +204,7 @@ select
             select 1
             from public.organization_memberships m
             join public.roles r on r.id = m.role_id and r.deleted_at is null
-            join public.role_permissions rp on rp.role_id = m.role_id
+            join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
             where m.organization_id = a.organization_id
               and m.user_id = a.approver_id
               and rp.permission_key = 'requests.approve'
@@ -237,7 +237,7 @@ select
           and exists (
               select 1 from public.organization_memberships m
               join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id
+              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
               where m.organization_id = a.organization_id and m.user_id = a.approver_id
                 and rp.permission_key = 'requests.approve'
           )
@@ -271,7 +271,7 @@ select
           and exists (
               select 1 from public.organization_memberships m
               join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id
+              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
               where m.organization_id = a.organization_id and m.user_id = a.approver_id
                 and rp.permission_key = 'requests.approve'
           )
@@ -309,7 +309,7 @@ select
           and exists (
               select 1 from public.organization_memberships m
               join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id
+              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
               where m.organization_id = a.organization_id and m.user_id = a.approver_id
                 and rp.permission_key = 'requests.approve'
           )

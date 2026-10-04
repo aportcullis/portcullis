@@ -26,6 +26,8 @@ type Querier interface {
 	ConsumeSetupToken(ctx context.Context, tokenHash []byte) (int64, error)
 	// Counts on the EFFECTIVE state too, so the total matches the filtered rows.
 	CountAccessRequests(ctx context.Context, arg CountAccessRequestsParams) (int64, error)
+	// Active members whose live role holds every administrator permission key (ADR-0008); the keys come from the domain rule.
+	CountActiveAdministrators(ctx context.Context, arg CountActiveAdministratorsParams) (int64, error)
 	// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".
 	CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error)
 	// Administrative rotation completion check: count envelopes across every org
@@ -61,6 +63,7 @@ type Querier interface {
 	// The connection's current policy snapshot, resolved through the pointer. Works for archived connections too: the policy is part of the historical snapshot (ADR-0015).
 	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
+	GetMember(ctx context.Context, arg GetMemberParams) (GetMemberRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	// Administrative identity-only discovery; locked envelope reads remain org-scoped.
 	GetNextRotationOrganization(ctx context.Context, activeVersion int32) (pgtype.UUID, error)
@@ -68,11 +71,16 @@ type Querier interface {
 	GetQueryExecution(ctx context.Context, arg GetQueryExecutionParams) (QueryExecution, error)
 	GetResultChunk(ctx context.Context, arg GetResultChunkParams) (ResultCacheResultChunk, error)
 	GetResultSet(ctx context.Context, arg GetResultSetParams) (ResultCacheResultSet, error)
+	// Disambiguates a refused role update or delete, including soft-deleted rows.
+	GetRoleState(ctx context.Context, arg GetRoleStateParams) (GetRoleStateRow, error)
+	GetRoleWithPermissions(ctx context.Context, arg GetRoleWithPermissionsParams) (GetRoleWithPermissionsRow, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	// Read identity, password hash, and lockout together so known and unknown accounts use one lookup. Evaluate lockout on the same database clock as failure writes.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
+	// Insert the role's permissions, reviving any soft-deleted row of the same key instead of adding a second one (ADR-0053).
+	GrantRolePermissions(ctx context.Context, arg GrantRolePermissionsParams) error
 	HeartbeatQueryExecution(ctx context.Context, arg HeartbeatQueryExecutionParams) (int64, error)
 	// created_at/updated_at are given explicitly rather than left to the column DEFAULT: this insert runs after a FOR SHARE wait on the connection, and the default is now() — the transaction's start time, which predates the wait (ADR-0009).
 	InsertAccessRequest(ctx context.Context, arg InsertAccessRequestParams) error
@@ -86,9 +94,12 @@ type Querier interface {
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
+	// The expiry is measured from the observed instant on the database clock.
+	InsertPasswordSetupToken(ctx context.Context, arg InsertPasswordSetupTokenParams) (pgtype.Timestamptz, error)
 	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
 	InsertResultChunks(ctx context.Context, arg []InsertResultChunksParams) (int64, error)
 	InsertResultSet(ctx context.Context, arg InsertResultSetParams) error
+	InsertRole(ctx context.Context, arg InsertRoleParams) (pgtype.UUID, error)
 	// Creation and expiry are anchored to one database-clock observation after the bootstrap lock, so instance clock skew cannot extend a token (ADR-0052).
 	InsertSetupToken(ctx context.Context, arg InsertSetupTokenParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
@@ -103,6 +114,8 @@ type Querier interface {
 	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
+	// Users seen through their membership in one organization (ADR-0004/0053), with the single assigned role and whether a password credential exists.
+	ListMembers(ctx context.Context, organizationID pgtype.UUID) ([]ListMembersRow, error)
 	// Administrative identity-only enumeration for per-organization maintenance; every org-scoped read still filters by one organization (ADR-0004).
 	ListOrganizationIDs(ctx context.Context) ([]pgtype.UUID, error)
 	// Keyset pagination by (deadline, request_id) lets a run page past an attempt whose recovery keeps failing.
@@ -112,6 +125,7 @@ type Querier interface {
 	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
 	// Read under the organization's admission lock; reads and last-access touches are not blocked, and deletes of rows a purge already removed are no-ops.
 	ListResultAccounting(ctx context.Context, organizationID pgtype.UUID) ([]ResultCacheResultSet, error)
+	ListRolesWithPermissions(ctx context.Context, organizationID pgtype.UUID) ([]ListRolesWithPermissionsRow, error)
 	// Reconciliation skips a request that a completing owner or another replica holds instead of waiting behind it.
 	LockAccessRequestSkipLocked(ctx context.Context, arg LockAccessRequestSkipLockedParams) (AccessRequest, error)
 	// Lock membership FOR SHARE before checking eligibility. Concurrent revocation serializes only once the future role-management path takes FOR UPDATE on the same row (ADR-0018).
@@ -125,6 +139,8 @@ type Querier interface {
 	LockExpiredResults(ctx context.Context, arg LockExpiredResultsParams) ([]pgtype.UUID, error)
 	// The config-replacement cascade's half of LockSweptRequestsForConnection: it touches pending/approved only, so it locks only those. Drafts survive a config change — the connection is still there and a draft carries no approval, so it can simply be submitted against the new configuration (unlike archive, which takes the connection away entirely).
 	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
+	// Lock the account and its membership for a status, role or setup-link change; a user without a membership in the organization is not found.
+	LockMember(ctx context.Context, arg LockMemberParams) (LockMemberRow, error)
 	LockQueryExecution(ctx context.Context, arg LockQueryExecutionParams) (QueryExecution, error)
 	// Serialize admissions per organization with the registered lock class (const.go); other organizations admit concurrently (ADR-0011).
 	LockResultAdmission(ctx context.Context, arg LockResultAdmissionParams) error
@@ -143,17 +159,27 @@ type Querier interface {
 	ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnectionConfigParams) (Connection, error)
 	// A successful login clears the slate. The WHERE leaves an already-clean row unwritten, so calling this on every success keeps the hot path write-free while still clearing failures committed by concurrent attempts mid-verify.
 	ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error
+	RevokeOpenPasswordSetups(ctx context.Context, arg RevokeOpenPasswordSetupsParams) error
 	// Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).
 	RevokeOutstandingSetupTokens(ctx context.Context) error
+	// Revoke every active session of the organization's members holding a role whose permissions changed.
+	RevokeRoleMemberSessionsAt(ctx context.Context, arg RevokeRoleMemberSessionsAtParams) (int64, error)
 	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must not overwrite the original revoked_at — forensic evidence of WHEN the session actually died — and the caller skips the audit event when no row changed, so the trail records only real state changes (ADR-0009).
 	RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error)
 	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
 	RevokeUserSessions(ctx context.Context, userID pgtype.UUID) error
+	// Revoke every active session of a user at the observed instant of a privilege change (ADR-0006/0053).
+	RevokeUserSessionsAt(ctx context.Context, arg RevokeUserSessionsAtParams) (int64, error)
 	// The display name of the user's role within one organization — a UI label (ADR-0008: authorization decisions never consult role names). The same soft-delete join rule as PermissionsForUser applies.
 	RoleNameForUser(ctx context.Context, arg RoleNameForUserParams) (string, error)
 	RotateCredentialEnvelope(ctx context.Context, arg RotateCredentialEnvelopeParams) error
 	RotatePayloadEnvelope(ctx context.Context, arg RotatePayloadEnvelopeParams) error
 	RotateResultEnvelope(ctx context.Context, arg RotateResultEnvelopeParams) error
+	SetMembershipRole(ctx context.Context, arg SetMembershipRoleParams) error
+	SetUserStatus(ctx context.Context, arg SetUserStatusParams) error
+	SoftDeleteCustomRole(ctx context.Context, arg SoftDeleteCustomRoleParams) (int64, error)
+	// Soft-delete the role's live permissions missing from the new set; rows are never erased (ADR-0053).
+	SoftDeleteRemovedRolePermissions(ctx context.Context, arg SoftDeleteRemovedRolePermissionsParams) error
 	// Stamp submission, updated_at, and quorum-zero approval expiry from one post-lock database instant; reuse it in derived audit evidence.
 	SubmitAccessRequest(ctx context.Context, arg SubmitAccessRequestParams) (AccessRequest, error)
 	TouchResultSet(ctx context.Context, arg TouchResultSetParams) error
@@ -162,6 +188,7 @@ type Querier interface {
 	UpdateAccessRequestDraftPayload(ctx context.Context, arg UpdateAccessRequestDraftPayloadParams) (AccessRequest, error)
 	// Replace descriptor fields at the editor’s version, including archived history labels. Stamp with the post-lock observed instant; zero rows mean missing or stale.
 	UpdateConnectionDescriptor(ctx context.Context, arg UpdateConnectionDescriptorParams) (Connection, error)
+	UpdateCustomRole(ctx context.Context, arg UpdateCustomRoleParams) (int64, error)
 	UpsertPasswordAuth(ctx context.Context, arg UpsertPasswordAuthParams) error
 	// Final post-CSRF validity check for a request whose idle slide is throttled. It deliberately does not write, but its predicates use the database clock so a concurrently revoked or expired session cannot reach a handler.
 	ValidateSession(ctx context.Context, id pgtype.UUID) (bool, error)
