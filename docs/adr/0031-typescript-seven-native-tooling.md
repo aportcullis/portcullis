@@ -13,7 +13,9 @@ Pin **TypeScript 7.0.2** in both projects and invoke `tsc` through pnpm scripts.
 
 Transfer the existing JavaScript/TypeScript recommended rules explicitly into typed `web/oxlint.config.ts`, rather than enable unrelated presets. Keep the dynamically generated downward FSD and sibling-slice restrictions, including type-only imports, explicit-any rejection, prefer-const and no comma operators. Disable the parentheses exception of no-sequences to meet the existing convention. The unavailable no-dupe-args/no-new-symbol rules were already disabled for TypeScript; strict TypeScript/native parsing rejects illegal duplicate bindings and legacy octal literals in modules. Native source type checking remains a separate required gate, not a lint substitute.
 
-Verify observable lint scenarios with the actual CLI: allow downward alias imports; refuse relative, upward, sibling and type-only boundary violations, explicit any and comma operators. Removing enforcement must make the scenarios red before the production configuration makes them green. Require typecheck, lint, existing frontend tests, build and browser E2E before declaring the toolchain change complete. No product feature or compiler-API shim is introduced.
+Type assertions and non-null assertions are forbidden across `web/src` and `web/e2e` (amended 2026-10-04): `typescript/consistent-type-assertions` with `assertionStyle: "never"` and `typescript/no-non-null-assertion` turn the existing review convention into a lint failure. Types come from annotations, `satisfies`, type guards and parse functions at DOM or JSON boundaries; `as const` remains allowed. The vendored UI wrappers render their default element rather than re-exporting Kobalte's generic polymorphic signature, which needed an assertion to narrow.
+
+Verify observable lint scenarios with the actual CLI: allow downward alias imports; refuse relative, upward, sibling and type-only boundary violations, explicit any, comma operators, type assertions and non-null assertions; keep `as const`, `satisfies` and annotations allowed. Removing enforcement must make the scenarios red before the production configuration makes them green. Require typecheck, lint, existing frontend tests, build and browser E2E before declaring the toolchain change complete. No product feature or compiler-API shim is introduced.
 
 ## Consequences
 
@@ -26,3 +28,4 @@ Editor integrations use Oxlint. Preserve the rule inventory when upgrading tooli
 - [Oxlint migration](https://oxc.rs/docs/guide/usage/linter/migrate-from-eslint).
 - [Oxlint configuration](https://oxc.rs/docs/guide/usage/linter/config-file-reference.html).
 - [Oxlint built-in TypeScript rules](https://oxc.rs/docs/guide/usage/linter/plugins).
+- [Oxlint `typescript/consistent-type-assertions`](https://oxc.rs/docs/guide/usage/linter/rules/typescript/consistent-type-assertions.html) (verified 2026-10-04): `assertionStyle: "never"` disallows assertions and points to annotations or `satisfies`; the repository lint scenarios confirm `as const` stays allowed.

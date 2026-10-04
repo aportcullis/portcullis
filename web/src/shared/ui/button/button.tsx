@@ -37,10 +37,9 @@ const buttonVariants = cva(
 type ButtonProps<T extends ValidComponent = "button"> = ButtonPrimitive.ButtonRootProps<T> &
   VariantProps<typeof buttonVariants> & { class?: string | undefined; children?: JSX.Element }
 
-const Button = <T extends ValidComponent = "button">(
-  props: PolymorphicProps<T, ButtonProps<T>>
-) => {
-  const [local, others] = splitProps(props as ButtonProps, ["variant", "size", "class"])
+// Rendered as a native button only: the wrapper does not forward Kobalte's polymorphic `as`, which keeps its props typed without assertions.
+const Button = (props: PolymorphicProps<"button", ButtonProps>) => {
+  const [local, others] = splitProps(props, ["variant", "size", "class"])
   return (
     <ButtonPrimitive.Root
       class={cn(buttonVariants({ variant: local.variant, size: local.size }), local.class)}

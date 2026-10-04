@@ -28,6 +28,7 @@ Same-layer imports across folders are forbidden (a feature never imports another
 This is the SPA's ports-and-adapters: the same inward-only dependency discipline as the Go layers.
 
 **Oxlint enforces all of it** (`web/oxlint.config.ts`): the `@/` alias, the downward-only layers, and — since 2026-07-26 — the sibling-slice ban, generated per slice from the folders under `features/` and `entities/`.
+It also rejects `as` type assertions and `!` non-null assertions in `src/` and `e2e/` (ADR-0031); narrow with a type guard or a parse function at the DOM or JSON boundary instead.
 The sibling rule was review-only until a feature did import another one; a convention a tool cannot check is a convention that erodes.
 When shared logic needs a caller-specific piece (an error formatter, a label), **inject it** rather than importing sideways — see `shared/lib/openFetch.ts`.
 

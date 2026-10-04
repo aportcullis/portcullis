@@ -3,16 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
+  let resolve = (_value: T): void => { throw new Error("Deferred resolver is not initialized"); };
+  let reject = (_reason: unknown): void => { throw new Error("Deferred rejection is not initialized"); };
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
   });
   return { promise, resolve, reject };
 }
 
-const flush = () => new Promise((r) => setTimeout(r));
+const flush = () => new Promise((resolve) => setTimeout(resolve));
 
 
 describe("createDialogSession", () => {

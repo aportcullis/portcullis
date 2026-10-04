@@ -11,6 +11,13 @@ const scenarios = [
   ["type-only imports obey layer boundaries", "shared", 'export type { Value } from "@/pages/example";', "no-restricted-imports"],
   ["explicit any remains rejected", "shared", "export type Value = any;", "no-explicit-any"],
   ["comma operators remain rejected", "shared", "export const value = (1, 2);", "no-sequences"],
+  ["as type assertions are rejected", "features/request", 'export const value = JSON.parse("1") as number;', "consistent-type-assertions"],
+  ["angle-bracket type assertions are rejected", "entities/request", 'export const value = <number>JSON.parse("1");', "consistent-type-assertions"],
+  ["non-null assertions are rejected", "shared", "export const value = [1].find(Boolean)!;", "no-non-null-assertion"],
+  ["non-null assertions on members are rejected", "app", "export const value = document.body.querySelector('main')!.id;", "no-non-null-assertion"],
+  ["const assertions remain allowed", "shared", 'export const value = ["read", "write"] as const;', null],
+  ["satisfies remains allowed", "shared", "export const value = { count: 1 } satisfies { count: number };", null],
+  ["type annotations remain allowed", "shared", 'export const value: number = JSON.parse("1");', null],
 ];
 
 for (const [name, slice, source, rule] of scenarios) {

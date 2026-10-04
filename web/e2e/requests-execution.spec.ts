@@ -39,14 +39,15 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await expect(executionSummary.getByText("Execution time", { exact: true })).toBeVisible();
   const duration = executionSummary.getByLabel("Recorded execution time", { exact: true });
   await expect(duration).toHaveText(/^(?:<1 ms|\d+ ms|\d+\.\d{3} s)$/);
-  const recordedDuration = await duration.textContent();
+  const recordedDuration = (await duration.textContent()) ?? "";
+  expect(recordedDuration).not.toBe("");
   await page.reload();
-  await expect(row.getByLabel("Recorded execution time", { exact: true })).toHaveText(recordedDuration!);
+  await expect(row.getByLabel("Recorded execution time", { exact: true })).toHaveText(recordedDuration);
   await row.getByRole("link", { name: "Result", exact: true }).click();
   await expect(page).toHaveURL(/\/requests\/[0-9a-f-]+\/result$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const dialog = page.getByRole("region", { name: "Query results" });
-  await expect(dialog.getByLabel("Recorded execution time", { exact: true })).toHaveText(recordedDuration!);
+  await expect(dialog.getByLabel("Recorded execution time", { exact: true })).toHaveText(recordedDuration);
   await expect(dialog.getByText("9007199254740994", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(dialog.getByText("9007199254741018", { exact: true })).toBeVisible();
@@ -94,6 +95,8 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await dialog.getByRole("button", { name: "Export CSV", exact: true }).click();
   const downloadLink = dialog.getByRole("link", { name: "Download CSV", exact: true });
   await expect(downloadLink).toBeVisible();
+  const downloadHref = (await downloadLink.getAttribute("href")) ?? "";
+  expect(downloadHref).toMatch(/^blob:/);
   // The saved download is read back below; the page itself may not fetch its blob: URL because connect-src admits only the SPA origin.
   const download = page.waitForEvent("download");
   await downloadLink.click();

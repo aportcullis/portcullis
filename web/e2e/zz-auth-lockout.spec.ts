@@ -27,7 +27,7 @@ test.describe.serial("auth lockout", () => {
 
     // The preceding scenarios can drain the shared IP bucket. Refill before the first attempt as well as between attempts; a 429 never increments the account's failure counter (ADR-0006/0010).
     await page.waitForTimeout(3200);
-    for (let i = 0; i < 5; i++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       await signIn(page, wrong);
       await expect(page.getByText(genericError)).toBeVisible(slowExpect);
       await page.waitForTimeout(3200);

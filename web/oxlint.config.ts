@@ -126,6 +126,9 @@ export default defineConfig({
     "typescript/no-duplicate-enum-values": "error",
     "typescript/no-empty-object-type": "error",
     "typescript/no-explicit-any": "error",
+    // Types come from annotations, guards and parse functions, never from assertions; `as const` and `satisfies` stay available (docs/conventions/frontend.md).
+    "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
+    "typescript/no-non-null-assertion": "error",
     "typescript/no-extra-non-null-assertion": "error",
     "typescript/no-misused-new": "error",
     "typescript/no-namespace": "error",

@@ -3,7 +3,7 @@ import { For, Index, Show } from "solid-js";
 
 import { paramTypes } from "@/entities/request/model";
 import type { RequestDraft } from "@/features/request/draft";
-import { appendDraftParameter, removeDraftParameter, updateDraftParameter, isParameterValueDisabled } from "@/features/request/draft";
+import { appendDraftParameter, removeDraftParameter, updateDraftParameter, isParameterValueDisabled, parseParameterType } from "@/features/request/draft";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
@@ -44,7 +44,7 @@ export const ParamEditor: Component<{
                   id={`param-name-${parameterIdx}`}
                   value={row().name}
                   disabled={props.disabled}
-                  onInput={(e) => props.onChange(updateDraftParameter(props.draft, parameterIdx, { name: e.currentTarget.value }))}
+                  onInput={(event) => props.onChange(updateDraftParameter(props.draft, parameterIdx, { name: event.currentTarget.value }))}
                 />
               </TextField>
               <div class="flex w-32 flex-col gap-1">
@@ -56,15 +56,13 @@ export const ParamEditor: Component<{
                   class={selectClass}
                   value={row().type}
                   disabled={props.disabled}
-                  onChange={(e) =>
-                    props.onChange(
-                      updateDraftParameter(props.draft, parameterIdx, {
-                        type: e.currentTarget.value as (typeof paramTypes)[number],
-                      }),
-                    )
-                  }
+                  onChange={(event) => {
+                    // The DOM hands back a string; only a value the parser recognizes becomes a parameter type.
+                    const parameterType = parseParameterType(event.currentTarget.value);
+                    if (parameterType) props.onChange(updateDraftParameter(props.draft, parameterIdx, { type: parameterType }));
+                  }}
                 >
-                  <For each={paramTypes}>{(t) => <option value={t}>{t}</option>}</For>
+                  <For each={paramTypes}>{(parameterType) => <option value={parameterType}>{parameterType}</option>}</For>
                 </select>
               </div>
               <TextField class="flex-1">
@@ -73,7 +71,7 @@ export const ParamEditor: Component<{
                   id={`param-value-${parameterIdx}`}
                   value={row().value}
                   disabled={props.disabled || isParameterValueDisabled(row().type)}
-                  onInput={(e) => props.onChange(updateDraftParameter(props.draft, parameterIdx, { value: e.currentTarget.value }))}
+                  onInput={(event) => props.onChange(updateDraftParameter(props.draft, parameterIdx, { value: event.currentTarget.value }))}
                 />
               </TextField>
               <Button

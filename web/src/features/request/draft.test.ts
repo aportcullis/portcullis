@@ -15,17 +15,26 @@ import {
   toTypedRequestParameters,
   validateRequestDraft,
   isParameterValueDisabled,
+  parseParameterType,
 } from "@/features/request/draft";
 
 describe("request draft", () => {
   it("adds, patches, and removes parameter rows immutably", () => {
-    const a = appendDraftParameter(createEmptyRequestDraft());
-    expect(a.params).toHaveLength(1);
-    const b = updateDraftParameter(a, 0, { name: "id", type: "integer", value: "7" });
-    expect(a.params[0].name).toBe("");
-    expect(b.params[0]).toEqual({ name: "id", type: "integer", value: "7" });
-    const c = removeDraftParameter(b, 0);
-    expect(c.params).toHaveLength(0);
+    const appended = appendDraftParameter(createEmptyRequestDraft());
+    expect(appended.params).toHaveLength(1);
+    const patched = updateDraftParameter(appended, 0, { name: "id", type: "integer", value: "7" });
+    expect(appended.params[0].name).toBe("");
+    expect(patched.params[0]).toEqual({ name: "id", type: "integer", value: "7" });
+    const removed = removeDraftParameter(patched, 0);
+    expect(removed.params).toHaveLength(0);
+  });
+
+  it.each(["string", "integer", "null", "uuid", "timestamp"])("parses the select value %s into a parameter type", (value) => {
+    expect(parseParameterType(value)).toBe(value);
+  });
+
+  it.each(["", "INTEGER", "int", " string", "__proto__", "toString"])("refuses the unsupported select value %j", (value) => {
+    expect(parseParameterType(value)).toBeUndefined();
   });
 
   it("decides what a lost target means from the request's actual state", () => {

@@ -26,11 +26,11 @@ import {
 } from "@/entities/connection/store";
 
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
+  let resolve = (_value: T): void => { throw new Error("Deferred resolver is not initialized"); };
+  let reject = (_reason: unknown): void => { throw new Error("Deferred rejection is not initialized"); };
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
   });
   return { promise, resolve, reject };
 }
@@ -47,18 +47,18 @@ const fresh = () => {
 describe("connection list store", () => {
   it("drops an older overlapping load that resolves after a newer one", async () => {
     fresh();
-    const a = deferred<{ connections: ConnectionSummary[] }>();
-    const b = deferred<{ connections: ConnectionSummary[] }>();
-    client.list.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    const earlierList = deferred<{ connections: ConnectionSummary[] }>();
+    const laterList = deferred<{ connections: ConnectionSummary[] }>();
+    client.list.mockReturnValueOnce(earlierList.promise).mockReturnValueOnce(laterList.promise);
 
-    const loadA = loadConnections();
-    const loadB = loadConnections();
-    b.resolve({ connections: [summary("newer", 1n)] });
-    await loadB;
-    a.resolve({ connections: [summary("stale", 1n)] });
-    await loadA;
+    const earlierLoad = loadConnections();
+    const laterLoad = loadConnections();
+    laterList.resolve({ connections: [summary("newer", 1n)] });
+    await laterLoad;
+    earlierList.resolve({ connections: [summary("stale", 1n)] });
+    await earlierLoad;
 
-    expect(connections().map((c) => c.id)).toEqual(["newer"]);
+    expect(connections().map((connection) => connection.id)).toEqual(["newer"]);
     expect(listState()).toBe("ready");
   });
 
@@ -81,7 +81,7 @@ describe("connection list store", () => {
     await vi.waitFor(() => {
       expect(listState()).toBe("ready");
     });
-    expect(connections().map((c) => c.id).sort()).toEqual(["created", "preexisting"]);
+    expect(connections().map((connection) => connection.id).sort()).toEqual(["created", "preexisting"]);
   });
 
   it("reports a failed load and recovers on the next one", async () => {
@@ -96,6 +96,6 @@ describe("connection list store", () => {
     await loadConnections();
     expect(listState()).toBe("ready");
     expect(listError()).toBe("");
-    expect(connections().map((c) => c.id)).toEqual(["back"]);
+    expect(connections().map((connection) => connection.id)).toEqual(["back"]);
   });
 });

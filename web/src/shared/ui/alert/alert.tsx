@@ -27,8 +27,9 @@ const alertVariants = cva(
 type AlertRootProps<T extends ValidComponent = "div"> = AlertPrimitive.AlertRootProps<T> &
   VariantProps<typeof alertVariants> & { class?: string | undefined }
 
-const Alert = <T extends ValidComponent = "div">(props: PolymorphicProps<T, AlertRootProps<T>>) => {
-  const [local, others] = splitProps(props as AlertRootProps, ["class", "variant"])
+// Rendered as a div only: not forwarding Kobalte's polymorphic `as` keeps the props typed without assertions.
+const Alert = (props: PolymorphicProps<"div", AlertRootProps>) => {
+  const [local, others] = splitProps(props, ["class", "variant"])
   return (
     <AlertPrimitive.Root
       class={cn(alertVariants({ variant: props.variant }), local.class)}

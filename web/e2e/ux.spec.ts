@@ -17,9 +17,9 @@ test("narrow screens keep navigation and request actions reachable with a curren
     const button = page.getByRole("button", { name, exact: true });
     await button.scrollIntoViewIfNeeded();
     const box = await button.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+    if (box === null) throw new Error(`${name} has no layout box`);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(320);
   }
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({ path: "../.test-docker/readme-media/narrow-light.png", fullPage: true });
@@ -35,7 +35,7 @@ test("narrow screens keep navigation and request actions reachable with a curren
 test("request loading is bounded and expands the actual workflow inline after data arrives", async ({ page }) => {
   await page.goto("/login");
   await signInForScenario(page, "admin@example.com", "correct-horse-battery");
-  let release!: () => void;
+  let release = (): void => {};
   const pending = new Promise<void>(resolve => { release = resolve; });
   await page.route("**/portcullis.v1.AccessRequests/List", async route => {
     await pending;

@@ -16,9 +16,9 @@ export function createEmptyRequestDraft(): RequestDraft {
   return { title: "", body: "", sql: "", params: [] };
 }
 
-/** Checks whether a parameter type is supported by the form. */
-function isSupportedParameterType(value: string): value is ParamType {
-  return paramTypes.some((parameterType) => parameterType === value);
+/** Converts a string from the type select into a supported parameter type, or undefined for anything else. */
+export function parseParameterType(value: string): ParamType | undefined {
+  return paramTypes.find((parameterType) => parameterType === value);
 }
 
 /** Builds a draft from a decrypted payload, defaulting unknown parameter types to string. */
@@ -29,7 +29,7 @@ export function createRequestDraftFromPayload(payload: AccessRequestPayload): Re
     sql: payload.sql,
     params: payload.params.map((parameter) => ({
       name: parameter.name,
-      type: isSupportedParameterType(parameter.type) ? parameter.type : "string",
+      type: parseParameterType(parameter.type) ?? "string",
       value: parameter.value,
     })),
   };
