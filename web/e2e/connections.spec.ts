@@ -115,7 +115,7 @@ test.describe.serial("connections vertical", () => {
     await expect(page.getByText("Connection test failed: auth-failed.")).toBeVisible();
     await expect(page.getByText(/definitely-wrong-password/)).toHaveCount(0);
     await page.getByRole("button", { name: "Create" }).click();
-    await expect(page.getByText("connection test failed: auth-failed")).toBeVisible();
+    await expect(page.getByText("connection test failed: auth-failed", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Dismiss" }).click();
 
