@@ -56,6 +56,29 @@ export function stateLabel(state: AccessRequestState): string {
   }
 }
 
+/** One option of the request list's state filter: the wire value the server filters on and its human label. */
+export type RequestStateFilterOption = { value: string; label: string };
+
+// The filter covers review and execution outcomes in workflow order; values are the List RPC's state vocabulary.
+const filterStates: readonly { value: string; state: AccessRequestState }[] = [
+  { value: "draft", state: AccessRequestState.DRAFT },
+  { value: "pending", state: AccessRequestState.PENDING },
+  { value: "approved", state: AccessRequestState.APPROVED },
+  { value: "executing", state: AccessRequestState.EXECUTING },
+  { value: "succeeded", state: AccessRequestState.SUCCEEDED },
+  { value: "failed", state: AccessRequestState.FAILED },
+  { value: "outcome_unknown", state: AccessRequestState.OUTCOME_UNKNOWN },
+  { value: "rejected", state: AccessRequestState.REJECTED },
+  { value: "expired", state: AccessRequestState.EXPIRED },
+  { value: "cancelled", state: AccessRequestState.CANCELLED },
+];
+
+/** The state filter options with labels matching the state badges. */
+export const requestStateFilterOptions: readonly RequestStateFilterOption[] = filterStates.map(({ value, state }) => ({
+  value,
+  label: stateLabel(state),
+}));
+
 // stateBadge maps a state onto a Badge variant: approved/succeeded read as positive (default), pending as attention (secondary), the failure family as destructive, and the inert terminal states as muted (outline).
 export function stateBadge(state: AccessRequestState): BadgeVariant {
   switch (state) {

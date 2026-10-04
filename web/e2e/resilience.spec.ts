@@ -207,6 +207,19 @@ test.describe("application resilience", () => {
     await expect(page.getByText(/Refresh failed/)).toHaveCount(0);
   });
 
+  test("the request state filter shows human labels and filters by the server value", async ({ page }) => {
+    await page.goto("/requests");
+    const filter = page.getByLabel("Filter", { exact: true });
+    await expect(filter.locator("option")).toHaveText([
+      "All states", "Draft", "Pending", "Approved", "Executing", "Succeeded", "Failed", "Outcome unknown", "Rejected", "Expired", "Cancelled",
+    ]);
+    const listed = page.waitForRequest((request) => request.url().endsWith("/portcullis.v1.AccessRequests/List"));
+    await filter.selectOption({ label: "Approved" });
+    await listed;
+    await expect(filter).toHaveValue("approved");
+    await expect(page.getByRole("row", { name: /Row state check/ })).toBeVisible();
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");

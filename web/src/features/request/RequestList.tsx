@@ -2,7 +2,7 @@ import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
 import { For, Show, createEffect, createSignal, on, onMount, onCleanup } from "solid-js";
 
-import { stateBadge, stateLabel } from "@/entities/request/model";
+import { requestStateFilterOptions, stateBadge, stateLabel } from "@/entities/request/model";
 import { hasPermission, session } from "@/entities/session/store";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { rangeEnd, rangeStart } from "@/entities/request/pagination";
@@ -41,9 +41,6 @@ const selectClass =
 const actorLabel = (actor?: { displayName: string; email: string }): string =>
   actor ? actor.displayName || actor.email : "—";
 
-// The state filter covers request review and execution outcomes.
-const filterStates = ["draft", "pending", "approved", "executing", "succeeded", "failed", "outcome_unknown", "rejected", "expired", "cancelled"];
-
 // RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details page carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
   const [expandedId, setExpandedId] = createSignal<string>();
@@ -78,7 +75,7 @@ export const RequestList: Component = () => {
           onChange={(event) => setFilter(event.currentTarget.value)}
         >
           <option value="">All states</option>
-          <For each={filterStates}>{(filterState) => <option value={filterState}>{filterState}</option>}</For>
+          <For each={requestStateFilterOptions}>{(option) => <option value={option.value}>{option.label}</option>}</For>
         </select>
       </div>
 
