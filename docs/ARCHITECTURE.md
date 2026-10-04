@@ -35,7 +35,7 @@ Arrows point from the importing package toward an inner dependency. `cmd/portcul
 └──────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│ platform/  config / logging / health / assets / reqmeta                                  │
+│ platform/  config / logging / health / assets / reqmeta / publicorigin                   │
 │ Shared support for outer layers; setting vocabulary exception: ADR-0017                  │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```

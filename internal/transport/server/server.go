@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -28,32 +29,43 @@ type Server struct {
 	shutdownTimeoutHooks []func(context.Context)
 }
 
-// New builds the server with health endpoints, the embedded frontend, and any provided API mounts. drainDelay is how long readiness reports "draining" before connections are closed, giving Kubernetes time to deregister the pod.
-func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...Mount) *Server {
-	h := health.New().WithLogger(logger)
-	s := &Server{logger: logger, health: h, drainDelay: drainDelay}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /livez", h.Live)
-	mux.HandleFunc("GET /readyz", h.Ready)
-	for _, m := range mounts {
-		mux.Handle(m.Pattern, m.Handler)
+// New builds the server with health endpoints, the embedded frontend, and any provided API mounts behind the Host and browser-origin boundary (ADR-0052).
+func New(opts Options, mounts ...Mount) (*Server, error) {
+	if opts.Logger == nil || opts.Hosts == nil {
+		return nil, errors.New("server: logger and host policy are required")
 	}
-	mux.Handle("/", s.spa())
+	healthHandler := health.New().WithLogger(opts.Logger)
+	s := &Server{logger: opts.Logger, health: healthHandler, drainDelay: opts.DrainDelay}
+
+	application := http.NewServeMux()
+	for _, mount := range mounts {
+		application.Handle(mount.Pattern, mount.Handler)
+	}
+	application.Handle("/", s.spa())
+	guarded, err := newOriginGuard(application, opts.Hosts, opts.BrowserOriginRequiredPaths)
+	if err != nil {
+		return nil, err
+	}
+
+	// Health probes stay outside the Host boundary: kubelet and container probes address the pod IP, and the endpoints expose no application data.
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /livez", healthHandler.Live)
+	mux.HandleFunc("GET /readyz", healthHandler.Ready)
+	mux.Handle("/", guarded)
 
 	requestsCtx, cancelRequests := context.WithCancel(context.Background())
 	s.cancelRequests = cancelRequests
 	s.http = &http.Server{
-		Addr:              addr,
+		Addr:              opts.Addr,
 		BaseContext:       func(net.Listener) context.Context { return requestsCtx },
-		Handler:           securityHeaders(logging.Middleware(logger)(mux)),
+		Handler:           securityHeaders(logging.Middleware(opts.Logger)(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 		MaxHeaderBytes:    maxHeaderBytes,
 		// Bound the whole request read so a slow-body (slowloris) connection can't hold a goroutine open indefinitely, and reap idle keep-alives. WriteTimeout is intentionally unset: once streaming RPCs land, a blanket write deadline would kill long-lived streams — use per-request http.ResponseController deadlines there instead.
 		ReadTimeout: 30 * time.Second,
 		IdleTimeout: 120 * time.Second,
 	}
-	return s
+	return s, nil
 }
 
 // Health exposes the readiness registry so dependencies (e.g. the metadata database) can register their own checks.

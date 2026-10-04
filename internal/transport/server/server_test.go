@@ -25,7 +25,10 @@ func newTestServer(t *testing.T) (*server.Server, *httptest.Server) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	healthPath, healthHandler := portcullisv1connect.NewHealthHandler(connectapi.HealthService{})
-	srv := server.New(":0", logger, 0, server.Mount{Pattern: healthPath, Handler: healthHandler})
+	srv, err := server.New(server.Options{Addr: ":0", Logger: logger, Hosts: loopbackHostPolicy(t)}, server.Mount{Pattern: healthPath, Handler: healthHandler})
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
 
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -156,7 +159,10 @@ func (p *requestProbe) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 func serveProbe(t *testing.T, probe *requestProbe) (*server.Server, string) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := server.New("127.0.0.1:0", logger, 0, server.Mount{Pattern: "/probe", Handler: probe})
+	srv, err := server.New(server.Options{Addr: "127.0.0.1:0", Logger: logger, Hosts: loopbackHostPolicy(t)}, server.Mount{Pattern: "/probe", Handler: probe})
+	if err != nil {
+		t.Fatal(err)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +323,10 @@ func TestShutdownDrainDelayNotChargedToShutdownTimeout(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	const drain = 80 * time.Millisecond
-	s := server.New("127.0.0.1:0", logger, drain)
+	s, err := server.New(server.Options{Addr: "127.0.0.1:0", Logger: logger, DrainDelay: drain, Hosts: loopbackHostPolicy(t)})
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
 
 	start := time.Now()
 	if err := s.Shutdown(context.Background(), 20*time.Millisecond); err != nil {

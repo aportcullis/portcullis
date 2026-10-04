@@ -752,6 +752,8 @@ audit_events
   상태 변경 요청은 **HMAC 서명·세션 바인딩된 double-submit CSRF token**(읽기 가능한 `__Host-` CSRF cookie ↔ `X-CSRF-Token` 헤더 일치 + HMAC 검증)을 검증한다. naive double-submit은 우회 가능하므로 쓰지 않는다.
   CSRF token은 HMAC에 쓴 master key 버전을 담아 key rotation 후에도 session이 유지되고, 로드되지 않은 key 버전의 token은 모든 요청을 거부하는 대신 다시 로그인하도록 안내한다.
   (ADR-0006)
+- **Host·origin 경계(ADR-0052):** 운영자가 설정한 public origin(`PORTCULLIS_PUBLIC_ORIGINS`)을 가리키는 `Host`만 처리하고 나머지는 421로 거부해 DNS rebinding을 막는다. 미설정 시 loopback host만 허용하고 노출 위험을 로그로 알린다. health probe는 예외다.
+  Fetch Metadata 또는 `Origin`으로 cross-origin 브라우저의 unsafe 요청을 거부하며, 세션 전 `Bootstrap`/`Login`은 `Origin` 또는 `Sec-Fetch-Site`를 추가로 요구한다.
 - 기본 idle expiry 12시간, absolute expiry 7일.
   로그인 endpoint에는 IP 기준과 클라이언트별 계정(email + client IP) 기준 rate limit(토큰버킷 수치는 ADR-0010) 및 점진적 backoff(계정 연계 실패 카운터·lockout 수치는 ADR-0006 Parameters) 적용.
   다른 클라이언트는 사용자의 credential bucket을 소진시킬 수 없다. 공유 계정 backoff는 email을 아는 누구나 여전히 유발할 수 있으며, 기기별 lockout이 문서화된 후속 작업이고 이 잔여 위험은 ADR-0006에 기록한다.

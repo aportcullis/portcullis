@@ -788,6 +788,8 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
   - State-changing requests validate HMAC-signed, session-bound double-submit CSRF: readable `__Host-` cookie equals `X-CSRF-Token`, plus HMAC verification, ADR-0006.
   - The CSRF token names its master-key version so sessions survive key rotation; a token whose key version is not loaded asks the user to sign in again instead of refusing every request, ADR-0006.
   - Do not use naive double-submit.
+- **Host and origin boundary (ADR-0052):** Serve only `Host` headers naming an operator-configured public origin (`PORTCULLIS_PUBLIC_ORIGINS`), refusing others with 421 to defeat DNS rebinding; unset admits loopback hosts only and logs the exposure risk. Health probes are exempt.
+  - Refuse unsafe cross-origin browser requests by Fetch Metadata or `Origin`; pre-session `Bootstrap`/`Login` additionally require `Origin` or `Sec-Fetch-Site`.
 - Default idle expiry 12 hours and absolute expiry 7 days.
   - Apply IP and per-client account (email + client IP) token buckets from ADR-0010 and progressive account-linked failure backoff/lockout parameters from ADR-0006.
   - Other clients cannot exhaust a user's credential bucket. The shared account backoff can still be triggered by anyone who knows an email; per-device lockout is the documented follow-up and this residual risk is recorded in ADR-0006.

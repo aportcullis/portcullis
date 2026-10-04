@@ -350,7 +350,24 @@ func run() error {
 		logger.Info("google login enabled")
 	}
 
-	srv := server.New(cfg.Addr, logger, cfg.DrainDelay, mounts...)
+	// Admit only Host headers naming a configured public origin (loopback names when unset) and refuse cross-origin browser writes, closing DNS rebinding and login CSRF on the pre-session RPCs (ADR-0052).
+	originPolicy := cfg.PublicOriginPolicy()
+	if originPolicy.IsLoopbackDefault() {
+		logger.Warn("PORTCULLIS_PUBLIC_ORIGINS is unset — only loopback hosts (localhost, 127.0.0.1, [::1]) are admitted; set the browser origin users open before exposing Portcullis on a network")
+	} else {
+		logger.Info("public origins configured", "origins", originPolicy.TrustedOrigins())
+	}
+	srv, err := server.New(server.Options{
+		Addr:                       cfg.Addr,
+		Logger:                     logger,
+		DrainDelay:                 cfg.DrainDelay,
+		Hosts:                      originPolicy,
+		BrowserOriginRequiredPaths: connectapi.BrowserOriginRequiredProcedures(),
+	}, mounts...)
+	if err != nil {
+		logger.Error("http server init failed", "err", err)
+		return err
+	}
 	srv.Health().Register("metadata-db", func(ctx context.Context) error { return pool.Ping(ctx) })
 	// Executions still running when the HTTP drain ends are interrupted with an audited cause, within the rest of shutdown_timeout, before their request contexts end and the pool closes.
 	srv.OnShutdownTimeout(func(ctx context.Context) {

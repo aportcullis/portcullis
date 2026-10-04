@@ -4,6 +4,14 @@ import { expect, type Page } from "@playwright/test";
 const credentialRefillDelayMs = 3_200;
 const maxScenarioLoginAttempts = 3;
 
+/** Returns the Origin header a same-origin browser attaches, which pre-session credential RPCs require from raw API requests (ADR-0052). */
+export function sameOriginHeaders(baseURL: string | undefined): Record<string, string> {
+  if (baseURL === undefined) {
+    throw new Error("Playwright baseURL is required for raw same-origin requests");
+  }
+  return { Origin: new URL(baseURL).origin };
+}
+
 /** Signs in through the real form, waiting only for bounded credential-rate-limit recovery. */
 export async function signInForScenario(page: Page, email: string, password: string, landing: RegExp = /\/connections$/): Promise<void> {
   await page.getByLabel("Email").fill(email);

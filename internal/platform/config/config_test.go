@@ -666,3 +666,57 @@ func TestShutdownInterruptionFitsInsideTheShutdownTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicOriginsDefaultToLoopbackOnly(t *testing.T) {
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	policy := cfg.PublicOriginPolicy()
+	if !policy.IsLoopbackDefault() || !policy.AllowsHost("localhost:8080") || policy.AllowsHost("portcullis.example.com") {
+		t.Errorf("unset public origins must admit loopback hosts only")
+	}
+}
+
+func TestPublicOriginsAcceptConfiguredOrigins(t *testing.T) {
+	for _, accepted := range []struct {
+		envValue, allowedHost string
+		wantOrigins           int
+	}{
+		{"https://portcullis.example.com", "portcullis.example.com", 1},
+		{"https://portcullis.example.com/, http://10.0.0.7:8080", "10.0.0.7:8080", 2},
+		{" HTTPS://PORTCULLIS.EXAMPLE.COM ", "portcullis.example.com:443", 1},
+		{"http://[fd00::7]:8080", "[fd00::7]:8080", 1},
+	} {
+		t.Setenv("PORTCULLIS_PUBLIC_ORIGINS", accepted.envValue)
+		cfg, err := config.Load()
+		if err != nil {
+			t.Errorf("PORTCULLIS_PUBLIC_ORIGINS=%q: %v", accepted.envValue, err)
+			continue
+		}
+		policy := cfg.PublicOriginPolicy()
+		if len(policy.TrustedOrigins()) != accepted.wantOrigins || !policy.AllowsHost(accepted.allowedHost) || policy.AllowsHost("localhost:8080") {
+			t.Errorf("PORTCULLIS_PUBLIC_ORIGINS=%q gave origins %q; want %d origins admitting %q and not loopback", accepted.envValue, policy.TrustedOrigins(), accepted.wantOrigins, accepted.allowedHost)
+		}
+	}
+}
+
+func TestPublicOriginsRejectMalformedOrigins(t *testing.T) {
+	for _, rejected := range []string{
+		"*",
+		"portcullis.example.com",
+		"https://portcullis.example.com/login",
+		"https://admin:secret@portcullis.example.com",
+		"https://portcullis.example.com,ftp://files.example.com",
+	} {
+		t.Setenv("PORTCULLIS_PUBLIC_ORIGINS", rejected)
+		_, err := config.Load()
+		if err == nil {
+			t.Errorf("PORTCULLIS_PUBLIC_ORIGINS=%q loaded, want startup refusal", rejected)
+			continue
+		}
+		if strings.Contains(err.Error(), "secret") {
+			t.Errorf("PORTCULLIS_PUBLIC_ORIGINS error leaks the configured value: %v", err)
+		}
+	}
+}

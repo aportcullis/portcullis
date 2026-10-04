@@ -12,6 +12,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/setting"
 	"github.com/aportcullis/portcullis/internal/platform/logging"
+	"github.com/aportcullis/portcullis/internal/platform/publicorigin"
 )
 
 // Load reads configuration from the environment and applies defaults.
@@ -152,6 +153,13 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.connectionDestinations = destinations
+
+	// Parse public origins once at startup: a malformed origin must refuse boot instead of silently falling back to the loopback-only default (ADR-0052).
+	policy, err := publicorigin.ParsePolicy(cfg.PublicOrigins)
+	if err != nil {
+		return Config{}, fmt.Errorf("public_origins: %w", err)
+	}
+	cfg.publicOriginPolicy = policy
 	return cfg, nil
 }
 

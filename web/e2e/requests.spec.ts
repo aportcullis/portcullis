@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { signInForScenario } from "@e2e/login";
+import { sameOriginHeaders, signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
 
@@ -160,11 +160,11 @@ test.describe.serial("access requests", () => {
     await expect(page).toHaveURL(detailURL);
     await expect(page.locator("pre")).toHaveText(sql);
   });
-  test("SQL formatting is automatic, reversible and saved only through explicit draft actions", async ({ page, request }) => {
+  test("SQL formatting is automatic, reversible and saved only through explicit draft actions", async ({ page, request, baseURL }) => {
     // Separate API cookies preserve the browser's unauthenticated form while exhausting the real shared credential bucket.
     let throttled = false;
     for (let attempt = 0; attempt < 20; attempt++) {
-      const response = await request.post("/portcullis.v1.Auth/Login", { data: { email, password } });
+      const response = await request.post("/portcullis.v1.Auth/Login", { data: { email, password }, headers: sameOriginHeaders(baseURL) });
       const status = response.status();
       await response.dispose();
       if (status === 429) {

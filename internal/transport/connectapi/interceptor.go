@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 
 	"connectrpc.com/connect"
 
@@ -55,6 +57,11 @@ var publicProcedures = map[string]bool{
 var credentialProcedures = map[string]bool{
 	portcullisv1connect.AuthBootstrapProcedure: true,
 	portcullisv1connect.AuthLoginProcedure:     true,
+}
+
+// BrowserOriginRequiredProcedures returns, sorted, the pre-session credential procedures whose unsafe requests must carry browser origin evidence at the HTTP boundary (ADR-0052).
+func BrowserOriginRequiredProcedures() []string {
+	return slices.Sorted(maps.Keys(credentialProcedures))
 }
 
 // isAuthFailure reports whether an Authenticate error means the session itself is invalid (missing/expired/revoked session, gone or disabled user) — as opposed to an infrastructure failure looking the session up.
