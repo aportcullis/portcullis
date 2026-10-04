@@ -287,6 +287,50 @@ test.describe("application resilience", () => {
     await expect(save).toHaveCount(0);
   });
 
+  test("a CSV export survives changing the shown page, sort or filter while it streams", async ({ page }) => {
+    // This scenario creates its own executed request so it runs alone as well as in sequence.
+    await page.goto("/requests/new");
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill(`Export view change ${Date.now()}`);
+    await page.getByLabel("SQL", { exact: true }).fill("select 1000 + g as marker from generate_series(1, 25) as g order by g");
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    const details = page.getByRole("region", { name: "Request details" });
+    await details.getByRole("button", { name: "Execute", exact: true }).click();
+    await details.getByRole("link", { name: "Result", exact: true }).click();
+    const results = page.getByRole("region", { name: "Query results" });
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+    const exportButton = results.getByRole("button", { name: "Export CSV", exact: true });
+    // The export covers the whole snapshot, so a view change while it streams must neither drop it nor leave its button disabled.
+    const viewChanges: Array<{ name: string; change: () => Promise<void> }> = [
+      { name: "page", change: () => results.getByRole("button", { name: "Next page", exact: true }).click() },
+      { name: "sort", change: async () => { await results.getByLabel("Sort by").selectOption({ index: 1 }); } },
+      { name: "filter", change: async () => { await results.getByLabel("Filter results").fill("10"); await results.getByRole("button", { name: "Filter results", exact: true }).click(); } },
+    ];
+    for (const viewChange of viewChanges) {
+      let release = () => {};
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { await held; await route.continue(); });
+      await exportButton.click();
+      await expect(exportButton, `export disabled while streaming (${viewChange.name})`).toBeDisabled();
+      await viewChange.change();
+      release();
+      await expect(results.getByRole("link", { name: "Download CSV", exact: true }), `export finished after ${viewChange.name} change`).toBeVisible();
+      await expect(exportButton, `export enabled after ${viewChange.name} change`).toBeEnabled();
+      await page.unroute("**/portcullis.v1.QueryExecutions/ExportCSV");
+    }
+
+    // Failure path: an export refused after the view changed still reports its error and re-enables the button.
+    let releaseFailure = () => {};
+    const heldFailure = new Promise<void>((resolve) => { releaseFailure = resolve; });
+    await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { await heldFailure; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "unavailable", message: "simulated failure" }) }); });
+    await exportButton.click();
+    await results.getByLabel("Sort by").selectOption({ index: 0 });
+    releaseFailure();
+    await expect(results.getByText(/^CSV export failed:/)).toBeVisible();
+    await expect(exportButton).toBeEnabled();
+    await page.unroute("**/portcullis.v1.QueryExecutions/ExportCSV");
+  });
+
   test("result errors name expiry only for a missing snapshot and keep export failures separate", async ({ page }) => {
     await page.goto("/requests");
     await page.getByRole("row", { name: /Result paging check/ }).getByRole("link", { name: "Result" }).click();

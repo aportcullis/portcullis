@@ -42,6 +42,8 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   };
   onCleanup(discardDownload);
   let revision = 0;
+  // requestRevision changes only when another request is shown; view reloads leave it alone.
+  let requestRevision = 0;
   const read = createOpenFetch(async () => {
     const info = await executionsClient.get({ requestId: props.requestId ?? "" });
     const snapshot = info.resultAvailable ? await executionsClient.getResult({
@@ -52,6 +54,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   const id = createMemo(() => props.requestId);
   createEffect(on(id, (next) => {
     revision++;
+    requestRevision++;
     discardDownload();
     read.handleOpenChange(false);
     setExecution(); setResult(); setFullCell(); setExporting(false); setExportError(""); setView("table"); setCopying(false); setCopyMessage("");
@@ -91,21 +94,24 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       if (same() && captured === revision) setCopyMessage("Clipboard access was denied or unavailable. Select text in Text view or export CSV instead.");
     } finally { if (same() && captured === revision) setCopying(false); }
   };
+  // The export streams the whole snapshot regardless of the shown page, sort or filter, so only a newer export or another request supersedes it.
+  let exportAttempt = 0;
   const exportCSV = async () => {
-    const captured = revision;
-    const same = read.captureSession();
+    const captured = requestRevision;
+    const attempt = ++exportAttempt;
+    const isCurrentExport = () => captured === requestRevision && attempt === exportAttempt;
     setExporting(true); setExportError("");
     discardDownload();
     try {
       const chunks: Uint8Array<ArrayBuffer>[] = [];
       for await (const chunk of executionsClient.exportCSV({ requestId: props.requestId ?? "" })) {
-        if (!same() || captured !== revision) return;
+        if (!isCurrentExport()) return;
         chunks.push(new Uint8Array(chunk.data));
       }
-      if (!same() || captured !== revision) return;
+      if (!isCurrentExport()) return;
       setDownloadURL(URL.createObjectURL(new Blob(chunks, { type: "text/csv;charset=utf-8" })));
-    } catch (err) { if (same() && captured === revision) setExportError(describeResultError(err, errorMessage)); }
-    finally { if (same() && captured === revision) setExporting(false); }
+    } catch (err) { if (isCurrentExport()) setExportError(describeResultError(err, errorMessage)); }
+    finally { if (isCurrentExport()) setExporting(false); }
   };
   return <section aria-label="Query results" class="flex min-w-0 flex-col gap-6">
       <header><A href={`/requests/${props.requestId}`} class="text-sm underline">Back to request</A>
