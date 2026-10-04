@@ -42,10 +42,19 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 		}
 		return query.ClassDDL, nil
 	case *nodes.DropStmt:
+		if err := checkDropTarget(stmt); err != nil {
+			return "", err
+		}
 		if stmt.Concurrent { // DROP INDEX CONCURRENTLY (fixture #31)
 			return "", &query.Rejection{Reason: query.RejectNonTransactional}
 		}
 		return query.ClassDDL, nil
+	case *nodes.RenameStmt:
+		return classifyCheckedDDL(checkRenameTarget(stmt))
+	case *nodes.CommentStmt:
+		return classifyCheckedDDL(checkCommentTarget(stmt))
+	case *nodes.AlterTableStmt:
+		return classifyCheckedDDL(checkAlterTable(stmt))
 	case *nodes.CreateTableAsStmt:
 		// Reject prepared statements whose SQL is unavailable to the classifier.
 		if _, opaque := stmt.Query.(*nodes.ExecuteStmt); opaque {
@@ -64,9 +73,7 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 			}
 		}
 		return query.ClassDDL, nil
-	case *nodes.CreateStmt, *nodes.TruncateStmt,
-		*nodes.RenameStmt, *nodes.CommentStmt, *nodes.AlterTableStmt,
-		*nodes.CreateSeqStmt:
+	case *nodes.CreateStmt, *nodes.TruncateStmt, *nodes.CreateSeqStmt:
 		return query.ClassDDL, nil
 	case *nodes.TransactionStmt:
 		return "", &query.Rejection{Reason: query.RejectTxnControl}
@@ -79,6 +86,14 @@ func classifyTop(node nodes.Node) (query.StatementClass, error) {
 	default:
 		return "", &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
+}
+
+// classifyCheckedDDL classifies a statement as ddl once its object-kind gate passed.
+func classifyCheckedDDL(gateErr error) (query.StatementClass, error) {
+	if gateErr != nil {
+		return "", gateErr
+	}
+	return query.ClassDDL, nil
 }
 
 // classifyDDLQuery admits a fully allowlisted read body without hidden writes or locking.

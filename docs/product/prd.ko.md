@@ -190,7 +190,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   자기 승인 허용 토글은 governance 약화 우려로 채택하지 않는다.
 - **유효기간:** N번째 승인이 기록되거나 system 자동 승인이 발생한 시점부터 기본 24시간. organization 설정으로 15분~7일 범위에서 변경 가능.
   두 경로 모두 **행 잠금을 잡은 트랜잭션 안에서** `expires_at`을 찍는다(2026-07-26 증보): 자동 승인이 잠금 밖에서 시각을 계산하면 정책 갱신·archive와의 잠금 대기 동안 요청이 저장되기도 전에 유효기간이 소모된다.
-- **statement 정책:** DB dialect별 SQL parser로 단일 statement와 종류를 판별. parser가 확실히 분류하지 못하면 거부. connection별 `read`, `write`, `ddl` 허용 여부를 적용. PostgreSQL DDL의 query 본문에도 전체 read 표현식 검사를 적용해 잠금·알 수 없는 표현식을 거부한다. M1은 독립적인 write 정책을 면제하지 않도록 DDL과 중첩 DML이 섞인 단일 문장을 거부한다(ADR-0002).
+- **statement 정책:** DB dialect별 SQL parser로 단일 statement와 종류를 판별. parser가 확실히 분류하지 못하면 거부. connection별 `read`, `write`, `ddl` 허용 여부를 적용. PostgreSQL DDL의 query 본문에도 전체 read 표현식 검사를 적용해 잠금·알 수 없는 표현식을 거부한다. M1은 독립적인 write 정책을 면제하지 않도록 DDL과 중첩 DML이 섞인 단일 문장을 거부한다(ADR-0002). PostgreSQL RENAME/DROP/COMMENT는 CREATE가 허용하는 객체 종류(table, view, materialized view, index, sequence, schema)에만 적용되고, ALTER TABLE은 명시적 하위 명령 목록만 허용한다. role, database, 함수·프로시저, trigger, policy, extension, 소유자 변경과 trigger/rule/row-security 토글은 거부한다(ADR-0002, 2026-10-04).
 - **read-only 기본값:** 새 connection은 `read=true`, `write=false`, `ddl=false`. write/DDL 활성화는 admin audit event를 남김.
 - **재사용 마찰 (결정됨):** saved query는 승인을 상속하지 않으므로(4.2) 매 실행이 새 access request→approval을 거친다.
   이를 **connection·statement 종류별 승인 정책**으로 조절한다(kviklet `numTotalRequired` 모델 검증·확장, 2026-06-27).

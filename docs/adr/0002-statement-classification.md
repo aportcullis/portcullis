@@ -61,6 +61,51 @@ Regression scenarios reject CTAS with a DELETE CTE, SELECT INTO with an UPDATE C
 
 Sources checked 2026-10-03: [PostgreSQL data-modifying CTEs](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-MODIFYING), [CREATE TABLE AS](https://www.postgresql.org/docs/current/sql-createtableas.html).
 
+### PostgreSQL DDL object kinds and ALTER TABLE subcommands (2026-10-04)
+
+The `ddl` row above names statement families, not every object those families can address.
+A review reproduced `ALTER ROLE postgres RENAME TO pwned`, `ALTER DATABASE postgres RENAME TO x`, `ALTER FUNCTION public.f(int) RENAME TO lower` and `DROP TRIGGER`/`DROP POLICY`/`DROP EVENT TRIGGER` classifying as `ddl`, and `ALTER TABLE` admitted every subcommand.
+A `ddl` approval is scoped to the schema objects Portcullis lets a request create, so acting on anything else is outside the allow-list.
+
+- **Object kinds.** `RENAME`, `DROP` and `COMMENT` may address only the kinds the `CREATE` allow-list produces: table, view, materialized view, index, sequence and schema.
+  `RENAME COLUMN`/`COMMENT ON COLUMN` additionally require the owning relation to be a table, view or materialized view, and `RENAME CONSTRAINT` a table.
+  Roles, databases, tablespaces, functions/procedures, types/domains, triggers, rules, policies, event triggers, extensions, foreign objects and every other kind are refused.
+- **ALTER TABLE.** Only `ALTER TABLE` on a plain table is admitted (`ALTER TYPE … ADD ATTRIBUTE`, `ALTER VIEW`, `ALTER INDEX … SET` and foreign tables reuse the same parse node and are refused), and every subcommand must be on an explicit list: `ADD COLUMN`, `DROP COLUMN`, `ALTER COLUMN … TYPE`, `SET/DROP DEFAULT`, `SET/DROP NOT NULL`, `ADD CONSTRAINT`, `DROP CONSTRAINT` and `VALIDATE CONSTRAINT`.
+  Ownership changes, trigger and rule enable/disable, row-level-security toggles, `REPLICA IDENTITY`, `SET ACCESS METHOD`, tablespace, storage, inheritance, identity and partition changes are refused; one refused subcommand refuses the statement.
+  Renames remain the separate `RenameStmt` gate above.
+- New kinds or subcommands enter only with a fixture row, as with every other allow-list in this ADR.
+
+| # | Literal input | Engines | Expected |
+|---|---|---|---|
+| 93 | `ALTER TABLE t RENAME TO t2` | PG | `ddl` |
+| 94 | `ALTER TABLE t RENAME COLUMN v TO w` | PG | `ddl` |
+| 95 | `ALTER INDEX i RENAME TO j` | PG | `ddl` |
+| 96 | `ALTER TABLE t RENAME CONSTRAINT c TO d` | PG | `ddl` |
+| 97 | `DROP TABLE t` | PG | `ddl` |
+| 98 | `DROP MATERIALIZED VIEW IF EXISTS m, n` | PG | `ddl` |
+| 99 | `COMMENT ON COLUMN t.v IS 'value'` | PG | `ddl` |
+| 100 | `ALTER TABLE t ALTER COLUMN v SET NOT NULL, ALTER COLUMN v DROP DEFAULT, DROP COLUMN c` | PG | `ddl` |
+| 101 | `ALTER TABLE t ADD CONSTRAINT c CHECK (id > 0), ALTER COLUMN v TYPE varchar(10)` | PG | `ddl` |
+| 102 | `ALTER ROLE postgres RENAME TO pwned` | PG | reject (not_allowlisted) |
+| 103 | `ALTER DATABASE postgres RENAME TO x` | PG | reject (not_allowlisted) |
+| 104 | `ALTER FUNCTION public.f(int) RENAME TO lower` | PG | reject (not_allowlisted) |
+| 105 | `ALTER FOREIGN TABLE f RENAME COLUMN a TO b` | PG | reject (not_allowlisted) |
+| 106 | `DROP TRIGGER tr ON t` | PG | reject (not_allowlisted) |
+| 107 | `DROP POLICY p ON t` | PG | reject (not_allowlisted) |
+| 108 | `DROP EVENT TRIGGER e` | PG | reject (not_allowlisted) |
+| 109 | `DROP EXTENSION dblink` | PG | reject (not_allowlisted) |
+| 110 | `COMMENT ON DATABASE postgres IS 'x'` | PG | reject (not_allowlisted) |
+| 111 | `ALTER TABLE t DISABLE TRIGGER ALL` | PG | reject (not_allowlisted) |
+| 112 | `ALTER TABLE t OWNER TO attacker` | PG | reject (not_allowlisted) |
+| 113 | `ALTER TABLE t DISABLE RULE r` | PG | reject (not_allowlisted) |
+| 114 | `ALTER TABLE t REPLICA IDENTITY FULL` | PG | reject (not_allowlisted) |
+| 115 | `ALTER TABLE t SET ACCESS METHOD heap` | PG | reject (not_allowlisted) |
+| 116 | `ALTER TABLE t NO FORCE ROW LEVEL SECURITY` | PG | reject (not_allowlisted) |
+| 117 | `ALTER TABLE t ADD COLUMN c int, DISABLE ROW LEVEL SECURITY` | PG | reject (not_allowlisted) |
+| 118 | `ALTER TYPE ty ADD ATTRIBUTE a int` | PG | reject (not_allowlisted) |
+
+Sources checked 2026-10-04: [PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/current/sql-altertable.html) (a disabled trigger "is not executed when its triggering event occurs"; row-security, rule, replica-identity and access-method actions), [PostgreSQL SQL commands](https://www.postgresql.org/docs/current/sql-commands.html) (the `ALTER … RENAME`, `DROP` and `COMMENT` families each span cluster-level and schema-level object kinds).
+
 ### Pinned edge-case fixtures (literal; must hold on every engine where the syntax exists)
 The suite assumes a table `t(id integer, v text)`.
 `PG`/`MY`/`SQ` mark engine applicability; a fixture without a mark runs on all three.
