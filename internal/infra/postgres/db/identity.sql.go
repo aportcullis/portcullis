@@ -48,24 +48,29 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 }
 
 const createSession = `-- name: CreateSession :one
+with observed as materialized (select clock_timestamp() as at)
 insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at)
-values ($1, $2, $3, $4)
+select $1, $2,
+       observed.at + make_interval(secs => $3::float8),
+       observed.at + make_interval(secs => $4::float8)
+from observed
 returning id, user_id, token_hash, idle_expires_at, absolute_expires_at, revoked_at, created_at
 `
 
 type CreateSessionParams struct {
-	UserID            pgtype.UUID
-	TokenHash         []byte
-	IdleExpiresAt     pgtype.Timestamptz
-	AbsoluteExpiresAt pgtype.Timestamptz
+	UserID          pgtype.UUID
+	TokenHash       []byte
+	IdleSeconds     float64
+	AbsoluteSeconds float64
 }
 
+// Anchor both windows at the database clock that ValidateSession and ExtendSessionIdle compare against, so application-clock skew cannot pre-expire or prolong a session (ADR-0009).
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, createSession,
 		arg.UserID,
 		arg.TokenHash,
-		arg.IdleExpiresAt,
-		arg.AbsoluteExpiresAt,
+		arg.IdleSeconds,
+		arg.AbsoluteSeconds,
 	)
 	var i Session
 	err := row.Scan(
@@ -106,7 +111,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 
 const extendSessionIdle = `-- name: ExtendSessionIdle :execrows
 update public.sessions
-set idle_expires_at = least(greatest(idle_expires_at, $1), absolute_expires_at)
+set idle_expires_at = least(greatest(idle_expires_at, clock_timestamp() + make_interval(secs => $1::float8)), absolute_expires_at)
 where id = $2
   and revoked_at is null
   and idle_expires_at > clock_timestamp()
@@ -114,13 +119,13 @@ where id = $2
 `
 
 type ExtendSessionIdleParams struct {
-	IdleExpiresAt pgtype.Timestamptz
-	ID            pgtype.UUID
+	IdleSeconds float64
+	ID          pgtype.UUID
 }
 
 // Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 func (q *Queries) ExtendSessionIdle(ctx context.Context, arg ExtendSessionIdleParams) (int64, error) {
-	result, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleExpiresAt, arg.ID)
+	result, err := q.db.Exec(ctx, extendSessionIdle, arg.IdleSeconds, arg.ID)
 	if err != nil {
 		return 0, err
 	}

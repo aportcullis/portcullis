@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -381,16 +382,25 @@ func (s *IdentityStore) CreateSession(ctx context.Context, sess identity.Session
 	if err != nil {
 		return identity.Session{}, err
 	}
-	row, err := s.q.CreateSession(ctx, db.CreateSessionParams{
-		UserID:            uid,
-		TokenHash:         tokenHash,
-		IdleExpiresAt:     timeToTS(sess.IdleExpiresAt),
-		AbsoluteExpiresAt: timeToTS(sess.AbsoluteExpiresAt),
-	})
+	params, err := createSessionParams(uid, sess, tokenHash)
+	if err != nil {
+		return identity.Session{}, err
+	}
+	row, err := s.q.CreateSession(ctx, params)
 	if err != nil {
 		return identity.Session{}, err
 	}
 	return toSession(row), nil
+}
+
+// createSessionParams converts the session's application-clock deadlines into windows (a difference of two application instants, so skew-free) that the query anchors at the database clock (ADR-0009).
+func createSessionParams(user pgtype.UUID, sess identity.Session, tokenHash []byte) (db.CreateSessionParams, error) {
+	idle := sess.IdleExpiresAt.Sub(sess.CreatedAt)
+	absolute := sess.AbsoluteExpiresAt.Sub(sess.CreatedAt)
+	if idle <= 0 || absolute <= 0 {
+		return db.CreateSessionParams{}, fmt.Errorf("session windows must be positive (idle %s, absolute %s)", idle, absolute)
+	}
+	return db.CreateSessionParams{UserID: user, TokenHash: tokenHash, IdleSeconds: idle.Seconds(), AbsoluteSeconds: absolute.Seconds()}, nil
 }
 
 func (s *IdentityStore) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (identity.Session, error) {
@@ -468,7 +478,9 @@ func (s *IdentityStore) ExtendSessionIdle(ctx context.Context, id identity.Sessi
 	if err != nil {
 		return err
 	}
-	updated, err := s.q.ExtendSessionIdle(ctx, db.ExtendSessionIdleParams{ID: sid, IdleExpiresAt: timeToTS(idle)})
+	// The caller's deadline becomes a window measured on its own clock; the query anchors it at clock_timestamp(), and an elapsed deadline only re-validates (ADR-0009).
+	window := max(time.Until(idle), 0)
+	updated, err := s.q.ExtendSessionIdle(ctx, db.ExtendSessionIdleParams{ID: sid, IdleSeconds: window.Seconds()})
 	if err != nil {
 		return err
 	}
@@ -518,12 +530,11 @@ func rotateSessionTx(ctx context.Context, q *db.Queries, user pgtype.UUID, sess 
 	if err := q.RevokeUserSessions(ctx, user); err != nil {
 		return err
 	}
-	row, err := q.CreateSession(ctx, db.CreateSessionParams{
-		UserID:            user,
-		TokenHash:         tokenHash,
-		IdleExpiresAt:     timeToTS(sess.IdleExpiresAt),
-		AbsoluteExpiresAt: timeToTS(sess.AbsoluteExpiresAt),
-	})
+	params, err := createSessionParams(user, sess, tokenHash)
+	if err != nil {
+		return err
+	}
+	row, err := q.CreateSession(ctx, params)
 	if err != nil {
 		return err
 	}

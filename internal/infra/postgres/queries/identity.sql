@@ -93,8 +93,13 @@ do update set secret = excluded.secret, updated_at = now();
 select * from public.auth_methods where user_id = $1 and type = 'password';
 
 -- name: CreateSession :one
+-- Anchor both windows at the database clock that ValidateSession and ExtendSessionIdle compare against, so application-clock skew cannot pre-expire or prolong a session (ADR-0009).
+with observed as materialized (select clock_timestamp() as at)
 insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at)
-values ($1, $2, $3, $4)
+select sqlc.arg('user_id'), sqlc.arg('token_hash'),
+       observed.at + make_interval(secs => sqlc.arg('idle_seconds')::float8),
+       observed.at + make_interval(secs => sqlc.arg('absolute_seconds')::float8)
+from observed
 returning *;
 
 -- name: GetSessionByTokenHash :one
@@ -121,7 +126,7 @@ where user_id = $1 and revoked_at is null;
 -- name: ExtendSessionIdle :execrows
 -- Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 update public.sessions
-set idle_expires_at = least(greatest(idle_expires_at, sqlc.arg(idle_expires_at)), absolute_expires_at)
+set idle_expires_at = least(greatest(idle_expires_at, clock_timestamp() + make_interval(secs => sqlc.arg('idle_seconds')::float8)), absolute_expires_at)
 where id = sqlc.arg(id)
   and revoked_at is null
   and idle_expires_at > clock_timestamp()

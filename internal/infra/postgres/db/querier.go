@@ -31,6 +31,7 @@ type Querier interface {
 	// How many recorded approvals still COUNT (ADR-0018): the approver is active, still resolves requests.approve through the live membership→role→permission join (the PermissionsForUser shape, rbac.sql), and is not the requester.
 	CountValidApprovals(ctx context.Context, arg CountValidApprovalsParams) (int64, error)
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (OrganizationMembership, error)
+	// Anchor both windows at the database clock that ValidateSession and ExtendSessionIdle compare against, so application-clock skew cannot pre-expire or prolong a session (ADR-0009).
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteResultChunks(ctx context.Context, arg DeleteResultChunksParams) error

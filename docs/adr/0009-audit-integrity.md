@@ -130,6 +130,11 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
      Unknown new tables get the default policy, so a migration that forgets grants fails its very first boot in CI; a new sensitive table fails until its policy entry lands — the review gate, enforced.
      In the runtime-connection check a missing required verb is always fatal; a forbidden one is the dev-downgradable over-privilege class.
 
+### Session deadlines use the database clock (amended 2026-10-04)
+- Session validity is checked against `now()`/`clock_timestamp()` in SQL, so session expiries are also computed there: `CreateSession` stores `clock_timestamp() + make_interval(secs => window)` for the idle and absolute windows, and `ExtendSessionIdle` extends to `clock_timestamp() + window` (still monotonic and capped at absolute).
+  The store derives each window as a difference of two application-clock instants (the session's deadline minus its creation instant, or the slide deadline minus the current instant), which is skew-free, and refuses non-positive creation windows.
+  Previously an application clock an hour behind the database stored sessions that were already expired, and one ahead prolonged them.
+
 ### Migration history and bounds (amended 2026-10-04)
 - **Checksummed history**: migration 0019 adds `schema_migrations.checksum` (sha256 of the exact embedded file); the runner records it for each new file and backfills rows applied before the column existed.
   Before applying anything it refuses a recorded checksum that differs from the embedded file (a released migration was edited) and any recorded version the binary does not ship (a newer binary migrated this database), so an older binary cannot run against a schema it does not know.
