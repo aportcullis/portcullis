@@ -347,22 +347,31 @@ func (s *Service) ResultOwner(ctx context.Context, requester identity.UserID, id
 // StopAdmission refuses new executions while the server drains active work.
 func (s *Service) StopAdmission() { s.mu.Lock(); s.draining = true; s.mu.Unlock() }
 
-// Reconcile recovers expired execution owners in the self-hosted organization, requesting further batches while a full batch is listed.
-func (s *Service) Reconcile(ctx context.Context) error {
+// Reconcile recovers expired execution owners in the self-hosted organization, paging past failing or locked attempts while a full batch is listed; only a batch that cannot list attempts fails the run.
+func (s *Service) Reconcile(ctx context.Context) (access.ReconcileSummary, error) {
+	var summary access.ReconcileSummary
 	org, err := s.requests.DefaultOrganizationID(ctx)
 	if err != nil {
-		return err
+		return summary, err
 	}
+	var cursor access.ReconcileCursor
 	for {
-		batch, err := s.leases.ReconcileExecutions(ctx, org, access.ExecutionReconcileBatchSize)
-		if err != nil {
-			return err
+		batch, err := s.leases.ReconcileExecutions(ctx, org, cursor, access.ExecutionReconcileBatchSize)
+		summary.Recovered += batch.Recovered
+		summary.Skipped += batch.Skipped
+		summary.Failed += batch.Failed
+		if summary.FirstFailure == nil {
+			summary.FirstFailure = batch.FirstFailure
 		}
+		if err != nil {
+			return summary, err
+		}
+		cursor = batch.Next
 		if batch.Listed < access.ExecutionReconcileBatchSize {
-			return nil
+			return summary, nil
 		}
 		if err := ctx.Err(); err != nil {
-			return err
+			return summary, err
 		}
 	}
 }

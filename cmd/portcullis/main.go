@@ -282,9 +282,11 @@ func run() error {
 		return err
 	}
 	executionSvc.WithAdmission(executionguard.New())
-	if err := executionSvc.Reconcile(startupCtx); err != nil {
-		logger.Error("execution recovery failed")
-		return err
+	// A failing attempt is logged and left for the next run; only a run that cannot list attempts at all stops startup.
+	recoverySummary, recoveryErr := executionSvc.Reconcile(startupCtx)
+	logExecutionRecovery(logger, recoverySummary, recoveryErr)
+	if recoveryErr != nil {
+		return recoveryErr
 	}
 	organizationID, err := requestStore.DefaultOrganizationID(startupCtx)
 	if err != nil {
@@ -349,9 +351,8 @@ func run() error {
 				return
 			case <-ticker.C:
 				maintenanceCtx, cancel := context.WithTimeout(ctx, access.ExecutionReconcileTimeout)
-				if err := executionSvc.Reconcile(maintenanceCtx); err != nil {
-					logger.Error("execution recovery failed")
-				}
+				summary, err := executionSvc.Reconcile(maintenanceCtx)
+				logExecutionRecovery(logger, summary, err)
 				org, err := requestStore.DefaultOrganizationID(maintenanceCtx)
 				if err == nil {
 					err = resultStore.PurgeExpired(maintenanceCtx, org)
@@ -390,4 +391,19 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// logExecutionRecovery logs a reconciliation run with classified causes only, since raw database errors can echo row data.
+func logExecutionRecovery(logger *slog.Logger, summary access.ReconcileSummary, err error) {
+	if err != nil {
+		logger.Error("execution recovery failed", append([]any{"recovered", summary.Recovered}, postgres.ErrorLogFields(err)...)...)
+		return
+	}
+	if summary.Failed > 0 {
+		logger.Warn("execution recovery left failing attempts for the next run", append([]any{"recovered", summary.Recovered, "skipped", summary.Skipped, "failed", summary.Failed}, postgres.ErrorLogFields(summary.FirstFailure)...)...)
+		return
+	}
+	if summary.Recovered > 0 {
+		logger.Info("execution recovery recorded unknown outcomes", "recovered", summary.Recovered, "skipped", summary.Skipped)
+	}
 }

@@ -14,10 +14,33 @@ const (
 	ExecutionReconcileBatchSize = 100
 )
 
-// ReconcileBatch reports one reconciliation batch: how many overdue attempts were listed and how many were recorded outcome_unknown.
+// ReconcileCursor orders overdue attempts by deadline then request; the zero cursor starts before the earliest.
+type ReconcileCursor struct {
+	Deadline  time.Time
+	RequestID RequestID
+}
+
+// IsStart reports whether the cursor starts before every overdue attempt.
+func (c ReconcileCursor) IsStart() bool { return c.Deadline.IsZero() && c.RequestID == "" }
+
+// ReconcileBatch reports one reconciliation batch: listed attempts, those recorded outcome_unknown, those locked by another transaction, and those whose recovery failed.
 type ReconcileBatch struct {
 	Listed    int
 	Recovered int
+	Skipped   int
+	Failed    int
+	// Next resumes listing after the last listed attempt, so a failing attempt never blocks later ones.
+	Next ReconcileCursor
+	// FirstFailure is one failed attempt's cause, for classified logging only.
+	FirstFailure error
+}
+
+// ReconcileSummary totals the batches of one reconciliation run.
+type ReconcileSummary struct {
+	Recovered    int
+	Skipped      int
+	Failed       int
+	FirstFailure error
 }
 
 // Execution errors refuse replay and stale completion without revealing payloads.

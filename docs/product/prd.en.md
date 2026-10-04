@@ -279,6 +279,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
 - **Reconciliation:** At startup and every **30 seconds**, detect executing requests with expired heartbeat/deadline and transition to audited `outcome_unknown` without retry.
   - Heartbeat every **15 seconds**, extending deadline to `now + 60 seconds`, a 4-heartbeat grace period.
   - This is independent of query timeout; live heartbeats retain ownership, avoiding premature takeover.
+  - Recover the oldest deadlines first; an attempt whose recovery fails, or that another transaction holds, is left for the next run without blocking later attempts or stopping startup (ADR-0021).
   - Reuse the mechanism and values for schema apply locks, ADR-0012.
 - **Late completion:** Terminal updates require `state=executing AND owner=? AND attempt_id=?`.
   - If reconciliation already recorded unknown, a late worker cannot overwrite it; append only `LATE_COMPLETION_OBSERVED`.

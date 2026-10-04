@@ -172,34 +172,95 @@ func (q *Queries) InsertQueryExecution(ctx context.Context, arg InsertQueryExecu
 }
 
 const listOverdueExecutions = `-- name: ListOverdueExecutions :many
-select request_id from public.query_executions
+select request_id, deadline from public.query_executions
 where organization_id = $1 and outcome is null and deadline <= clock_timestamp()
-order by request_id limit $2::int
+  and ($2::timestamptz is null
+       or (deadline, request_id) > ($2::timestamptz, $3::uuid))
+order by deadline, request_id limit $4::int
 `
 
 type ListOverdueExecutionsParams struct {
 	OrganizationID pgtype.UUID
+	AfterDeadline  pgtype.Timestamptz
+	AfterRequestID pgtype.UUID
 	BatchSize      int32
 }
 
-func (q *Queries) ListOverdueExecutions(ctx context.Context, arg ListOverdueExecutionsParams) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, listOverdueExecutions, arg.OrganizationID, arg.BatchSize)
+type ListOverdueExecutionsRow struct {
+	RequestID pgtype.UUID
+	Deadline  pgtype.Timestamptz
+}
+
+// Keyset pagination by (deadline, request_id) lets a run page past an attempt whose recovery keeps failing.
+func (q *Queries) ListOverdueExecutions(ctx context.Context, arg ListOverdueExecutionsParams) ([]ListOverdueExecutionsRow, error) {
+	rows, err := q.db.Query(ctx, listOverdueExecutions,
+		arg.OrganizationID,
+		arg.AfterDeadline,
+		arg.AfterRequestID,
+		arg.BatchSize,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []pgtype.UUID{}
+	items := []ListOverdueExecutionsRow{}
 	for rows.Next() {
-		var request_id pgtype.UUID
-		if err := rows.Scan(&request_id); err != nil {
+		var i ListOverdueExecutionsRow
+		if err := rows.Scan(&i.RequestID, &i.Deadline); err != nil {
 			return nil, err
 		}
-		items = append(items, request_id)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAccessRequestSkipLocked = `-- name: LockAccessRequestSkipLocked :one
+select id, organization_id, connection_id, requester_id, state, state_reason, payload_key_version, payload_wrapped_dek, payload_nonce, payload_ciphertext, payload_digest, payload_digest_key_version, redacted_sql, statement_class, policy_version, required_approvals, submitted_at, connection_config_version, connection_fingerprint, connection_display_name, connection_db_type, expires_at, version, created_at, updated_at, title from public.access_requests
+where id = $1 and organization_id = $2
+for update skip locked
+`
+
+type LockAccessRequestSkipLockedParams struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+}
+
+// Reconciliation skips a request that a completing owner or another replica holds instead of waiting behind it.
+func (q *Queries) LockAccessRequestSkipLocked(ctx context.Context, arg LockAccessRequestSkipLockedParams) (AccessRequest, error) {
+	row := q.db.QueryRow(ctx, lockAccessRequestSkipLocked, arg.ID, arg.OrganizationID)
+	var i AccessRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ConnectionID,
+		&i.RequesterID,
+		&i.State,
+		&i.StateReason,
+		&i.PayloadKeyVersion,
+		&i.PayloadWrappedDek,
+		&i.PayloadNonce,
+		&i.PayloadCiphertext,
+		&i.PayloadDigest,
+		&i.PayloadDigestKeyVersion,
+		&i.RedactedSql,
+		&i.StatementClass,
+		&i.PolicyVersion,
+		&i.RequiredApprovals,
+		&i.SubmittedAt,
+		&i.ConnectionConfigVersion,
+		&i.ConnectionFingerprint,
+		&i.ConnectionDisplayName,
+		&i.ConnectionDbType,
+		&i.ExpiresAt,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Title,
+	)
+	return i, err
 }
 
 const lockQueryExecution = `-- name: LockQueryExecution :one

@@ -29,6 +29,15 @@ where request_id = sqlc.arg('request_id') and organization_id = sqlc.arg('organi
   and owner = sqlc.arg('owner') and attempt_id = sqlc.arg('attempt_id') and outcome is null;
 
 -- name: ListOverdueExecutions :many
-select request_id from public.query_executions
+-- Keyset pagination by (deadline, request_id) lets a run page past an attempt whose recovery keeps failing.
+select request_id, deadline from public.query_executions
 where organization_id = sqlc.arg('organization_id') and outcome is null and deadline <= clock_timestamp()
-order by request_id limit sqlc.arg('batch_size')::int;
+  and (sqlc.narg('after_deadline')::timestamptz is null
+       or (deadline, request_id) > (sqlc.narg('after_deadline')::timestamptz, sqlc.narg('after_request_id')::uuid))
+order by deadline, request_id limit sqlc.arg('batch_size')::int;
+
+-- name: LockAccessRequestSkipLocked :one
+-- Reconciliation skips a request that a completing owner or another replica holds instead of waiting behind it.
+select * from public.access_requests
+where id = sqlc.arg('id') and organization_id = sqlc.arg('organization_id')
+for update skip locked;

@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -48,7 +49,7 @@ func TestExecutionLeaseExecutesOnceAndFencesLateCompletion(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `update public.query_executions set deadline = $1 where request_id = $2`, time.Now().Add(-time.Minute), string(r.ID)); err != nil {
 		t.Fatal(err)
 	}
-	batch, err := f.requests.ReconcileExecutions(ctx, f.org, access.ExecutionReconcileBatchSize)
+	batch, err := f.requests.ReconcileExecutions(ctx, f.org, access.ReconcileCursor{}, access.ExecutionReconcileBatchSize)
 	if err != nil || batch.Recovered != 1 {
 		t.Fatalf("reconcile = %+v, %v", batch, err)
 	}
@@ -203,8 +204,8 @@ func TestExecutionLeaseUsesDomainDurationAndReconcileHonorsBatchSize(t *testing.
 		{2, access.ReconcileBatch{Listed: 1, Recovered: 1}},
 		{2, access.ReconcileBatch{}},
 	} {
-		batch, err := f.requests.ReconcileExecutions(ctx, f.org, step.batchSize)
-		if err != nil || batch != step.want {
+		batch, err := f.requests.ReconcileExecutions(ctx, f.org, access.ReconcileCursor{}, step.batchSize)
+		if err != nil || batch.Listed != step.want.Listed || batch.Recovered != step.want.Recovered {
 			t.Fatalf("reconcile batch = %+v, %v; want %+v", batch, err, step.want)
 		}
 	}
@@ -212,9 +213,115 @@ func TestExecutionLeaseUsesDomainDurationAndReconcileHonorsBatchSize(t *testing.
 		t.Fatalf("recovered owner heartbeat = %v, want ErrLeaseLost", err)
 	}
 	for _, batchSize := range []int{0, -1} {
-		if _, err := f.requests.ReconcileExecutions(ctx, f.org, batchSize); !errors.Is(err, access.ErrInvalidRequest) {
+		if _, err := f.requests.ReconcileExecutions(ctx, f.org, access.ReconcileCursor{}, batchSize); !errors.Is(err, access.ErrInvalidRequest) {
 			t.Fatalf("batch size %d = %v, want ErrInvalidRequest", batchSize, err)
 		}
+	}
+}
+
+// overdueExecutions acquires count executions and backdates their deadlines so deadline order is the reverse of request ID order, returning IDs earliest deadline first.
+func overdueExecutions(t *testing.T, f reqFixture, count int) []access.RequestID {
+	t.Helper()
+	ctx := context.Background()
+	ids := make([]string, 0, count)
+	for range count {
+		request := approvedExecutionRequest(t, f)
+		if _, err := f.requests.AcquireExecution(ctx, f.org, request.ID, f.requester, "server", uuid.NewString(), request.Digest, reqEvent(audit.ActionExecutionStarted, request.ID)); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, string(request.ID))
+	}
+	slices.Sort(ids)
+	slices.Reverse(ids)
+	ordered := make([]access.RequestID, 0, count)
+	for idx, id := range ids {
+		if _, err := f.pool.Exec(ctx, `update public.query_executions set deadline = now() - make_interval(mins => $1) where request_id = $2`, count-idx, id); err != nil {
+			t.Fatal(err)
+		}
+		ordered = append(ordered, access.RequestID(id))
+	}
+	return ordered
+}
+
+// executionState reads the request state that reconciliation would change.
+func executionState(t *testing.T, f reqFixture, id access.RequestID) access.State {
+	t.Helper()
+	view, _, err := f.requests.Get(context.Background(), f.org, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return view.Request.State
+}
+
+func TestReconcileOrdersByDeadlineAndPagesPastFailingAttempts(t *testing.T) {
+	f := newReqFixtureFresh(t)
+	ctx := context.Background()
+	overdue := overdueExecutions(t, f, 4)
+	failing := overdue[1]
+	if _, err := f.pool.Exec(ctx, `create function public.reject_reconcile() returns trigger language plpgsql as $$ begin raise exception 'audit refused'; end $$; create trigger reject_reconcile before insert on public.audit_events for each row when (new.action = 'EXECUTION_FINISHED' and new.target_id = '`+string(failing)+`') execute function public.reject_reconcile()`); err != nil {
+		t.Fatal(err)
+	}
+	first, err := f.requests.ReconcileExecutions(ctx, f.org, access.ReconcileCursor{}, 1)
+	if err != nil || first.Listed != 1 || first.Recovered != 1 || first.Next.RequestID != overdue[0] {
+		t.Fatalf("first batch = %+v, %v; want the earliest deadline %s", first, err, overdue[0])
+	}
+	rest, err := f.requests.ReconcileExecutions(ctx, f.org, first.Next, 10)
+	if err != nil {
+		t.Fatalf("a failing attempt failed the batch: %v", err)
+	}
+	if rest.Listed != 3 || rest.Recovered != 2 || rest.Failed != 1 || rest.FirstFailure == nil || rest.Next.RequestID != overdue[3] {
+		t.Fatalf("remaining batch = %+v, want 3 listed, 2 recovered, 1 failed ending at %s", rest, overdue[3])
+	}
+	for idx, id := range overdue {
+		want := access.StateOutcomeUnknown
+		if id == failing {
+			want = access.StateExecuting
+		}
+		if got := executionState(t, f, id); got != want {
+			t.Fatalf("attempt %d state = %s, want %s", idx, got, want)
+		}
+	}
+	if after, err := f.requests.ReconcileExecutions(ctx, f.org, rest.Next, 10); err != nil || after.Listed != 0 {
+		t.Fatalf("listing after the last attempt = %+v, %v; want empty", after, err)
+	}
+	retry, err := f.requests.ReconcileExecutions(ctx, f.org, access.ReconcileCursor{}, 10)
+	if err != nil || retry.Listed != 1 || retry.Failed != 1 {
+		t.Fatalf("next run = %+v, %v; want the failing attempt retried alone", retry, err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := f.requests.ReconcileExecutions(cancelled, f.org, access.ReconcileCursor{}, 10); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled run = %v, want context.Canceled", err)
+	}
+}
+
+func TestReconcileSkipsAttemptsLockedByAnotherTransaction(t *testing.T) {
+	f := newReqFixtureFresh(t)
+	ctx := context.Background()
+	overdue := overdueExecutions(t, f, 3)
+	holder, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, `select 1 from public.access_requests where id = $1 for update`, string(overdue[0])); err != nil {
+		t.Fatal(err)
+	}
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	batch, err := f.requests.ReconcileExecutions(bounded, f.org, access.ReconcileCursor{}, 10)
+	if err != nil || batch.Listed != 3 || batch.Recovered != 2 || batch.Skipped != 1 {
+		t.Fatalf("batch beside a held lock = %+v, %v; want 2 recovered and 1 skipped", batch, err)
+	}
+	if got := executionState(t, f, overdue[0]); got != access.StateExecuting {
+		t.Fatalf("locked attempt state = %s, want executing", got)
+	}
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	released, err := f.requests.ReconcileExecutions(ctx, f.org, access.ReconcileCursor{}, 10)
+	if err != nil || released.Recovered != 1 || executionState(t, f, overdue[0]) != access.StateOutcomeUnknown {
+		t.Fatalf("batch after release = %+v, %v; want the attempt recovered", released, err)
 	}
 }
 

@@ -202,7 +202,7 @@ func (f *executionFixture) CompleteExecution(_ context.Context, _ identity.Organ
 	f.request.State = c.State
 	return nil
 }
-func (f *executionFixture) ReconcileExecutions(context.Context, identity.OrganizationID, int) (access.ReconcileBatch, error) {
+func (f *executionFixture) ReconcileExecutions(context.Context, identity.OrganizationID, access.ReconcileCursor, int) (access.ReconcileBatch, error) {
 	return access.ReconcileBatch{}, nil
 }
 

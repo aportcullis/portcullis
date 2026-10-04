@@ -258,6 +258,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
   실행 중 heartbeat로 lease를 갱신한다.
 - **장애 복구(reconciler):** startup 및 background reconciler(주기 **30초**)가 heartbeat/deadline이 만료된 `executing`(owner가 죽었거나 응답 없음)을 감지해 `outcome_unknown`으로 전이하고 audit event를 남긴다.
   자동 재실행은 하지 않는다. **lease 수치:** heartbeat **15초** 간격, 매 heartbeat마다 deadline을 `now + 60초`로 연장(= 4 heartbeat 유예) — query timeout(8.2)과 무관하게 heartbeat가 살아 있는 한 lease는 유지되므로 정상 실행을 조기에 뺏지 않고, deadline 경과는 owner 사망을 뜻한다. schema apply lock도 동일 수치·기제를 재사용한다(ADR-0012).
+  deadline이 오래된 시도부터 복구하며, 복구에 실패하거나 다른 transaction이 잡고 있는 시도는 다음 실행으로 넘기고 이후 시도를 막거나 startup을 중단시키지 않는다(ADR-0021).
 - **late-completion fencing:** 모든 terminal 상태 update는 `state=executing AND owner=? AND attempt_id=?` 조건부 update로만 성공한다. reconciler가 이미 `outcome_unknown`으로 전이한 뒤 원래 worker가 늦게 완료를 보고하면 조건이 불일치해 **상태를 덮어쓰지 못하고**, 대신 `LATE_COMPLETION_OBSERVED` audit event로만 기록한다.
 - `executing` 상태에서는 사용자가 cancel을 요청할 수 있으나 DB driver의 취소 성공을 보장하지 않음.
   취소가 확인되면 `cancelled`, 결과를 확인할 수 없으면 `outcome_unknown`으로 기록.

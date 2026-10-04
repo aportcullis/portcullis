@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	"crypto/hmac"
+	"errors"
 	"math"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/aportcullis/portcullis/internal/domain/access"
@@ -202,8 +204,8 @@ func (s *AccessRequestStore) CompleteExecution(ctx context.Context, org identity
 	return nil
 }
 
-// ReconcileExecutions records unknown outcomes for up to batchSize expired owners without retrying SQL.
-func (s *AccessRequestStore) ReconcileExecutions(ctx context.Context, org identity.OrganizationID, batchSize int) (access.ReconcileBatch, error) {
+// ReconcileExecutions records unknown outcomes for up to batchSize expired owners after the cursor, in deadline order, without retrying SQL. A failing or locked attempt is counted and passed over; only a listing failure or an ended context fails the batch.
+func (s *AccessRequestStore) ReconcileExecutions(ctx context.Context, org identity.OrganizationID, after access.ReconcileCursor, batchSize int) (access.ReconcileBatch, error) {
 	oid, err := stringToUUID(string(org))
 	if err != nil {
 		return access.ReconcileBatch{}, err
@@ -211,39 +213,81 @@ func (s *AccessRequestStore) ReconcileExecutions(ctx context.Context, org identi
 	if batchSize < 1 || batchSize > math.MaxInt32 {
 		return access.ReconcileBatch{}, access.ErrInvalidRequest
 	}
-	requests, err := s.conns.q.ListOverdueExecutions(ctx, db.ListOverdueExecutionsParams{OrganizationID: oid, BatchSize: int32(batchSize)})
+	params := db.ListOverdueExecutionsParams{OrganizationID: oid, BatchSize: int32(batchSize)}
+	if !after.IsStart() {
+		afterID, err := stringToUUID(string(after.RequestID))
+		if err != nil {
+			return access.ReconcileBatch{}, access.ErrInvalidRequest
+		}
+		params.AfterDeadline, params.AfterRequestID = timeToTS(after.Deadline), afterID
+	}
+	overdue, err := s.conns.q.ListOverdueExecutions(ctx, params)
 	if err != nil {
 		return access.ReconcileBatch{}, err
 	}
-	count := 0
-	for _, rid := range requests {
-		err = s.conns.withTx(ctx, func(q *db.Queries) error {
-			row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: rid, OrganizationID: oid})
-			if err != nil {
-				return err
-			}
-			recorded, err := q.LockQueryExecution(ctx, db.LockQueryExecutionParams{RequestID: rid, OrganizationID: oid})
-			if err != nil {
-				return err
-			}
-			at, err := observeInstant(ctx, q)
-			if err != nil {
-				return err
-			}
-			if access.State(row.State) != access.StateExecuting || recorded.Outcome != nil || at.Before(tsToTime(recorded.Deadline)) {
-				return nil
-			}
-			if err = s.finishExecutionAt(ctx, q, toAccessRequest(row), recorded, access.ExecutionCompletion{State: access.StateOutcomeUnknown}, reconcilerEvent(), at); err != nil {
-				return err
-			}
-			count++
-			return nil
-		})
+	batch := access.ReconcileBatch{Listed: len(overdue), Next: after}
+	for _, attempt := range overdue {
+		batch.Next = access.ReconcileCursor{Deadline: tsToTime(attempt.Deadline), RequestID: access.RequestID(uuidToString(attempt.RequestID))}
+		outcome, err := s.reconcileOverdueExecution(ctx, oid, attempt.RequestID)
 		if err != nil {
-			return access.ReconcileBatch{Listed: len(requests), Recovered: count}, err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return batch, ctxErr
+			}
+			batch.Failed++
+			if batch.FirstFailure == nil {
+				batch.FirstFailure = err
+			}
+			continue
+		}
+		switch outcome {
+		case reconcileRecovered:
+			batch.Recovered++
+		case reconcileSkippedLocked:
+			batch.Skipped++
 		}
 	}
-	return access.ReconcileBatch{Listed: len(requests), Recovered: count}, nil
+	return batch, nil
+}
+
+// reconcileOutcome says what one overdue attempt's recovery transaction did.
+type reconcileOutcome uint8
+
+const (
+	reconcileUnchanged reconcileOutcome = iota
+	reconcileRecovered
+	reconcileSkippedLocked
+)
+
+// reconcileOverdueExecution records outcome_unknown for one still-overdue attempt, locking request then execution like completion and skipping a request another transaction holds.
+func (s *AccessRequestStore) reconcileOverdueExecution(ctx context.Context, oid, rid pgtype.UUID) (reconcileOutcome, error) {
+	outcome := reconcileUnchanged
+	err := s.conns.withTx(ctx, func(q *db.Queries) error {
+		row, err := q.LockAccessRequestSkipLocked(ctx, db.LockAccessRequestSkipLockedParams{ID: rid, OrganizationID: oid})
+		if errors.Is(err, pgx.ErrNoRows) {
+			outcome = reconcileSkippedLocked
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		recorded, err := q.LockQueryExecution(ctx, db.LockQueryExecutionParams{RequestID: rid, OrganizationID: oid})
+		if err != nil {
+			return err
+		}
+		at, err := observeInstant(ctx, q)
+		if err != nil {
+			return err
+		}
+		if access.State(row.State) != access.StateExecuting || recorded.Outcome != nil || at.Before(tsToTime(recorded.Deadline)) {
+			return nil
+		}
+		if err = s.finishExecutionAt(ctx, q, toAccessRequest(row), recorded, access.ExecutionCompletion{State: access.StateOutcomeUnknown}, reconcilerEvent(), at); err != nil {
+			return err
+		}
+		outcome = reconcileRecovered
+		return nil
+	})
+	return outcome, err
 }
 
 func (s *AccessRequestStore) finishExecutionAt(ctx context.Context, q *db.Queries, r access.Request, recorded db.QueryExecution, c access.ExecutionCompletion, event audit.Event, at time.Time) error {

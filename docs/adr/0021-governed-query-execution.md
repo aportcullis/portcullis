@@ -20,6 +20,8 @@ An expired lease cannot be revived by its former owner.
 Startup and 30-second background reconciliation mark expired attempts outcome_unknown without retrying target SQL.
 The `access` execution constants are the single source of these timings: the store passes the lease duration to its queries, the composition root schedules reconciliation from them, and a run bounded to 10 seconds requests further batches of 100 while a full batch is listed (2026-10-04).
 Reconciliation and completion both lock request then execution, so concurrent transitions serialize.
+Reconciliation lists overdue attempts by deadline with keyset pagination and recovers each in its own transaction (2026-10-04). It takes the request lock with `FOR UPDATE SKIP LOCKED`, so an attempt held by a completing owner or another replica is skipped for the next run instead of stalling the batch.
+A failing attempt is counted, logged with classified causes only and passed over; previously the first failure ended the run, the same first 100 rows by request ID were listed every time, and a single bad row made startup fail. Only a run that cannot list attempts still stops startup. Source: [PostgreSQL SELECT locking clause](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE).
 Completion is fenced by executing state, owner, attempt ID, and live deadline.
 A late completion appends LATE_COMPLETION_OBSERVED without changing the original outcome.
 

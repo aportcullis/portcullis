@@ -94,11 +94,14 @@ type Querier interface {
 	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
-	ListOverdueExecutions(ctx context.Context, arg ListOverdueExecutionsParams) ([]pgtype.UUID, error)
+	// Keyset pagination by (deadline, request_id) lets a run page past an attempt whose recovery keeps failing.
+	ListOverdueExecutions(ctx context.Context, arg ListOverdueExecutionsParams) ([]ListOverdueExecutionsRow, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// Return active target summaries under requests.create without connection-admin permissions (ADR-0008).
 	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
 	ListResultAccounting(ctx context.Context, organizationID pgtype.UUID) ([]ResultCacheResultSet, error)
+	// Reconciliation skips a request that a completing owner or another replica holds instead of waiting behind it.
+	LockAccessRequestSkipLocked(ctx context.Context, arg LockAccessRequestSkipLockedParams) (AccessRequest, error)
 	// Lock membership FOR SHARE before checking eligibility. Concurrent revocation serializes only once the future role-management path takes FOR UPDATE on the same row (ADR-0018).
 	LockApproverMembership(ctx context.Context, arg LockApproverMembershipParams) ([]int32, error)
 	// Guard state transitions and draft versions. Keep the active, permitted, non-requester approval predicate aligned across counts and views (ADR-0018).
