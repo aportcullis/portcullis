@@ -18,5 +18,24 @@ const GoogleCallbackPath = "/auth/google/callback"
 
 // Connection-test timeout bounds (ADR-0014) likewise live in the domain settings registry (setting.MinConnectionTestTimeout / Max…).
 
+// Metadata pool defaults and bounds (ADR-0010): boot-only settings sized for a single self-hosted instance; the bounds reject typos that would exhaust PostgreSQL connections or disable timeouts.
+const (
+	defaultDatabaseMaxConns                 = 16
+	minDatabaseMaxConns                     = 2
+	maxDatabaseMaxConns                     = 200
+	defaultDatabaseAcquireTimeout           = 10 * time.Second
+	minDatabaseAcquireTimeout               = 100 * time.Millisecond
+	maxDatabaseAcquireTimeout               = time.Minute
+	defaultDatabaseStatementTimeout         = 30 * time.Second
+	minDatabaseStatementTimeout             = time.Second
+	maxDatabaseStatementTimeout             = 10 * time.Minute
+	defaultDatabaseLockTimeout              = 10 * time.Second
+	minDatabaseLockTimeout                  = 100 * time.Millisecond
+	maxDatabaseLockTimeout                  = 5 * time.Minute
+	defaultDatabaseIdleInTransactionTimeout = time.Minute
+	minDatabaseIdleInTransactionTimeout     = time.Second
+	maxDatabaseIdleInTransactionTimeout     = time.Hour
+)
+
 // maxDrainDelay bounds the readiness delay so a configuration typo cannot stall shutdown before request draining begins.
 const maxDrainDelay = 5 * time.Minute

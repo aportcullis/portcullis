@@ -123,6 +123,20 @@ Ordered, each step fail-fast; any failure exits **1** (the only non-zero exit co
 - Advisory-lock keyspace (first arg of the two-arg `pg_advisory_*` family; second arg = object id, 0 when global): class **1** = bootstrap (global), **2** = per-user session rotation, **3** = migration (global).
   New classes are appended here, never reused.
 
+### Metadata connection pool (added 2026-10-04)
+`postgres.Open` parses the DSN with `pgxpool.ParseConfig` and bounds the pool instead of taking pgx defaults (no session timeouts, CPU-derived size, unbounded acquisition waits).
+Boot-only configuration, validated at load and not a settings-store tunable (ADR-0017):
+
+| Setting | Default | Range | Applied as |
+|---|---|---|---|
+| `PORTCULLIS_DATABASE_MAX_CONNS` | **16** | [2, 200] | `pgxpool.Config.MaxConns` |
+| `PORTCULLIS_DATABASE_ACQUIRE_TIMEOUT` | **10s** | [100ms, 1m] | deadline on each pool acquisition (pgxpool acquire tracer) and the connect timeout cap |
+| `PORTCULLIS_DATABASE_STATEMENT_TIMEOUT` | **30s** | [1s, 10m] | session `statement_timeout` startup parameter |
+| `PORTCULLIS_DATABASE_LOCK_TIMEOUT` | **10s** | [100ms, 5m], ≤ statement timeout | session `lock_timeout` startup parameter |
+| `PORTCULLIS_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT` | **1m** | [1s, 1h] | session `idle_in_transaction_session_timeout` startup parameter |
+
+Migration transactions override the session bounds with their own `SET LOCAL` values; governed target executions use their own connections and ADR-0021 bounds.
+
 ### Circuit breaker — target-DB execution path (M1)
 Wraps each connection's execute path so a dead/hung target DB sheds load fast instead of stacking goroutines.
 Adopt `sony/gobreaker/v2` with its defaults, per target connection:
@@ -149,6 +163,8 @@ Runtime and test harness configuration share an isolated `config.NewEnvironmentL
 - The breaker and streaming values ship with M1+ features; they are pinned now so the implementation doesn't improvise them later.
 
 ## Sources (checked 2026-07-04)
+- pgxpool `Config` (MaxConns, ConnConfig.RuntimeParams, acquire tracer called with the acquisition context; checked 2026-10-04 against pgx v5.10.0): https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool
+- PostgreSQL client settings (`statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`): https://www.postgresql.org/docs/current/runtime-config-client.html
 - sony/gobreaker defaults (trip > 5 consecutive failures, 60s open, 1 half-open request): https://github.com/sony/gobreaker
 - net/http Server timeouts (ReadHeaderTimeout/ReadTimeout/IdleTimeout semantics): https://pkg.go.dev/net/http#Server
 - connect-go read limits (`WithReadMaxBytes`, unlimited default): https://connectrpc.com/docs/go/common-errors/

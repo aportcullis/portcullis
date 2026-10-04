@@ -783,6 +783,7 @@ audit_events
   shutdown timeout이 지나도 실행 중인 요청은 취소하고 metadata 연결을 닫기 전에 결과를 기록하며, `EXECUTION_FINISHED`에 `interruption_cause`(`server_shutdown`, `owner_cancel`, `lease_lost`)를 남긴다(ADR-0010, ADR-0021).
 - 구조화 로그와 metrics에는 request ID, 상태, duration, count만 포함하고 SQL·파라미터·credential은 기본 제외.
 - schema migration 전 backup과 복구 절차를 문서화하고 지원 버전 간 upgrade test를 제공.
+- metadata connection pool은 크기, 연결 획득 대기, statement·lock·idle-in-transaction 시간에 설정 가능한 상한을 둔다(2026-10-04 추가, ADR-0010).
 - metadata migration은 수정된 배포 파일과 binary가 모르는 version을 거부하고, 다른 instance의 migration lock은 제한된 시간만 기다리며, 파일별 lock 대기와 statement 시간을 제한한다(2026-10-04 추가, ADR-0009).
 - 외부 telemetry는 기본 비활성화하며 사용자 승인 없이 query 또는 usage metadata를 전송하지 않음.
 

@@ -14,6 +14,16 @@ type Config struct {
 	Addr string `mapstructure:"addr"`
 	// DatabaseURL is the metadata PostgreSQL DSN the server runs with. In production this should be a login user holding only the portcullis_runtime role (ADR-0009), not the schema owner.
 	DatabaseURL string `mapstructure:"database_url"`
+	// DatabaseMaxConns caps metadata pool connections (default 16, range [2, 200]); boot-only, so it is not a settings-store tunable (ADR-0017).
+	DatabaseMaxConns int32 `mapstructure:"database_max_conns"`
+	// DatabaseAcquireTimeout bounds waiting for a pooled metadata connection, including dialing a new one (default 10s, range [100ms, 1m]).
+	DatabaseAcquireTimeout time.Duration `mapstructure:"database_acquire_timeout"`
+	// DatabaseStatementTimeout is the metadata session statement_timeout (default 30s, range [1s, 10m]).
+	DatabaseStatementTimeout time.Duration `mapstructure:"database_statement_timeout"`
+	// DatabaseLockTimeout is the metadata session lock_timeout (default 10s, range [100ms, 5m], never above the statement timeout).
+	DatabaseLockTimeout time.Duration `mapstructure:"database_lock_timeout"`
+	// DatabaseIdleInTransactionTimeout terminates a metadata session idle inside a transaction (default 1m, range [1s, 1h]).
+	DatabaseIdleInTransactionTimeout time.Duration `mapstructure:"database_idle_in_transaction_timeout"`
 	// MigrateDatabaseURL supplies owner credentials for migration; an empty value falls back to DatabaseURL. Set it only on the separate migrate process in production.
 	MigrateDatabaseURL string `mapstructure:"migrate_database_url"`
 	// RuntimeRole names the least-privilege DB role the migrations create and grant (ADR-0009). Roles are cluster-wide: give each install on a SHARED PostgreSQL cluster its own name, or their privileges merge.

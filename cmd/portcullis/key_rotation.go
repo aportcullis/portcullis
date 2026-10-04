@@ -34,7 +34,7 @@ func runKeyRotation() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	pool, err := postgres.Open(ctx, cfg.DatabaseURL)
+	pool, err := postgres.Open(ctx, cfg.DatabaseURL, metadataPoolSettings(cfg))
 	if err != nil {
 		logger.Error("rotation database configuration invalid")
 		return err

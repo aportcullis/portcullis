@@ -33,7 +33,7 @@ Moves into the settings store (live-mutable):
 - the M1 query-execution tunables as they land — query timeout (PRD §8.2), max result rows/bytes, and the pgdialect execution timeouts currently hardcoded.
 
 Stays env, by design (lifecycle-read-once or rebuild-required — live mutation has no value or no effect):
-- `addr` (bind happens once), `argon2_max_concurrent` (sizes a startup semaphore), `drain_delay` / `shutdown_timeout` (read only on the shutdown path), and all of Tier A/B.
+- `addr` (bind happens once), `argon2_max_concurrent` (sizes a startup semaphore), `drain_delay` / `shutdown_timeout` (read only on the shutdown path), the `database_*` metadata pool bounds (amended 2026-10-04: they size the pool that reads this store, so they are bounded in `platform/config` per ADR-0010), and all of Tier A/B.
 
 A new tunable declares its tier when introduced; Tier C entries are added to the descriptor registry below.
 

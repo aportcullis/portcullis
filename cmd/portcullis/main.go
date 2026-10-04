@@ -39,8 +39,20 @@ import (
 )
 
 // migrate opens the owner DSN, verifies connectivity, applies the migrations, and closes the pool — the owner credential stays alive only for this window. Errors are logged with generic messages/classified fields only: the raw error can echo the DSN, which carries the password.
-func migrate(ctx context.Context, logger *slog.Logger, ownerURL, runtimeRole string) error {
-	pool, err := postgres.Open(ctx, ownerURL)
+// metadataPoolSettings maps the validated pool configuration onto the metadata pool bounds.
+func metadataPoolSettings(cfg config.Config) postgres.PoolSettings {
+	return postgres.PoolSettings{
+		MaxConns:                 cfg.DatabaseMaxConns,
+		AcquireTimeout:           cfg.DatabaseAcquireTimeout,
+		StatementTimeout:         cfg.DatabaseStatementTimeout,
+		LockTimeout:              cfg.DatabaseLockTimeout,
+		IdleInTransactionTimeout: cfg.DatabaseIdleInTransactionTimeout,
+	}
+}
+
+func migrate(ctx context.Context, logger *slog.Logger, cfg config.Config) error {
+	ownerURL, runtimeRole := cfg.OwnerDSN(), cfg.RuntimeRole
+	pool, err := postgres.Open(ctx, ownerURL, metadataPoolSettings(cfg))
 	if err != nil {
 		logger.Error("database config invalid", "hint", "check PORTCULLIS_MIGRATE_DATABASE_URL / PORTCULLIS_DATABASE_URL")
 		return err
@@ -92,7 +104,7 @@ func runMigrate() error {
 		return errors.New("database url required")
 	}
 	// Migrate bounds its own lock wait, lock acquisitions and statements, so the one-shot command needs no outer deadline (ADR-0009).
-	if err := migrate(context.Background(), logger, cfg.OwnerDSN(), cfg.RuntimeRole); err != nil {
+	if err := migrate(context.Background(), logger, cfg); err != nil {
 		return err
 	}
 	logger.Info("metadata schema ready")
@@ -126,7 +138,7 @@ func run() error {
 	// Apply migrations with the owner DSN and serve with the restricted runtime DSN (ADR-0009). A separate migrate process keeps owner credentials out of the server.
 	// Migration runs outside the startup budget: Migrate bounds its own lock wait, lock acquisitions and statements (ADR-0009).
 	if cfg.StartupMigrationEnabled() {
-		if err := migrate(context.Background(), logger, cfg.OwnerDSN(), cfg.RuntimeRole); err != nil {
+		if err := migrate(context.Background(), logger, cfg); err != nil {
 			return err
 		}
 		logger.Info("metadata schema ready")
@@ -137,7 +149,7 @@ func run() error {
 	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelStartup()
 
-	pool, err := postgres.Open(startupCtx, cfg.DatabaseURL)
+	pool, err := postgres.Open(startupCtx, cfg.DatabaseURL, metadataPoolSettings(cfg))
 	if err != nil {
 		// Open only parses the DSN (pgxpool.New is lazy); a malformed config lands here.
 		logger.Error("database config invalid", "hint", "check PORTCULLIS_DATABASE_URL")

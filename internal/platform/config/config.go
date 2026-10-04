@@ -24,6 +24,11 @@ func Load() (Config, error) {
 	v.SetDefault("log_format", "json")
 	v.SetDefault("argon2_max_concurrent", 2)
 	v.SetDefault("runtime_role", "portcullis_runtime")
+	v.SetDefault("database_max_conns", defaultDatabaseMaxConns)
+	v.SetDefault("database_acquire_timeout", defaultDatabaseAcquireTimeout)
+	v.SetDefault("database_statement_timeout", defaultDatabaseStatementTimeout)
+	v.SetDefault("database_lock_timeout", defaultDatabaseLockTimeout)
+	v.SetDefault("database_idle_in_transaction_timeout", defaultDatabaseIdleInTransactionTimeout)
 	// Tier-C tunable defaults come from the settings registry (ADR-0017) — one source for the env seed here and the DB store's fallback.
 	for _, d := range setting.All() {
 		switch d.Kind {
@@ -96,6 +101,9 @@ func Load() (Config, error) {
 	if !setting.BackoffPairConsistent(cfg.LoginBackoffBase, cfg.LoginBackoffCap) {
 		return Config{}, fmt.Errorf("login_backoff_cap %s below login_backoff_base %s", cfg.LoginBackoffCap, cfg.LoginBackoffBase)
 	}
+	if err := validateDatabasePool(cfg); err != nil {
+		return Config{}, err
+	}
 	if cfg.DrainDelay < 0 {
 		return Config{}, fmt.Errorf("drain_delay must not be negative, got %s", cfg.DrainDelay)
 	}
@@ -137,6 +145,30 @@ func Load() (Config, error) {
 		cfg.trustedProxyNets = append(cfg.trustedProxyNets, network)
 	}
 	return cfg, nil
+}
+
+// validateDatabasePool enforces the metadata pool bounds and keeps the lock wait within the statement bound.
+func validateDatabasePool(cfg Config) error {
+	if cfg.DatabaseMaxConns < minDatabaseMaxConns || cfg.DatabaseMaxConns > maxDatabaseMaxConns {
+		return fmt.Errorf("database_max_conns %d out of range [%d, %d]", cfg.DatabaseMaxConns, minDatabaseMaxConns, maxDatabaseMaxConns)
+	}
+	for _, bound := range []struct {
+		key           string
+		value, lo, hi time.Duration
+	}{
+		{"database_acquire_timeout", cfg.DatabaseAcquireTimeout, minDatabaseAcquireTimeout, maxDatabaseAcquireTimeout},
+		{"database_statement_timeout", cfg.DatabaseStatementTimeout, minDatabaseStatementTimeout, maxDatabaseStatementTimeout},
+		{"database_lock_timeout", cfg.DatabaseLockTimeout, minDatabaseLockTimeout, maxDatabaseLockTimeout},
+		{"database_idle_in_transaction_timeout", cfg.DatabaseIdleInTransactionTimeout, minDatabaseIdleInTransactionTimeout, maxDatabaseIdleInTransactionTimeout},
+	} {
+		if bound.value < bound.lo || bound.value > bound.hi {
+			return fmt.Errorf("%s %s out of range [%s, %s]", bound.key, bound.value, bound.lo, bound.hi)
+		}
+	}
+	if cfg.DatabaseLockTimeout > cfg.DatabaseStatementTimeout {
+		return fmt.Errorf("database_lock_timeout %s exceeds database_statement_timeout %s", cfg.DatabaseLockTimeout, cfg.DatabaseStatementTimeout)
+	}
+	return nil
 }
 
 // normalizeGoogleConfig gives all Google-login consumers one canonical view of environment values. In particular, whitespace-only client IDs must not pass validation as disabled and later enable routes with an invalid raw value.
