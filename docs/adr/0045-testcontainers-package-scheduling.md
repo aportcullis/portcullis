@@ -13,11 +13,24 @@ Run the canonical Go test and race targets and the PostgreSQL compatibility pack
 
 ### Amendment 2026-10-04: concurrent verify groups
 
-`make verify` builds the SPA, Playwright browser and load bundle once, then runs three groups concurrently: static checks, the Go test target (still `-p 1`) and the browser suite. The browser harness is a separate process tree that starts its own containers, so it runs with `TESTCONTAINERS_RYUK_DISABLED=true` and never joins the reaper startup race. Its cleanup does not depend on Ryuk: the runner terminates both containers on exit or signal, and `make e2e-run` removes any container labelled `portcullis.test=browser` before and after the suite, covering a killed runner. Testcontainers documents disabling Ryuk when the environment performs its own cleanup. Each group keeps its steps in order and writes its output to `.test-docker/verify/<group>.log`; only a failed group's log is printed, because GNU Make 3.81 on macOS cannot synchronize concurrent output.
+`make verify` builds the SPA, Playwright browser and load bundle once.
+It then runs three groups concurrently: static checks, the Go test target (still `-p 1`) and the browser suite.
+
+The browser harness is a separate process tree with its own containers, so it runs with `TESTCONTAINERS_RYUK_DISABLED=true` and never joins the reaper startup race.
+Its cleanup does not depend on Ryuk: the runner terminates both containers on exit or signal, and `make e2e-run` removes any container labelled `portcullis.test=browser` before and after the suite.
+Testcontainers documents disabling Ryuk when the environment performs its own cleanup.
+
+Each group keeps its steps in order and writes `<group>.log` to a temporary directory outside the checkout (`$TMPDIR/portcullis-verify`, overridable with `VERIFY_LOG_DIR`).
+Endpoint protection on the working tree therefore cannot refuse a rewrite of the previous log.
+Only a failed group's log is printed, because GNU Make 3.81 on macOS cannot synchronize concurrent output.
 
 ## Consequences
 
-Package compilation and execution become less parallel, increasing cold gate time; the concurrent verify groups recover most of it, bounding the wall time by the browser suite. This is a bounded harness workaround, not an upstream-library fix or proof that every Docker lifecycle failure is eliminated. Requalify parallel package scheduling when the pinned library resolves the startup race. Product requirements remain unchanged.
+Package compilation and execution become less parallel, increasing cold gate time.
+The concurrent verify groups recover most of it, bounding the wall time by the browser suite.
+This is a bounded harness workaround, not an upstream-library fix or proof that every Docker lifecycle failure is eliminated.
+Requalify parallel package scheduling when the pinned library resolves the startup race.
+Product requirements remain unchanged.
 
 ## Sources
 

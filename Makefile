@@ -101,7 +101,6 @@ e2e: web e2e-browser
 e2e-browser:
 	pnpm -C web exec playwright install --with-deps chromium
 
-# Run the browser suite against an already built SPA, removing any harness containers a killed run left behind (ADR-0045).
 e2e-run:
 	@$(MAKE) --no-print-directory e2e-sweep
 	pnpm -C web e2e; status=$$?; $(MAKE) --no-print-directory e2e-sweep; exit $$status
@@ -166,8 +165,8 @@ clean-check:
 release-check:
 	bash tests/release/tags.sh
 
-# Build the shared SPA, browser and load bundle once, then run the static, Go test and browser groups concurrently; each group runs its own steps in order and keeps its output in .test-docker/verify (ADR-0045).
-VERIFY_LOG_DIR := .test-docker/verify
+# Concurrent verify groups (ADR-0045).
+VERIFY_LOG_DIR ?= $(or $(TMPDIR),/tmp)/portcullis-verify
 
 verify: verify-prepare
 	@mkdir -p $(VERIFY_LOG_DIR)
@@ -197,7 +196,6 @@ verify-go:
 verify-browser:
 	$(MAKE) -j1 e2e-run
 
-# Print a group's log only when it fails, so concurrent groups never interleave on the terminal.
 verify-group-%:
 	@start=$$(date +%s); \
 	if $(MAKE) --no-print-directory -j1 verify-$* > $(VERIFY_LOG_DIR)/$*.log 2>&1; then \
