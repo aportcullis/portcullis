@@ -265,6 +265,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
   취소가 확인되면 `cancelled`, 결과를 확인할 수 없으면 `outcome_unknown`으로 기록.
   COMMIT을 보내기 전의 취소는 transaction이 커밋될 수 없으므로 확인된 취소(`cancelled`)이고, 대상 DB의 statement timeout이나 COMMIT 전 로컬 deadline은 확인된 rollback인 `failed`다. COMMIT 진행 중이거나 그 뒤의 중단과 연결 유실만 `outcome_unknown`으로 남는다(ADR-0021).
 - `succeeded`, `failed`, `outcome_unknown`, `rejected`, `expired`, `cancelled`는 terminal 상태.
+- **DB 강제(2026-10-04 추가, ADR-0018):** metadata row guard가 이 그래프 밖의 runtime update, submit snapshot 수정, 승인 전이 밖의 승인 유효기간 변경, key rotation 재래핑을 제외한 terminal row 변경을 거부한다.
 - `outcome_unknown`은 자동 재시도하지 않고 운영자가 대상 DB에서 실제 반영 여부를 수동 확인한다.
   확인 결과를 별도 audit event로 남겨 처리 종결 사실을 기록하되, 원래 실행 record의 terminal 상태(`outcome_unknown`)는 사후 변조하지 않는다(append-only 보존).
 - **가시성 스코프 (2026-07-23 증보; 2026-07-24 개정, ADR-0018):** **reviewer = `requests.approve` 또는 `requests.reject` 보유자**는 organization 전체 요청을 조회하고 payload를 복호할 수 있으며, 그 외 requester는 **자신의 요청만** 조회한다(서버측 강제). approve/reject는 custom role이 독립적으로 부여할 수 있는 별개 권한이라, 반려만 가능한 사용자도 대상 요청을 볼 수 있어야 하므로 가시성은 두 결정 권한의 합집합이다.

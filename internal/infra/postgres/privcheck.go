@@ -101,7 +101,7 @@ var tablePolicies = map[string]tablePolicy{
 		required:  []string{"SELECT", "INSERT"},
 		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
 	},
-	// Append-only approval evidence: a decision row is never rewritten — validity is computed at count time, invalidation needs no mutation (ADR-0018; 0013 revokes UPDATE). access_requests itself takes the default policy: state transitions are UPDATEs, rows are never deleted.
+	// Append-only approval evidence: a decision row is never rewritten — validity is computed at count time, invalidation needs no mutation (ADR-0018; 0013 revokes UPDATE). access_requests itself takes the default policy because state transitions are UPDATEs; its lifecycle trigger (0018) bounds those UPDATEs to the state graph and freezes submit and terminal evidence.
 	"approvals": {
 		required:  []string{"SELECT", "INSERT"},
 		forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},

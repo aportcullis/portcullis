@@ -665,6 +665,9 @@ func (s *AccessRequestStore) transition(ctx context.Context, q *db.Queries, requ
 
 // transitionAt applies a guarded state change at the supplied database timestamp.
 func (s *AccessRequestStore) transitionAt(ctx context.Context, q *db.Queries, requestUUID, organizationUUID pgtype.UUID, from, to access.State, reason *access.Reason, expires *time.Time, at time.Time) (access.Request, error) {
+	if !from.CanTransitionTo(to) {
+		return access.Request{}, fmt.Errorf("access: transition %s→%s: %w", from, to, access.ErrInvalidTransition)
+	}
 	params := db.TransitionAccessRequestParams{
 		ID:             requestUUID,
 		OrganizationID: organizationUUID,

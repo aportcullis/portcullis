@@ -2,11 +2,15 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
@@ -66,6 +70,51 @@ func TestWithReadSnapshotRefusesWrites(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("a write inside withReadSnapshot succeeded; the transaction is not read-only")
+	}
+}
+
+// transitionAt is unexported and every exported store path passes a domain edge, so only a white-box call can offer it an edge outside the state machine.
+func TestTransitionRefusesEdgesOutsideTheStateMachine(t *testing.T) {
+	pool := dbtest.Postgres(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := NewAccessRequestStore(pool)
+	missingRequest, err := stringToUUID(uuid.NewString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	organization, err := stringToUUID(uuid.NewString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries := db.New(pool)
+
+	for _, edge := range []struct{ from, to access.State }{
+		{access.StateSucceeded, access.StateApproved},
+		{access.StatePending, access.StateExecuting},
+		{access.StateApproved, access.StatePending},
+		{access.StateDraft, access.StateSucceeded},
+		{access.StateExpired, access.StateApproved},
+	} {
+		_, err := store.transitionAt(ctx, queries, missingRequest, organization, edge.from, edge.to, nil, nil, time.Time{})
+		if !errors.Is(err, access.ErrInvalidTransition) {
+			t.Errorf("transition %s → %s = %v, want ErrInvalidTransition before the conditional update", edge.from, edge.to, err)
+		}
+	}
+
+	// Domain edges reach the conditional update, which finds no row and reports a lost guard.
+	for _, edge := range []struct{ from, to access.State }{
+		{access.StatePending, access.StateApproved},
+		{access.StateApproved, access.StateExecuting},
+		{access.StateExecuting, access.StateOutcomeUnknown},
+		{access.StateDraft, access.StateCancelled},
+	} {
+		_, err := store.transitionAt(ctx, queries, missingRequest, organization, edge.from, edge.to, nil, nil, time.Time{})
+		if !errors.Is(err, access.ErrConflict) || errors.Is(err, access.ErrInvalidTransition) {
+			t.Errorf("transition %s → %s on a missing row = %v, want ErrConflict from the guard", edge.from, edge.to, err)
+		}
 	}
 }
 

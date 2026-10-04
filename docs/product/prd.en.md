@@ -288,6 +288,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
   - Cancellation before COMMIT is sent is confirmed `cancelled`, because the transaction cannot commit; the target's statement timeout or a local deadline before COMMIT is a confirmed rollback recorded as `failed`.
   - Only interruptions during or after COMMIT and connection loss remain `outcome_unknown` (ADR-0021).
 - **Terminal states:** `succeeded`, `failed`, `outcome_unknown`, `rejected`, `expired`, `cancelled`.
+- **Database enforcement, added 2026-10-04, ADR-0018:** A metadata row guard refuses runtime updates outside this graph, edits to the submit snapshot, approval-window changes outside approval, and any terminal-row change except key-rotation rewrapping.
 - **Unknown resolution:** Operators manually inspect the target DB and record resolution as another audit event; never rewrite the original unknown outcome.
 - **Visibility, added 2026-07-23, amended 2026-07-24, ADR-0018:** Reviewers holding `requests.approve` **or** `requests.reject` can see organization-wide requests and decrypt payloads; other requesters see only their own, enforced server-side.
   - Independent custom-role decision permissions require the union: reject-only users also need visibility.

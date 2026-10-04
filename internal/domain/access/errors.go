@@ -21,6 +21,8 @@ var (
 	ErrNotPending = errors.New("access: request is not pending")
 	// ErrNotCancellable: only draft/pending/approved may be cancelled.
 	ErrNotCancellable = errors.New("access: request is not cancellable")
+	// ErrInvalidTransition: the requested state change is not an edge of the request state machine.
+	ErrInvalidTransition = errors.New("access: state transition is not allowed")
 	// ErrConflict: the optimistic version token did not match — reload and retry.
 	ErrConflict = errors.New("access: request changed concurrently")
 

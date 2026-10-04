@@ -54,6 +54,10 @@ Since kviklet 0.8.0, other execute-right holders may execute approved single-exe
   The handler's coarse permission gate is a check-then-act window; without the re-check a permission revoked after it could still terminally **reject** a request.
   Approve is separately protected by the valid-count (a stale approval never counts), but reject is a single terminal act with no count to protect it — the re-check closes that gap.
   (§8.3 revokes sessions on role change, which shrinks the window to an already-in-flight request; the re-check is the contract-level guarantee §4.4 requires.)
+- **Database lifecycle guard** (amended 2026-10-04): a `BEFORE UPDATE` row trigger on `access_requests` (migration 0018, modelled on the `query_executions` evidence guard) refuses with SQLSTATE `42501` any edge outside `access.State.CanTransitionTo`, any change to identity columns, any change to a submitted row other than state, reason, approval expiry, version, `updated_at` and the rotatable payload envelope, any change to a terminal row other than a key-rotation envelope rewrap, a submit snapshot stamped on a draft, an `expires_at` change outside the approving transition, and a reason change without its transition.
+  Without it the runtime role's `UPDATE` grant alone allowed reviving a terminal request, extending an approval window or rewriting the redacted SQL approvers saw.
+  The trigger runs as the invoking role, so it exempts principals holding the table owner's privileges: they could disable it anyway, and boot verification already refuses a runtime connection with that reach (ADR-0009).
+  A pin test walks every state pair as the runtime role against the domain graph, and the store's transition helper also checks `CanTransitionTo` before its conditional update (`ErrInvalidTransition`).
 - Draft edits (`UpdateDraft`) and `Submit` carry `expected_version` against the request's own `version` bigint — the connections optimistic-token pattern; a mismatch is `ErrConflict → Aborted`.
 
 ### Approver validity — computed, never stored
@@ -196,4 +200,5 @@ No window either way.
 - kviklet 0.9.2 review model (re-checked 2026-09-30) — per-connection `numTotalRequired`, distinct-reviewer counting, EDIT/error resets and executor authorization: https://github.com/kviklet/kviklet/blob/0.9.2/backend/src/main/kotlin/dev/kviklet/kviklet/service/dto/ExecutionRequest.kt (ADR-0019).
 - PostgreSQL explicit locking — `SELECT FOR UPDATE` blocks/serializes concurrent locks on the row; READ COMMITTED re-evaluates after the wait: https://www.postgresql.org/docs/current/explicit-locking.html
 - PostgreSQL error codes — `23505 unique_violation`: https://www.postgresql.org/docs/current/errcodes-appendix.html
+- PostgreSQL trigger behavior — a trigger runs as the role that queued the event unless `SECURITY DEFINER`, and its error rolls back the statement (checked 2026-10-04): https://www.postgresql.org/docs/current/trigger-definition.html
 - ADR-0003 (HMAC digest, AAD layout) · ADR-0015 (pinned policy versions, deferred expiry hook) · ADR-0016 (redaction contract) · ADR-0017 (Tier-C settings)
