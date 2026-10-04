@@ -15,6 +15,8 @@ var (
 	ErrInvalidParamName   = errors.New("invalid or duplicate parameter name")
 	ErrInvalidParamValue  = errors.New("invalid parameter value")
 	ErrResponseLimit      = errors.New("query: target response exceeds local memory limit")
+	// ErrInterruptedBeforeCommit marks an interruption that ended the session before COMMIT was sent, so the target transaction cannot have committed.
+	ErrInterruptedBeforeCommit = errors.New("query: execution interrupted before commit")
 )
 
 // ParseFailure reports that the input did not parse. It carries only a byte offset — parser error messages can quote the input and are never propagated (ADR-0016).

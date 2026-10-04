@@ -95,12 +95,12 @@ func (s *resultStream) conclude(tag pgconn.CommandTag, rrErr error) {
 		s.err = redactExecError(s.ctx, rrErr)
 		s.rollback()
 	case s.ctx.Err() != nil:
-		// Never commit a canceled execution — the caller records outcome_unknown, and an unconfirmed commit would contradict it.
+		// Never commit a canceled execution: without COMMIT the transaction rolls back, which the before-commit marker reports.
 		s.err = redactExecError(s.ctx, s.ctx.Err())
 		s.rollback()
 	default:
 		if err := runSimple(s.ctx, s.conn, "COMMIT"); err != nil {
-			s.err = redactExecError(s.ctx, err)
+			s.err = redactCommitError(s.ctx, err)
 		}
 	}
 	closeConn(s.ctx, s.conn)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/aportcullis/portcullis/internal/app/execution"
 	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/audit"
@@ -25,6 +26,10 @@ type executionFixture struct {
 	execErr           error
 	resultErr         error
 	completion        access.ExecutionCompletion
+	// queryTimeoutSeconds overrides the default policy's statement timeout when positive.
+	queryTimeoutSeconds int
+	// executeTarget replaces the canned target stream when set.
+	executeTarget func(context.Context, query.Execution) (query.ResultStream, error)
 }
 
 type blockingExecutionFixture struct {
@@ -67,7 +72,7 @@ func (f *blockingExecutionFixture) Execute(ctx context.Context, _ connection.Tar
 	f.started <- struct{}{}
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("%w: %w", query.ErrInterruptedBeforeCommit, ctx.Err())
 	case <-f.release:
 		return &resultStream{}, nil
 	}
@@ -118,7 +123,7 @@ func TestExecutionSaturationAndOwnerCancellationPreserveOtherLeases(t *testing.T
 	}
 	select {
 	case c := <-first:
-		if c.State != access.StateOutcomeUnknown {
+		if c.State != access.StateCancelled {
 			t.Fatalf("cancel outcome: %s", c.State)
 		}
 	case <-ctx.Done():
@@ -156,7 +161,11 @@ func (f *executionFixture) GetSealed(context.Context, identity.OrganizationID, a
 	return f.request, access.SealedPayload{}, nil
 }
 func (f *executionFixture) CurrentTarget(context.Context, identity.OrganizationID, connection.ConnectionID) (access.SubmitTarget, error) {
-	return access.SubmitTarget{Policy: connection.DefaultPolicy(), ConfigVersion: 1, DBType: "postgresql"}, nil
+	policy := connection.DefaultPolicy()
+	if f.queryTimeoutSeconds > 0 {
+		policy.Limits.QueryTimeoutSeconds = f.queryTimeoutSeconds
+	}
+	return access.SubmitTarget{Policy: policy, ConfigVersion: 1, DBType: "postgresql"}, nil
 }
 func (f *executionFixture) TestMaterial(context.Context, identity.OrganizationID, connection.ConnectionID) (connection.Connection, connection.SealedCredential, error) {
 	return connection.Connection{ConfigVersion: 1, DBType: connection.DBTypePostgreSQL}, connection.SealedCredential{}, nil
@@ -207,13 +216,16 @@ func (f *executionFixture) Classify(query.Statement) (query.StatementClass, erro
 func (f *executionFixture) BindNamed(string, []query.Parameter) (string, []query.TypedValue, error) {
 	return "SELECT $1", []query.TypedValue{{Type: query.ParamInteger, Text: "1"}}, nil
 }
-func (f *executionFixture) Execute(_ context.Context, _ connection.Target, _ connection.TLSMode, _ connection.Credential, exec query.Execution) (query.ResultStream, error) {
+func (f *executionFixture) Execute(ctx context.Context, _ connection.Target, _ connection.TLSMode, _ connection.Credential, exec query.Execution) (query.ResultStream, error) {
 	f.executions++
 	if !f.acquired || !exec.Governed {
 		return nil, errors.New("unleased or ungoverned target execution")
 	}
 	if f.execErr != nil {
 		return nil, f.execErr
+	}
+	if f.executeTarget != nil {
+		return f.executeTarget(ctx, exec)
 	}
 	return &resultStream{}, nil
 }

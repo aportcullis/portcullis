@@ -154,7 +154,7 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	}
 	leased = true
 	started := time.Now()
-	workCtx, cancel := context.WithTimeout(ctx, time.Duration(target.Policy.Limits.QueryTimeoutSeconds)*time.Second)
+	workCtx, cancel := context.WithTimeout(ctx, time.Duration(target.Policy.Limits.QueryTimeoutSeconds)*time.Second+query.ExecutionDeadlineGrace)
 	defer cancel()
 	s.mu.Lock()
 	s.cancellations[id] = cancel
@@ -207,8 +207,12 @@ func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Reque
 	return completion, TargetHealthy
 }
 
+// queryCanceledSQLState is PostgreSQL's query_canceled, raised when the server's statement timeout or an administrator cancels a statement.
+const queryCanceledSQLState = "57014"
+
+// targetHealthAfterFailure separates target availability from cancellations and timeouts, which say nothing about it (ADR-0010).
 func targetHealthAfterFailure(err error) TargetOutcome {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, query.ErrResponseLimit) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, query.ErrResponseLimit) || isServerCancellation(err) {
 		return TargetInconclusive
 	}
 	var connectionFailure *connection.TestError
@@ -218,7 +222,23 @@ func targetHealthAfterFailure(err error) TargetOutcome {
 	return TargetHealthy
 }
 
+// isServerCancellation reports whether the target itself cancelled the statement and rolled it back.
+func isServerCancellation(err error) bool {
+	var sqlFailure *query.ExecError
+	return errors.As(err, &sqlFailure) && sqlFailure.SQLState == queryCanceledSQLState
+}
+
+// failedExecutionState maps a target failure to its terminal state: a certain rollback is failed or cancelled, anything unconfirmed is outcome_unknown (PRD §4.4).
 func failedExecutionState(err error) access.State {
+	if errors.Is(err, query.ErrInterruptedBeforeCommit) {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			return access.StateFailed
+		case errors.Is(err, context.Canceled):
+			return access.StateCancelled
+		}
+		return access.StateOutcomeUnknown
+	}
 	var rejection *query.Rejection
 	var parseFailure *query.ParseFailure
 	var dialFailure *connection.TestError

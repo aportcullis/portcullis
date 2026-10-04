@@ -15,7 +15,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/query"
 )
 
-// Execute uses a dedicated transaction, READ ONLY for reads, and commits only on clean uncancelled completion. Cancellation sends a server-side cancel; callers classify uncertain outcomes (PRD §8.2).
+// Execute uses a dedicated transaction, READ ONLY for reads, and commits only on clean uncancelled completion. Cancellation sends a server-side cancel; an interruption before COMMIT is marked query.ErrInterruptedBeforeCommit, and one during COMMIT stays unconfirmed (PRD §8.2, ADR-0021).
 func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential, exec query.Execution) (query.ResultStream, error) {
 	if !exec.Class.Valid() {
 		return nil, &query.Rejection{Reason: query.RejectNotAllowlisted}
@@ -74,6 +74,10 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 	defer cancelDial()
 	conn, err := pgconn.ConnectConfig(dialCtx, cfg)
 	if err != nil {
+		// An execution context that ended during the dial interrupted the attempt rather than proving the target unreachable.
+		if ctx.Err() != nil {
+			return nil, redactExecError(ctx, err)
+		}
 		// Connection-phase failures leak no more than a connection test does.
 		return nil, classify(err)
 	}

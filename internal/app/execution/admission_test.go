@@ -52,7 +52,7 @@ func TestRepeatedOwnerCancellationDoesNotBlockAnotherRequester(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal("cancellation did not finish")
 		}
-		if executionErr != nil || completion.State != access.StateOutcomeUnknown || completion.ResultID != "" {
+		if executionErr != nil || completion.State != access.StateCancelled || completion.ResultID != "" {
 			t.Fatalf("cancelled execution: %+v, %v", completion, executionErr)
 		}
 	}

@@ -283,6 +283,8 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
 - **Late completion:** Terminal updates require `state=executing AND owner=? AND attempt_id=?`.
   - If reconciliation already recorded unknown, a late worker cannot overwrite it; append only `LATE_COMPLETION_OBSERVED`.
 - **Executing cancellation:** Attempt driver cancellation without guaranteeing success; confirmed cancellation becomes `cancelled`, otherwise `outcome_unknown`.
+  - Cancellation before COMMIT is sent is confirmed `cancelled`, because the transaction cannot commit; the target's statement timeout or a local deadline before COMMIT is a confirmed rollback recorded as `failed`.
+  - Only interruptions during or after COMMIT and connection loss remain `outcome_unknown` (ADR-0021).
 - **Terminal states:** `succeeded`, `failed`, `outcome_unknown`, `rejected`, `expired`, `cancelled`.
 - **Unknown resolution:** Operators manually inspect the target DB and record resolution as another audit event; never rewrite the original unknown outcome.
 - **Visibility, added 2026-07-23, amended 2026-07-24, ADR-0018:** Reviewers holding `requests.approve` **or** `requests.reject` can see organization-wide requests and decrypt payloads; other requesters see only their own, enforced server-side.
@@ -748,8 +750,9 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - ADR-0011 order: delete expired results → plan own LRU → plan global LRU preserving at least one result per other user → atomically evict and insert only if admission fits; otherwise reject only the new snapshot as `result_store_full`, preserving every live result with execution itself completed.
 - **Circuit breaker, ADR-0010:** Per connection, more than 5 consecutive failures opens for 60 seconds with one half-open probe.
   - Blocked calls return `Unavailable` before leasing, without retries.
-  - User cancellation, context deadlines and local response limits are excluded from target-health measurements without clearing existing failures; execution uncertainty still records `outcome_unknown` (ADR-0010).
+  - User cancellation, context deadlines, server statement timeouts and local response limits are excluded from target-health measurements without clearing existing failures; execution uncertainty still records `outcome_unknown` (ADR-0010).
 - Attempt driver cancellation on user cancel/context timeout; unconfirmed outcome is `outcome_unknown`, never guessed success/failure.
+  - The local execution deadline exceeds the statement timeout by a fixed grace, so the target's own timeout fires and rolls back first (ADR-0021).
 - Never automatically retry target execution; API idempotency keys only retrieve the existing attempt, never create another execution.
 
 | DB | Read | Write/DDL |

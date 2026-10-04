@@ -261,6 +261,7 @@ approved ──acquire execution lease──> executing ──> succeeded|failed
 - **late-completion fencing:** 모든 terminal 상태 update는 `state=executing AND owner=? AND attempt_id=?` 조건부 update로만 성공한다. reconciler가 이미 `outcome_unknown`으로 전이한 뒤 원래 worker가 늦게 완료를 보고하면 조건이 불일치해 **상태를 덮어쓰지 못하고**, 대신 `LATE_COMPLETION_OBSERVED` audit event로만 기록한다.
 - `executing` 상태에서는 사용자가 cancel을 요청할 수 있으나 DB driver의 취소 성공을 보장하지 않음.
   취소가 확인되면 `cancelled`, 결과를 확인할 수 없으면 `outcome_unknown`으로 기록.
+  COMMIT을 보내기 전의 취소는 transaction이 커밋될 수 없으므로 확인된 취소(`cancelled`)이고, 대상 DB의 statement timeout이나 COMMIT 전 로컬 deadline은 확인된 rollback인 `failed`다. COMMIT 진행 중이거나 그 뒤의 중단과 연결 유실만 `outcome_unknown`으로 남는다(ADR-0021).
 - `succeeded`, `failed`, `outcome_unknown`, `rejected`, `expired`, `cancelled`는 terminal 상태.
 - `outcome_unknown`은 자동 재시도하지 않고 운영자가 대상 DB에서 실제 반영 여부를 수동 확인한다.
   확인 결과를 별도 audit event로 남겨 처리 종결 사실을 기록하되, 원래 실행 record의 terminal 상태(`outcome_unknown`)는 사후 변조하지 않는다(append-only 보존).
@@ -710,8 +711,9 @@ audit_events
 - row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 계획 → 전역 LRU 축출 계획(다른 사용자별 최소 1개 보존) → 수용 가능하면 축출·신규 저장을 원자적으로 적용하고, 불가능하면 유효한 기존 결과를 모두 보존하며 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
 - **대상 DB 실행 경로 circuit breaker(ADR-0010):** connection별로 연속 실패 5회 초과 시 60초 open(half-open probe 1회).
   차단된 호출은 lease를 잡지 않고 `Unavailable`로 반환하며 자동 재시도하지 않는다.
-  사용자 취소·context deadline·로컬 응답 크기 제한은 대상 건강 집계에서 제외하고 기존 장애 횟수를 초기화하지 않는다. 실행 결과의 불확실성은 계속 `outcome_unknown`으로 기록한다(ADR-0010).
+  사용자 취소·context deadline·서버 statement timeout·로컬 응답 크기 제한은 대상 건강 집계에서 제외하고 기존 장애 횟수를 초기화하지 않는다. 실행 결과의 불확실성은 계속 `outcome_unknown`으로 기록한다(ADR-0010).
 - 사용자 cancel과 context timeout 시 driver cancel을 시도하지만, 결과를 확인할 수 없으면 성공/실패를 추측하지 않고 `outcome_unknown`으로 기록.
+  로컬 실행 deadline은 statement timeout보다 고정 유예만큼 길어, 대상 DB의 timeout이 먼저 발동해 rollback한다(ADR-0021).
 - 대상 DB 실행에는 자동 retry를 적용하지 않음.
   API idempotency key는 동일 실행 attempt 조회에만 사용하고 새 DB 실행을 만들지 않음.
 

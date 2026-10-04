@@ -47,6 +47,16 @@ The timeout applies separately to each lock acquisition and only while waiting; 
 When a policy's statement timeout is at or below the lock timeout, PostgreSQL's statement timeout fires first, which is equally bounded.
 Source: [PostgreSQL client connection defaults](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-LOCK-TIMEOUT).
 
+### Interruption outcomes (2026-10-04)
+
+An interruption is classified by whether COMMIT had been sent, because a transaction opened with BEGIN commits only on COMMIT.
+The dialect marks every context end observed during dial, BEGIN, the catalog gate, the statement or a truncated read with `query.ErrInterruptedBeforeCommit`; owner, shutdown or lease-loss cancellation before COMMIT records `cancelled`, and a local deadline before COMMIT records `failed`.
+A context end while COMMIT is in flight carries no marker and stays `outcome_unknown`, as do connection loss and SQLSTATE 08xxx/40003 in any phase.
+The target's statement timeout (SQLSTATE 57014) is a server-confirmed rollback recorded as `failed`.
+PostgreSQL measures `statement_timeout` from when each command arrives and disables it before COMMIT, so deferred COMMIT work is bounded only by the local deadline.
+The local deadline therefore exceeds the policy timeout by `query.ExecutionDeadlineGrace` (10 seconds): previously both used the same duration while the local clock started before dial, BEGIN and the catalog gate, so it always fired first and every timeout and confirmed cancellation was recorded `outcome_unknown`.
+Sources: [PostgreSQL statement_timeout](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-STATEMENT-TIMEOUT), [pgconn CancelRequestContextWatcherHandler](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#CancelRequestContextWatcherHandler).
+
 The server admits two active target executions and two result-processing workers.
 Saturation refuses work before acquiring a lease; result processing responds with Retry-After.
 Governed target streams check raw row bytes before decoding and limit protocol message allocation to the result byte budget plus 64 KiB framing allowance.
@@ -63,7 +73,7 @@ Result snapshots use one DEK per result, independently authenticated schema/100-
 The 25MiB snapshot ceiling cannot enlarge a pinned connection policy's lower limit; new policies retain ADR-0015's 16MiB default.
 Server sorting retains exact integer/decimal precision, NULL-last ordering, and original row ordinal ties.
 CSV processes chunks through the bounded worker pool and escapes spreadsheet formulas in headers and cells.
-The M1 single-process server records and forwards cancellation only for its locally active owner; cancellation never promises that the target rolled back.
+The M1 single-process server records and forwards cancellation only for its locally active owner; only a cancellation observed before COMMIT is reported as a rollback.
 CSV streaming authenticates session and CSRF before serving, rechecks permissions while sending, and periodically revalidates session liveness.
 Each CSV HTTP write has a refreshed 30-second deadline so a stalled consumer releases the worker.
 Unknown JSON and binary Execute fields are rejected before target admission; decode errors never echo payload values.
