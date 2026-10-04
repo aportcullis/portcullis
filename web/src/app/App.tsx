@@ -1,9 +1,10 @@
 import type { Component } from "solid-js";
-import { createEffect, onMount } from "solid-js";
+import { ErrorBoundary, createEffect, onMount } from "solid-js";
 
 import { Navigate, Route, Router } from "@solidjs/router";
 
 import "@/app/index.css";
+import { ApplicationErrorCard } from "@/app/ApplicationErrorCard";
 import AppShell from "@/app/AppShell";
 import { landingFor } from "@/app/navigation";
 import { resetConnections } from "@/entities/connection/store";
@@ -13,6 +14,7 @@ import BootstrapPage from "@/pages/BootstrapPage";
 import ConnectionsPage from "@/pages/ConnectionsPage";
 import LoginPage from "@/pages/LoginPage";
 import NewRequestPage from "@/pages/NewRequestPage";
+import NotFoundPage from "@/pages/NotFoundPage";
 import RequestDetailsPage from "@/pages/RequestDetailsPage";
 import RequestResultPage from "@/pages/RequestResultPage";
 import RequestsPage from "@/pages/RequestsPage";
@@ -25,8 +27,8 @@ const App: Component = () => {
   // Clear the connection cache whenever the authenticated principal changes or goes away — a later, less-privileged login in the same tab must never see the previous user's descriptors (OWASP: purge client-side data on session end). resetConnections also fences any in-flight load from the old user.
   let lastUserID = "";
   createEffect(() => {
-    const s = session();
-    const userID = s.status === "authenticated" ? s.user.id : "";
+    const principal = session();
+    const userID = principal.status === "authenticated" ? principal.user.id : "";
     if (userID !== lastUserID) {
       lastUserID = userID;
       resetConnections();
@@ -39,8 +41,16 @@ const App: Component = () => {
   // Authenticated routes share AppShell; the root selects the first section available to the caller’s capability union.
   const landing = () => landingFor(hasPermission);
 
+  // The boundary turns an unexpected render failure into a recoverable card instead of a blank document; unknown authenticated addresses get an explicit not-found page.
   return (
-    <Router>
+    <Router root={(props) => (
+      <ErrorBoundary fallback={(error: unknown, reset) => {
+        console.error(error);
+        return <ApplicationErrorCard onRetry={reset} />;
+      }}>
+        {props.children}
+      </ErrorBoundary>
+    )}>
       <Route path="/login" component={LoginPage} />
       <Route path="/bootstrap" component={BootstrapPage} />
       <Route component={AppShell}>
@@ -50,6 +60,7 @@ const App: Component = () => {
         <Route path="/requests/new" component={NewRequestPage} />
         <Route path="/requests/:id" component={RequestDetailsPage} />
         <Route path="/requests/:id/result" component={RequestResultPage} />
+        <Route path="*404" component={NotFoundPage} />
       </Route>
     </Router>
   );

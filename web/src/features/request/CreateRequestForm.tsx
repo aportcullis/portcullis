@@ -28,7 +28,7 @@ import {
   toTypedRequestParameters,
   validateRequestDraft,
 } from "@/features/request/draft";
-import { loginConfig } from "@/entities/instance/config";
+import { instanceConfig } from "@/entities/instance/config";
 import { RequestNarrativeFields } from "@/features/request/RequestNarrativeFields";
 import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
@@ -163,7 +163,7 @@ export const CreateRequestForm: Component = () => {
       setError("Choose a connection.");
       return;
     }
-    const problem = validateRequestDraft(draft(), loginConfig());
+    const problem = validateRequestDraft(draft(), instanceConfig());
     if (problem !== "") {
       setError(problem);
       return;
@@ -198,7 +198,7 @@ export const CreateRequestForm: Component = () => {
       <A href="/requests" class="w-fit text-sm text-muted-foreground underline underline-offset-4"><span aria-hidden="true">← </span>Back to requests</A>
       <PageHeader eyebrow="Governed access" title="New access request" description="Give reviewers the context they need, then write the SQL you want approved." />
       <div class="request-workspace">
-        <form class="request-form" onSubmit={(e) => e.preventDefault()}>
+        <form class="request-form" onSubmit={(event) => event.preventDefault()}>
           <section aria-labelledby="request-context-heading" class="content-surface request-section">
             <div class="request-section-heading"><h2 id="request-context-heading">1. Request context</h2><p>Choose a database and explain the purpose of this request.</p></div>
           <div class="flex flex-col gap-1">
@@ -211,13 +211,13 @@ export const CreateRequestForm: Component = () => {
               value={connectionId()}
               // Once the draft is saved it is bound to its connection; only the payload can be edited, so the connection is locked.
               disabled={busy() || savedId() !== ""}
-              onChange={(e) => setConnectionId(e.currentTarget.value)}
+              onChange={(event) => setConnectionId(event.currentTarget.value)}
             >
               <option value="">
                 {targetState() === "loading" ? "Loading connections…" : "Select a connection…"}
               </option>
               <For each={targets()}>
-                {(c) => <option value={c.id}>{c.displayName}</option>}
+                {(target) => <option value={target.id}>{target.displayName}</option>}
               </For>
             </select>
             {/* An empty picker has two very different causes: the load failed, or this caller may target nothing. Say which, and offer a retry for the one that is retryable. */}

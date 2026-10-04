@@ -1,11 +1,12 @@
 import type { Component } from "solid-js";
-import { For, Match, Show, Switch } from "solid-js";
+import { For, Match, Show, Switch, createEffect, onCleanup } from "solid-js";
 
 import type { RouteSectionProps } from "@solidjs/router";
 import { Navigate, useLocation } from "@solidjs/router";
 
 import { visibleSections } from "@/app/navigation";
 import { createPendingRequests } from "@/app/pendingRequests";
+import { configRetryDelayMs, loginConfig, refetchLoginConfig } from "@/entities/instance/config";
 import { UnreachableCard } from "@/entities/session/UnreachableCard";
 import { hasPermission, session } from "@/entities/session/store";
 import { LogoutButton } from "@/features/auth/LogoutButton";
@@ -18,6 +19,12 @@ import { Avatar } from "@/shared/ui/avatar";
 const AppShell: Component<RouteSectionProps> = (props) => {
   const pendingCount = createPendingRequests();
   const location = useLocation();
+  // Authenticated pages read the instance limits optionally; a failed config read is retried in the background so the limits return without a reload.
+  createEffect(() => {
+    if (loginConfig.error === undefined) return;
+    const timer = setTimeout(() => void refetchLoginConfig(), configRetryDelayMs);
+    onCleanup(() => clearTimeout(timer));
+  });
   const currentUser = () => {
     const current = session();
     return current.status === "authenticated" ? current.user : undefined;
@@ -58,8 +65,8 @@ const AppShell: Component<RouteSectionProps> = (props) => {
             {/* Role badge: the membership's display label (empty when the server degraded resolution) — a label, never authorization. */}
             <Show
               when={(() => {
-                const s = session();
-                return s.status === "authenticated" && s.roleName !== "" ? s.roleName : "";
+                const principal = session();
+                return principal.status === "authenticated" && principal.roleName !== "" ? principal.roleName : "";
               })()}
             >
               {(role) => <Badge variant="secondary">{role()}</Badge>}

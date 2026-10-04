@@ -2,6 +2,7 @@ import { createResource } from "solid-js";
 
 import { authClient } from "@/shared/api/client";
 import { retryOnThrottle } from "@/shared/api/retry";
+import { readResourceOrUndefined } from "@/shared/lib/resource";
 
 // Fetch public instance flags and server limits at startup; reload after bootstrap so routing reflects the initialized installation.
 export const [loginConfig, { refetch: refetchLoginConfig }] = createResource(async () => {
@@ -16,3 +17,9 @@ export const [loginConfig, { refetch: refetchLoginConfig }] = createResource(asy
     maxRequestBodyChars: res.maxRequestBodyChars,
   };
 });
+
+/** Delay before an authenticated shell retries a failed instance-config read. */
+export const configRetryDelayMs = 5_000;
+
+/** Returns the loaded instance config, or undefined while it is loading or after its fetch failed. */
+export const instanceConfig = () => readResourceOrUndefined(loginConfig);

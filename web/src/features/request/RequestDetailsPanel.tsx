@@ -5,7 +5,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 
 import type { GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestSchema } from "@/gen/portcullis/v1/access_requests_pb";
-import { loginConfig } from "@/entities/instance/config";
+import { instanceConfig } from "@/entities/instance/config";
 import { stateBadge, stateLabel } from "@/entities/request/model";
 import { truncateReasonCodePoints, countReasonCodePoints } from "@/entities/request/reason";
 import {
@@ -96,8 +96,8 @@ export const RequestDetailsPanel: Component<{
   });
   const current = () => detail()?.request ?? noRequest;
   const isOwner = () => {
-    const s = session();
-    return s.status === "authenticated" && s.user.id === current().requester?.id;
+    const principal = session();
+    return principal.status === "authenticated" && principal.user.id === current().requester?.id;
   };
   // Every affordance keys off the EFFECTIVE state via the shared rules in actions.ts, so a lazily-expired request can never show an "Expired" badge beside a live action button (ADR-0018). Approve and reject are separate permissions (a custom role may grant one without the other), so each button also carries its own key.
   const showApprove = () => mayApprove(current(), isOwner()) && hasPermission("requests.approve");
@@ -121,7 +121,7 @@ export const RequestDetailsPanel: Component<{
   };
 
   const saveEdit = async () => {
-    const problem = validateRequestDraft(editDraft(), loginConfig());
+    const problem = validateRequestDraft(editDraft(), instanceConfig());
     if (problem !== "") {
       setActionError(problem);
       return;
@@ -166,7 +166,7 @@ export const RequestDetailsPanel: Component<{
             when={!editing()}
             fallback={
               // Draft edit form (owner only): change the SQL/parameters and save the SAME draft — no new request is created (§4.4).
-              <form class="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+              <form class="flex flex-col gap-4" onSubmit={(event) => event.preventDefault()}>
                 <RequestNarrativeFields id="edit" draft={editDraft()} disabled={busy()} onChange={setEditDraft} />
                 <SQLEditor id="edit-sql" sql={editDraft().sql} disabled={busy()} onChange={sql => setEditDraft({ ...editDraft(), sql })} />
                 <ParamEditor draft={editDraft()} onChange={setEditDraft} disabled={busy()} />
@@ -287,14 +287,14 @@ export const RequestDetailsPanel: Component<{
                   id="decision-reason"
                   value={reason()}
                   disabled={busy()}
-                  onInput={(e) => {
+                  onInput={(event) => {
                     requestRead.handleOpenChange(false);
-                    setReason(truncateReasonCodePoints(e.currentTarget.value, loginConfig()?.maxApprovalReasonChars));
+                    setReason(truncateReasonCodePoints(event.currentTarget.value, instanceConfig()?.maxApprovalReasonChars));
                   }}
                 />
-                <Show when={loginConfig()?.maxApprovalReasonChars !== undefined}>
+                <Show when={instanceConfig()?.maxApprovalReasonChars !== undefined}>
                   <p class="text-xs text-muted-foreground">
-                    {countReasonCodePoints(reason())} / {loginConfig()?.maxApprovalReasonChars}
+                    {countReasonCodePoints(reason())} / {instanceConfig()?.maxApprovalReasonChars}
                   </p>
                 </Show>
               </TextField>

@@ -24,6 +24,18 @@ Keep permission checks per action and all backend enforcement unchanged. Page re
 
 Closing an optional read panel invalidates its session and immediately clears its loading state; completion of the underlying request is not required. Late success, error and finally callbacks must not update a reopened panel or clear its new loading state. The close/in-flight/reopen scenarios enforce this independently of network timing, using Solid's [explicit signal setters](https://docs.solidjs.com/reference/basic-reactivity/create-signal).
 
+## Failure states and recovery (amended 2026-10-04)
+
+A route never renders a blank document. Unknown addresses inside the authenticated shell render a not-found page with the application frame and a link to the start page, using the router's catch-all route. An application-level `ErrorBoundary` replaces a page whose render or reactive update throws with a generic, recoverable error card (retry or return to the start page) that never echoes the error text.
+
+Solid's resource accessor rethrows its fetch error, and a boundary does not catch errors thrown from event handlers, so a failed instance-config read previously broke request pages and turned Save/Submit into silent no-ops. Optional consumers of the instance limits (title/body/reason counters and client-side length checks) read them through a guarded accessor that yields "unknown" on failure; the server still enforces every limit. The authenticated shell retries a failed config read in the background so the limits return without a reload. The login and bootstrap pages keep their explicit retry card because routing there depends on the config.
+
 ## Consequences
 
 Replace request overlays first, then apply the same rule to remaining routine connection and policy flows. Update browser scenarios and actual README captures alongside their screen changes. URL state is navigation only, never authorization. The known native-download gate remains enabled.
+
+## Sources (verified 2026-10-04)
+
+- [Solid ErrorBoundary](https://docs.solidjs.com/reference/components/error-boundary): catches render and reactive-update errors, not event-handler errors; the fallback receives a reset function.
+- [Solid Router catch-all routes](https://docs.solidjs.com/solid-router/concepts/catch-all): a `*404` route at the end of the route list renders unmatched paths.
+- [solid-js `createResource` source](https://github.com/solidjs/solid/blob/main/packages/solid/src/reactive/signal.ts): `read()` throws the stored error while the resource is errored.
