@@ -104,7 +104,8 @@ Ordered, each step fail-fast; any failure exits **1** (the only non-zero exit co
 2. Build logger.
 3. Load keyring — **refuse to start** without a valid master key (ADR-0003).
 4. Require `PORTCULLIS_DATABASE_URL`.
-5. Open a **30s startup context** covering everything up to serving.
+5. Migrate before the startup budget (amended 2026-10-04): migration runs on its own context because `Migrate` bounds its migration-lock wait, lock acquisitions and statements itself (ADR-0009), so a peer holding the migration lock can no longer consume the startup budget.
+   The **30s startup context** is opened after this step and covers everything from the runtime pool up to serving.
 6. Migrate — *conditionally* (amended 2026-07-18, external review): the recommended production shape runs migrations as the **one-shot `portcullis migrate` command** in a separate process/container that is the only holder of the owner DSN, so the serving process never carries owner credentials in env or memory (OWASP Database Security: the application account must not own the schema).
    `serve` migrates at startup only when the explicit tri-state `PORTCULLIS_STARTUP_MIGRATE` says so, or — when it is unset — when `PORTCULLIS_MIGRATE_DATABASE_URL` is set on this process (compatibility with the previous deployment shape).
    Deliberately DECOUPLED from `PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME` (self-review 2026-07-18): a security-debug flag must not silently change who migrates the schema; single-role dev/e2e opts in explicitly with `STARTUP_MIGRATE=true`.
@@ -118,6 +119,7 @@ Ordered, each step fail-fast; any failure exits **1** (the only non-zero exit co
 ### Metadata migrations & advisory locks (`internal/infra/postgres`)
 - Migrations: embedded `migrations/*.sql`, applied in **lexical filename order**, each file in its own transaction, recorded in `public.schema_migrations(version text primary key, applied_at timestamptz not null default now())` (`version` = filename minus `.sql`).
   The whole run is serialized by a **session-level advisory lock held on one dedicated connection**; that session first `DISCARD TEMP`, then pins `search_path = public` (`pg_catalog` remains implicitly first) rather than inheriting a role/DSN setting; role preflight/postflight per ADR-0009.
+  Amended 2026-10-04: the lock is polled for a bounded wait (default **2m**), each file runs with `SET LOCAL lock_timeout` **5s** (retried up to five times) and `statement_timeout` **15m**, and `schema_migrations.checksum` (0019) lets the runner refuse edited released files and unknown versions (ADR-0009).
 - Advisory-lock keyspace (first arg of the two-arg `pg_advisory_*` family; second arg = object id, 0 when global): class **1** = bootstrap (global), **2** = per-user session rotation, **3** = migration (global).
   New classes are appended here, never reused.
 
