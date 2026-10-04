@@ -13,6 +13,12 @@ type Repository interface {
 	GetChunk(context.Context, identity.OrganizationID, identity.UserID, string, int) (query.SealedResultChunk, error)
 }
 
+// ExpiredResultStore enumerates organizations and purges one organization's expired snapshots at a time (ADR-0004, ADR-0011).
+type ExpiredResultStore interface {
+	ListOrganizationIDs(context.Context) ([]identity.OrganizationID, error)
+	PurgeExpired(context.Context, identity.OrganizationID) error
+}
+
 // Codec uses a single per-result key and binds every chunk to its identity.
 type Codec interface {
 	// SealWithinBudget seals the longest row prefix whose encrypted size fits the byte budget and reports it in RowCount.

@@ -293,12 +293,8 @@ func run() error {
 	if recoveryErr != nil {
 		return recoveryErr
 	}
-	organizationID, err := requestStore.DefaultOrganizationID(startupCtx)
-	if err != nil {
-		return err
-	}
-	if err = resultStore.PurgeExpired(startupCtx, organizationID); err != nil {
-		logger.Error("result startup cleanup failed")
+	if err = resultapp.PurgeExpiredInEveryOrganization(startupCtx, resultStore); err != nil {
+		logger.Error("result startup cleanup failed", postgres.ErrorLogFields(err)...)
 		return err
 	}
 	queryOptions := append([]connect.HandlerOption(nil), recoverAndChain...)
@@ -366,7 +362,7 @@ func run() error {
 			case <-maintenanceCtx.Done():
 				return
 			case <-ticker.C:
-				runMaintenance(maintenanceCtx, logger, executionSvc, requestStore, resultStore)
+				runMaintenance(maintenanceCtx, logger, executionSvc, resultStore)
 			}
 		}
 	}()
@@ -402,16 +398,13 @@ func run() error {
 }
 
 // runMaintenance reconciles overdue executions and purges expired results within one bounded run.
-func runMaintenance(ctx context.Context, logger *slog.Logger, executions *executionapp.Service, requests *postgres.AccessRequestStore, results *postgres.ResultStore) {
+func runMaintenance(ctx context.Context, logger *slog.Logger, executions *executionapp.Service, results *postgres.ResultStore) {
 	runCtx, cancel := context.WithTimeout(ctx, access.ExecutionReconcileTimeout)
 	defer cancel()
 	summary, err := executions.Reconcile(runCtx)
 	logExecutionRecovery(logger, summary, err)
-	org, err := requests.DefaultOrganizationID(runCtx)
-	if err == nil {
-		err = results.PurgeExpired(runCtx, org)
-	}
-	if err != nil {
+	// Every organization's expired snapshots are purged; one failing organization does not stop the others.
+	if err := resultapp.PurgeExpiredInEveryOrganization(runCtx, results); err != nil {
 		logger.Error("result cleanup failed", postgres.ErrorLogFields(err)...)
 	}
 }

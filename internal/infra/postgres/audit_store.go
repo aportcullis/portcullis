@@ -27,30 +27,37 @@ func NewAuditStore(pool *pgxpool.Pool) *AuditStore {
 	return &AuditStore{pool: pool, q: db.New(pool)}
 }
 
-// Record inserts one event (best-effort path — no surrounding transaction), completing the organization when the caller left it empty (single-org MVP) — the same contract as the transactional path, so the two cannot drift.
+// Record inserts one event (best-effort path — no surrounding transaction) under the same explicit-organization contract as the transactional path, so the two cannot drift.
 func (s *AuditStore) Record(ctx context.Context, e audit.Event) error {
 	return insertAuditTx(ctx, s.q, e)
 }
 
-// List validates pagination and sorting, then delegates rows, count, and page clamp to one repository snapshot (PRD §7.1).
-func (s *AuditStore) List(ctx context.Context, p audit.ListParams) (audit.EventPage, error) {
+// DefaultOrganizationID resolves the single self-hosted organization the audit reader scopes to.
+func (s *AuditStore) DefaultOrganizationID(ctx context.Context) (identity.OrganizationID, error) {
+	org, err := s.q.GetDefaultOrganization(ctx)
+	if err != nil {
+		return "", err
+	}
+	return identity.OrganizationID(uuidToString(org.ID)), nil
+}
+
+// List reads one organization's page, total, and page clamp from one repository snapshot (PRD §7.1, ADR-0004).
+func (s *AuditStore) List(ctx context.Context, orgID identity.OrganizationID, p audit.ListParams) (audit.EventPage, error) {
+	organizationUUID, err := parseAuditOrganization(orgID)
+	if err != nil {
+		return audit.EventPage{}, err
+	}
 	page := p.Page
 	var rows []auditListRow
 	var total int64
-	var orgID identity.OrganizationID
-	err := readSnapshot(ctx, s.pool, s.q, func(_ pgx.Tx, q *db.Queries) error {
-		org, err := q.GetDefaultOrganization(ctx)
-		if err != nil {
-			return err
-		}
-		orgID = identity.OrganizationID(uuidToString(org.ID))
-
+	err = readSnapshot(ctx, s.pool, s.q, func(_ pgx.Tx, q *db.Queries) error {
+		var err error
 		// The two queries differ only in ORDER BY direction; their row types are structurally identical, so both convert to auditListRow for one mapper.
 		limit := int64(p.PageSize)
 		read := func(pageNumber int) error {
 			offset := int64(pageNumber-1) * limit
 			if p.SortDescending {
-				got, err := q.ListAuditEventsDesc(ctx, db.ListAuditEventsDescParams{OrganizationID: org.ID, PageLimit: limit, RowOffset: offset})
+				got, err := q.ListAuditEventsDesc(ctx, db.ListAuditEventsDescParams{OrganizationID: organizationUUID, PageLimit: limit, RowOffset: offset})
 				if err != nil {
 					return err
 				}
@@ -60,7 +67,7 @@ func (s *AuditStore) List(ctx context.Context, p audit.ListParams) (audit.EventP
 				}
 				return nil
 			}
-			got, err := q.ListAuditEventsAsc(ctx, db.ListAuditEventsAscParams{OrganizationID: org.ID, PageLimit: limit, RowOffset: offset})
+			got, err := q.ListAuditEventsAsc(ctx, db.ListAuditEventsAscParams{OrganizationID: organizationUUID, PageLimit: limit, RowOffset: offset})
 			if err != nil {
 				return err
 			}
@@ -78,7 +85,7 @@ func (s *AuditStore) List(ctx context.Context, p audit.ListParams) (audit.EventP
 			total = rows[0].TotalCount
 			return nil
 		}
-		if total, err = q.CountAuditEvents(ctx, org.ID); err != nil {
+		if total, err = q.CountAuditEvents(ctx, organizationUUID); err != nil {
 			return err
 		}
 		// Empty because the caller asked past the end: land on the last page that has rows. An empty TRAIL stays on page 1 — there is no page to go back to.
@@ -109,24 +116,32 @@ func (s *AuditStore) List(ctx context.Context, p audit.ListParams) (audit.EventP
 	return audit.EventPage{Events: events, Page: page, PageSize: p.PageSize, TotalCount: total}, nil
 }
 
-// Get returns one full audit event, scoped to the default organization. The detail endpoint is separately guarded by audit.get in the transport layer.
-func (s *AuditStore) Get(ctx context.Context, id string) (audit.Event, error) {
+// Get returns one full audit event inside the caller's organization; a foreign id is not found. The detail endpoint is separately guarded by audit.get in the transport layer.
+func (s *AuditStore) Get(ctx context.Context, orgID identity.OrganizationID, id string) (audit.Event, error) {
+	organizationUUID, err := parseAuditOrganization(orgID)
+	if err != nil {
+		return audit.Event{}, err
+	}
 	eventID, err := stringToUUID(id)
 	if err != nil {
 		return audit.Event{}, err
 	}
-	org, err := s.q.GetDefaultOrganization(ctx)
-	if err != nil {
-		return audit.Event{}, err
-	}
-	row, err := s.q.GetAuditEvent(ctx, db.GetAuditEventParams{ID: eventID, OrganizationID: org.ID})
+	row, err := s.q.GetAuditEvent(ctx, db.GetAuditEventParams{ID: eventID, OrganizationID: organizationUUID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return audit.Event{}, audit.ErrEventNotFound
 		}
 		return audit.Event{}, err
 	}
-	return auditEventFromRow(auditListRow(row), identity.OrganizationID(uuidToString(org.ID)))
+	return auditEventFromRow(auditListRow(row), orgID)
+}
+
+// parseAuditOrganization refuses an empty organization scope and parses the rest.
+func parseAuditOrganization(orgID identity.OrganizationID) (pgtype.UUID, error) {
+	if orgID == "" {
+		return pgtype.UUID{}, audit.ErrOrganizationRequired
+	}
+	return stringToUUID(string(orgID))
 }
 
 // auditListRow is the shared shape of the (structurally identical) Desc/Asc list rows, so one mapper serves both sort directions. If the selected columns change, sqlc regenerates both row types and this conversion fails to compile until they are realigned — a compile-time guard, not silent drift.
@@ -212,14 +227,10 @@ func auditEventFromRow(r auditListRow, org identity.OrganizationID) (audit.Event
 	return e, nil
 }
 
-// insertAuditTx writes an event through the given (transaction-bound) queries, completing the organization when the caller left it empty (single-org MVP) — used by IdentityStore so the event commits atomically with its state change.
+// insertAuditTx writes an event through the given (transaction-bound) queries so it commits with its state change; an event without an organization is refused rather than attributed to the default one (ADR-0004).
 func insertAuditTx(ctx context.Context, q *db.Queries, evt audit.Event) error {
 	if evt.OrganizationID == "" {
-		org, err := q.GetDefaultOrganization(ctx)
-		if err != nil {
-			return err
-		}
-		evt.OrganizationID = identity.OrganizationID(uuidToString(org.ID))
+		return audit.ErrOrganizationRequired
 	}
 	p, err := auditEventParams(evt)
 	if err != nil {

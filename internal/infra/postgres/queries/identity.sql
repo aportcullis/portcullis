@@ -4,6 +4,10 @@ select count(*) from public.users;
 -- name: GetDefaultOrganization :one
 select * from public.organizations where slug = 'default';
 
+-- name: ListOrganizationIDs :many
+-- Administrative identity-only enumeration for per-organization maintenance; every org-scoped read still filters by one organization (ADR-0004).
+select id from public.organizations order by id;
+
 -- name: CreateUser :one
 insert into public.users (email, display_name)
 values ($1, $2)

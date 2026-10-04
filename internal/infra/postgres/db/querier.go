@@ -94,6 +94,8 @@ type Querier interface {
 	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
+	// Administrative identity-only enumeration for per-organization maintenance; every org-scoped read still filters by one organization (ADR-0004).
+	ListOrganizationIDs(ctx context.Context) ([]pgtype.UUID, error)
 	// Keyset pagination by (deadline, request_id) lets a run page past an attempt whose recovery keeps failing.
 	ListOverdueExecutions(ctx context.Context, arg ListOverdueExecutionsParams) ([]ListOverdueExecutionsRow, error)
 	ListPermissionKeys(ctx context.Context) ([]string, error)

@@ -22,10 +22,15 @@ func TestAuditListPageAndTotalComeFromOneSnapshot(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	store := pg.NewAuditStore(pool)
+	org, err := store.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultOrganizationID: %v", err)
+	}
 
 	for range 7 {
 		if err := store.Record(ctx, audit.Event{
-			ActorType: audit.ActorSystem, ActorService: "test", Action: audit.ActionAuthLogin,
+			OrganizationID: org,
+			ActorType:      audit.ActorSystem, ActorService: "test", Action: audit.ActionAuthLogin,
 			TargetType: "user", TargetID: "u", Outcome: audit.OutcomeSucceeded,
 		}); err != nil {
 			t.Fatalf("Record: %v", err)
@@ -46,7 +51,7 @@ func TestAuditListPageAndTotalComeFromOneSnapshot(t *testing.T) {
 		{"whole set on one page", audit.ListParams{Page: 1, PageSize: 50, SortDescending: true}, 7, 1, 7},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			page, err := store.List(ctx, tc.params)
+			page, err := store.List(ctx, org, tc.params)
 			if err != nil {
 				t.Fatalf("List: %v", err)
 			}
@@ -65,7 +70,12 @@ func TestAuditListOnAnEmptyTrail(t *testing.T) {
 	if err := pg.Migrate(ctx, pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	page, err := pg.NewAuditStore(pool).List(ctx, audit.ListParams{Page: 5, PageSize: 10, SortDescending: true})
+	store := pg.NewAuditStore(pool)
+	org, err := store.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultOrganizationID: %v", err)
+	}
+	page, err := store.List(ctx, org, audit.ListParams{Page: 5, PageSize: 10, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List on an empty trail: %v", err)
 	}

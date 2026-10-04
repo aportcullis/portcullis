@@ -54,7 +54,7 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 		t.Fatalf("Record populated: %v", err)
 	}
 
-	page, err := store.List(ctx, audit.ListParams{Page: 1, PageSize: 100, SortDescending: true})
+	page, err := store.List(ctx, org, audit.ListParams{Page: 1, PageSize: 100, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List desc: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 		t.Errorf("read event missing store-assigned ID/OccurredAt: id=%q ts=%v", newest.ID, newest.OccurredAt)
 	}
 
-	ascending, err := store.List(ctx, audit.ListParams{Page: 1, PageSize: 100, SortDescending: false})
+	ascending, err := store.List(ctx, org, audit.ListParams{Page: 1, PageSize: 100, SortDescending: false})
 	if err != nil {
 		t.Fatalf("List asc: %v", err)
 	}
@@ -109,11 +109,11 @@ func TestAuditStoreListReadsBackEvents(t *testing.T) {
 		}
 	}
 
-	page1, err := store.List(ctx, audit.ListParams{Page: 1, PageSize: 2, SortDescending: true})
+	page1, err := store.List(ctx, org, audit.ListParams{Page: 1, PageSize: 2, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List page1: %v", err)
 	}
-	page2, err := store.List(ctx, audit.ListParams{Page: 2, PageSize: 2, SortDescending: true})
+	page2, err := store.List(ctx, org, audit.ListParams{Page: 2, PageSize: 2, SortDescending: true})
 	if err != nil {
 		t.Fatalf("List page2: %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	domainaudit "github.com/aportcullis/portcullis/internal/domain/audit"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
 // New builds the read service over an EventReader. It fails if the reader is nil, so a half-built service never starts.
@@ -30,7 +31,11 @@ func (s *Service) List(ctx context.Context, q Query) (domainaudit.EventPage, err
 		return domainaudit.EventPage{}, ErrInvalidSortField
 	}
 
-	got, err := s.reader.List(ctx, domainaudit.ListParams{
+	org, err := s.resolveOrganization(ctx)
+	if err != nil {
+		return domainaudit.EventPage{}, err
+	}
+	got, err := s.reader.List(ctx, org, domainaudit.ListParams{
 		Page:           page,
 		PageSize:       pageSize,
 		SortDescending: !q.SortAscending,
@@ -45,7 +50,23 @@ func (s *Service) List(ctx context.Context, q Query) (domainaudit.EventPage, err
 
 // Get returns one event's full detail. Authorization belongs at the transport boundary; this use case preserves the repository's org-scoped not-found result without exposing storage details.
 func (s *Service) Get(ctx context.Context, id string) (domainaudit.Event, error) {
-	return s.reader.Get(ctx, id)
+	org, err := s.resolveOrganization(ctx)
+	if err != nil {
+		return domainaudit.Event{}, err
+	}
+	return s.reader.Get(ctx, org, id)
+}
+
+// resolveOrganization returns the caller's organization and refuses an empty scope.
+func (s *Service) resolveOrganization(ctx context.Context) (identity.OrganizationID, error) {
+	org, err := s.reader.DefaultOrganizationID(ctx)
+	if err != nil {
+		return "", err
+	}
+	if org == "" {
+		return "", domainaudit.ErrOrganizationRequired
+	}
+	return org, nil
 }
 
 // totalPages is ceil(total / pageSize), or 0 when there are no rows.

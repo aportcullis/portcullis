@@ -278,6 +278,31 @@ func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserFor
 	return i, err
 }
 
+const listOrganizationIDs = `-- name: ListOrganizationIDs :many
+select id from public.organizations order by id
+`
+
+// Administrative identity-only enumeration for per-organization maintenance; every org-scoped read still filters by one organization (ADR-0004).
+func (q *Queries) ListOrganizationIDs(ctx context.Context) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listOrganizationIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordLoginFailure = `-- name: RecordLoginFailure :one
 insert into public.login_backoff (user_id, failure_count, locked_until, last_failure_at)
 values (

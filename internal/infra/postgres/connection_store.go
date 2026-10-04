@@ -36,6 +36,19 @@ func (s *ConnectionStore) DefaultOrganizationID(ctx context.Context) (identity.O
 	return identity.OrganizationID(uuidToString(org.ID)), nil
 }
 
+// ListOrganizationIDs enumerates organization identities for per-organization maintenance; it exposes no org-scoped rows (ADR-0004).
+func (s *ConnectionStore) ListOrganizationIDs(ctx context.Context) ([]identity.OrganizationID, error) {
+	rows, err := s.q.ListOrganizationIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	organizations := make([]identity.OrganizationID, len(rows))
+	for idx, row := range rows {
+		organizations[idx] = identity.OrganizationID(uuidToString(row))
+	}
+	return organizations, nil
+}
+
 // withReadSnapshot is readSnapshot (snapshot.go) over this store's pool.
 func (s *ConnectionStore) withReadSnapshot(ctx context.Context, fn func(pgx.Tx, *db.Queries) error) error {
 	return readSnapshot(ctx, s.pool, s.q, fn)
@@ -116,7 +129,7 @@ func (s *ConnectionStore) Create(ctx context.Context, c connection.Connection, c
 		if err := q.InsertConnectionPolicyVersion(ctx, policyParams); err != nil {
 			return err
 		}
-		return insertEvents(ctx, q, stampEvents(events, at))
+		return insertEvents(ctx, q, c.OrganizationID, stampEvents(events, at))
 	})
 	return onUniqueViolation(err, connectionsOrgNameIndex, connection.ErrNameTaken)
 }
@@ -175,7 +188,7 @@ func (s *ConnectionStore) UpdateDescriptor(ctx context.Context, org identity.Org
 		if err != nil {
 			return s.missingOrConflict(ctx, q, cid, oid, err)
 		}
-		return insertEvents(ctx, q, stampEvents(events, at))
+		return insertEvents(ctx, q, org, stampEvents(events, at))
 	})
 	if err != nil {
 		return connection.Connection{}, onUniqueViolation(err, connectionsOrgNameIndex, connection.ErrNameTaken)
@@ -231,7 +244,7 @@ func (s *ConnectionStore) ReplaceConfig(ctx context.Context, c connection.Connec
 		if err := expireRequestsForConfigChange(ctx, q, cid, oid, at, correlate); err != nil {
 			return err
 		}
-		return insertEvents(ctx, q, events)
+		return insertEvents(ctx, q, c.OrganizationID, events)
 	})
 	if err != nil {
 		return connection.Connection{}, onUniqueViolation(err, connectionsOrgNameIndex, connection.ErrNameTaken)
@@ -282,7 +295,7 @@ func (s *ConnectionStore) Archive(ctx context.Context, org identity.Organization
 		if err := sweepRequestsForArchive(ctx, q, cid, oid, at, correlate); err != nil {
 			return err
 		}
-		return insertEvents(ctx, q, events)
+		return insertEvents(ctx, q, org, events)
 	})
 	if err != nil {
 		return connection.Connection{}, err
@@ -364,14 +377,32 @@ func (s *ConnectionStore) missingArchivedOrConflict(ctx context.Context, q *db.Q
 	return connection.ErrConflict
 }
 
-// insertEvents writes the mutation's audit events on the transaction-bound queries so they commit with the change (ADR-0009).
-func insertEvents(ctx context.Context, q *db.Queries, events []audit.Event) error {
+// insertEvents writes the mutation's audit events in the mutation's organization on the transaction-bound queries so they commit with the change (ADR-0004, ADR-0009).
+func insertEvents(ctx context.Context, q *db.Queries, org identity.OrganizationID, events []audit.Event) error {
 	for _, evt := range events {
-		if err := insertAuditTx(ctx, q, evt); err != nil {
+		scoped, err := scopeEventToOrganization(evt, org)
+		if err != nil {
+			return err
+		}
+		if err := insertAuditTx(ctx, q, scoped); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// scopeEventToOrganization attributes an unscoped event to the mutation's organization and refuses an event naming another one.
+func scopeEventToOrganization(evt audit.Event, org identity.OrganizationID) (audit.Event, error) {
+	if org == "" {
+		return audit.Event{}, audit.ErrOrganizationRequired
+	}
+	if evt.OrganizationID == "" {
+		evt.OrganizationID = org
+	}
+	if evt.OrganizationID != org {
+		return audit.Event{}, audit.ErrOrganizationMismatch
+	}
+	return evt, nil
 }
 
 func connIDs(id connection.ConnectionID, org identity.OrganizationID) (pgtype.UUID, pgtype.UUID, error) {

@@ -7,6 +7,7 @@ import (
 
 	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	domainaudit "github.com/aportcullis/portcullis/internal/domain/audit"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
 type fakeReader struct {
@@ -18,10 +19,24 @@ type fakeReader struct {
 	listErr error
 	// clampedTo, when set, is the page the reader reports having actually read — the store clamps an out-of-range request inside its own snapshot, and the service must echo what came back rather than what was asked for.
 	clampedTo int
+	// organization is what DefaultOrganizationID resolves; listedOrg and fetchedOrg record what the service passed on.
+	organization      identity.OrganizationID
+	emptyOrganization bool
+	orgErr            error
+	listedOrg         identity.OrganizationID
+	fetchedOrg        identity.OrganizationID
 }
 
-func (f *fakeReader) List(_ context.Context, p domainaudit.ListParams) (domainaudit.EventPage, error) {
+func (f *fakeReader) DefaultOrganizationID(context.Context) (identity.OrganizationID, error) {
+	if f.organization == "" && !f.emptyOrganization {
+		return "org-default", f.orgErr
+	}
+	return f.organization, f.orgErr
+}
+
+func (f *fakeReader) List(_ context.Context, org identity.OrganizationID, p domainaudit.ListParams) (domainaudit.EventPage, error) {
 	f.got = p
+	f.listedOrg = org
 	read := p.Page
 	if f.clampedTo != 0 {
 		read = f.clampedTo
@@ -29,8 +44,49 @@ func (f *fakeReader) List(_ context.Context, p domainaudit.ListParams) (domainau
 	return domainaudit.EventPage{Events: f.events, Page: read, TotalCount: f.count}, f.listErr
 }
 
-func (f *fakeReader) Get(_ context.Context, _ string) (domainaudit.Event, error) {
+func (f *fakeReader) Get(_ context.Context, org identity.OrganizationID, _ string) (domainaudit.Event, error) {
+	f.fetchedOrg = org
 	return f.event, f.getErr
+}
+
+func TestReadsAreScopedToTheResolvedOrganization(t *testing.T) {
+	ctx := context.Background()
+	for _, org := range []identity.OrganizationID{"org-default", "org-b", "6f1f2c1e-0000-4000-8000-000000000001"} {
+		f := &fakeReader{organization: org}
+		svc := newService(t, f)
+		if _, err := svc.List(ctx, auditapp.Query{Page: 1, PageSize: 20}); err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if _, err := svc.Get(ctx, "event-1"); err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if f.listedOrg != org || f.fetchedOrg != org {
+			t.Errorf("reader saw list org %q / get org %q, want %q for both", f.listedOrg, f.fetchedOrg, org)
+		}
+	}
+
+	sentinel := errors.New("organization lookup failed")
+	for _, f := range []*fakeReader{{orgErr: sentinel}, {orgErr: sentinel, organization: "org-b"}} {
+		svc := newService(t, f)
+		if _, err := svc.List(ctx, auditapp.Query{Page: 1, PageSize: 20}); !errors.Is(err, sentinel) {
+			t.Errorf("List with failed org lookup = %v, want %v", err, sentinel)
+		}
+		if _, err := svc.Get(ctx, "event-1"); !errors.Is(err, sentinel) {
+			t.Errorf("Get with failed org lookup = %v, want %v", err, sentinel)
+		}
+		if f.listedOrg != "" || f.fetchedOrg != "" {
+			t.Errorf("reader was called without an organization: list %q / get %q", f.listedOrg, f.fetchedOrg)
+		}
+	}
+
+	empty := &fakeReader{emptyOrganization: true}
+	svc := newService(t, empty)
+	if _, err := svc.List(ctx, auditapp.Query{Page: 1, PageSize: 20}); err == nil {
+		t.Error("List with an empty resolved organization succeeded, want refusal")
+	}
+	if _, err := svc.Get(ctx, "event-1"); err == nil {
+		t.Error("Get with an empty resolved organization succeeded, want refusal")
+	}
 }
 
 func newService(t *testing.T, r *fakeReader) *auditapp.Service {

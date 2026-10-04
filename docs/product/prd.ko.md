@@ -539,6 +539,7 @@ Atlas 버전 변경 시 compatibility suite와 라이선스 지도를 함께 갱
 - 모든 핵심 테이블에 `organization_id` 컬럼.
   셀프호스트에선 `default-org` 단일.
 - 모든 쿼리는 repository 레이어에서 org 스코프를 강제 통과.
+- audit 읽기·쓰기는 organization을 명시하며 default로 대체하지 않는다. background maintenance는 모든 organization을 순회한다(2026-10-04 개정, ADR-0004/0009).
 - ID만 바꾼 API 요청으로 다른 org 데이터에 접근할 수 없는지 endpoint별 통합 테스트.
 - DB 격리(스키마/DB 분리)는 클라우드 전환 시 결정.
   MVP는 shared-table + org_id.

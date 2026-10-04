@@ -573,6 +573,7 @@ Update the compatibility suite and license map together when changing Atlas vers
 
 - All core tables contain `organization_id`; self-hosting uses one `default-org`.
 - Enforce org scope in every repository query.
+- Audit reads and writes name their organization explicitly and never default it; background maintenance visits every organization, amended 2026-10-04, ADR-0004/0009.
 - Integration-test every endpoint against cross-org access by changing IDs.
 - MVP uses shared tables/org IDs; decide schema/database isolation when moving to cloud.
 - No MVP RLS under the application-only data-path threat model and operational constraints, ADR-0004; revisit for multitenant SaaS.

@@ -19,7 +19,8 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
   A created admin, an issued session, or a revoked session can therefore never exist without its trail (and vice versa: if the event can't be written, the state change rolls back).
 - A first OIDC login extends that invariant: inserting `oidc_identities`, rotating the session, and its `AUTH_LOGIN` event (metadata `identity_linked=true`) are one transaction.
   A failed session/audit commit therefore cannot leave a newly usable external authenticator behind without evidence.
-- The store completes `OrganizationID` (single-org MVP) and, for bootstrap, the actor — the created user's id exists only inside the transaction.
+- The identity store completes `OrganizationID` for authentication events (single-org MVP) and, for bootstrap, the actor — the created user's id exists only inside the transaction.
+- **Every other audit write names its organization explicitly** (amended 2026-10-04): the shared insert refuses an empty organization (`audit.ErrOrganizationRequired`) instead of attributing the event to the default one, a mutation's events take the mutation's organization and an event naming another organization is refused (`audit.ErrOrganizationMismatch`), and `AuditStore.List`/`Get` take the caller's organization so a foreign event id is not found (ADR-0004).
 - **No-state-change events (failed logins) stay best-effort**: a login must not fail because the audit store hiccuped.
   A failed event is recorded on **every failure exit** of Login (a deferred catch-all) — wrong credentials, infra errors, and requests aborted mid-flight by a client disconnect (ctx cancellation during the lookup or the hash) all leave a trail.
   The write detaches from the request context (`context.WithoutCancel` + a **5s** timeout — long enough for a DB hiccup, short enough that a stuck store can't accumulate goroutines), and a drop is logged (action + error *type* only, never values).

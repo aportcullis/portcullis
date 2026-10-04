@@ -33,6 +33,11 @@ func (s *AccessRequestStore) DefaultOrganizationID(ctx context.Context) (identit
 	return s.conns.DefaultOrganizationID(ctx)
 }
 
+// ListOrganizationIDs enumerates organizations for per-organization maintenance such as execution reconciliation.
+func (s *AccessRequestStore) ListOrganizationIDs(ctx context.Context) ([]identity.OrganizationID, error) {
+	return s.conns.ListOrganizationIDs(ctx)
+}
+
 // lockConnection uses FOR SHARE so concurrent request writers proceed while archive and policy changes wait for their commit (ADR-0018).
 func (s *AccessRequestStore) lockConnection(ctx context.Context, q *db.Queries, cid, organizationUUID pgtype.UUID) (db.LockConnectionForRequestRow, error) {
 	row, err := q.LockConnectionForRequest(ctx, db.LockConnectionForRequestParams{ID: cid, OrganizationID: organizationUUID})
@@ -133,7 +138,7 @@ func (s *AccessRequestStore) CreateDraft(ctx context.Context, r access.Request, 
 		}); err != nil {
 			return err
 		}
-		if err := insertEvents(ctx, q, stampEvents(events, at)); err != nil {
+		if err := insertEvents(ctx, q, r.OrganizationID, stampEvents(events, at)); err != nil {
 			return err
 		}
 		view, err = s.loadRequestViewInTransaction(ctx, q, requestUUID, organizationUUID, uid)
@@ -187,7 +192,7 @@ func (s *AccessRequestStore) UpdateDraft(ctx context.Context, r access.Request, 
 		}); err != nil {
 			return s.draftGuardError(ctx, q, requestUUID, organizationUUID, err)
 		}
-		if err := insertEvents(ctx, q, stampEvents(events, at)); err != nil {
+		if err := insertEvents(ctx, q, r.OrganizationID, stampEvents(events, at)); err != nil {
 			return err
 		}
 		view, err = s.loadRequestViewInTransaction(ctx, q, requestUUID, organizationUUID, pgtype.UUID{})
@@ -250,7 +255,7 @@ func (s *AccessRequestStore) Submit(ctx context.Context, r access.Request, expec
 			return s.draftGuardError(ctx, q, requestUUID, organizationUUID, err)
 		}
 		// Use database-stamped submission time and derive system approval time from expires_at − validity so row and audit evidence agree.
-		if err := insertEvents(ctx, q, stampEvents(completeAutoApproval(events, row, validity), tsToTime(row.UpdatedAt).UTC())); err != nil {
+		if err := insertEvents(ctx, q, r.OrganizationID, stampEvents(completeAutoApproval(events, row, validity), tsToTime(row.UpdatedAt).UTC())); err != nil {
 			return err
 		}
 		view, err = s.loadRequestViewInTransaction(ctx, q, requestUUID, organizationUUID, pgtype.UUID{})

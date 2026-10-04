@@ -18,6 +18,11 @@ func NewResultStore(pool *pgxpool.Pool) *ResultStore {
 	return &ResultStore{connections: NewConnectionStore(pool)}
 }
 
+// ListOrganizationIDs enumerates the organizations whose result caches maintenance visits.
+func (s *ResultStore) ListOrganizationIDs(ctx context.Context) ([]identity.OrganizationID, error) {
+	return s.connections.ListOrganizationIDs(ctx)
+}
+
 // Put admits a bounded snapshot and records non-expired evictions atomically.
 func (s *ResultStore) Put(ctx context.Context, result query.SealedResult) error {
 	m := result.Metadata

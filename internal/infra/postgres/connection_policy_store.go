@@ -82,7 +82,7 @@ func (s *ConnectionPolicyStore) UpdatePolicy(ctx context.Context, next connectio
 		if err := expireRequestsForPolicyChange(ctx, q, cid, oid, at, correlate); err != nil {
 			return err
 		}
-		return insertEvents(ctx, q, events)
+		return insertEvents(ctx, q, next.OrganizationID, events)
 	})
 	if err != nil {
 		return connection.Policy{}, err
