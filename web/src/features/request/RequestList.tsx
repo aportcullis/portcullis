@@ -1,10 +1,10 @@
 import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
-
+import { For, Show, createEffect, createSignal, on, onMount, onCleanup } from "solid-js";
 
 import { stateBadge, stateLabel } from "@/entities/request/model";
-import { hasPermission } from "@/entities/session/store";
+import { hasPermission, session } from "@/entities/session/store";
+import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { rangeEnd, rangeStart } from "@/entities/request/pagination";
 import {
   goToPage,
@@ -47,6 +47,9 @@ const filterStates = ["draft", "pending", "approved", "executing", "succeeded", 
 // RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details page carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
   const [expandedId, setExpandedId] = createSignal<string>();
+  // Row action state lives at list level, keyed by request ID: a refresh replaces row objects, and <For> recreates their components.
+  const rowActions = createRowActionRegistry();
+  createEffect(on(session, () => rowActions.clear(), { defer: true }));
   onMount(() => {
     void loadAccessRequests();
     const refresh = () => { if (!document.hidden) void loadAccessRequests(); };
@@ -139,7 +142,7 @@ export const RequestList: Component = () => {
                           Details
                         </A>
                       </Show>
-                      <RequestRowActions request={accessRequest} />
+                      <RequestRowActions request={accessRequest} rowActions={rowActions} />
                     </span>
                   </TableCell>
                 </TableRow>

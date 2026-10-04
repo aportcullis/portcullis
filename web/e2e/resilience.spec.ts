@@ -127,6 +127,28 @@ test.describe("application resilience", () => {
     await restoreDenied();
   });
 
+  test("a refused Execute keeps its row error through the list refresh it triggers", async ({ page }) => {
+    await page.goto("/requests/new");
+    await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
+    await page.getByLabel("Title", { exact: true }).fill("Row state check");
+    await page.getByLabel("SQL", { exact: true }).fill("select 2");
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+
+    await page.goto("/requests");
+    const row = page.getByRole("row", { name: /Row state check/ });
+    await expect(row.getByRole("button", { name: "Execute" })).toBeVisible();
+    const listRefreshed = page.waitForResponse((response) => response.url().endsWith("/portcullis.v1.AccessRequests/List"));
+    const restore = await failProcedure(page, "QueryExecutions/Execute", "unavailable");
+    await row.getByRole("button", { name: "Execute" }).click();
+    await listRefreshed;
+    await expect(row.getByRole("alert")).toHaveText("simulated failure");
+    await expect(row.getByRole("button", { name: "Execute" })).toBeEnabled();
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(row.getByRole("alert")).toHaveText("simulated failure");
+    await restore();
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");
