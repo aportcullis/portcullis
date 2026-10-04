@@ -39,6 +39,22 @@ test.describe("sign-in return path", () => {
   });
 });
 
+test("the sign-in page loads only the entry script and workflows load on first visit", async ({ page }) => {
+  const scripts: string[] = [];
+  page.on("response", (response) => {
+    if (response.request().resourceType() === "script") scripts.push(new URL(response.url()).pathname);
+  });
+  await page.goto("/login");
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+  expect(scripts).toHaveLength(1);
+  expect(scripts[0]).toMatch(/^\/assets\/index-[\w-]+\.js$/);
+
+  await signInForScenario(page, email, password);
+  await page.goto("/requests/new");
+  await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+  expect(scripts.some((path) => /NewRequestPage-[\w-]+\.js$/.test(path))).toBe(true);
+});
+
 test("a pending session check shows a loading status instead of a blank page", async ({ page }) => {
   await page.goto("/login");
   await signInForScenario(page, email, password);

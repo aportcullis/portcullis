@@ -39,6 +39,18 @@ describe("readResourceOrUndefined", () => {
     expect(readResourceOrUndefined(resource)).toBe("recovered");
   });
 
+  it("keeps returning the previous value while a refetch is in flight", async () => {
+    let attempt = 0;
+    const [resource, { refetch }] = createTestResource(() => {
+      attempt++;
+      return attempt === 1 ? Promise.resolve("first") : new Promise<string>(() => {});
+    });
+    await flush();
+    void refetch();
+    expect(resource.state).toBe("refreshing");
+    expect(readResourceOrUndefined(resource)).toBe("first");
+  });
+
   it("returns undefined instead of throwing when the fetch failed", async () => {
     const [resource] = createTestResource(async (): Promise<string> => {
       throw new Error("unavailable");

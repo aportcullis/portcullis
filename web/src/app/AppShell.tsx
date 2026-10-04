@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Match, Show, Switch, createEffect, onCleanup } from "solid-js";
+import { For, Match, Show, Suspense, Switch, createEffect, onCleanup } from "solid-js";
 
 import type { RouteSectionProps } from "@solidjs/router";
 import { Navigate, useLocation } from "@solidjs/router";
@@ -84,7 +84,8 @@ const AppShell: Component<RouteSectionProps> = (props) => {
             <LogoutButton />
           </>}
         >
-          {props.children}
+          {/* Authenticated pages are lazy chunks; the frame stays while a page's code loads. */}
+          <Suspense fallback={<LoadingSkeleton label="Loading page…" />}>{props.children}</Suspense>
         </ApplicationFrame>
       </Match>
     </Switch>

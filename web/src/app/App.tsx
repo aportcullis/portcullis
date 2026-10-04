@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { ErrorBoundary, createEffect, onMount } from "solid-js";
+import { ErrorBoundary, createEffect, lazy, onMount } from "solid-js";
 
 import { Navigate, Route, Router } from "@solidjs/router";
 
@@ -11,14 +11,16 @@ import { resetConnections } from "@/entities/connection/store";
 import { resetAccessRequests, setMayListAccessRequests } from "@/entities/request/store";
 import { hasPermission, session } from "@/entities/session/store";
 import BootstrapPage from "@/pages/BootstrapPage";
-import ConnectionsPage from "@/pages/ConnectionsPage";
 import LoginPage from "@/pages/LoginPage";
-import NewRequestPage from "@/pages/NewRequestPage";
 import NotFoundPage from "@/pages/NotFoundPage";
-import RequestDetailsPage from "@/pages/RequestDetailsPage";
-import RequestResultPage from "@/pages/RequestResultPage";
-import RequestsPage from "@/pages/RequestsPage";
 import { load } from "@/entities/session/store";
+
+// Sign-in and first-run stay in the entry chunk; authenticated workflows load on first visit so the login page does not download the SQL editor, result grid and connection forms.
+const ConnectionsPage = lazy(() => import("@/pages/ConnectionsPage"));
+const RequestsPage = lazy(() => import("@/pages/RequestsPage"));
+const NewRequestPage = lazy(() => import("@/pages/NewRequestPage"));
+const RequestDetailsPage = lazy(() => import("@/pages/RequestDetailsPage"));
+const RequestResultPage = lazy(() => import("@/pages/RequestResultPage"));
 
 // Composition root: global CSS, the router, the one-time session resolve, and the cross-entity lifecycle wiring (a leaf entity must not import another, so the "purge a principal's cached data when the principal changes" rule lives here, at the composition root that legitimately sees both entities).
 const App: Component = () => {
