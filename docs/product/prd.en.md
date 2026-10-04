@@ -748,6 +748,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - Use volatility only as hygiene for honestly declared builtins; read-only transactions are supplemental protection.
 - **Size/storage:** Enforce byte and row caps against large-cell exhaustion.
   - ADR-0011 order: delete expired results → plan own LRU → plan global LRU preserving at least one result per other user → atomically evict and insert only if admission fits; otherwise reject only the new snapshot as `result_store_full`, preserving every live result with execution itself completed.
+  - Snapshot persistence after a committed statement runs on its own bounded context, unaffected by the query deadline or a late cancellation; a rejected or failed snapshot keeps `succeeded` and records `result_store_full` or `result_persistence_failed` in `EXECUTION_FINISHED` without error text (ADR-0021).
 - **Circuit breaker, ADR-0010:** Per connection, more than 5 consecutive failures opens for 60 seconds with one half-open probe.
   - Blocked calls return `Unavailable` before leasing, without retries.
   - User cancellation, context deadlines, server statement timeouts and local response limits are excluded from target-health measurements without clearing existing failures; execution uncertainty still records `outcome_unknown` (ADR-0010).

@@ -66,6 +66,8 @@ A read stops at the snapshot ceiling instead (revised 2026-10-04): it sends a ca
 Draining a read held the worker, target I/O and network until the statement finished, the statement timeout fired or a later row raised an error that the delivered snapshot never contained.
 A protocol/connection interruption with unconfirmed completion is outcome_unknown.
 Confirmed SQL refusal is failed; a missing or saturated result cache does not change confirmed target success.
+Snapshot persistence runs on `context.WithoutCancel` with its own 10-second bound (revised 2026-10-04): it previously shared the execution deadline, so a statement finishing near its timeout or a cancellation arriving after COMMIT silently dropped a committed result.
+A rejected or failed snapshot records `result_store_full` or `result_persistence_failed` as `result_unavailable_reason` in EXECUTION_FINISHED metadata; the reason is a fixed vocabulary validated by the domain, never store error text. Source: [Go context.WithoutCancel](https://pkg.go.dev/context#WithoutCancel).
 
 ### Result and notification contracts
 

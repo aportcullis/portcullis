@@ -196,15 +196,31 @@ func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Reque
 	completion.Truncated = stream.Truncated()
 	completion.RowCount = int64(len(rows))
 	metadata := query.SnapshotMetadata{ID: uuid.NewString(), OrganizationID: r.OrganizationID, OwnerID: r.RequesterID, RowCount: int64(len(rows)), Truncated: completion.Truncated}
-	stored, err := s.results.Save(ctx, metadata, stream.Columns(), rows, request.MaxResultBytes)
-	if err == nil {
-		completion.ResultID = stored.ID
-		completion.ResultExpiresAt = &stored.ExpiresAt
-		completion.RowCount = stored.RowCount
-		completion.ByteCount = stored.ByteCount
-		completion.Truncated = stored.Truncated
+	// The statement already committed, so persisting its snapshot must not depend on the execution deadline or a later cancellation.
+	persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), resultPersistTimeout)
+	defer persistCancel()
+	stored, err := s.results.Save(persistCtx, metadata, stream.Columns(), rows, request.MaxResultBytes)
+	if err != nil {
+		completion.ResultUnavailableReason = resultUnavailableReason(err)
+		return completion, TargetHealthy
 	}
+	completion.ResultID = stored.ID
+	completion.ResultExpiresAt = &stored.ExpiresAt
+	completion.RowCount = stored.RowCount
+	completion.ByteCount = stored.ByteCount
+	completion.Truncated = stored.Truncated
 	return completion, TargetHealthy
+}
+
+// resultPersistTimeout bounds snapshot persistence after the target statement has committed.
+const resultPersistTimeout = 10 * time.Second
+
+// resultUnavailableReason classifies a snapshot persistence failure without exposing its error text.
+func resultUnavailableReason(err error) access.ResultUnavailableReason {
+	if errors.Is(err, query.ErrResultStoreFull) {
+		return access.ResultUnavailableStoreFull
+	}
+	return access.ResultUnavailablePersistenceFailed
 }
 
 // queryCanceledSQLState is PostgreSQL's query_canceled, raised when the server's statement timeout or an administrator cancels a statement.

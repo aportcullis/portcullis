@@ -272,6 +272,9 @@ func (s *AccessRequestStore) finishExecutionAt(ctx context.Context, q *db.Querie
 	evt.Metadata["duration_ms"] = c.DurationMilliseconds
 	evt.RowsAffected = &c.RowsAffected
 	evt.DurationMilliseconds = &c.DurationMilliseconds
+	if c.ResultUnavailableReason != "" {
+		evt.Metadata["result_unavailable_reason"] = string(c.ResultUnavailableReason)
+	}
 	if c.State != access.StateSucceeded {
 		evt.Outcome = audit.OutcomeFailed
 	}

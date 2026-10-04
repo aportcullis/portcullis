@@ -30,6 +30,8 @@ type executionFixture struct {
 	queryTimeoutSeconds int
 	// executeTarget replaces the canned target stream when set.
 	executeTarget func(context.Context, query.Execution) (query.ResultStream, error)
+	// persistResult replaces the canned snapshot-store outcome when set.
+	persistResult func(context.Context) error
 }
 
 type blockingExecutionFixture struct {
@@ -229,10 +231,19 @@ func (f *executionFixture) Execute(ctx context.Context, _ connection.Target, _ c
 	}
 	return &resultStream{}, nil
 }
-func (f *executionFixture) Save(_ context.Context, m query.SnapshotMetadata, _ []query.Column, _ [][]query.CellValue, _ int64) (query.SnapshotMetadata, error) {
+func (f *executionFixture) Save(ctx context.Context, m query.SnapshotMetadata, _ []query.Column, _ [][]query.CellValue, _ int64) (query.SnapshotMetadata, error) {
 	m.RowCount = 1
 	m.ExpiresAt = time.Now().Add(query.ResultTTL)
-	return m, f.resultErr
+	if f.persistResult != nil {
+		if err := f.persistResult(ctx); err != nil {
+			return query.SnapshotMetadata{}, err
+		}
+		return m, nil
+	}
+	if f.resultErr != nil {
+		return query.SnapshotMetadata{}, f.resultErr
+	}
+	return m, nil
 }
 
 type resultStream struct{ read bool }

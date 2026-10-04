@@ -29,19 +29,38 @@ type ExecutionLease struct {
 	Heartbeat time.Time
 }
 
+// ResultUnavailableReason names why a confirmed success has no stored result, without carrying store or driver error text.
+type ResultUnavailableReason string
+
+// Result unavailability reasons recorded as execution evidence (ADR-0011, ADR-0021).
+const (
+	ResultUnavailableStoreFull         ResultUnavailableReason = "result_store_full"
+	ResultUnavailablePersistenceFailed ResultUnavailableReason = "result_persistence_failed"
+)
+
 // ExecutionCompletion records confirmed execution metadata without result values.
 type ExecutionCompletion struct {
-	State                State
-	RowsAffected         int64
-	DurationMilliseconds int64
-	ResultID             string
-	ResultExpiresAt      *time.Time
-	RowCount             int64
-	ByteCount            int64
-	Truncated            bool
+	State                   State
+	RowsAffected            int64
+	DurationMilliseconds    int64
+	ResultID                string
+	ResultExpiresAt         *time.Time
+	RowCount                int64
+	ByteCount               int64
+	Truncated               bool
+	ResultUnavailableReason ResultUnavailableReason
 }
 
-// Valid reports whether this completion can terminate an executing request.
+// Valid reports whether this completion can terminate an executing request; a result unavailability reason is allowed only on a success without a stored result.
 func (c ExecutionCompletion) Valid() bool {
-	return c.State == StateSucceeded || c.State == StateFailed || c.State == StateCancelled || c.State == StateOutcomeUnknown
+	if c.State != StateSucceeded && c.State != StateFailed && c.State != StateCancelled && c.State != StateOutcomeUnknown {
+		return false
+	}
+	switch c.ResultUnavailableReason {
+	case "":
+		return true
+	case ResultUnavailableStoreFull, ResultUnavailablePersistenceFailed:
+		return c.State == StateSucceeded && c.ResultID == ""
+	}
+	return false
 }

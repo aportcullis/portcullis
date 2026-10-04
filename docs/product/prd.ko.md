@@ -709,6 +709,7 @@ audit_events
   정직하게 선언된 volatile builtin을 걸러내는 **위생 검사**로만 남긴다. read-only 트랜잭션도 경계가 아니라 보조 수단이다.
   exclusion constraint의 `WITH` 연산자도 같은 연산자 게이트와 실행 시 카탈로그 검사를 받는다. 명시적 operator class는 거부하고, access method는 내장 index method(btree, hash, gist, spgist, gin, brin)와 heap table method로 제한한다(2026-10-04 증보, ADR-0002).
 - row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 계획 → 전역 LRU 축출 계획(다른 사용자별 최소 1개 보존) → 수용 가능하면 축출·신규 저장을 원자적으로 적용하고, 불가능하면 유효한 기존 결과를 모두 보존하며 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
+  커밋된 statement의 snapshot 저장은 query deadline이나 뒤늦은 취소의 영향을 받지 않는 별도의 제한된 context에서 수행한다. snapshot이 거부되거나 저장에 실패해도 `succeeded`를 유지하고, 오류 원문 없이 `result_store_full` 또는 `result_persistence_failed`를 `EXECUTION_FINISHED`에 기록한다(ADR-0021).
 - **대상 DB 실행 경로 circuit breaker(ADR-0010):** connection별로 연속 실패 5회 초과 시 60초 open(half-open probe 1회).
   차단된 호출은 lease를 잡지 않고 `Unavailable`로 반환하며 자동 재시도하지 않는다.
   사용자 취소·context deadline·서버 statement timeout·로컬 응답 크기 제한은 대상 건강 집계에서 제외하고 기존 장애 횟수를 초기화하지 않는다. 실행 결과의 불확실성은 계속 `outcome_unknown`으로 기록한다(ADR-0010).

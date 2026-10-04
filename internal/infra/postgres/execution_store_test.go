@@ -160,3 +160,55 @@ func approvedExecutionRequest(t *testing.T, f reqFixture) access.Request {
 	}
 	return view.Request
 }
+
+func TestExecutionCompletionRecordsResultUnavailableReasonAsEvidence(t *testing.T) {
+	f := newReqFixture(t)
+	ctx := context.Background()
+	for _, scenario := range []struct {
+		name       string
+		completion access.ExecutionCompletion
+		wantReason string
+		wantState  access.State
+	}{
+		{"store full success", access.ExecutionCompletion{State: access.StateSucceeded, RowsAffected: 3, ResultUnavailableReason: access.ResultUnavailableStoreFull}, "result_store_full", access.StateSucceeded},
+		{"persistence failure success", access.ExecutionCompletion{State: access.StateSucceeded, ResultUnavailableReason: access.ResultUnavailablePersistenceFailed}, "result_persistence_failed", access.StateSucceeded},
+		{"stored success", access.ExecutionCompletion{State: access.StateSucceeded}, "", access.StateSucceeded},
+		{"forged free-text reason", access.ExecutionCompletion{State: access.StateSucceeded, ResultUnavailableReason: "password=hunter2"}, "", access.StateExecuting},
+		{"reason on a failed outcome", access.ExecutionCompletion{State: access.StateFailed, ResultUnavailableReason: access.ResultUnavailableStoreFull}, "", access.StateExecuting},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			request := approvedExecutionRequest(t, f)
+			lease, err := f.requests.AcquireExecution(ctx, f.org, request.ID, f.requester, "server", uuid.NewString(), request.Digest, reqEvent(audit.ActionExecutionStarted, request.ID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = f.requests.CompleteExecution(ctx, f.org, lease, scenario.completion, reqEvent(audit.ActionExecutionFinished, request.ID))
+			if scenario.wantState == access.StateExecuting {
+				if !errors.Is(err, access.ErrInvalidRequest) {
+					t.Fatalf("invalid completion = %v, want ErrInvalidRequest", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			view, _, err := f.requests.Get(ctx, f.org, request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if view.Request.State != scenario.wantState {
+				t.Fatalf("state = %s, want %s", view.Request.State, scenario.wantState)
+			}
+			var finished int
+			var reason *string
+			if err := f.pool.QueryRow(ctx, `select count(*), max(metadata->>'result_unavailable_reason') from public.audit_events where target_id=$1 and action='EXECUTION_FINISHED'`, string(request.ID)).Scan(&finished, &reason); err != nil {
+				t.Fatal(err)
+			}
+			recorded := ""
+			if reason != nil {
+				recorded = *reason
+			}
+			if recorded != scenario.wantReason || (finished == 1) != (scenario.wantState != access.StateExecuting) {
+				t.Fatalf("finished events = %d with reason %q, want reason %q", finished, recorded, scenario.wantReason)
+			}
+		})
+	}
+}
