@@ -342,3 +342,67 @@ func TestGovernedExecutionCapsRowsAndBytesBeforeDecoding(t *testing.T) {
 		})
 	}
 }
+
+// executeGovernedDDL runs one governed DDL statement and drains its stream.
+func executeGovernedDDL(ctx context.Context, t *testing.T, target connection.Target, credential connection.Credential, sql string) error {
+	t.Helper()
+	_, _, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: sql, Class: query.ClassDDL, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	return err
+}
+
+func TestGovernedExecutionRejectsUserExclusionOperatorOrAccessMethodBeforeItRuns(t *testing.T) {
+	pool, target, credential := freshExec(t)
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `create function public.boom_cmp(int, int) returns boolean language sql immutable as 'select false';
+create operator public.&& (leftarg = int, rightarg = int, function = public.boom_cmp);
+create operator public.<@ (leftarg = int, rightarg = int, function = public.boom_cmp);
+create operator public.@> (leftarg = int, rightarg = int, function = public.boom_cmp);
+create access method evil_am type index handler bthandler;
+create access method evil_tam type table handler heap_tableam_handler`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct{ sql, createdTable string }{
+		{sql: "CREATE TABLE excl_one (p int, EXCLUDE (p WITH &&))", createdTable: "excl_one"},
+		{sql: "ALTER TABLE exec_t ADD CONSTRAINT excl_alter EXCLUDE (id WITH &&)"},
+		{sql: "CREATE TABLE excl_hash (p int, EXCLUDE USING hash (p WITH <@))", createdTable: "excl_hash"},
+		{sql: "CREATE TABLE excl_pair (p int, q int, EXCLUDE (p WITH =, q WITH @>))", createdTable: "excl_pair"},
+		{sql: "CREATE INDEX evil_index ON exec_t USING evil_am (v)", createdTable: "evil_index"},
+		{sql: "CREATE TABLE evil_table (v int) USING evil_tam", createdTable: "evil_table"},
+	} {
+		t.Run(scenario.sql, func(t *testing.T) {
+			err := executeGovernedDDL(ctx, t, target, credential, scenario.sql)
+			var rejection *query.Rejection
+			if !errors.As(err, &rejection) {
+				t.Fatalf("catalog gate did not reject user exclusion operator: %v", err)
+			}
+			if scenario.createdTable == "" {
+				return
+			}
+			var created *string
+			if err := pool.QueryRow(ctx, "SELECT to_regclass($1)::text", "public."+scenario.createdTable).Scan(&created); err != nil {
+				t.Fatal(err)
+			}
+			if created != nil {
+				t.Fatalf("rejected statement still created %s", *created)
+			}
+		})
+	}
+}
+
+func TestGovernedExecutionAdmitsBuiltinIndexMethodsAndExclusionOperators(t *testing.T) {
+	_, target, credential := freshExec(t)
+	ctx := context.Background()
+	for _, sql := range []string{
+		"CREATE TABLE excl_eq (p int, EXCLUDE (p WITH =))",
+		"CREATE TABLE excl_range (r int4range, EXCLUDE USING gist (r WITH &&))",
+		"CREATE INDEX exec_t_hash ON exec_t USING hash (v)",
+		"CREATE TABLE heap_t (v int) USING heap",
+	} {
+		t.Run(sql, func(t *testing.T) {
+			if err := executeGovernedDDL(ctx, t, target, credential, sql); err != nil {
+				t.Fatalf("built-in method or operator refused: %v", err)
+			}
+		})
+	}
+}

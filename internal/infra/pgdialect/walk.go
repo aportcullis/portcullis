@@ -97,6 +97,31 @@ func sweepEffects(root nodes.Node) error {
 		if err := checkSubLink(root); err != nil {
 			return err
 		}
+	case nodes.T_Constraint:
+		// EXCLUDE … WITH operators and the constraint's index method name catalog code outside A_Expr (fixtures #119–#132).
+		if err := checkConstraint(root); err != nil {
+			return err
+		}
+	case nodes.T_IndexStmt:
+		if err := checkIndexStmt(root); err != nil {
+			return err
+		}
+	case nodes.T_IndexElem:
+		if err := checkIndexElem(root); err != nil {
+			return err
+		}
+	case nodes.T_PartitionElem:
+		if err := checkPartitionElem(root); err != nil {
+			return err
+		}
+	case nodes.T_CreateStmt:
+		if err := checkCreateStmt(root); err != nil {
+			return err
+		}
+	case nodes.T_IntoClause:
+		if err := checkIntoClause(root); err != nil {
+			return err
+		}
 	}
 	kids, err := childNodes(root)
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 	"github.com/pgplex/pgparser/nodes"
 )
 
-// validateCatalog rejects callable candidates outside the trusted built-in catalog.
+// validateCatalog rejects callable candidates — functions, operators (including exclusion-constraint operators), types and access methods — outside the trusted built-in catalog. Access methods are already limited to built-in names at classification; their catalog clause is defense in depth against a replaced handler.
 func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Statement) error {
 	st, ok := parsed.(*statement)
 	if !ok {
@@ -17,9 +17,35 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
 	functions := []string{}
 	operators := []string{}
 	types := []string{}
+	accessMethods := []string{}
 	var collect func(nodes.Node) error
 	collect = func(node nodes.Node) error {
 		switch value := node.(type) {
+		case *nodes.Constraint:
+			exclusions, err := exclusionOperators(value)
+			if err != nil {
+				return err
+			}
+			for _, operator := range exclusions {
+				name, ok := singleCatalogName(operator)
+				if !ok {
+					return &query.Rejection{Reason: query.RejectNotAllowlisted}
+				}
+				operators = append(operators, name)
+			}
+			if value.Exclusions != nil {
+				accessMethods = append(accessMethods, indexAccessMethodName(value.AccessMethod))
+			}
+		case *nodes.IndexStmt:
+			accessMethods = append(accessMethods, indexAccessMethodName(value.AccessMethod))
+		case *nodes.CreateStmt:
+			if value.AccessMethod != "" {
+				accessMethods = append(accessMethods, value.AccessMethod)
+			}
+		case *nodes.IntoClause:
+			if value.AccessMethod != "" {
+				accessMethods = append(accessMethods, value.AccessMethod)
+			}
 		case *nodes.FuncCall:
 			if name, ok := singleCatalogName(value.Funcname); ok {
 				functions = append(functions, name)
@@ -68,8 +94,8 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
 	if err := collect(st.node); err != nil {
 		return err
 	}
-	args := make([][]byte, 3)
-	for idx, names := range [][]string{functions, operators, types} {
+	args := make([][]byte, 4)
+	for idx, names := range [][]string{functions, operators, types, accessMethods} {
 		encoded, err := json.Marshal(names)
 		if err != nil {
 			return err
@@ -93,6 +119,10 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
   where t.typname in (select jsonb_array_elements_text($3::jsonb))
     and pg_catalog.pg_type_is_visible(t.oid)
     and (t.oid >= 16384 or t.typnamespace <> 'pg_catalog'::regnamespace)
+ ) and not exists (
+  select 1 from pg_catalog.pg_am a join pg_catalog.pg_proc p on p.oid=a.amhandler
+  where a.amname in (select jsonb_array_elements_text($4::jsonb))
+    and (a.oid >= 16384 or p.oid >= 16384 or p.pronamespace <> 'pg_catalog'::regnamespace)
  )`, args, nil, nil, nil).Read()
 	if result.Err != nil {
 		return redactExecError(ctx, result.Err)

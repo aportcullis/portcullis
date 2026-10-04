@@ -106,6 +106,38 @@ A `ddl` approval is scoped to the schema objects Portcullis lets a request creat
 
 Sources checked 2026-10-04: [PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/current/sql-altertable.html) (a disabled trigger "is not executed when its triggering event occurs"; row-security, rule, replica-identity and access-method actions), [PostgreSQL SQL commands](https://www.postgresql.org/docs/current/sql-commands.html) (the `ALTER … RENAME`, `DROP` and `COMMENT` families each span cluster-level and schema-level object kinds).
 
+### PostgreSQL exclusion operators, operator classes and access methods (2026-10-04)
+
+DDL can name catalog code outside `FuncCall`/`A_Expr`: `EXCLUDE … WITH op` stores its operator in the constraint, each index or partition key element may name an operator class, and `USING` names an index or table access method.
+`CREATE OPERATOR`, `CREATE OPERATOR CLASS` and `CREATE ACCESS METHOD` bind each of these to arbitrary functions, so an unchecked name is an unchecked function call — the same reasoning as the operator allow-list.
+
+- **Exclusion operators** pass `checkOperatorName` (unqualified and on the operator allow-list) during the effect sweep, and the execution-time catalog check collects them with the other operators.
+- **Operator classes.** An explicit operator class or operator-class parameters on an index element, exclusion element or partition key is refused, built-in classes included; the default class for the column type is the only one the statement does not name.
+- **Access methods.** Index methods (`CREATE INDEX … USING`, `EXCLUDE USING`) are limited to the built-ins PostgreSQL ships — btree, hash, gist, spgist, gin and brin — and the only table method a statement may name (`CREATE TABLE … USING`, `CREATE TABLE … USING … AS`) is heap.
+  The execution-time catalog check additionally requires every named or defaulted method, and its handler, to be a bootstrap pg_catalog object; built-in method names are unique and pinned, so this clause is defense in depth.
+  The target's `default_table_access_method` setting remains trusted target administration (layer 2).
+
+| # | Literal input | Engines | Expected |
+|---|---|---|---|
+| 119 | `CREATE INDEX i ON t USING hash (v)` | PG | `ddl` |
+| 120 | `CREATE TABLE r (p int, EXCLUDE (p WITH =))` | PG | `ddl` |
+| 121 | `CREATE TABLE h (v int) USING heap` | PG | `ddl` |
+| 122 | `CREATE TABLE p (v int) PARTITION BY RANGE (v)` | PG | `ddl` |
+| 123 | `ALTER TABLE t ADD CONSTRAINT x EXCLUDE USING gist (v WITH &&)` | PG | `ddl` |
+| 124 | `CREATE TABLE r (p int, EXCLUDE USING gist (p WITH OPERATOR(evil.&&)))` | PG | reject (not_allowlisted) |
+| 125 | `ALTER TABLE t ADD CONSTRAINT x EXCLUDE (v WITH ###)` | PG | reject (not_allowlisted) |
+| 126 | `CREATE INDEX i ON t (v evil_ops)` | PG | reject (not_allowlisted) |
+| 127 | `CREATE INDEX i ON t USING evil_am (v)` | PG | reject (not_allowlisted) |
+| 128 | `CREATE TABLE p (v int) PARTITION BY RANGE (v evil_ops)` | PG | reject (not_allowlisted) |
+| 129 | `CREATE TABLE h (v int) USING evil_tam` | PG | reject (not_allowlisted) |
+| 130 | `CREATE TABLE r (p int, EXCLUDE USING evil_am (p WITH =))` | PG | reject (not_allowlisted) |
+| 131 | `CREATE TABLE c USING evil_tam AS SELECT id FROM t` | PG | reject (not_allowlisted) |
+| 132 | `CREATE INDEX i ON t (v text_pattern_ops)` | PG | reject (not_allowlisted) |
+
+A governed real-database scenario creates user operators `public.&&`, `public.<@` and `public.@>` on `(int, int)` and proves exclusion constraints using them are refused before execution while built-in methods and operators still create objects; an operator that a pg_catalog operator with the same signature shadows is never visible and is correctly admitted.
+
+Sources checked 2026-10-04: [PostgreSQL CREATE INDEX](https://www.postgresql.org/docs/current/sql-createindex.html) (built-in methods "B-tree, hash, GiST, SP-GiST, GIN, and BRIN"; per-column operator classes), [CREATE ACCESS METHOD](https://www.postgresql.org/docs/current/sql-create-access-method.html), [CREATE OPERATOR CLASS](https://www.postgresql.org/docs/current/sql-createopclass.html), [CREATE TABLE exclusion constraints](https://www.postgresql.org/docs/current/sql-createtable.html).
+
 ### Pinned edge-case fixtures (literal; must hold on every engine where the syntax exists)
 The suite assumes a table `t(id integer, v text)`.
 `PG`/`MY`/`SQ` mark engine applicability; a fixture without a mark runs on all three.
