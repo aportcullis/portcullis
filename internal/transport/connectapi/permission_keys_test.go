@@ -82,6 +82,8 @@ func TestEveryEnforcementSiteNamesADomainPermissionConstant(t *testing.T) {
 		"PermissionConnectionsList", "PermissionConnectionsGet", "PermissionConnectionsCreate", "PermissionConnectionsUpdate", "PermissionConnectionsTest", "PermissionConnectionsDelete",
 		"PermissionPoliciesGet", "PermissionPoliciesUpdate",
 		"PermissionRequestsList", "PermissionRequestsGet", "PermissionRequestsCreate", "PermissionRequestsApprove", "PermissionRequestsReject", "PermissionRequestsExecute",
+		"PermissionUsersList", "PermissionUsersGet", "PermissionUsersCreate", "PermissionUsersUpdate", "PermissionUsersDisable",
+		"PermissionRolesList", "PermissionRolesGet", "PermissionRolesCreate", "PermissionRolesUpdate", "PermissionRolesDelete",
 	} {
 		enforcedNames[name] = true
 	}

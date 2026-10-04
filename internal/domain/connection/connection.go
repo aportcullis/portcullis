@@ -14,7 +14,7 @@ type DBType string
 // Supported engines — mirrors the connections.db_type check constraint. Only PostgreSQL has a dialect adapter in M1; MySQL/SQLite constants arrive with their M2 adapters so an unsupported type cannot pass construction.
 const DBTypePostgreSQL DBType = "postgresql"
 
-// maxDisplayNameLength bounds the connection display name in Unicode code points (matches the account display-name bound in app/auth).
+// maxDisplayNameLength bounds the connection display name in Unicode code points (matches identity.MaxDisplayNameLength).
 const maxDisplayNameLength = 256
 
 // Connection is a registered target database: the plaintext descriptor of one row (ADR-0014 storage split). Its credential travels separately as Credential/SealedCredential and is discarded on archive.

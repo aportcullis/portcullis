@@ -15,7 +15,7 @@ import (
 
 // seededCatalog mirrors a migrated catalog: every enforced key plus keys no code enforces yet.
 func seededCatalog() []identity.Permission {
-	return append(identity.EnforcedPermissions(), "users.list", "roles.update", "savedqueries.share")
+	return append(identity.EnforcedPermissions(), "settings.update", "savedqueries.list", "savedqueries.share")
 }
 
 func TestValidatePermissionCatalogAcceptsCatalogsCoveringEnforcedKeys(t *testing.T) {

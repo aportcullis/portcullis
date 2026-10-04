@@ -32,6 +32,19 @@ const (
 	PermissionRequestsApprove Permission = "requests.approve"
 	PermissionRequestsReject  Permission = "requests.reject"
 	PermissionRequestsExecute Permission = "requests.execute"
+
+	// Users and roles administration (ADR-0053); users.update together with users.disable defines an administrator (ADR-0008).
+	PermissionUsersList    Permission = "users.list"
+	PermissionUsersGet     Permission = "users.get"
+	PermissionUsersCreate  Permission = "users.create"
+	PermissionUsersUpdate  Permission = "users.update"
+	PermissionUsersDisable Permission = "users.disable"
+
+	PermissionRolesList   Permission = "roles.list"
+	PermissionRolesGet    Permission = "roles.get"
+	PermissionRolesCreate Permission = "roles.create"
+	PermissionRolesUpdate Permission = "roles.update"
+	PermissionRolesDelete Permission = "roles.delete"
 )
 
 // ErrPermissionCatalogIncomplete means a permission key enforced in code is missing from the loaded catalog.
@@ -44,6 +57,8 @@ func EnforcedPermissions() []Permission {
 		PermissionConnectionsList, PermissionConnectionsGet, PermissionConnectionsCreate, PermissionConnectionsUpdate, PermissionConnectionsTest, PermissionConnectionsDelete,
 		PermissionPoliciesGet, PermissionPoliciesUpdate,
 		PermissionRequestsList, PermissionRequestsGet, PermissionRequestsCreate, PermissionRequestsApprove, PermissionRequestsReject, PermissionRequestsExecute,
+		PermissionUsersList, PermissionUsersGet, PermissionUsersCreate, PermissionUsersUpdate, PermissionUsersDisable,
+		PermissionRolesList, PermissionRolesGet, PermissionRolesCreate, PermissionRolesUpdate, PermissionRolesDelete,
 	}
 }
 

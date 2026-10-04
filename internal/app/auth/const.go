@@ -8,8 +8,6 @@ const (
 	minPasswordLength = 15
 	// maxPasswordLength bounds the Argon2 input so an oversized password can't be used to amplify hashing cost.
 	maxPasswordLength = 1024
-	// maxDisplayNameLength bounds the stored display name (Unicode code points) so an unbounded value can't bloat rows, logs, or UI. Generous for any real name.
-	maxDisplayNameLength = 256
 )
 
 // detachedWriteTimeout bounds the best-effort writes that detach from the request context — audit events (ADR-0009) and the backoff failure counter (ADR-0006, so an attacker can't skip the counter by disconnecting mid-attempt). Detached writes need their own bound or a stuck store would leak goroutines.

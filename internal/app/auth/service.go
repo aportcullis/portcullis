@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -165,7 +164,7 @@ func (s *Service) bootstrap(ctx context.Context, setupTokenHash []byte, email, p
 	if err := validatePassword(password); err != nil {
 		return identity.User{}, err
 	}
-	if err := validateDisplayName(displayName); err != nil {
+	if err := identity.ValidateDisplayName(displayName); err != nil {
 		return identity.User{}, err
 	}
 	// Fast path: skip the expensive hash if already bootstrapped (the repository re-checks authoritatively under the lock).
@@ -365,19 +364,6 @@ func (s *Service) issueSession(ctx context.Context, u identity.User, meta map[st
 		return Session{}, err
 	}
 	return Session{User: u, Session: created, Token: raw, CSRF: csrf}, nil
-}
-
-// validateDisplayName rejects empty names and Unicode Cc, Cf, Zl, and Zp characters to prevent log injection and display spoofing.
-func validateDisplayName(name string) error {
-	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(name) > maxDisplayNameLength {
-		return identity.ErrInvalidDisplayName
-	}
-	for _, r := range name {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
-			return identity.ErrInvalidDisplayName
-		}
-	}
-	return nil
 }
 
 // validatePassword enforces the length policy (see const.go) in Unicode code points, not bytes, so a short multi-byte password can't slip past. Length is the one requirement modern guidance agrees on; composition rules are discouraged. It expects an already NFC-normalized password.
