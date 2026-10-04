@@ -105,12 +105,16 @@ run:
 	go run ./cmd/portcullis
 
 
+GO_TEST_PACKAGES ?= ./...
+# Database-backed tests fail instead of skipping when their containers cannot start, so a gate can never pass without them.
+GO_TEST_ENV := PORTCULLIS_TEST_DATABASE_REQUIRED=1
+
 test:
-	go test -p 1 ./... -count=1 -shuffle=on
+	$(GO_TEST_ENV) go test -p 1 $(GO_TEST_PACKAGES) -count=1 -shuffle=on
 
 
 test-race:
-	go test -p 1 ./... -count=1 -shuffle=on -race
+	$(GO_TEST_ENV) go test -p 1 $(GO_TEST_PACKAGES) -count=1 -shuffle=on -race
 
 
 vuln:

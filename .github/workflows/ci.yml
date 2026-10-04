@@ -1,6 +1,6 @@
 name: CI
 
-# Require verify, web and both image status checks on the default branch.
+# Require verify, race, web and both image status checks on the default branch.
 on:
   push:
     branches: [main]
@@ -10,10 +10,16 @@ on:
 permissions:
   contents: read
 
+# Supersede in-progress runs of the same pull request; branch and release runs always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
     name: gate (make verify)
     runs-on: ubuntu-latest # ships a running Docker daemon for testcontainers + e2e
+    timeout-minutes: 60
     # Pin immutable action SHAs; Renovate updates them.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,9 +42,24 @@ jobs:
       - run: make verify
       - run: make supply-chain
 
+  race:
+    name: race detector (make test-race)
+    runs-on: ubuntu-latest # ships a running Docker daemon for testcontainers
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make test-race
+
   web:
     name: frontend (typecheck + build)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,6 +87,7 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
