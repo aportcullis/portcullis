@@ -44,6 +44,17 @@ const (
 	ActionResultEvicted Action = "RESULT_EVICTED"
 	// ActionKeyRotationBatch records one committed key-rotation batch for an organization (ADR-0003); metadata carries the active version and row count.
 	ActionKeyRotationBatch Action = "KEY_ROTATION_BATCH"
+
+	// User and role administration (ADR-0053). Each commits with its mutation; escalation, self-administration and last-administrator refusals are recorded best-effort as FAILED events of the attempted action.
+	ActionUserCreated         Action = "USER_CREATED"
+	ActionUserSetupLinkIssued Action = "USER_SETUP_LINK_ISSUED"
+	ActionUserPasswordSet     Action = "USER_PASSWORD_SET"
+	ActionUserDisabled        Action = "USER_DISABLED"
+	ActionUserEnabled         Action = "USER_ENABLED"
+	ActionUserRoleAssigned    Action = "USER_ROLE_ASSIGNED"
+	ActionRoleCreated         Action = "ROLE_CREATED"
+	ActionRoleUpdated         Action = "ROLE_UPDATED"
+	ActionRoleDeleted         Action = "ROLE_DELETED"
 )
 
 // outcome values — the terminal result of an action.
@@ -66,4 +77,6 @@ const (
 	TargetTypeResultSet = "result_set"
 	// TargetTypeEncryption is the target_type for KEY_ROTATION_BATCH events, which act on an organization's encrypted records as a whole (ADR-0003).
 	TargetTypeEncryption = "encryption"
+	// TargetTypeRole is the target_type for ROLE_* events; target_id carries the role UUID (ADR-0053).
+	TargetTypeRole = "role"
 )
