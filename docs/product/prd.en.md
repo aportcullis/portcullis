@@ -738,6 +738,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 - **Read-only is insufficient for function side effects**, added 2026-07-24, ADR-0002.
   - PG `READ ONLY` blocks specified commands, not all disk writes; `SELECT` can invoke `dblink_exec`, `pg_notify`, `set_config`, advisory-lock, and server-file functions.
   - Enforce a classification-time function/operator allowlist, rejecting unknown, user-defined, and schema-qualified names.
+    - The only qualified exception is the exact two-part `pg_catalog.<name>` call the PostgreSQL grammar itself substitutes for SQL-standard syntax (EXTRACT, SUBSTRING, POSITION, OVERLAY, TRIM, AT TIME ZONE, LIKE/SIMILAR … ESCAPE); user-written qualified calls stay rejected, and execution refuses any untrusted pg_catalog candidate of those names, added 2026-10-04, ADR-0002.
   - Apply it to **every class, including DDL**, added 2026-07-25; CTAS, expression indexes, and column defaults can invoke functions.
   - Exclusion-constraint `WITH` operators obey the same operator gate and execution-time catalog check; explicit operator classes are refused, and access methods are limited to the built-in index methods (btree, hash, gist, spgist, gin, brin) and the heap table method, added 2026-10-04, ADR-0002.
   - Verify all visible candidate OIDs for explicitly referenced functions/operators during execution using fixed `search_path` and trusted catalogs, alongside least target privilege (§8.1). M1 conservatively rejects any untrusted overload rather than reproducing selected-OID resolution (ADR-0021).

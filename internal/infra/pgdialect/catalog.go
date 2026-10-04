@@ -18,6 +18,8 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
 	operators := []string{}
 	types := []string{}
 	accessMethods := []string{}
+	// Grammar-rewritten calls are pg_catalog-qualified, so only pg_catalog candidates can resolve; public overloads of the same name are irrelevant to them.
+	catalogFunctions := []string{}
 	var collect func(nodes.Node) error
 	collect = func(node nodes.Node) error {
 		switch value := node.(type) {
@@ -49,6 +51,8 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
 		case *nodes.FuncCall:
 			if name, ok := singleCatalogName(value.Funcname); ok {
 				functions = append(functions, name)
+			} else if name, ok := grammarCatalogFunctionName(value); ok {
+				catalogFunctions = append(catalogFunctions, name)
 			}
 		case *nodes.A_Expr:
 			if name, ok := singleCatalogName(value.Name); ok {
@@ -94,8 +98,8 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
 	if err := collect(st.node); err != nil {
 		return err
 	}
-	args := make([][]byte, 4)
-	for idx, names := range [][]string{functions, operators, types, accessMethods} {
+	args := make([][]byte, 5)
+	for idx, names := range [][]string{functions, operators, types, accessMethods, catalogFunctions} {
 		encoded, err := json.Marshal(names)
 		if err != nil {
 			return err
@@ -123,6 +127,11 @@ func validateCatalog(ctx context.Context, conn *pgconn.PgConn, parsed query.Stat
   select 1 from pg_catalog.pg_am a join pg_catalog.pg_proc p on p.oid=a.amhandler
   where a.amname in (select jsonb_array_elements_text($4::jsonb))
     and (a.oid >= 16384 or p.oid >= 16384 or p.pronamespace <> 'pg_catalog'::regnamespace)
+ ) and not exists (
+  select 1 from pg_catalog.pg_proc p
+  where p.proname in (select jsonb_array_elements_text($5::jsonb))
+    and p.pronamespace = 'pg_catalog'::regnamespace
+    and p.oid >= 16384
  )`, args, nil, nil, nil).Read()
 	if result.Err != nil {
 		return redactExecError(ctx, result.Err)

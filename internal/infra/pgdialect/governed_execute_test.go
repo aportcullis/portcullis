@@ -343,6 +343,53 @@ func TestGovernedExecutionCapsRowsAndBytesBeforeDecoding(t *testing.T) {
 	}
 }
 
+func TestGovernedExecutionRunsGrammarRewrittenCatalogFunctions(t *testing.T) {
+	_, target, credential := freshExec(t)
+	ctx := context.Background()
+	for _, scenario := range []struct{ sql, want string }{
+		{sql: "SELECT extract(year from timestamp '2026-10-04 12:00')", want: "2026"},
+		{sql: "SELECT substring('portcullis' from 1 for 4) || position('c' in 'portcullis')", want: "port5"},
+		{sql: "SELECT trim(both 'x' from 'xxgatexx') || overlay('gate' placing 'l' from 1 for 1)", want: "gatelate"},
+		{sql: "SELECT (timestamptz '2026-10-04 00:00+00' AT TIME ZONE 'Asia/Seoul')::text", want: "2026-10-04 09:00:00"},
+		{sql: "SELECT ('a%b' LIKE 'a!%b' ESCAPE '!')::text || ('abc' SIMILAR TO 'a%')::text", want: "truetrue"},
+	} {
+		t.Run(scenario.sql, func(t *testing.T) {
+			_, rows, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: scenario.sql, Class: query.ClassRead, Governed: true, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			if err != nil {
+				t.Fatalf("grammar-rewritten built-in refused: %v", err)
+			}
+			if len(rows) != 1 || len(rows[0]) != 1 || rows[0][0].Text != scenario.want {
+				t.Fatalf("rows = %+v, want %q", rows, scenario.want)
+			}
+		})
+	}
+}
+
+func TestGovernedExecutionRejectsUserFunctionPlantedInPgCatalog(t *testing.T) {
+	pool, target, credential := freshExec(t)
+	ctx := context.Background()
+	// The planted overloads use signatures PostgreSQL would not pick for these calls: the gate must refuse any untrusted candidate of the name, not only the one overload resolution selects (ADR-0021).
+	_, err := pool.Exec(ctx, `create function pg_catalog.extract(text, int) returns numeric language plpgsql stable as $$ begin raise exception 'planted extract reached'; end $$;
+create function pg_catalog.btrim(text, int) returns text language plpgsql stable as $$ begin raise exception 'planted btrim reached'; end $$;
+create function pg_catalog.timezone(int, text) returns text language plpgsql stable as $$ begin raise exception 'planted timezone reached'; end $$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sql := range []string{
+		"SELECT extract(year from now())",
+		"SELECT trim(both 'x' from 'xax')",
+		"SELECT now() AT TIME ZONE 'UTC'",
+	} {
+		t.Run(sql, func(t *testing.T) {
+			_, _, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			var rejection *query.Rejection
+			if !errors.As(err, &rejection) {
+				t.Fatalf("catalog gate did not reject a planted pg_catalog overload: %v", err)
+			}
+		})
+	}
+}
+
 // executeGovernedDDL runs one governed DDL statement and drains its stream.
 func executeGovernedDDL(ctx context.Context, t *testing.T, target connection.Target, credential connection.Credential, sql string) error {
 	t.Helper()

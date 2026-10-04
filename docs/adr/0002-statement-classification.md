@@ -200,6 +200,7 @@ Both are corrected here.
 
 1. **Classification-time name allow-list — a coarse pre-filter over EVERY class (fail-closed, this slice).** Each dialect carries an explicit allow-list of pure/standard builtins.
    Any `FuncCall` whose name is not on it — every user-defined function, every unknown builtin, and every **schema-qualified** name (`public.f`, `pg_catalog.f`) — is a `Rejection`, exactly like an unknown statement node.
+   The single qualified exception is the grammar's own rewrite of SQL-standard syntax (revised 2026-10-04, see "Grammar-rewritten pg_catalog calls" below).
    The same rule covers **operators**: `A_Expr` names are checked against an operator allow-list, because `CREATE OPERATOR` binds an arbitrary function to a symbol, so an unchecked operator is an unchecked function call.
    Every place the grammar stores a written operator obeys this gate: `A_Expr.Name`, `SortBy.UseOp` and `SubLink.OperName` for `x op ANY|ALL|SOME (subquery)` (revised 2026-10-04 after a review reproduced `1 OPERATOR(evil.###) ANY (SELECT 1)` executing a user function under a read; fixtures #87–#92).
    The execution-time catalog check collects the same names, and `IN (subquery)` contributes its implicit `=`.
@@ -220,6 +221,35 @@ Checking `provolatile` remains worthwhile as a **hygiene check** against honestl
 
 **Residual risk the classifier cannot close** (deliberately deferred to layers 2–3): overload resolution by argument type, user-defined casts (`TypeCast` to a user type invokes a cast function) and user-defined aggregates, and functions reached *indirectly* — an allow-listed function whose own body calls something else.
 A name-based filter is blind to all three because they are decided by the catalog, not by the text.
+
+### Grammar-rewritten pg_catalog calls (2026-10-04)
+
+The PostgreSQL grammar replaces several SQL-standard constructs with a call whose name it qualifies itself: `EXTRACT(f FROM x)` → `pg_catalog.extract`, `SUBSTRING(… FROM … FOR …)` → `pg_catalog.substring`, `POSITION(a IN b)` → `pg_catalog.position`, `OVERLAY(… PLACING …)` → `pg_catalog.overlay`, every `TRIM(…)` form → `pg_catalog.btrim`/`ltrim`/`rtrim`, `x AT TIME ZONE z`/`AT LOCAL` → `pg_catalog.timezone`, and `LIKE … ESCAPE`/`SIMILAR TO` → `pg_catalog.like_escape`/`similar_to_escape`.
+The qualified-name rule therefore refused `SELECT extract(year from now())`, `TRIM(x)` and every `SIMILAR TO`, although the user wrote no qualified name.
+Verified against pgplex/pgparser v0.2.0 by parsing each construct; the names and call forms match PostgreSQL's gram.y.
+
+- A call is admitted only when its name is exactly two parts, the schema is `pg_catalog`, the function is on both the grammar-rewrite list and the function allow-list, and its recorded call form matches what the grammar produces (`COERCE_SQL_SYNTAX` for the SQL-syntax forms, an ordinary call for the two escape helpers).
+  A user-written `pg_catalog.extract('year', now())` or `pg_catalog.btrim(v)` is an explicit call and stays refused, as do `pg_catalog.<unlisted>`, any other schema and three-part names; `pg_catalog.length` (#37) is unchanged because `length` is not a grammar rewrite.
+  `pg_catalog.like_escape(…)` written by hand is indistinguishable from the grammar's form and is admitted; it names the same pg_catalog function the grammar would.
+- The execution-time catalog check collects these names separately: a qualified call resolves only in pg_catalog, so it refuses the statement when any pg_catalog function of that name is not a bootstrap built-in (OID ≥ 16384), while public overloads — which cannot be selected for a qualified call — do not cause a false refusal.
+  A governed real-database scenario plants extra `pg_catalog.extract`/`btrim`/`timezone` overloads and proves the statements are refused before execution, and five governed reads prove the built-in rewrites return correct values.
+
+| # | Literal input | Engines | Expected |
+|---|---|---|---|
+| 133 | `SELECT extract(year from now())` | PG | `read` |
+| 134 | `SELECT substring(v from 1 for 2), position('a' in v), overlay(v placing 'x' from 1) FROM t` | PG | `read` |
+| 135 | `SELECT trim(both 'x' from v), trim(leading from v), trim(trailing 'y' from v) FROM t` | PG | `read` |
+| 136 | `SELECT now() AT TIME ZONE 'UTC'` | PG | `read` |
+| 137 | `SELECT id FROM t WHERE v LIKE 'a!%' ESCAPE '!'` | PG | `read` |
+| 138 | `SELECT id FROM t WHERE v SIMILAR TO 'a%'` | PG | `read` |
+| 139 | `SELECT pg_catalog.extract('year', now())` | PG | reject (not_allowlisted) |
+| 140 | `SELECT pg_catalog.btrim(v) FROM t` | PG | reject (not_allowlisted) |
+| 141 | `SELECT pg_catalog.pg_sleep(1)` | PG | reject (not_allowlisted) |
+| 142 | `SELECT evil.extract('year', now())` | PG | reject (not_allowlisted) |
+| 143 | `SELECT normalize(v) FROM t` | PG | reject (not_allowlisted) |
+| 144 | `SELECT db.pg_catalog.lower(v) FROM t` | PG | reject (not_allowlisted) |
+
+Sources checked 2026-10-04: [PostgreSQL date/time functions](https://www.postgresql.org/docs/current/functions-datetime.html) (`timezone(zone, timestamp)` "is equivalent to the SQL-conforming construct" `AT TIME ZONE`; `extract`), [string functions](https://www.postgresql.org/docs/current/functions-string.html), [pattern matching](https://www.postgresql.org/docs/current/functions-matching.html).
 
 ### CTE-DML and `… INTO` detectability (closed 2026-07-04)
 The former open item — "can each parser expose data-modifying CTEs and `INTO` targets?" — is resolved by the ADR-0001 picks:

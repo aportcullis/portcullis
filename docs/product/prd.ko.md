@@ -703,6 +703,7 @@ audit_events
 - **read-only 트랜잭션은 함수 부작용을 막지 못한다 (2026-07-24 증보, ADR-0002):** PostgreSQL의 `READ ONLY`는 문서상 "a high-level notion of read-only that does not prevent all writes to disk"로, 금지 대상은 명령(INSERT/UPDATE/DELETE/MERGE/COPY FROM/DDL/GRANT/TRUNCATE)뿐이다.
   따라서 `dblink_exec`·`pg_notify`·`set_config`·advisory lock·서버 파일 함수는 `SELECT` 안에서 통과한다.
   방어는 ① 분류 시점 **함수·연산자 allow-list** — 목록 밖·사용자 정의·스키마 수식 이름은 fail-closed 거부이고, **클래스와 무관하게 ddl 포함 모든 문장에 적용**한다(2026-07-25 증보: ddl은 등급만 최종이고 부작용 검사를 면제하지 않는다 — CTAS·표현식 인덱스·컬럼 DEFAULT가 함수를 품는다) ② 실행 시 명시적으로 참조된 함수·연산자의 **후보 OID 전체를 검증**(고정 `search_path` + 신뢰 카탈로그 대조; 사용자 overload가 하나라도 있으면 거부하는 보수적 대안, ADR-0021) ③ 대상 DB 계정 최소권한(§8.1)이다.
+  스키마 수식 이름의 유일한 예외는 PostgreSQL 문법이 SQL 표준 구문(EXTRACT, SUBSTRING, POSITION, OVERLAY, TRIM, AT TIME ZONE, LIKE/SIMILAR … ESCAPE)을 대체해 직접 만드는 정확히 두 부분의 `pg_catalog.<이름>` 호출이다. 사용자가 직접 쓴 수식 호출은 계속 거부하고, 실행 시 해당 이름의 신뢰할 수 없는 pg_catalog 후보가 하나라도 있으면 거부한다(2026-10-04 증보, ADR-0002).
   `pg_proc.provolatile`은 **경계가 아니다**(2026-07-25 정정): PG 문서는 volatility를 *"a promise to the optimizer"* 로 규정하고 *"not a completely bulletproof test, since such functions could still call VOLATILE functions that modify the database"* 라고 명시한다 — 서버가 강제하지 않으므로 함수 생성 권한자는 부작용 있는 본문을 STABLE로 선언할 수 있다.
   정직하게 선언된 volatile builtin을 걸러내는 **위생 검사**로만 남긴다. read-only 트랜잭션도 경계가 아니라 보조 수단이다.
   exclusion constraint의 `WITH` 연산자도 같은 연산자 게이트와 실행 시 카탈로그 검사를 받는다. 명시적 operator class는 거부하고, access method는 내장 index method(btree, hash, gist, spgist, gin, brin)와 heap table method로 제한한다(2026-10-04 증보, ADR-0002).

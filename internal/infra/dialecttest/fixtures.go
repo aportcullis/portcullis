@@ -158,4 +158,17 @@ var fixtures = []Fixture{
 	{N: 130, SQL: "CREATE TABLE r (p int, EXCLUDE USING evil_am (p WITH =))", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
 	{N: 131, SQL: "CREATE TABLE c USING evil_tam AS SELECT id FROM t", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
 	{N: 132, SQL: "CREATE INDEX i ON t (v text_pattern_ops)", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	// #133–#144: SQL-standard syntax the grammar rewrites to a pg_catalog-qualified call (EXTRACT, SUBSTRING, POSITION, OVERLAY, TRIM, AT TIME ZONE, LIKE/SIMILAR … ESCAPE) is admitted for exactly the grammar-produced names, while user-written qualified calls stay refused.
+	{N: 133, SQL: "SELECT extract(year from now())", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 134, SQL: "SELECT substring(v from 1 for 2), position('a' in v), overlay(v placing 'x' from 1) FROM t", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 135, SQL: "SELECT trim(both 'x' from v), trim(leading from v), trim(trailing 'y' from v) FROM t", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 136, SQL: "SELECT now() AT TIME ZONE 'UTC'", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 137, SQL: "SELECT id FROM t WHERE v LIKE 'a!%' ESCAPE '!'", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 138, SQL: "SELECT id FROM t WHERE v SIMILAR TO 'a%'", Engines: []Engine{PG}, Expect: class(query.ClassRead)},
+	{N: 139, SQL: "SELECT pg_catalog.extract('year', now())", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 140, SQL: "SELECT pg_catalog.btrim(v) FROM t", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 141, SQL: "SELECT pg_catalog.pg_sleep(1)", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 142, SQL: "SELECT evil.extract('year', now())", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 143, SQL: "SELECT normalize(v) FROM t", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
+	{N: 144, SQL: "SELECT db.pg_catalog.lower(v) FROM t", Engines: []Engine{PG}, Expect: reject(query.RejectNotAllowlisted)},
 }

@@ -66,20 +66,62 @@ var allowedFunctions = func() map[string]struct{} {
 	return set
 }()
 
-// checkFuncCall rejects a function call the allow-list does not cover. A qualified name (more than one Funcname part) is always rejected: the walker cannot know which object it resolves to, and fail-closed is ADR-0002's rule. An unreadable/empty name is likewise a rejection, never a pass.
+// catalogSchema is the only schema a grammar-rewritten call may carry.
+const catalogSchema = "pg_catalog"
+
+// grammarCatalogFunctions maps each pg_catalog function the PostgreSQL grammar substitutes for SQL-standard syntax to the call form the grammar records: EXTRACT, SUBSTRING … FROM, POSITION … IN, OVERLAY … PLACING, TRIM and AT TIME ZONE/AT LOCAL are marked as SQL syntax, while LIKE/SIMILAR … ESCAPE build an ordinary call. A user-written `pg_catalog.extract(…)` is an explicit call and stays refused, like every other qualified name (ADR-0002).
+var grammarCatalogFunctions = map[string]nodes.CoercionForm{
+	"extract":           nodes.COERCE_SQL_SYNTAX,
+	"substring":         nodes.COERCE_SQL_SYNTAX,
+	"position":          nodes.COERCE_SQL_SYNTAX,
+	"overlay":           nodes.COERCE_SQL_SYNTAX,
+	"btrim":             nodes.COERCE_SQL_SYNTAX,
+	"ltrim":             nodes.COERCE_SQL_SYNTAX,
+	"rtrim":             nodes.COERCE_SQL_SYNTAX,
+	"timezone":          nodes.COERCE_SQL_SYNTAX,
+	"like_escape":       nodes.COERCE_EXPLICIT_CALL,
+	"similar_to_escape": nodes.COERCE_EXPLICIT_CALL,
+}
+
+// checkFuncCall rejects a function call the allow-list does not cover. A qualified name is rejected — the walker cannot know which object it resolves to — except the exact two-part `pg_catalog.<name>` form the grammar itself produces for SQL-standard syntax. An unreadable/empty name is likewise a rejection, never a pass.
 func checkFuncCall(node nodes.Node) error {
 	call, ok := node.(*nodes.FuncCall)
-	if !ok || call.Funcname == nil || len(call.Funcname.Items) != 1 {
-		return &query.Rejection{Reason: query.RejectNotAllowlisted}
-	}
-	name, ok := call.Funcname.Items[0].(*nodes.String)
 	if !ok {
 		return &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
-	if _, allowed := allowedFunctions[name.Str]; !allowed {
+	if name, ok := singleCatalogName(call.Funcname); ok {
+		if _, allowed := allowedFunctions[name]; allowed {
+			return nil
+		}
 		return &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
-	return nil
+	if _, ok := grammarCatalogFunctionName(call); ok {
+		return nil
+	}
+	return &query.Rejection{Reason: query.RejectNotAllowlisted}
+}
+
+// grammarCatalogFunctionName returns the function name when call is exactly a grammar-produced `pg_catalog.<name>` call of an allow-listed function in the form the grammar records.
+func grammarCatalogFunctionName(call *nodes.FuncCall) (string, bool) {
+	if call.Funcname == nil || len(call.Funcname.Items) != 2 {
+		return "", false
+	}
+	schema, ok := call.Funcname.Items[0].(*nodes.String)
+	if !ok || schema.Str != catalogSchema {
+		return "", false
+	}
+	name, ok := call.Funcname.Items[1].(*nodes.String)
+	if !ok {
+		return "", false
+	}
+	form, rewritten := grammarCatalogFunctions[name.Str]
+	if !rewritten || nodes.CoercionForm(call.FuncFormat) != form {
+		return "", false
+	}
+	if _, allowed := allowedFunctions[name.Str]; !allowed {
+		return "", false
+	}
+	return name.Str, true
 }
 
 // allowedOperators is the operator vocabulary an approved statement may use. An operator IS a function call in disguise — `CREATE OPERATOR` binds an arbitrary function to a symbol — so `a ### b` deserves exactly the scrutiny `my_udf(a, b)` gets. Only plainly pure standard operators are listed.
