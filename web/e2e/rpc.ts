@@ -20,6 +20,11 @@ export async function fulfillConnectError(route: Route, code: ConnectErrorCode, 
   });
 }
 
+/** Answers an intercepted binary Connect unary call with an empty response message (every field unset). */
+export async function fulfillEmptyMessage(route: Route): Promise<void> {
+  await route.fulfill({ status: 200, contentType: "application/proto", body: Buffer.alloc(0) });
+}
+
 /** Makes every call to one procedure fail until the returned function restores the real server. */
 export async function failProcedure(page: Page, procedure: string, code: ConnectErrorCode): Promise<() => Promise<void>> {
   const pattern = `**/portcullis.v1.${procedure}`;

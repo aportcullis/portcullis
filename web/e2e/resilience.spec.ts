@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { signInForScenario } from "@e2e/login";
-import { failProcedure } from "@e2e/rpc";
+import { failProcedure, fulfillEmptyMessage } from "@e2e/rpc";
 
 const email = "admin@example.com";
 const password = "correct-horse-battery";
@@ -43,5 +43,26 @@ test.describe("application resilience", () => {
     await page.goto("/requests/new");
     await restore();
     await expect(page.getByText(/\/ \d+ characters/).first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
+    const row = page.getByRole("row", { name: /ReqTarget/ });
+    const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");
+    await row.getByRole("button", { name: "Policy" }).click();
+    await expect(page.getByText("simulated failure")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save policy" })).toHaveCount(0);
+    await restore();
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByLabel("Read approvals")).toBeVisible();
+    await expect(page.getByText("simulated failure")).toHaveCount(0);
+    await page.getByRole("button", { name: "Dismiss" }).click();
+
+    await page.route("**/portcullis.v1.ConnectionPolicies/Get", fulfillEmptyMessage);
+    await row.getByRole("button", { name: "Policy" }).click();
+    await expect(page.getByText("The server returned no policy for this connection.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save policy" })).toHaveCount(0);
+    await page.unroute("**/portcullis.v1.ConnectionPolicies/Get", fulfillEmptyMessage);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByRole("button", { name: "Save policy" })).toBeVisible();
   });
 });

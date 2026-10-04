@@ -6,6 +6,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { errorMessage } from "@/entities/connection/store";
 import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import { conflictMessage } from "@/features/connection/policyConflict";
+import { requireReturnedPolicy } from "@/features/connection/policyRead";
 import { rebasePolicy } from "@/features/connection/policyRebase";
 import type { PolicyDraft, StatementClassKey } from "@/features/connection/policyDraft";
 import {
@@ -32,11 +33,11 @@ export const EditPolicyPanel: Component<{
   const [draft, setDraft] = createSignal<PolicyDraft>();
   const [saving, setSaving] = createSignal(false);
 
+  // A response without a policy is a failed read, so the panel shows its error and Retry rather than an empty body.
   const policyRead = createOpenFetch(
-    () => policiesClient.get({ connectionId: props.target?.id ?? "" }),
-    (res) => {
-      if (!res.policy) return;
-      const current = fromPolicy(res.policy);
+    async () => requireReturnedPolicy(await policiesClient.get({ connectionId: props.target?.id ?? "" })),
+    (policy) => {
+      const current = fromPolicy(policy);
       setOpenedFrom(current);
       setDraft({
         ...current,
@@ -79,8 +80,8 @@ export const EditPolicyPanel: Component<{
     setDraft((current) => (current ? { ...current, [key]: { ...current[key], ...patch } } : current));
   };
 
-  const submit = async (e: SubmitEvent) => {
-    e.preventDefault();
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault();
     const edited = draft();
     const base = openedFrom();
     const target = props.target;
@@ -116,8 +117,8 @@ export const EditPolicyPanel: Component<{
       return;
     }
     // The policy moved under us. The admin's edits must not be wiped by the other admin's values — but re-sending this draft whole would wipe THEIRS, because an update is a full replacement (ADR-0015). So read the current version and merge.
-    const refreshed = await policyRead.runInSession(() =>
-      policiesClient.get({ connectionId: target.id }),
+    const refreshed = await policyRead.runInSession(async () =>
+      requireReturnedPolicy(await policiesClient.get({ connectionId: target.id })),
     );
     if (refreshed.status === "superseded") return;
     if (refreshed.status === "failed") {
@@ -125,8 +126,7 @@ export const EditPolicyPanel: Component<{
       policyRead.setError(conflictMessage({ status: "stale", reason: errorMessage(refreshed.error) }));
       return;
     }
-    if (!refreshed.value.policy) return;
-    const fresh = fromPolicy(refreshed.value.policy);
+    const fresh = fromPolicy(refreshed.value);
     // Three-way merge against the version this form was opened on: fields only I touched stay mine, fields only they touched come across, and where we both moved the same one theirs wins and is named in the message.
     const { merged, conflicts } = rebasePolicy(base, edited, fresh);
     setOpenedFrom(fresh);
@@ -148,7 +148,18 @@ export const EditPolicyPanel: Component<{
           </p>
         </header>
         <Show when={policyRead.loading()}>
-          <p class="text-sm text-muted-foreground">Loading policy…</p>
+          <p role="status" class="text-sm text-muted-foreground">Loading policy…</p>
+        </Show>
+        {/* Without a draft there is no form to carry the error, so a failed initial read reports here with its own retry. */}
+        <Show when={!draft() && !policyRead.loading() && policyRead.error() !== ""}>
+          <Alert variant="destructive">
+            <AlertDescription class="flex items-center justify-between gap-3">
+              <span>{policyRead.error()}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => policyRead.handleOpenChange(true)}>
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
         </Show>
         <Show when={draft()}>
           {(form) => (
@@ -162,7 +173,7 @@ export const EditPolicyPanel: Component<{
                         <input
                           type="checkbox"
                           checked={form()[cls.key].allowed}
-                          onChange={(e) => patchRule(cls.key, { allowed: e.currentTarget.checked })}
+                          onChange={(event) => patchRule(cls.key, { allowed: event.currentTarget.checked })}
                         />
                         Allow {cls.label}
                       </label>
@@ -176,8 +187,8 @@ export const EditPolicyPanel: Component<{
                           min="0"
                           max="100"
                           value={form()[cls.key].requiredApprovals}
-                          onInput={(e) =>
-                            patchRule(cls.key, { requiredApprovals: e.currentTarget.valueAsNumber })
+                          onInput={(event) =>
+                            patchRule(cls.key, { requiredApprovals: event.currentTarget.valueAsNumber })
                           }
                         />
                       </TextField>
@@ -195,9 +206,9 @@ export const EditPolicyPanel: Component<{
                     min="1"
                     max="300"
                     value={form().queryTimeoutSeconds}
-                    onInput={(e) =>
+                    onInput={(event) =>
                       setDraft((cur) =>
-                        cur ? { ...cur, queryTimeoutSeconds: e.currentTarget.valueAsNumber } : cur,
+                        cur ? { ...cur, queryTimeoutSeconds: event.currentTarget.valueAsNumber } : cur,
                       )
                     }
                   />
@@ -210,8 +221,8 @@ export const EditPolicyPanel: Component<{
                     min="1"
                     max="10000"
                     value={form().maxRows}
-                    onInput={(e) =>
-                      setDraft((cur) => (cur ? { ...cur, maxRows: e.currentTarget.valueAsNumber } : cur))
+                    onInput={(event) =>
+                      setDraft((cur) => (cur ? { ...cur, maxRows: event.currentTarget.valueAsNumber } : cur))
                     }
                   />
                 </TextField>
@@ -223,8 +234,8 @@ export const EditPolicyPanel: Component<{
                     min="1"
                     max="64"
                     value={Number(form().maxResultBytes / 1048576n)}
-                    onInput={(e) => {
-                      const mib = e.currentTarget.valueAsNumber;
+                    onInput={(event) => {
+                      const mib = event.currentTarget.valueAsNumber;
                       setDraft((cur) =>
                         cur && Number.isInteger(mib)
                           ? { ...cur, maxResultBytes: BigInt(mib) * 1048576n }
