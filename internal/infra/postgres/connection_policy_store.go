@@ -55,13 +55,17 @@ func (s *ConnectionPolicyStore) UpdatePolicy(ctx context.Context, next connectio
 	}
 	stored := next
 	err = s.conns.withTx(ctx, func(q *db.Queries) error {
-		if _, err := q.BumpConnectionPolicyVersion(ctx, db.BumpConnectionPolicyVersionParams{
+		bumped, err := q.BumpConnectionPolicyVersion(ctx, db.BumpConnectionPolicyVersionParams{
 			ID:              cid,
 			OrganizationID:  oid,
 			ExpectedVersion: expectedVersion,
-		}); err != nil {
+		})
+		if err != nil {
 			return s.missingArchivedOrPolicyConflict(ctx, q, cid, oid, err)
 		}
+		// The pointer the bump just wrote is the only source of the new version number; the caller's Version is ignored so the snapshot and the pointer cannot disagree.
+		params.Version = bumped.CurrentPolicyVersion
+		stored.Version = bumped.CurrentPolicyVersion
 		// The bump above is this transaction's wait: it UPDATEs the connection row, so it parks behind any request write holding it FOR SHARE. The instant is therefore observed HERE, after the wait, and dates EVERYTHING this transaction writes — the policy snapshot included (ADR-0009).
 		at, err := observeCascadeInstant(ctx, q, cid, oid)
 		if err != nil {

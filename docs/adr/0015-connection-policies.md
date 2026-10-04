@@ -90,6 +90,7 @@ One transaction:
 
 1. `UPDATE connections SET current_policy_version = expected + 1 WHERE id = $1 AND organization_id = $2 AND archived_at IS NULL AND current_policy_version = expected RETURNING …` — zero rows disambiguates via a follow-up read into `ErrNotFound` / `ErrArchived` / `ErrPolicyConflict` (the `missingArchivedOrConflict` pattern).
 2. `INSERT` the version `expected + 1` row — the `(connection_id, version)` PK is a second structural guard, and the deferred FK validates the pointer at commit.
+   Amended 2026-10-04: the inserted and returned version is the `current_policy_version` the bump returned; the caller-supplied `Policy.Version` is ignored, so the pointer and the snapshot have one source.
 3. Audit events in the same transaction (ADR-0009).
 
 `connections.version` (the descriptor's optimistic token) and `updated_at` are **not** touched: descriptor and policy concurrency are orthogonal, and bumping the descriptor token would spuriously invalidate in-flight `ReplaceConfig` calls and reorder frontend summary application.
