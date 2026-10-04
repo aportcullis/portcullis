@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -130,7 +131,13 @@ func run() error {
 		"PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","),
 		// The browser bootstrap scenario reads the first-run setup token from this owner-only file (ADR-0052).
 		"PORTCULLIS_SETUP_TOKEN_FILE="+setupTokenFile)
-	server.Stdout, server.Stderr = os.Stdout, os.Stderr
+	// Playwright discards the harness's stdout, so the application log is also kept on disk and its tail replayed on stderr when the application exits early.
+	applicationLog, err := os.Create(applicationLogPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = applicationLog.Close() }()
+	server.Stdout, server.Stderr = io.MultiWriter(os.Stdout, applicationLog), io.MultiWriter(os.Stderr, applicationLog)
 	if err := server.Start(); err != nil {
 		return err
 	}
@@ -138,6 +145,10 @@ func run() error {
 	go func() { exited <- server.Wait() }()
 	select {
 	case err := <-exited:
+		fmt.Fprintln(os.Stderr, "browser test server: application exited early; log tail follows")
+		if tailErr := copyLogTail(os.Stderr, applicationLogPath, applicationLogTailBytes); tailErr != nil {
+			fmt.Fprintln(os.Stderr, "browser test server: application log unavailable:", tailErr)
+		}
 		if err == nil {
 			return errors.New("server exited before test shutdown")
 		}
