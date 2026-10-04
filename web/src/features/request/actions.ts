@@ -31,6 +31,11 @@ export function mayReject(request: AccessRequest, isOwner: boolean): boolean {
   return mayApprove(request, isOwner);
 }
 
+/** Returns the message to show beside the reason when a rejection cannot be sent, or an empty string when it can. */
+export function validateRejectReason(reason: string): string {
+  return reason.trim() === "" ? "Enter a reason to reject this request." : "";
+}
+
 // mayEditDraft: a draft is the only editable state, and only its owner edits it.
 export function mayEditDraft(
   request: AccessRequest,

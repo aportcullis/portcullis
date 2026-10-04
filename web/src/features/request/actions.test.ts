@@ -11,6 +11,7 @@ import {
   mayReject,
   mayReturnToSavedDraft,
   maySubmitDraft,
+  validateRejectReason,
 } from "@/features/request/actions";
 
 // Use effective state for action affordances so lazy expiry cannot leave actions enabled on expired requests.
@@ -19,12 +20,12 @@ type RequestOptions = {
   effectiveState: AccessRequestState;
 };
 
-const request = (o: RequestOptions): AccessRequest =>
+const request = (options: RequestOptions): AccessRequest =>
   create(AccessRequestSchema, {
     id: "req-1",
     version: 1n,
-    state: o.state,
-    effectiveState: o.effectiveState,
+    state: options.state,
+    effectiveState: options.effectiveState,
   });
 
 
@@ -213,5 +214,16 @@ describe("list-row actions", () => {
     expect(maySubmitDraft(draftOf(AccessRequestState.APPROVED), owner, everything)).toBe(false);
     expect(mayCancel(draftOf(AccessRequestState.CANCELLED), owner, everything)).toBe(false);
     expect(mayCancel(draftOf(AccessRequestState.EXPIRED), owner, everything)).toBe(false);
+  });
+});
+
+// The server refuses a rejection whose reason is empty after trimming whitespace (access.ErrReasonRequired), so the form says so before sending.
+describe("reject reason", () => {
+  it.each(["Out of scope for this change window", "  needs a WHERE clause  ", "🙅", "x"])("accepts the reason %j", (reason) => {
+    expect(validateRejectReason(reason)).toBe("");
+  });
+
+  it.each(["", "   ", "\n\t", "　"])("refuses the blank reason %j", (reason) => {
+    expect(validateRejectReason(reason)).toBe("Enter a reason to reject this request.");
   });
 });

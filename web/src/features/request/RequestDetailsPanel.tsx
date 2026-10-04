@@ -25,6 +25,7 @@ import {
   mayEditDraft,
   mayReject,
   maySubmitDraft,
+  validateRejectReason,
 } from "@/features/request/actions";
 import type { RequestDraft } from "@/features/request/draft";
 import { createRequestDraftFromPayload, toTypedRequestParameters, validateRequestDraft } from "@/features/request/draft";
@@ -52,6 +53,7 @@ export const RequestDetailsPanel: Component<{
 }> = (props) => {
   const [detail, setDetail] = createSignal<GetAccessRequestResponse | undefined>();
   const [reason, setReason] = createSignal("");
+  const [rejectReasonError, setRejectReasonError] = createSignal("");
   const [actionError, setActionError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
@@ -63,6 +65,7 @@ export const RequestDetailsPanel: Component<{
       setDetail(res);
       setEditing(false);
       setReason("");
+      setRejectReasonError("");
     },
     errorMessage,
   );
@@ -74,6 +77,7 @@ export const RequestDetailsPanel: Component<{
       if (id === undefined) return;
       setDetail();
       setReason("");
+      setRejectReasonError("");
       setEditing(false);
       setBusy(false);
       setActionError("");
@@ -296,11 +300,17 @@ export const RequestDetailsPanel: Component<{
                   id="decision-reason"
                   value={reason()}
                   disabled={busy()}
+                  aria-invalid={rejectReasonError() !== ""}
+                  aria-describedby={rejectReasonError() !== "" ? "decision-reason-error" : undefined}
                   onInput={(event) => {
                     requestRead.handleOpenChange(false);
+                    setRejectReasonError("");
                     setReason(truncateReasonCodePoints(event.currentTarget.value, instanceConfig()?.maxApprovalReasonChars));
                   }}
                 />
+                <Show when={rejectReasonError() !== ""}>
+                  <p id="decision-reason-error" class="text-xs text-destructive">{rejectReasonError()}</p>
+                </Show>
                 <Show when={instanceConfig()?.maxApprovalReasonChars !== undefined}>
                   <p class="text-xs text-muted-foreground">
                     {countReasonCodePoints(reason())} / {instanceConfig()?.maxApprovalReasonChars}
@@ -332,7 +342,12 @@ export const RequestDetailsPanel: Component<{
                 <Button
                   variant="destructive"
                   disabled={busy()}
-                  onClick={() => void runAndRefresh(() => rejectAccessRequest(current().id, reason()), refresh)}
+                  onClick={() => {
+                    const problem = validateRejectReason(reason());
+                    setRejectReasonError(problem);
+                    if (problem !== "") return;
+                    void runAndRefresh(() => rejectAccessRequest(current().id, reason()), refresh);
+                  }}
                 >
                   Reject
                 </Button>
