@@ -41,6 +41,7 @@ Immediately before each commit, review the staged diff for scope, correctness, d
 Commit a completed red→green, checked and reviewed concern immediately, before starting another concern. Queue incoming requests until the current commit is complete. Never carry completed uncommitted changes into the next task; an explicit stop request or destructive action takes precedence.
 
 ## Definition of done
+`make verify` builds the SPA, browser and load bundle once, then runs three groups concurrently — static checks, Go tests and browser E2E — each in its own order, printing a group's log from `.test-docker/verify/` only when it fails (ADR-0045).
 Milestone completion requires `make verify` (Go build/vet/lint/tests, web typecheck/lint/tests, load-check and browser E2E) plus `make supply-chain`, matching the functional CI gate. CI also builds and smoke-tests image packaging on native AMD64 and ARM64 runners; tagged publication requires those jobs. Every test passes before each small commit; any remaining failed non-test gate must be explicit.
 The browser harness builds the real embedded application, uses the [Testcontainers PostgreSQL module](https://golang.testcontainers.org/modules/postgres/) with its readiness strategy, and serves its dynamically assigned fixture coordinates at the loopback-only test endpoint `127.0.0.1:18081/target`. It removes its own databases and server at shutdown and refuses occupied application or fixture ports. The fixture clears inherited application configuration before supplying its disposable database and key.
 

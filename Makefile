@@ -1,4 +1,5 @@
-.PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
+.PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e e2e-browser e2e-run e2e-sweep build release run devkey test test-race lint vuln audit verify hooks tidy clean
+.PHONY: verify-prepare verify-static verify-go verify-browser
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
 .PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check generate-check proto-breaking
 
@@ -94,9 +95,19 @@ web-audit: web-install
 	pnpm -C web audit
 
 
-e2e: web
-	pnpm -C web exec playwright install --with-deps chromium
+e2e: web e2e-browser
 	pnpm -C web e2e
+
+e2e-browser:
+	pnpm -C web exec playwright install --with-deps chromium
+
+# Run the browser suite against an already built SPA, removing any harness containers a killed run left behind (ADR-0045).
+e2e-run:
+	@$(MAKE) --no-print-directory e2e-sweep
+	pnpm -C web e2e; status=$$?; $(MAKE) --no-print-directory e2e-sweep; exit $$status
+
+e2e-sweep:
+	@docker ps -aq --filter label=portcullis.test=browser | xargs docker rm -f >/dev/null 2>&1 || true
 
 
 build:
@@ -155,23 +166,47 @@ clean-check:
 release-check:
 	bash tests/release/tags.sh
 
-verify:
-	$(MAKE) release-check
-	$(MAKE) dockerfile-check
-	$(MAKE) ignore-check
-	$(MAKE) clean-check
-	$(MAKE) generate-check
-	$(MAKE) proto-breaking
-	$(MAKE) changelog-check
+# Build the shared SPA, browser and load bundle once, then run the static, Go test and browser groups concurrently; each group runs its own steps in order and keeps its output in .test-docker/verify (ADR-0045).
+VERIFY_LOG_DIR := .test-docker/verify
+
+verify: verify-prepare
+	@mkdir -p $(VERIFY_LOG_DIR)
+	@$(MAKE) --no-print-directory -j3 verify-group-static verify-group-go verify-group-browser
+
+verify-prepare: web e2e-browser load-bundle
+
+verify-static:
+	$(MAKE) -j1 release-check
+	$(MAKE) -j1 dockerfile-check
+	$(MAKE) -j1 ignore-check
+	$(MAKE) -j1 clean-check
+	$(MAKE) -j1 generate-check
+	$(MAKE) -j1 proto-breaking
+	$(MAKE) -j1 changelog-check
 	go build ./...
 	go vet ./...
-	$(MAKE) lint
-	$(MAKE) web-typecheck
-	$(MAKE) web-lint
-	$(MAKE) web-test
-	$(MAKE) load-check
-	$(MAKE) test
-	$(MAKE) e2e
+	$(MAKE) -j1 lint
+	$(MAKE) -j1 web-typecheck
+	$(MAKE) -j1 web-lint
+	$(MAKE) -j1 web-test
+	$(MAKE) -j1 load-check
+
+verify-go:
+	$(MAKE) -j1 test
+
+verify-browser:
+	$(MAKE) -j1 e2e-run
+
+# Print a group's log only when it fails, so concurrent groups never interleave on the terminal.
+verify-group-%:
+	@start=$$(date +%s); \
+	if $(MAKE) --no-print-directory -j1 verify-$* > $(VERIFY_LOG_DIR)/$*.log 2>&1; then \
+		echo "verify-$* passed in $$(( $$(date +%s) - start ))s"; \
+	else \
+		echo "verify-$* FAILED; full log in $(VERIFY_LOG_DIR)/$*.log" >&2; \
+		tail -n 200 $(VERIFY_LOG_DIR)/$*.log >&2; \
+		exit 1; \
+	fi
 
 
 hooks:
