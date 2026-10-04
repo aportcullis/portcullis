@@ -220,6 +220,27 @@ test.describe("application resilience", () => {
     await expect(page.getByRole("row", { name: /Row state check/ })).toBeVisible();
   });
 
+  test("closing an inline panel returns focus to the control that opened it", async ({ page }) => {
+    const policyButton = page.getByRole("row", { name: /ReqTarget/ }).getByRole("button", { name: "Policy" });
+    await policyButton.click();
+    // The policy form renders after its read resolves; the panel then focuses its first field.
+    await expect(page.getByRole("checkbox", { name: "Allow Read" })).toBeFocused();
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await expect(policyButton).toBeFocused();
+
+    await policyButton.click();
+    await expect(page.getByRole("button", { name: "Save policy" })).toBeVisible();
+    await page.getByRole("button", { name: "Save policy" }).click();
+    await expect(page.getByRole("button", { name: "Save policy" })).toHaveCount(0);
+    await expect(policyButton).toBeFocused();
+
+    const newConnection = page.getByRole("button", { name: "New connection" });
+    await newConnection.click();
+    await expect(page.getByLabel("Display name")).toBeFocused();
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await expect(newConnection).toBeFocused();
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");

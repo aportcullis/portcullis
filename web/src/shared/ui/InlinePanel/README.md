@@ -1,6 +1,6 @@
 # InlinePanel
 
-Use an inline region for routine composition with open, label and onClose props. Opening scrolls into view and focuses the first enabled field, or the section when no field exists. Dismiss calls the supplied callback. It does not trap focus or restore focus automatically; callers own lifecycle and return focus.
+Use an inline region for routine composition with open, label and onClose props. Opening scrolls into view and focuses the first enabled field, or the section when no field exists. Dismiss calls the supplied callback. Closing, by Dismiss or by the caller after a save, returns focus to the element that was focused when the panel opened, provided the panel still held focus and that element is still in the document. It does not trap focus; callers own the open state.
 
 ## Use
 
