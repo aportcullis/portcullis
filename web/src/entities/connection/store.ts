@@ -62,12 +62,14 @@ const store = createRoot(() => {
         void loadConnections();
         return;
       }
-      setConnections((current) =>
-        res.connections.map((summary) => {
-          const local = current.find((connection) => connection.id === summary.id);
+      setConnections((current) => {
+        // One pass to index the held rows, one to merge: a lookup per snapshot row instead of a scan.
+        const heldById = new Map(current.map((connection) => [connection.id, connection]));
+        return res.connections.map((summary) => {
+          const local = heldById.get(summary.id);
           return local && local.version > summary.version ? local : summary;
-        }),
-      );
+        });
+      });
       setListError("");
       setListState("ready");
     } catch (err) {
