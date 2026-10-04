@@ -6,6 +6,39 @@ import { failProcedure, fulfillEmptyMessage } from "@e2e/rpc";
 const email = "admin@example.com";
 const password = "correct-horse-battery";
 
+test.describe("sign-in return path", () => {
+  test("a deep link survives the sign-in redirect", async ({ page }) => {
+    for (const [deepLink, landing] of [
+      ["/requests/new", /\/requests\/new$/],
+      ["/requests?from=link#top", /\/requests\?from=link#top$/],
+      ["/no-such-page", /\/no-such-page$/],
+    ] as const) {
+      await page.context().clearCookies();
+      await page.goto(deepLink);
+      await expect(page).toHaveURL(/\/login\?returnTo=/);
+      await signInForScenario(page, email, password, landing);
+    }
+  });
+
+  test("a crafted return path never leaves the application", async ({ page, baseURL }) => {
+    const applicationHost = new URL(baseURL ?? "http://127.0.0.1:18080").host;
+    for (const crafted of ["//evil.example/requests", "/\\evil.example/requests", "https://evil.example/", "javascript:alert(1)", "/\t/evil.example/requests", "/login?returnTo=%2Frequests"]) {
+      await page.context().clearCookies();
+      await page.goto(`/login?returnTo=${encodeURIComponent(crafted)}`);
+      await signInForScenario(page, email, password);
+      expect(new URL(page.url()).host).toBe(applicationHost);
+    }
+  });
+
+  test("an explicit sign-out does not carry the page that was open", async ({ page }) => {
+    await page.goto("/login");
+    await signInForScenario(page, email, password);
+    await page.goto("/requests");
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+});
+
 test.describe("application resilience", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");

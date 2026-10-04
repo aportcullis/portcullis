@@ -9,9 +9,12 @@ import { retryOnThrottle } from "@/shared/api/retry";
 // SessionState distinguishes pending authentication, invalid sessions, and server outages. Permissions and role labels are advisory UI data.
 export type SessionState =
   | { status: "loading" }
-  | { status: "anonymous" }
+  | { status: "anonymous"; cause: AnonymousCause }
   | { status: "unreachable" }
   | { status: "authenticated"; user: User; permissions: readonly string[]; roleName: string };
+
+// AnonymousCause separates an explicit sign-out from finding no valid session, so only the latter offers to continue where the caller was.
+export type AnonymousCause = "signed-out" | "no-session";
 
 // PermissionKey is the UI-known subset of the server's seeded permission catalog (migration 0002, ADR-0008). A union — like TlsMode and EnvironmentValue in the connection entity — so a typo'd key at a can() call site fails to compile instead of silently hiding an affordance forever. Extend as new sections (requests, audit, …) reach the UI.
 export type PermissionKey =
@@ -56,11 +59,11 @@ const store = createRoot(() => {
       setSession(
         user
           ? { status: "authenticated", user, permissions: res.permissions, roleName: res.roleName }
-          : { status: "anonymous" },
+          : { status: "anonymous", cause: "no-session" },
       );
     } catch (err) {
       if (seq !== latest) return;
-      setSession(isAuthRejection(err) ? { status: "anonymous" } : { status: "unreachable" });
+      setSession(isAuthRejection(err) ? { status: "anonymous", cause: "no-session" } : { status: "unreachable" });
     }
   }
 
@@ -89,13 +92,13 @@ const store = createRoot(() => {
       }
     }
     if (seq !== latest) return;
-    setSession({ status: "anonymous" });
+    setSession({ status: "anonymous", cause: "signed-out" });
   }
 
   // can reports whether the signed-in user holds a permission key. UI affordance gating only: hiding a button is UX, the server still returns the uniform permission-denied when an RPC is attempted (ADR-0008).
   function hasPermission(permission: PermissionKey): boolean {
-    const s = session();
-    return s.status === "authenticated" && s.permissions.includes(permission);
+    const principal = session();
+    return principal.status === "authenticated" && principal.permissions.includes(permission);
   }
 
   return { session, load, login, logout, hasPermission };

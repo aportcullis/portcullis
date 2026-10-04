@@ -71,7 +71,8 @@ test.describe.serial("auth vertical", () => {
 
     await page.context().clearCookies({ name: "__Host-portcullis_csrf" });
     await page.reload();
-    await expect(page).toHaveURL(/\/login$/);
+    // The invalid session was found, not signed out, so sign-in offers to continue on the page that was open.
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Fconnections$/);
     await expect(page.getByText("temporarily unreachable")).toHaveCount(0);
   });
 

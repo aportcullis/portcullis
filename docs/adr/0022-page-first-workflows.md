@@ -30,6 +30,8 @@ A route never renders a blank document. Unknown addresses inside the authenticat
 
 Solid's resource accessor rethrows its fetch error, and a boundary does not catch errors thrown from event handlers, so a failed instance-config read previously broke request pages and turned Save/Submit into silent no-ops. Optional consumers of the instance limits (title/body/reason counters and client-side length checks) read them through a guarded accessor that yields "unknown" on failure; the server still enforces every limit. The authenticated shell retries a failed config read in the background so the limits return without a reload. The login and bootstrap pages keep their explicit retry card because routing there depends on the config.
 
+A direct link that finds no valid session redirects to `/login?returnTo=<path>` and continues at that path after sign-in; an explicit sign-out starts fresh at `/login`. The return path is attacker-controllable, so it is accepted only as a same-origin relative path: a single leading `/` not followed by `/` or `\`, no ASCII control characters or spaces (which URL parsers strip into a host reference), the same origin after URL parsing, and never `/login` or `/bootstrap`. Anything else falls back to the start page, and only the parsed path, query and fragment are navigated to. The return path is navigation only and grants nothing.
+
 ## Consequences
 
 Replace request overlays first, then apply the same rule to remaining routine connection and policy flows. Update browser scenarios and actual README captures alongside their screen changes. URL state is navigation only, never authorization. The known native-download gate remains enabled.
@@ -38,4 +40,5 @@ Replace request overlays first, then apply the same rule to remaining routine co
 
 - [Solid ErrorBoundary](https://docs.solidjs.com/reference/components/error-boundary): catches render and reactive-update errors, not event-handler errors; the fallback receives a reset function.
 - [Solid Router catch-all routes](https://docs.solidjs.com/solid-router/concepts/catch-all): a `*404` route at the end of the route list renders unmatched paths.
+- [OWASP Unvalidated Redirects and Forwards Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html): validate redirect targets against an allow-list rather than trusting user input; here the allow-list is "a path on this origin".
 - [solid-js `createResource` source](https://github.com/solidjs/solid/blob/main/packages/solid/src/reactive/signal.ts): `read()` throws the stored error while the resource is errored.

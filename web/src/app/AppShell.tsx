@@ -4,7 +4,7 @@ import { For, Match, Show, Switch, createEffect, onCleanup } from "solid-js";
 import type { RouteSectionProps } from "@solidjs/router";
 import { Navigate, useLocation } from "@solidjs/router";
 
-import { visibleSections } from "@/app/navigation";
+import { signInRedirectFor, visibleSections } from "@/app/navigation";
 import { createPendingRequests } from "@/app/pendingRequests";
 import { configRetryDelayMs, loginConfig, refetchLoginConfig } from "@/entities/instance/config";
 import { UnreachableCard } from "@/entities/session/UnreachableCard";
@@ -25,14 +25,18 @@ const AppShell: Component<RouteSectionProps> = (props) => {
     const timer = setTimeout(() => void refetchLoginConfig(), configRetryDelayMs);
     onCleanup(() => clearTimeout(timer));
   });
+  const anonymousCause = () => {
+    const current = session();
+    return current.status === "anonymous" ? current.cause : undefined;
+  };
   const currentUser = () => {
     const current = session();
     return current.status === "authenticated" ? current.user : undefined;
   };
   return (
     <Switch>
-      <Match when={session().status === "anonymous"}>
-        <Navigate href="/login" />
+      <Match when={anonymousCause()}>
+        {(cause) => <Navigate href={signInRedirectFor(cause(), location)} />}
       </Match>
       <Match when={session().status === "unreachable"}>
         <UnreachableCard />

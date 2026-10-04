@@ -1,4 +1,5 @@
-import type { PermissionKey } from "@/entities/session/store";
+import type { AnonymousCause, PermissionKey } from "@/entities/session/store";
+import { buildLoginHref } from "@/shared/lib/returnPath";
 
 // A page is reachable when any capability it offers is held. Navigation is an affordance; the server authorizes each RPC (ADR-0008).
 export type Section = { href: string; label: string; capabilities: PermissionKey[] };
@@ -15,7 +16,12 @@ export type PermissionCheck = (permission: PermissionKey) => boolean;
 
 // visibleSections returns the sections the caller can open at all.
 export function visibleSections(hasPermission: PermissionCheck): Section[] {
-  return sections.filter((s) => s.capabilities.some(hasPermission));
+  return sections.filter((section) => section.capabilities.some(hasPermission));
+}
+
+/** Picks the sign-in address for an anonymous caller: an explicit sign-out starts fresh, while a missing session offers to continue at the current location. */
+export function signInRedirectFor(cause: AnonymousCause, location: { pathname: string; search: string; hash: string }): string {
+  return cause === "signed-out" ? "/login" : buildLoginHref(location);
 }
 
 // landingFor picks where "/" goes: the first section the caller can actually open. Falling back to /requests when nothing is open keeps the old behaviour for a permissionless account — the page itself explains the emptiness rather than the router bouncing between denied routes.
