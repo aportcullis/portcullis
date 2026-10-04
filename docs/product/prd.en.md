@@ -679,6 +679,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
     Apply any lower connection-policy limit first (new policies default to 16MiB, ADR-0015/0021).
     Separate pre-decode cell/row memory admission can truncate wide NULL results earlier even when value payloads are small (ADR-0021).
   - Default global storage 512MiB with expiry/LRU, per-user 64MiB and eviction/rejection order in ADR-0011; display expiry/eviction.
+  - Admission is serialized per organization and the global cap counts that organization's results (the whole install in single-org deployments); expiry purge skips rows in use, amended 2026-10-04, ADR-0011.
   - Original-order pages/CSV decrypt only required chunks; stream CSV without loading the whole snapshot.
   - Type-aware sorting (ADR-0033): preserve original query order initially; selected columns sort the complete cached snapshot using declared logical types. Keep exact numeric precision, compare canonical temporals chronologically, retain stable ties and NULL-last ordering in either direction. Unsupported temporal text follows typed values as a deterministic fallback. Show column/direction, allow restoring original order, and disclose that CSV exports original snapshot order.
   - Sort/filter through bounded server workers, not PostgreSQL ciphertext queries; decrypt at most 25MiB temporarily and return the requested page.

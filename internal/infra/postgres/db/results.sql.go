@@ -104,28 +104,12 @@ func (q *Queries) GetResultSet(ctx context.Context, arg GetResultSetParams) (Res
 	return i, err
 }
 
-const insertResultChunk = `-- name: InsertResultChunk :exec
-insert into result_cache.result_chunks(result_id,organization_id,chunk_index,nonce,ciphertext)
-values($1,$2,$3,$4,$5)
-`
-
-type InsertResultChunkParams struct {
+type InsertResultChunksParams struct {
 	ResultID       pgtype.UUID
 	OrganizationID pgtype.UUID
 	ChunkIndex     int32
 	Nonce          []byte
 	Ciphertext     []byte
-}
-
-func (q *Queries) InsertResultChunk(ctx context.Context, arg InsertResultChunkParams) error {
-	_, err := q.db.Exec(ctx, insertResultChunk,
-		arg.ResultID,
-		arg.OrganizationID,
-		arg.ChunkIndex,
-		arg.Nonce,
-		arg.Ciphertext,
-	)
-	return err
 }
 
 const insertResultSet = `-- name: InsertResultSet :exec
@@ -165,9 +149,10 @@ func (q *Queries) InsertResultSet(ctx context.Context, arg InsertResultSetParams
 
 const listResultAccounting = `-- name: ListResultAccounting :many
 select id, organization_id, owner_user_id, row_count, byte_size, truncated, created_at, expires_at, last_accessed_at, key_version, wrapped_dek from result_cache.result_sets where organization_id=$1
-order by last_accessed_at,id for update
+order by last_accessed_at,id
 `
 
+// Read under the organization's admission lock; reads and last-access touches are not blocked, and deletes of rows a purge already removed are no-ops.
 func (q *Queries) ListResultAccounting(ctx context.Context, organizationID pgtype.UUID) ([]ResultCacheResultSet, error) {
 	rows, err := q.db.Query(ctx, listResultAccounting, organizationID)
 	if err != nil {
@@ -200,12 +185,52 @@ func (q *Queries) ListResultAccounting(ctx context.Context, organizationID pgtyp
 	return items, nil
 }
 
-const lockResultAdmission = `-- name: LockResultAdmission :exec
-select pg_catalog.pg_advisory_xact_lock(78102216)
+const lockExpiredResults = `-- name: LockExpiredResults :many
+select id from result_cache.result_sets
+where organization_id=$1 and expires_at<=clock_timestamp()
+order by expires_at
+limit $2::int4
+for update skip locked
 `
 
-func (q *Queries) LockResultAdmission(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockResultAdmission)
+type LockExpiredResultsParams struct {
+	OrganizationID pgtype.UUID
+	BatchSize      int32
+}
+
+// Purge only expired rows through result_sets_expiry_idx, skipping rows another transaction holds instead of waiting on them.
+func (q *Queries) LockExpiredResults(ctx context.Context, arg LockExpiredResultsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockExpiredResults, arg.OrganizationID, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockResultAdmission = `-- name: LockResultAdmission :exec
+select pg_catalog.pg_advisory_xact_lock($1::int4, $2::int4)
+`
+
+type LockResultAdmissionParams struct {
+	LockClass  int32
+	LockObject int32
+}
+
+// Serialize admissions per organization with the registered lock class (const.go); other organizations admit concurrently (ADR-0011).
+func (q *Queries) LockResultAdmission(ctx context.Context, arg LockResultAdmissionParams) error {
+	_, err := q.db.Exec(ctx, lockResultAdmission, arg.LockClass, arg.LockObject)
 	return err
 }
 

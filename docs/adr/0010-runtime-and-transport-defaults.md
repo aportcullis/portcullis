@@ -120,7 +120,7 @@ Ordered, each step fail-fast; any failure exits **1** (the only non-zero exit co
 - Migrations: embedded `migrations/*.sql`, applied in **lexical filename order**, each file in its own transaction, recorded in `public.schema_migrations(version text primary key, applied_at timestamptz not null default now())` (`version` = filename minus `.sql`).
   The whole run is serialized by a **session-level advisory lock held on one dedicated connection**; that session first `DISCARD TEMP`, then pins `search_path = public` (`pg_catalog` remains implicitly first) rather than inheriting a role/DSN setting; role preflight/postflight per ADR-0009.
   Amended 2026-10-04: the lock is polled for a bounded wait (default **2m**), each file runs with `SET LOCAL lock_timeout` **5s** (retried up to five times) and `statement_timeout` **15m**, and `schema_migrations.checksum` (0019) lets the runner refuse edited released files and unknown versions (ADR-0009).
-- Advisory-lock keyspace (first arg of the two-arg `pg_advisory_*` family; second arg = object id, 0 when global): class **1** = bootstrap (global), **2** = per-user session rotation, **3** = migration (global).
+- Advisory-lock keyspace (first arg of the two-arg `pg_advisory_*` family; second arg = object id, 0 when global): class **1** = bootstrap (global), **2** = per-user session rotation, **3** = migration (global), **4** = per-organization result admission (added 2026-10-04, ADR-0011; replaces the single-key global lock `78102216`).
   New classes are appended here, never reused.
 
 ### Metadata connection pool (added 2026-10-04)

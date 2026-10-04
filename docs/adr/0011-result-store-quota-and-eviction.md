@@ -26,6 +26,12 @@ Reject invalid or individually oversized incoming snapshots before accounting. F
    Expiry is unconditional, but live evictions are only a plan until admission is proven possible. On refusal, discard all planned live evictions: do not delete live ciphertext or emit live-eviction events. If admission is possible, apply the planned live evictions and insert the new snapshot atomically under the existing transaction-scoped advisory lock. This replaces the original eviction-then-reject policy: a failed incoming write must not destroy useful live results without gaining a replacement.
 5. Every eviction of a non-expired snapshot leaves an audit event (`RESULT_EVICTED`, actor `system:result-store`, metadata: cause `user_quota|global_cap`).
 
+**Concurrency (amended 2026-10-04):** admission is serialized **per organization** by a two-key transaction advisory lock (class 4 in the ADR-0010 keyspace, object = hash of the organization id) instead of one install-wide key, so organizations admit concurrently; the "global" cap is accounted over the organization's rows, which in the single-org MVP is the whole install.
+The accounting read no longer takes `FOR UPDATE` on every result row, so readers and last-access touches are not blocked by an admission; a planned delete of a row a purge already removed is a no-op.
+Chunks are written with one `COPY` instead of one round trip each while the lock is held.
+TTL purge takes no admission lock: it selects expired rows through `result_sets_expiry_idx` with `FOR UPDATE SKIP LOCKED` in bounded batches and leaves rows another transaction holds to a later pass.
+Admission semantics are unchanged: planned live evictions are applied, with their audit events, only when admission succeeds.
+
 `last_accessed_at` updates are throttled to once per minute per snapshot (same rationale as the session idle-slide throttle, ADR-0006 Parameters).
 
 ### Metadata integrity (amended 2026-10-04)
@@ -46,3 +52,5 @@ Reject invalid or individually oversized incoming snapshots before accounting. F
 - Per-table autovacuum storage parameters: https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS
 
 - PostgreSQL advisory locks (checked 2026-10-03): https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS
+- PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` (checked 2026-10-04): https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE
+- pgx `CopyFrom` for bulk inserts (checked 2026-10-04): https://pkg.go.dev/github.com/jackc/pgx/v5#Conn.CopyFrom

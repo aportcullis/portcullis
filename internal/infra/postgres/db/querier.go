@@ -80,7 +80,7 @@ type Querier interface {
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
 	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
-	InsertResultChunk(ctx context.Context, arg InsertResultChunkParams) error
+	InsertResultChunks(ctx context.Context, arg []InsertResultChunksParams) (int64, error)
 	InsertResultSet(ctx context.Context, arg InsertResultSetParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
 	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
@@ -101,6 +101,7 @@ type Querier interface {
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// Return active target summaries under requests.create without connection-admin permissions (ADR-0008).
 	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
+	// Read under the organization's admission lock; reads and last-access touches are not blocked, and deletes of rows a purge already removed are no-ops.
 	ListResultAccounting(ctx context.Context, organizationID pgtype.UUID) ([]ResultCacheResultSet, error)
 	// Reconciliation skips a request that a completing owner or another replica holds instead of waiting behind it.
 	LockAccessRequestSkipLocked(ctx context.Context, arg LockAccessRequestSkipLockedParams) (AccessRequest, error)
@@ -111,10 +112,13 @@ type Querier interface {
 	LockConnectionForRequest(ctx context.Context, arg LockConnectionForRequestParams) (LockConnectionForRequestRow, error)
 	// Lock before observing time so mutation timestamps follow lock waits. Updates retain their own archive predicates for precise refusal reasons.
 	LockConnectionForWrite(ctx context.Context, arg LockConnectionForWriteParams) (pgtype.UUID, error)
+	// Purge only expired rows through result_sets_expiry_idx, skipping rows another transaction holds instead of waiting on them.
+	LockExpiredResults(ctx context.Context, arg LockExpiredResultsParams) ([]pgtype.UUID, error)
 	// The config-replacement cascade's half of LockSweptRequestsForConnection: it touches pending/approved only, so it locks only those. Drafts survive a config change — the connection is still there and a draft carries no approval, so it can simply be submitted against the new configuration (unlike archive, which takes the connection away entirely).
 	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
 	LockQueryExecution(ctx context.Context, arg LockQueryExecutionParams) (QueryExecution, error)
-	LockResultAdmission(ctx context.Context) error
+	// Serialize admissions per organization with the registered lock class (const.go); other organizations admit concurrently (ADR-0011).
+	LockResultAdmission(ctx context.Context, arg LockResultAdmissionParams) error
 	LockRotationCredentials(ctx context.Context, arg LockRotationCredentialsParams) ([]LockRotationCredentialsRow, error)
 	LockRotationPayloads(ctx context.Context, arg LockRotationPayloadsParams) ([]LockRotationPayloadsRow, error)
 	LockRotationResultKeys(ctx context.Context, arg LockRotationResultKeysParams) ([]LockRotationResultKeysRow, error)

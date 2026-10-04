@@ -34,9 +34,14 @@ func NewIdentityStore(pool *pgxpool.Pool) *IdentityStore {
 
 // userLockObject hashes a user id into the int32 object space for a per-user advisory lock; a collision only over-serializes two users' logins, which is harmless (the lock guards correctness, not exclusivity of access).
 func userLockObject(user identity.UserID) int32 {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(user))
-	return int32(h.Sum32())
+	return advisoryLockObject(string(user))
+}
+
+// advisoryLockObject hashes an identifier into the int32 object space of a two-key advisory lock; a collision only over-serializes two objects.
+func advisoryLockObject(identifier string) int32 {
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(identifier))
+	return int32(hash.Sum32()) //nolint:gosec // wraparound is the intended int32 projection of the hash
 }
 
 // withLockedTx runs fn in a transaction holding the (class, object) advisory lock, committing on success and rolling back on error. It centralizes the tx + advisory-lock lifecycle so BootstrapAdmin and RotateSession can't drift apart.

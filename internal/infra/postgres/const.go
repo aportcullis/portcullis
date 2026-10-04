@@ -7,6 +7,14 @@ const (
 	lockClassBootstrap int32 = 1 // first-run bootstrap (one global lock, object 0)
 	lockClassSession   int32 = 2 // per-user session rotation
 	lockClassMigrate   int32 = 3 // schema migration (one global lock, object 0)
+	// lockClassResultAdmission serializes result admission per organization (object = organization hash).
+	lockClassResultAdmission int32 = 4
+)
+
+// Result-cache bounds: chunk 0 holds the schema and chunks 1..100 hold up to 10,000 rows (ADR-0011); purge deletes expired rows in bounded batches.
+const (
+	maxResultChunkIndex  = 100
+	resultPurgeBatchSize = 500
 )
 
 // Migration bounds (ADR-0009): the migration-lock wait is separate from the startup budget, and each migration transaction bounds its lock waits and statements, retrying a lock timeout a few times.

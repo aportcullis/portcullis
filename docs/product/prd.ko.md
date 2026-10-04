@@ -645,6 +645,7 @@ audit_events
     디코드 전에 셀·행 구조체 메모리를 별도로 제한하므로 값 바이트가 작은 넓은 NULL 결과도 더 일찍 truncate될 수 있다(ADR-0021).
   - 전체 result store 상한은 기본 512MiB이며 LRU로 만료.
     사용자별 quota(기본 64MiB)와 축출 계획→수용 가능 시 원자적 적용·불가 시 유효 결과를 보존하는 거부 정책은 ADR-0011로 확정.
+  - 수용은 organization별로 직렬화하고 전체 상한은 해당 organization의 결과로 계산한다(단일 org 배포에서는 설치 전체). 만료 purge는 사용 중인 row를 건너뛴다(2026-10-04 개정, ADR-0011).
     TTL 만료·상한 축출 시 UI에 만료 상태 표시.
   - 원래 순서의 페이지 조회와 CSV는 필요한 chunk만 순차 복호화한다.
     CSV는 전체 snapshot을 메모리에 올리지 않고 stream한다.

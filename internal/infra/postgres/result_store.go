@@ -33,9 +33,16 @@ func (s *ResultStore) Put(ctx context.Context, result query.SealedResult) error 
 	if err != nil {
 		return err
 	}
+	chunks := make([]db.InsertResultChunksParams, 0, len(result.Chunks))
+	for _, chunk := range result.Chunks {
+		if chunk.Index < 0 || chunk.Index > maxResultChunkIndex {
+			return query.ErrResultUnavailable
+		}
+		chunks = append(chunks, db.InsertResultChunksParams{ResultID: id, OrganizationID: org, ChunkIndex: int32(chunk.Index), Nonce: chunk.Nonce, Ciphertext: chunk.Ciphertext}) //nolint:gosec // bounded by maxResultChunkIndex above
+	}
 	var refused error
 	err = s.connections.withTx(ctx, func(q *db.Queries) error {
-		if err := q.LockResultAdmission(ctx); err != nil {
+		if err := q.LockResultAdmission(ctx, db.LockResultAdmissionParams{LockClass: lockClassResultAdmission, LockObject: organizationLockObject(m.OrganizationID)}); err != nil {
 			return err
 		}
 		rows, err := q.ListResultAccounting(ctx, org)
@@ -74,15 +81,9 @@ func (s *ResultStore) Put(ctx context.Context, result query.SealedResult) error 
 		if err := q.InsertResultSet(ctx, db.InsertResultSetParams{ID: id, OrganizationID: org, OwnerUserID: owner, RowCount: m.RowCount, ByteSize: m.ByteCount, Truncated: m.Truncated, At: timeToTS(at), ExpiresAt: timeToTS(at.Add(query.ResultTTL)), KeyVersion: int32(result.KeyVersion), WrappedDek: result.WrappedDEK}); err != nil {
 			return err
 		}
-		for _, chunk := range result.Chunks {
-			if chunk.Index < 0 || chunk.Index > 100 {
-				return query.ErrResultUnavailable
-			}
-			if err := q.InsertResultChunk(ctx, db.InsertResultChunkParams{ResultID: id, OrganizationID: org, ChunkIndex: int32(chunk.Index), Nonce: chunk.Nonce, Ciphertext: chunk.Ciphertext}); err != nil {
-				return err
-			}
-		}
-		return nil
+		// One COPY writes every chunk instead of a round trip per chunk while the admission lock is held.
+		_, err = q.InsertResultChunks(ctx, chunks)
+		return err
 	})
 	if err != nil {
 		return err
@@ -112,7 +113,7 @@ func (s *ResultStore) Get(ctx context.Context, org identity.OrganizationID, owne
 
 // GetChunk returns one encrypted chunk only to the current owner.
 func (s *ResultStore) GetChunk(ctx context.Context, org identity.OrganizationID, owner identity.UserID, id string, index int) (query.SealedResultChunk, error) {
-	if index < 0 || index > 100 {
+	if index < 0 || index > maxResultChunkIndex {
 		return query.SealedResultChunk{}, query.ErrResultUnavailable
 	}
 	rid, oid, uid, err := resultIDs(id, org, owner)
@@ -132,27 +133,31 @@ func (s *ResultStore) PurgeExpired(ctx context.Context, org identity.Organizatio
 	if err != nil {
 		return err
 	}
-	return s.connections.withTx(ctx, func(q *db.Queries) error {
-		if err := q.LockResultAdmission(ctx); err != nil {
-			return err
-		}
-		rows, err := q.ListResultAccounting(ctx, oid)
-		if err != nil {
-			return err
-		}
-		at, err := observeInstant(ctx, q)
-		if err != nil {
-			return err
-		}
-		for _, row := range rows {
-			if !at.Before(tsToTime(row.ExpiresAt)) {
-				if err := deleteResult(ctx, q, row.ID, oid); err != nil {
+	// Each batch is its own short transaction; rows held by an admission or reader are skipped until a later pass.
+	for {
+		purged := 0
+		err := s.connections.withTx(ctx, func(q *db.Queries) error {
+			expired, err := q.LockExpiredResults(ctx, db.LockExpiredResultsParams{OrganizationID: oid, BatchSize: resultPurgeBatchSize})
+			if err != nil {
+				return err
+			}
+			for _, id := range expired {
+				if err := deleteResult(ctx, q, id, oid); err != nil {
 					return err
 				}
 			}
+			purged = len(expired)
+			return nil
+		})
+		if err != nil || purged < resultPurgeBatchSize {
+			return err
 		}
-		return nil
-	})
+	}
+}
+
+// organizationLockObject derives the per-organization advisory-lock object id.
+func organizationLockObject(org identity.OrganizationID) int32 {
+	return advisoryLockObject(string(org))
 }
 
 func resultIDs(id string, org identity.OrganizationID, owner identity.UserID) (pgtype.UUID, pgtype.UUID, pgtype.UUID, error) {
