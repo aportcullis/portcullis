@@ -235,6 +235,21 @@ func clusterRoles(t *testing.T, pool *pgxpool.Pool, owner, member, memberPasswor
 	}
 }
 
+// provisionRuntimeRole creates the default runtime role ahead of migration, as ADR-0009 requires when the migrate user lacks CREATEROLE; roles are cluster-wide, so another test may already have created it.
+func provisionRuntimeRole(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+		do $$ begin
+			if not exists (select 1 from pg_roles where rolname = 'portcullis_runtime') then
+				create role portcullis_runtime nologin;
+			end if;
+		exception when duplicate_object then
+			null;
+		end $$`); err != nil {
+		t.Skipf("cannot provision the runtime role (external test DB without role privileges?): %v", err)
+	}
+}
+
 func giveDatabaseTo(t *testing.T, pool *pgxpool.Pool, owner, member string) {
 	t.Helper()
 	ctx := context.Background()
@@ -272,6 +287,7 @@ func TestMigrateAsOwnerMemberAppliesDefaultPrivileges(t *testing.T) {
 	ctx := context.Background()
 	clusterRoles(t, pool, "pc_mig_owner", "pc_mig_member", "pc-mig-member", "set true, inherit false")
 	giveDatabaseTo(t, pool, "pc_mig_owner", "pc_mig_member")
+	provisionRuntimeRole(t, pool)
 
 	mp := memberPool(t, pool, "pc_mig_member", "pc-mig-member")
 	if err := pg.Migrate(ctx, mp); err != nil {
