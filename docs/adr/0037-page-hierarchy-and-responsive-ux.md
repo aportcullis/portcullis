@@ -15,6 +15,8 @@ Group request composition into context (connection/title/body), SQL/parameters a
 
 Use bounded three-line loading skeletons on initial list/detail/result reads, with accessible status text and hidden decorative bars. Preserve known detail content during background refresh; distinguish loading, empty and error states.
 
+A failed background refresh is news about the refresh, not about the data (amended 2026-10-04). The request list keeps the rows of the same page, size and filter when a refresh fails for a transient reason and labels them as the last loaded data; it clears them on a principal change, on `PermissionDenied`/`Unauthenticated`, or when the failed read asked a different query, so retained rows never pose as another query's answer.
+
 Validate a real browser scenario at 320 CSS pixels for current-location cues, page reflow and reachable request actions, then run the existing full browser workflow matrix. Use actual application captures to update README media after visual changes. This is an incremental UX pass, not a claim of full WCAG conformance.
 
 Research and task-based evaluation are tracked in [UX evidence](../design/ux-evidence.md). Inline request workflow disclosure is specified separately in ADR-0038; this presentation pass does not add a DAG editor or scheduler.

@@ -1,6 +1,6 @@
 import { createRoot, createSignal } from "solid-js";
 
-import { ConnectError } from "@connectrpc/connect";
+import { Code, ConnectError } from "@connectrpc/connect";
 
 import type {
   AccessRequest,
@@ -22,6 +22,16 @@ export function errorMessage(err: unknown): string {
   return "Request failed.";
 }
 
+/** Reports whether a failure means the caller may no longer see the list at all. */
+function isAuthorizationFailure(err: unknown): boolean {
+  return err instanceof ConnectError && (err.code === Code.PermissionDenied || err.code === Code.Unauthenticated);
+}
+
+/** Identifies one list query so retained rows are only ever shown for the query they answered. */
+function listQueryKey(page: number, pageSize: number, stateFilter: string): string {
+  return `${page}/${pageSize}/${stateFilter}`;
+}
+
 // The access-request list store, mirroring the connection store's guard discipline (generation / listRevision / loadSeq) so a slow response from a previous principal or a pre-mutation snapshot can never repopulate the cache for the current user (ADR-0018 UI). The server owns visibility scope; the store just renders what it returns.
 const store = createRoot(() => {
   const [accessRequests, setAccessRequests] = createSignal<AccessRequest[]>([]);
@@ -29,6 +39,7 @@ const store = createRoot(() => {
   const [targets, setTargets] = createSignal<RequestableConnection[]>([]);
   const [listError, setListError] = createSignal("");
   const [listState, setListState] = createSignal<ListState>("idle");
+  const [listStale, setListStale] = createSignal(false);
   const [targetError, setTargetError] = createSignal("");
   const [targetState, setTargetState] = createSignal<ListState>("idle");
   // targetsStale marks the cached targets as possibly out of date WITHOUT discarding them: the picker may be on screen, and a user mid-edit must not lose their options (or their selection) because a request was refused.
@@ -45,16 +56,16 @@ const store = createRoot(() => {
   let listRevision = 0;
   let loadSeq = 0;
   let targetSeq = 0;
+  // The page, size and filter the rendered rows answer; only a failure of that same query may keep them on screen.
+  let displayedQuery = "";
 
   function resetAccessRequests(): void {
     generation++;
     listRevision++;
-    setAccessRequests([]);
+    clearListRows();
     setListError("");
     setListState("idle");
     setPage(1);
-    setTotalCount(0n);
-    setTotalPages(0);
     setStateFilter("");
     clearTargets();
   }
@@ -103,6 +114,7 @@ const store = createRoot(() => {
     const gen = generation;
     const revision = listRevision;
     const seq = ++loadSeq;
+    const query = listQueryKey(page(), pageSize(), stateFilter());
     setListState("loading");
     try {
       const res = await requestsClient.list({
@@ -120,6 +132,8 @@ const store = createRoot(() => {
       setPageSize(res.pageSize || 20);
       setTotalCount(res.totalCount);
       setTotalPages(res.totalPages);
+      displayedQuery = listQueryKey(page(), pageSize(), stateFilter());
+      setListStale(false);
       setListError("");
       setListState("ready");
     } catch (err) {
@@ -128,10 +142,23 @@ const store = createRoot(() => {
         void loadAccessRequests();
         return;
       }
-      setAccessRequests([]);
       setListError(errorMessage(err));
       setListState("error");
+      // A transient failure says nothing about which requests exist, so the rows of the same query stay on screen marked stale. Lost authorization, or rows that answered a different query, must not survive.
+      if (isAuthorizationFailure(err) || query !== displayedQuery) {
+        clearListRows();
+        return;
+      }
+      setListStale(accessRequests().length > 0);
     }
+  }
+
+  function clearListRows(): void {
+    displayedQuery = "";
+    setAccessRequests([]);
+    setTotalCount(0n);
+    setTotalPages(0);
+    setListStale(false);
   }
 
   // Reload the current page after mutations because state filters, ordering, and totals may change. Fence reloads against principal changes.
@@ -234,6 +261,7 @@ const store = createRoot(() => {
     setMayListAccessRequests,
     listError,
     listState,
+    listStale,
     page,
     pageSize,
     totalCount,
@@ -264,6 +292,7 @@ export const {
   setMayListAccessRequests,
   listError,
   listState,
+  listStale,
   page,
   pageSize,
   totalCount,

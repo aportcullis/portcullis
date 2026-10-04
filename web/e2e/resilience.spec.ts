@@ -45,6 +45,29 @@ test.describe("application resilience", () => {
     await expect(page.getByText(/\/ \d+ characters/).first()).toBeVisible({ timeout: 15_000 });
   });
 
+  test("a failed background list refresh keeps the last rows and says so", async ({ page }) => {
+    await page.goto("/requests");
+    const rows = page.getByRole("row", { name: /ReqTarget/ });
+    await expect(rows.first()).toBeVisible();
+    const shownRows = await rows.count();
+
+    const restoreUnavailable = await failProcedure(page, "AccessRequests/List", "unavailable");
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.getByText(/Refresh failed: simulated failure Showing the last loaded requests\./)).toBeVisible();
+    await expect(rows).toHaveCount(shownRows);
+    await restoreUnavailable();
+
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.getByText(/Refresh failed/)).toHaveCount(0);
+    await expect(rows).toHaveCount(shownRows);
+
+    const restoreDenied = await failProcedure(page, "AccessRequests/List", "permission_denied");
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(rows).toHaveCount(0);
+    await expect(page.getByText(/Refresh failed/)).toHaveCount(0);
+    await restoreDenied();
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");

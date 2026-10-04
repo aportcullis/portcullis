@@ -9,6 +9,7 @@ import { rangeEnd, rangeStart } from "@/entities/request/pagination";
 import {
   goToPage,
   listError,
+  listStale,
   listState,
   loadAccessRequests,
   page,
@@ -37,8 +38,8 @@ import {
 const selectClass =
   "flex h-9 w-44 rounded-md border border-input bg-background px-3 py-1 text-sm";
 
-const actorLabel = (a?: { displayName: string; email: string }): string =>
-  a ? a.displayName || a.email : "—";
+const actorLabel = (actor?: { displayName: string; email: string }): string =>
+  actor ? actor.displayName || actor.email : "—";
 
 // The state filter covers request review and execution outcomes.
 const filterStates = ["draft", "pending", "approved", "executing", "succeeded", "failed", "outcome_unknown", "rejected", "expired", "cancelled"];
@@ -71,16 +72,20 @@ export const RequestList: Component = () => {
           id="req-filter"
           class={selectClass}
           value={stateFilter()}
-          onChange={(e) => setFilter(e.currentTarget.value)}
+          onChange={(event) => setFilter(event.currentTarget.value)}
         >
           <option value="">All states</option>
-          <For each={filterStates}>{(s) => <option value={s}>{s}</option>}</For>
+          <For each={filterStates}>{(filterState) => <option value={filterState}>{filterState}</option>}</For>
         </select>
       </div>
 
       <Show when={listError() !== ""}>
         <Alert variant="destructive">
-          <AlertDescription>{listError()}</AlertDescription>
+          <AlertDescription>
+            <Show when={listStale()} fallback={listError()}>
+              Refresh failed: {listError()} Showing the last loaded requests.
+            </Show>
+          </AlertDescription>
         </Alert>
       </Show>
 
@@ -113,32 +118,32 @@ export const RequestList: Component = () => {
           </TableHeader>
           <TableBody>
             <For each={accessRequests()}>
-              {(r) => (
+              {(accessRequest) => (
                 <>
                 <TableRow>
-                  <TableCell class="max-w-80 break-words font-medium"><button class="inline-flex items-start gap-2 text-left text-primary underline-offset-4 hover:underline" aria-expanded={expandedId() === r.id} aria-controls={`workflow-${r.id}`} onClick={() => setExpandedId(expandedId() === r.id ? undefined : r.id)}><span aria-hidden="true">{expandedId() === r.id ? "▾" : "▸"}</span><span>{r.title || "Untitled request"}</span></button></TableCell>
-                  <TableCell class="font-medium">{r.connectionName}</TableCell>
-                  <TableCell class="text-muted-foreground">{actorLabel(r.requester)}</TableCell>
-                  <TableCell class="text-muted-foreground">{r.statementClass || "—"}</TableCell>
+                  <TableCell class="max-w-80 break-words font-medium"><button class="inline-flex items-start gap-2 text-left text-primary underline-offset-4 hover:underline" aria-expanded={expandedId() === accessRequest.id} aria-controls={`workflow-${accessRequest.id}`} onClick={() => setExpandedId(expandedId() === accessRequest.id ? undefined : accessRequest.id)}><span aria-hidden="true">{expandedId() === accessRequest.id ? "▾" : "▸"}</span><span>{accessRequest.title || "Untitled request"}</span></button></TableCell>
+                  <TableCell class="font-medium">{accessRequest.connectionName}</TableCell>
+                  <TableCell class="text-muted-foreground">{actorLabel(accessRequest.requester)}</TableCell>
+                  <TableCell class="text-muted-foreground">{accessRequest.statementClass || "—"}</TableCell>
                   <TableCell>
-                    <Badge variant={stateBadge(r.effectiveState)}>{stateLabel(r.effectiveState)}</Badge>
+                    <Badge variant={stateBadge(accessRequest.effectiveState)}>{stateLabel(accessRequest.effectiveState)}</Badge>
                   </TableCell>
                   <TableCell class="text-muted-foreground">
-                    {r.validApprovals.toString()} / {r.requiredApprovals}
+                    {accessRequest.validApprovals.toString()} / {accessRequest.requiredApprovals}
                   </TableCell>
                   <TableCell class="text-right">
                     <span class="inline-flex items-center gap-2">
                       {/* Details reads through Get, which the server gates on requests.get — a role with list but not get would otherwise get a button that only ever fails. The owner's Submit/Cancel need requests.create instead, so they hang off the row itself. */}
                       <Show when={hasPermission("requests.get")}>
-                        <A class={buttonVariants({ variant: "ghost", size: "sm" })} href={`/requests/${r.id}`}>
+                        <A class={buttonVariants({ variant: "ghost", size: "sm" })} href={`/requests/${accessRequest.id}`}>
                           Details
                         </A>
                       </Show>
-                      <RequestRowActions request={r} />
+                      <RequestRowActions request={accessRequest} />
                     </span>
                   </TableCell>
                 </TableRow>
-                <Show when={expandedId() === r.id}><TableRow><TableCell colSpan={7} class="bg-muted/30"><RequestWorkflow request={r} mayOpenDetails={hasPermission("requests.get")} /></TableCell></TableRow></Show>
+                <Show when={expandedId() === accessRequest.id}><TableRow><TableCell colSpan={7} class="bg-muted/30"><RequestWorkflow request={accessRequest} mayOpenDetails={hasPermission("requests.get")} /></TableCell></TableRow></Show>
                 </>
               )}
             </For>

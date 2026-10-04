@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -32,6 +33,8 @@ import {
   createAccessRequest,
   invalidateTargets,
   listError,
+  listStale,
+  listState,
   loadAccessRequests,
   loadTargets,
   resetAccessRequests,
@@ -51,9 +54,11 @@ type TargetsResult = { connections: RequestableConnection[] };
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };
 
 function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
+  let resolve = (_value: T): void => {
+    throw new Error("Deferred resolver is not initialized");
+  };
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
   });
   return { promise, resolve };
 }
@@ -77,15 +82,15 @@ const page = (items: AccessRequest[], total: bigint): ListAccessRequestsResponse
 describe("request store principal fence", () => {
   it("drops a mutation response that resolves after a principal switch", async () => {
     resetAccessRequests();
-    const d = deferred<CreateResult>();
-    client.create.mockReturnValueOnce(d.promise);
+    const created = deferred<CreateResult>();
+    client.create.mockReturnValueOnce(created.promise);
 
 
     const pending = createAccessRequest("conn-1", "select secret", []);
     resetAccessRequests();
 
 
-    d.resolve({ request: req("req-a") });
+    created.resolve({ request: req("req-a") });
     await pending;
 
     // The late response must NOT enter the new principal's cache.
@@ -142,7 +147,7 @@ describe("request store mutations vs the list refresh", () => {
 
     await createAccessRequest("conn-1", "select 1", []);
     expect(client.list).toHaveBeenCalled();
-    expect(accessRequests().map((r) => r.id)).toEqual(["req-created"]);
+    expect(accessRequests().map((row) => row.id)).toEqual(["req-created"]);
   });
 });
 
@@ -170,7 +175,7 @@ describe("request store target list", () => {
     client.listRequestableConnections.mockRejectedValueOnce(new Error("boom"));
     expect(await loadTargets()).toBe("error");
 
-    expect(targets().map((c) => c.id)).toEqual(["conn-1", "conn-2"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-1", "conn-2"]);
     expect(targetState()).toBe("error");
   });
 
@@ -202,14 +207,14 @@ describe("request store target list", () => {
     client.listRequestableConnections.mockClear();
     client.listRequestableConnections.mockResolvedValueOnce({ connections: [target("conn-1")] });
     await loadTargets();
-    expect(targets().map((c) => c.id)).toEqual(["conn-1"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-1"]);
 
     // A request refused because the target was archived invalidates the cache; the next load must go back to the server rather than reuse the stale row.
     invalidateTargets();
     client.listRequestableConnections.mockResolvedValueOnce({ connections: [target("conn-2")] });
     await loadTargets();
 
-    expect(targets().map((c) => c.id)).toEqual(["conn-2"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-2"]);
     expect(client.listRequestableConnections).toHaveBeenCalledTimes(2);
   });
 
@@ -239,7 +244,7 @@ describe("request store target list", () => {
 
     expect(targetState()).toBe("ready");
     expect(targetError()).toBe("");
-    expect(targets().map((c) => c.id)).toEqual(["conn-1"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-1"]);
   });
 
   it("keeps the open picker intact when a create is refused, marking it stale", async () => {
@@ -254,7 +259,7 @@ describe("request store target list", () => {
     client.create.mockRejectedValueOnce(new Error("archived"));
     await expect(createAccessRequest("conn-1", "select 1", [])).rejects.toThrow();
 
-    expect(targets().map((c) => c.id)).toEqual(["conn-1", "conn-2"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-1", "conn-2"]);
     expect(targetState()).toBe("ready");
     expect(targetsStale()).toBe(true);
   });
@@ -270,7 +275,7 @@ describe("request store target list", () => {
     client.listRequestableConnections.mockResolvedValueOnce({ connections: [target("conn-2")] });
     await loadTargets();
 
-    expect(targets().map((c) => c.id)).toEqual(["conn-2"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-2"]);
     expect(targetsStale()).toBe(false);
   });
 
@@ -294,14 +299,105 @@ describe("request store target list", () => {
     client.listRequestableConnections.mockReturnValueOnce(first.promise);
     client.listRequestableConnections.mockReturnValueOnce(second.promise);
 
-    const a = loadTargets();
-    const b = loadTargets();
+    const earlierLoad = loadTargets();
+    const laterLoad = loadTargets();
     second.resolve({ connections: [target("conn-new")] });
-    await b;
+    await laterLoad;
     first.resolve({ connections: [target("conn-old")] });
-    await a;
+    await earlierLoad;
 
-    expect(targets().map((c) => c.id)).toEqual(["conn-new"]);
+    expect(targets().map((connection) => connection.id)).toEqual(["conn-new"]);
+  });
+});
+
+describe("request store failed list refresh", () => {
+  async function loadOnePendingRow(): Promise<void> {
+    resetAccessRequests();
+    client.list.mockResolvedValueOnce(page([req("req-kept", 2)], 1n));
+    await loadAccessRequests();
+    expect(accessRequests().map((row) => row.id)).toEqual(["req-kept"]);
+  }
+
+  it("keeps the last rows when the server is unavailable", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("unavailable", Code.Unavailable));
+    await loadAccessRequests();
+    expect(accessRequests().map((row) => row.id)).toEqual(["req-kept"]);
+    expect(totalCount()).toBe(1n);
+    expect(listStale()).toBe(true);
+    expect(listError()).toBe("unavailable");
+  });
+
+  it("keeps the last rows on a network failure that is not a Connect error", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await loadAccessRequests();
+    expect(accessRequests()).toHaveLength(1);
+    expect(listStale()).toBe(true);
+  });
+
+  it("keeps the last rows when the refresh times out", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("deadline", Code.DeadlineExceeded));
+    await loadAccessRequests();
+    expect(accessRequests()).toHaveLength(1);
+    expect(listState()).toBe("error");
+  });
+
+  it("clears the stale marker once a later refresh succeeds", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("unavailable", Code.Unavailable));
+    await loadAccessRequests();
+    client.list.mockResolvedValueOnce(page([req("req-fresh", 2)], 1n));
+    await loadAccessRequests();
+    expect(accessRequests().map((row) => row.id)).toEqual(["req-fresh"]);
+    expect(listStale()).toBe(false);
+    expect(listError()).toBe("");
+  });
+
+  it("clears the rows when the caller lost permission", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("permission denied", Code.PermissionDenied));
+    await loadAccessRequests();
+    expect(accessRequests()).toHaveLength(0);
+    expect(totalCount()).toBe(0n);
+    expect(listStale()).toBe(false);
+  });
+
+  it("clears the rows when the session is no longer authenticated", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("unauthenticated", Code.Unauthenticated));
+    await loadAccessRequests();
+    expect(accessRequests()).toHaveLength(0);
+    expect(listStale()).toBe(false);
+  });
+
+  it("clears the rows when a different filter fails to load, so old rows never pose as its answer", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("unavailable", Code.Unavailable));
+    setFilter("approved");
+    await vi.waitFor(() => expect(listState()).toBe("error"));
+    expect(accessRequests()).toHaveLength(0);
+    expect(listStale()).toBe(false);
+  });
+
+  it("clears the rows and the stale marker on a principal switch", async () => {
+    await loadOnePendingRow();
+    client.list.mockRejectedValueOnce(new ConnectError("unavailable", Code.Unavailable));
+    await loadAccessRequests();
+    resetAccessRequests();
+    expect(accessRequests()).toHaveLength(0);
+    expect(listStale()).toBe(false);
+    expect(listError()).toBe("");
+  });
+
+  it("reports a failed first load as an error without stale rows", async () => {
+    resetAccessRequests();
+    client.list.mockRejectedValueOnce(new ConnectError("unavailable", Code.Unavailable));
+    await loadAccessRequests();
+    expect(accessRequests()).toHaveLength(0);
+    expect(listStale()).toBe(false);
+    expect(listError()).toBe("unavailable");
   });
 });
 
@@ -313,7 +409,7 @@ describe("request store list consistency", () => {
     client.list.mockResolvedValue(page([pendingRow], 1n));
     setFilter("pending");
     await loadAccessRequests();
-    expect(accessRequests().map((r) => r.id)).toEqual(["req-pending"]);
+    expect(accessRequests().map((row) => row.id)).toEqual(["req-pending"]);
 
     // Approving it makes it no longer match the filter. The mutation response alone cannot know that, so the store must re-read the page: the server now returns an empty pending page.
     client.approve.mockResolvedValueOnce({ request: req("req-pending", 3) });
