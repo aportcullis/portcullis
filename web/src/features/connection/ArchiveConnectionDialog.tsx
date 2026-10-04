@@ -1,7 +1,8 @@
 import type { Component } from "solid-js";
 import { Show, createSignal } from "solid-js";
 
-import { archiveConnection, errorMessage } from "@/entities/connection/store";
+import { archiveConnection } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";

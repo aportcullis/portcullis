@@ -3,7 +3,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
-import { errorMessage } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import { conflictMessage } from "@/features/connection/policyConflict";
 import { parseMaxResultMiB } from "@/features/connection/policyLimits";

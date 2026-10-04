@@ -6,7 +6,7 @@ import { createSolidTable, getCoreRowModel } from "@tanstack/solid-table";
 import type { QueryExecution, QueryResultPage, QueryResultRow } from "@/gen/portcullis/v1/query_executions_pb";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { LogicalType } from "@/gen/portcullis/v1/query_executions_pb";
-import { errorMessage } from "@/entities/request/store";
+import { errorMessage } from "@/shared/api/errors";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";

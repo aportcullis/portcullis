@@ -2,7 +2,8 @@ import type { Component } from "solid-js";
 import { Show, createSignal, onCleanup } from "solid-js";
 
 import type { EnvironmentValue } from "@/entities/connection/model";
-import { createConnection, errorMessage } from "@/entities/connection/store";
+import { createConnection } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 import { ConnectionConfigForm } from "@/features/connection/ConnectionConfigForm";
 import { DescriptorFields } from "@/features/connection/DescriptorFields";
 import { createDraftController } from "@/features/connection/draft";
@@ -39,8 +40,8 @@ export const CreateConnectionForm: Component = () => {
     if (!next) reset();
   };
 
-  const submit = async (e: SubmitEvent) => {
-    e.preventDefault();
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault();
     setError("");
     setSaving(true);
     const outcome = await runInSession(() =>
@@ -76,7 +77,7 @@ export const CreateConnectionForm: Component = () => {
               id="conn-name"
               required
               value={displayName()}
-              onInput={(e) => setDisplayName(e.currentTarget.value)}
+              onInput={(event) => setDisplayName(event.currentTarget.value)}
             />
           </TextField>
           <DescriptorFields

@@ -3,7 +3,7 @@ import { Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type { QueryExecution } from "@/gen/portcullis/v1/query_executions_pb";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
-import { errorMessage } from "@/entities/request/store";
+import { errorMessage } from "@/shared/api/errors";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";
 
 /** Reads requester-only durable metrics for a completed request with fenced responses. */

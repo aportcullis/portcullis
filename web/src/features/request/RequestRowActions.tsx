@@ -4,10 +4,10 @@ import { Show, onCleanup } from "solid-js";
 
 import {
   cancelAccessRequest,
-  errorMessage,
   submitAccessRequest,
   loadAccessRequests,
 } from "@/entities/request/store";
+import { errorMessage } from "@/shared/api/errors";
 import { isExecutionOutcomeState } from "@/entities/request/model";
 import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";

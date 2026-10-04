@@ -8,19 +8,12 @@ import type {
   TypedParam,
 } from "@/gen/portcullis/v1/access_requests_pb";
 import { requestsClient } from "@/shared/api/client";
+import { errorMessage } from "@/shared/api/errors";
 
 export type ListState = "idle" | "loading" | "ready" | "error";
 
 // TargetLoad is what a target read concluded — see loadTargets. "ok" carries the server's answer (possibly an empty list), "error" means the question never got answered, "superseded" means we dropped the read ourselves.
 export type TargetLoad = "ok" | "error" | "superseded";
-
-// errorMessage extracts the Connect error's message; server messages are generic/classified by design and never echo SQL or parameters (§8.1).
-export function errorMessage(err: unknown): string {
-  if (err instanceof ConnectError) {
-    return err.rawMessage;
-  }
-  return "Request failed.";
-}
 
 /** Reports whether a failure means the caller may no longer see the list at all. */
 function isAuthorizationFailure(err: unknown): boolean {

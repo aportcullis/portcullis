@@ -2,7 +2,8 @@ import { createSignal } from "solid-js";
 
 import type { ConfigDraft, TestResult } from "@/entities/connection/model";
 import { emptyDraft } from "@/entities/connection/model";
-import { errorMessage, testDraft } from "@/entities/connection/store";
+import { testDraft } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 
 // createDraftController fences pre-save tests by draft revision so input changes invalidate old results. The server tests again on save.
 export function createDraftController() {
@@ -13,9 +14,9 @@ export function createDraftController() {
   let revision = 0;
   let testRun = 0;
 
-  const patch = (p: Partial<ConfigDraft>) => {
+  const patch = (changes: Partial<ConfigDraft>) => {
     revision++;
-    setDraft({ ...draft(), ...p });
+    setDraft({ ...draft(), ...changes });
     setTestResult(null); // a stale result must not vouch for edited coordinates
     setTestError("");
   };

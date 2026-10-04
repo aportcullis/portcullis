@@ -1,21 +1,12 @@
 import { createRoot, createSignal } from "solid-js";
 
-import { ConnectError } from "@connectrpc/connect";
-
 import type { Connection, ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import type { ConfigDraft, EnvironmentValue, TestResult } from "@/entities/connection/model";
 import { toInput } from "@/entities/connection/model";
 import { connectionsClient } from "@/shared/api/client";
+import { errorMessage } from "@/shared/api/errors";
 
 export type { ConfigDraft, EnvironmentValue, TestResult } from "@/entities/connection/model";
-
-// errorMessage extracts the Connect error's message without the code prefix — server messages are generic/classified by design (ADR-0014), safe to show.
-export function errorMessage(err: unknown): string {
-  if (err instanceof ConnectError) {
-    return err.rawMessage;
-  }
-  return "Request failed.";
-}
 
 // Keep list-safe summaries separate from target details. Track fetch state so initial emptiness is not shown as a completed empty list.
 export type ListState = "idle" | "loading" | "ready" | "error";

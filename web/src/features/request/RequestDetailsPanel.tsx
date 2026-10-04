@@ -12,12 +12,12 @@ import {
   approveAccessRequest,
   cancelAccessRequest,
   submitAccessRequest,
-  errorMessage,
   getAccessRequest,
   rejectAccessRequest,
   updateDraft,
 } from "@/entities/request/store";
 import { hasPermission, session } from "@/entities/session/store";
+import { errorMessage } from "@/shared/api/errors";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import {
   mayApprove,

@@ -2,7 +2,8 @@ import type { Component } from "solid-js";
 import { Show, createSignal, createEffect, createMemo, on, onCleanup } from "solid-js";
 
 import type { Connection } from "@/gen/portcullis/v1/connections_pb";
-import { errorMessage, getConnection } from "@/entities/connection/store";
+import { getConnection } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { InlinePanel } from "@/shared/ui/InlinePanel";

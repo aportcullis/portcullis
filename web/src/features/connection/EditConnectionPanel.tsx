@@ -3,7 +3,8 @@ import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "sol
 
 import type { EnvironmentValue } from "@/entities/connection/model";
 import { parseEnvironment } from "@/entities/connection/model";
-import { errorMessage, loadConnections, updateConnection } from "@/entities/connection/store";
+import { loadConnections, updateConnection } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 import { ConnectionConfigForm } from "@/features/connection/ConnectionConfigForm";
 import { DescriptorFields } from "@/features/connection/DescriptorFields";
 import { createDraftController } from "@/features/connection/draft";

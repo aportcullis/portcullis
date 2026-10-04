@@ -6,7 +6,6 @@ import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import {
   cancelAccessRequest,
   createAccessRequest,
-  errorMessage,
   getAccessRequest,
   loadAccessRequests,
   loadTargets,
@@ -32,6 +31,7 @@ import { instanceConfig } from "@/entities/instance/config";
 import { RequestNarrativeFields } from "@/features/request/RequestNarrativeFields";
 import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
+import { errorMessage } from "@/shared/api/errors";
 import type { SessionOutcome } from "@/shared/lib/dialogSession";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 import { PageHeader } from "@/shared/ui/PageHeader";

@@ -2,7 +2,8 @@ import type { Component } from "solid-js";
 import { Show, createSignal } from "solid-js";
 
 import type { TestResult } from "@/entities/connection/store";
-import { errorMessage, testSaved } from "@/entities/connection/store";
+import { testSaved } from "@/entities/connection/store";
+import { errorMessage } from "@/shared/api/errors";
 import { Button } from "@/shared/ui/button";
 
 // TestConnectionButton re-tests a SAVED connection: the server decrypts the stored credential and dials (the credential never travels to the browser).
@@ -28,9 +29,9 @@ export const TestConnectionButton: Component<{ id: string }> = (props) => {
         {pending() ? "Testing…" : "Test"}
       </Button>
       <Show when={result()}>
-        {(r) => (
-          <span class={r().ok ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
-            {r().ok ? "OK" : r().message}
+        {(testResult) => (
+          <span class={testResult().ok ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
+            {testResult().ok ? "OK" : testResult().message}
           </span>
         )}
       </Show>
