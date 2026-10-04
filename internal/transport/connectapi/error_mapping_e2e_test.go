@@ -103,7 +103,7 @@ func TestSubmitPolicyConflictMapsToAborted(t *testing.T) {
 	hc := &http.Client{Transport: ts.Client().Transport, Jar: jar}
 	authC := portcullisv1connect.NewAuthClient(hc, ts.URL)
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, authSvc), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {

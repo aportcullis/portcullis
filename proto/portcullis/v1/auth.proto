@@ -6,7 +6,7 @@ option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcul
 
 // Auth is the authentication surface: first-run bootstrap, password login, and the current-session endpoints. The opaque session token and the CSRF token are carried in __Host- cookies (set by Login, cleared by Logout), never in these messages (ADR-0006).
 service Auth {
-  // Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
+  // Bootstrap creates the first admin with the first-start setup token; refused once any user exists. It does not start a session — the client logs in afterward.
   rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse) {}
   // Login verifies the password and starts a session (sets the session + CSRF cookies).
   rpc Login(LoginRequest) returns (LoginResponse) {}
@@ -30,6 +30,8 @@ message BootstrapRequest {
   string email = 1;
   string password = 2;
   string display_name = 3;
+  // setup_token is the one-time token the server issued at first start (logged once or written to PORTCULLIS_SETUP_TOKEN_FILE); a missing, wrong, expired, rotated or consumed token is refused (ADR-0052).
+  string setup_token = 4;
 }
 message BootstrapResponse {
   User user = 1;

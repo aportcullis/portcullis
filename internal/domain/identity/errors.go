@@ -19,6 +19,9 @@ var (
 
 	ErrAlreadyBootstrapped = errors.New("identity: already bootstrapped")
 
+	// ErrSetupTokenInvalid covers a missing, wrong, expired, rotated or consumed first-run setup token alike, so a probe learns nothing about which (ADR-0052).
+	ErrSetupTokenInvalid = errors.New("identity: setup token invalid")
+
 	ErrNoLinkedAccount = errors.New("identity: no local account for this identity")
 
 	ErrIdentityLinkedToAnotherUser = errors.New("identity: external identity already linked to another user")

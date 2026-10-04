@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { signInForScenario } from "@e2e/login";
+import { readSetupToken, signInForScenario } from "@e2e/login";
 
 
 test.describe.serial("auth vertical", () => {
@@ -23,6 +23,16 @@ test.describe.serial("auth vertical", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/bootstrap$/);
 
+    // A guessed setup token is refused without creating the admin (ADR-0052).
+    await page.getByLabel("Setup token").fill("guessed-setup-token");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Display name").fill(displayName);
+    await page.getByLabel(/^Password/).fill(password);
+    await page.getByRole("button", { name: "Create admin account" }).click();
+    await expect(page.getByText(/setup token is missing, wrong, expired or already used/)).toBeVisible();
+    await expect(page).toHaveURL(/\/bootstrap$/);
+
+    await page.getByLabel("Setup token").fill(await readSetupToken());
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Display name").fill(displayName);
     await page.getByLabel(/^Password/).fill(password);

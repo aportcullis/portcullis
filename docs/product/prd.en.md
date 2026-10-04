@@ -796,6 +796,7 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
 - **Bootstrap:** Only once with no users; disable afterward.
   - Alongside `/bootstrap`, support `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` and exactly one `_PASSWORD` or mounted `_PASSWORD_FILE` source, with optional `_DISPLAY_NAME` defaulting to Admin, added 2026-07-23, ADR-0006.
   - Startup invokes the same use case only with zero users and rechecks under lock against interactive races; otherwise log and skip.
+  - Interactive `/bootstrap` requires a one-time setup token issued at each start while no user exists, added 2026-10-04, ADR-0052. Store only its hash; deliver it once through the log or an owner-only `PORTCULLIS_SETUP_TOKEN_FILE`; expire it after 24 hours; replace it on restart; consume it atomically with admin creation. Refuse missing, wrong, expired, rotated or used tokens uniformly.
   - Incomplete configuration or weak passwords refuse startup.
   - Display name is required for every account; headers use it with email fallback.
   - Show a stable, locally generated geometric profile image beside the signed-in user's name, derived from the opaque user ID without external image requests (ADR-0041).

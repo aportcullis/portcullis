@@ -22,6 +22,8 @@ type Querier interface {
 	CancelDraftsForConnection(ctx context.Context, arg CancelDraftsForConnectionParams) ([]AccessRequest, error)
 	// Retention under soft-delete: an expired session keeps its row and gets revoked_at set to the instant it ended, so the active-session partial indexes stay small; rows another transaction holds are skipped until the next sweep (ADR-0006).
 	CloseExpiredSessions(ctx context.Context, batchSize int32) (int64, error)
+	// Consume only the outstanding, unexpired token; zero rows means wrong, expired, rotated or already used (ADR-0052).
+	ConsumeSetupToken(ctx context.Context, tokenHash []byte) (int64, error)
 	// Counts on the EFFECTIVE state too, so the total matches the filtered rows.
 	CountAccessRequests(ctx context.Context, arg CountAccessRequestsParams) (int64, error)
 	// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".
@@ -87,6 +89,8 @@ type Querier interface {
 	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
 	InsertResultChunks(ctx context.Context, arg []InsertResultChunksParams) (int64, error)
 	InsertResultSet(ctx context.Context, arg InsertResultSetParams) error
+	// Creation and expiry are anchored to one database-clock observation after the bootstrap lock, so instance clock skew cannot extend a token (ADR-0052).
+	InsertSetupToken(ctx context.Context, arg InsertSetupTokenParams) error
 	// Idempotent only for the same user: a new (issuer, subject) inserts; an existing one owned by the same user refreshes the email; one owned by a different user matches the conflict but fails the WHERE, so no row is returned and the caller detects the collision (vs. silently succeeding).
 	LinkOIDCIdentity(ctx context.Context, arg LinkOIDCIdentityParams) (pgtype.UUID, error)
 	ListAccessRequestsAsc(ctx context.Context, arg ListAccessRequestsAscParams) ([]ListAccessRequestsAscRow, error)
@@ -139,6 +143,8 @@ type Querier interface {
 	ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnectionConfigParams) (Connection, error)
 	// A successful login clears the slate. The WHERE leaves an already-clean row unwritten, so calling this on every success keeps the hot path write-free while still clearing failures committed by concurrent attempts mid-verify.
 	ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error
+	// Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).
+	RevokeOutstandingSetupTokens(ctx context.Context) error
 	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must not overwrite the original revoked_at — forensic evidence of WHEN the session actually died — and the caller skips the audit event when no row changed, so the trail records only real state changes (ADR-0009).
 	RevokeSession(ctx context.Context, id pgtype.UUID) (int64, error)
 	// Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).

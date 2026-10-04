@@ -135,6 +135,26 @@ where s.id in (
     limit sqlc.arg('batch_size')::int4
     for update skip locked);
 
+-- name: RevokeOutstandingSetupTokens :exec
+-- Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).
+update public.setup_tokens set deleted_at = clock_timestamp()
+where consumed_at is null and deleted_at is null;
+
+-- name: InsertSetupToken :exec
+-- Creation and expiry are anchored to one database-clock observation after the bootstrap lock, so instance clock skew cannot extend a token (ADR-0052).
+with observed as (select clock_timestamp() as at)
+insert into public.setup_tokens (token_hash, created_at, expires_at)
+select sqlc.arg(token_hash), observed.at, observed.at + make_interval(secs => sqlc.arg(ttl_seconds)::double precision)
+from observed;
+
+-- name: ConsumeSetupToken :execrows
+-- Consume only the outstanding, unexpired token; zero rows means wrong, expired, rotated or already used (ADR-0052).
+update public.setup_tokens set consumed_at = clock_timestamp()
+where token_hash = sqlc.arg(token_hash)
+  and consumed_at is null
+  and deleted_at is null
+  and expires_at > clock_timestamp();
+
 -- name: ExtendSessionIdle :execrows
 -- Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 update public.sessions

@@ -38,6 +38,8 @@ type oidcTestEnv struct {
 	jar        http.CookieJar
 	client     *http.Client
 	authClient portcullisv1connect.AuthClient
+	// setupTokens issues the first-run setup token the Bootstrap RPC requires (ADR-0052).
+	setupTokens setupTokenIssuer
 }
 
 func newOIDCTestEnv(t *testing.T) *oidcTestEnv {
@@ -94,19 +96,20 @@ func newOIDCTestEnv(t *testing.T) *oidcTestEnv {
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	serverURL, _ := url.Parse(ts.URL)
 	return &oidcTestEnv{
-		pool:       pool,
-		issuer:     issuer,
-		serverURL:  serverURL,
-		jar:        jar,
-		client:     client,
-		authClient: portcullisv1connect.NewAuthClient(client, ts.URL),
+		pool:        pool,
+		issuer:      issuer,
+		serverURL:   serverURL,
+		jar:         jar,
+		client:      client,
+		authClient:  portcullisv1connect.NewAuthClient(client, ts.URL),
+		setupTokens: svc,
 	}
 }
 
 func (e *oidcTestEnv) bootstrapAdmin(t *testing.T) {
 	t.Helper()
 	_, err := e.authClient.Bootstrap(context.Background(), connect.NewRequest(&portcullisv1.BootstrapRequest{
-		Email: oidcAdminEmail, Password: "hunter2-secretz", DisplayName: "Admin",
+		SetupToken: mustIssueSetupToken(t, e.setupTokens), Email: oidcAdminEmail, Password: "hunter2-secretz", DisplayName: "Admin",
 	}))
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
@@ -337,7 +340,7 @@ func TestOIDCCallbackRefusesHistoricallyVerifiedThirdPartyEmail(t *testing.T) {
 
 func TestOIDCCallbackLinksGmailWithoutAHostedDomainClaim(t *testing.T) {
 	env := newOIDCTestEnv(t)
-	_, err := env.authClient.Bootstrap(context.Background(), connect.NewRequest(&portcullisv1.BootstrapRequest{Email: "admin@gmail.com", Password: "hunter2-secretz", DisplayName: "Admin"}))
+	_, err := env.authClient.Bootstrap(context.Background(), connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: "admin@gmail.com", Password: "hunter2-secretz", DisplayName: "Admin"}))
 	if err != nil {
 		t.Fatal(err)
 	}

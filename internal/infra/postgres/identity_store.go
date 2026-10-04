@@ -283,8 +283,25 @@ func (s *IdentityStore) PermissionsForUser(ctx context.Context, org identity.Org
 	return perms, nil
 }
 
-// BootstrapAdmin serializes first-admin creation and commits user, password, membership, and audit event together; partial failure leaves bootstrap retryable.
-func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, evt audit.Event) (identity.User, error) {
+// RotateSetupToken soft-revokes the outstanding setup token and stores the new hash under the bootstrap lock (ADR-0052).
+func (s *IdentityStore) RotateSetupToken(ctx context.Context, tokenHash []byte, ttl time.Duration) error {
+	return s.withLockedTx(ctx, lockClassBootstrap, 0, func(q *db.Queries) error {
+		users, err := q.CountUsers(ctx)
+		if err != nil {
+			return err
+		}
+		if users > 0 {
+			return identity.ErrAlreadyBootstrapped
+		}
+		if err := q.RevokeOutstandingSetupTokens(ctx); err != nil {
+			return err
+		}
+		return q.InsertSetupToken(ctx, db.InsertSetupTokenParams{TokenHash: tokenHash, TtlSeconds: ttl.Seconds()})
+	})
+}
+
+// BootstrapAdmin serializes first-admin creation and commits user, password, membership, setup-token consumption and audit event together; partial failure leaves bootstrap retryable.
+func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, setupTokenHash []byte, evt audit.Event) (identity.User, error) {
 	var out identity.User
 	err := s.withLockedTx(ctx, lockClassBootstrap, 0, func(q *db.Queries) error {
 		n, err := q.CountUsers(ctx)
@@ -293,6 +310,15 @@ func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, 
 		}
 		if n > 0 {
 			return identity.ErrAlreadyBootstrapped
+		}
+		if setupTokenHash != nil {
+			consumed, err := q.ConsumeSetupToken(ctx, setupTokenHash)
+			if err != nil {
+				return err
+			}
+			if consumed != 1 {
+				return identity.ErrSetupTokenInvalid
+			}
 		}
 		org, err := q.GetDefaultOrganization(ctx)
 		if err != nil {

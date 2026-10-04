@@ -239,6 +239,15 @@ type Setting struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type SetupToken struct {
+	ID         pgtype.UUID
+	TokenHash  []byte
+	CreatedAt  pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+	ConsumedAt pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type User struct {
 	ID          pgtype.UUID
 	Email       string

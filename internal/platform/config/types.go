@@ -90,6 +90,8 @@ type Config struct {
 	BootstrapAdminPasswordFile string `mapstructure:"bootstrap_admin_password_file"`
 	// BootstrapAdminDisplayName is the admin's display name (default "Admin").
 	BootstrapAdminDisplayName string `mapstructure:"bootstrap_admin_display_name"`
+	// SetupTokenFile, when set, receives the first-run setup token (mode 0600) instead of the log; the token gates the interactive /bootstrap form while no user exists (ADR-0052).
+	SetupTokenFile string `mapstructure:"setup_token_file"`
 
 	// trustedProxyNets is TrustedProxies parsed to networks, populated by Load.
 	trustedProxyNets []*net.IPNet

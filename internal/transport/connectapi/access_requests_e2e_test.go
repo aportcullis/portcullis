@@ -62,7 +62,7 @@ func reqEnv(t *testing.T, readQuorum int) (*connsTestEnv, http.CookieJar, string
 	ctx := context.Background()
 	jar, authC, connsC, _ := env.clients()
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {

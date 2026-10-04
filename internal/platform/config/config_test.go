@@ -667,6 +667,23 @@ func TestShutdownInterruptionFitsInsideTheShutdownTimeout(t *testing.T) {
 	}
 }
 
+func TestSetupTokenFileIsOptionalAndTrimmed(t *testing.T) {
+	if cfg, err := config.Load(); err != nil || cfg.SetupTokenFile != "" {
+		t.Fatalf("default SetupTokenFile = %q, %v; want unset (log delivery)", cfg.SetupTokenFile, err)
+	}
+	for _, accepted := range []struct{ envValue, want string }{
+		{"/run/portcullis/setup-token", "/run/portcullis/setup-token"},
+		{"  /var/lib/portcullis/setup-token\n", "/var/lib/portcullis/setup-token"},
+		{"relative/setup-token", "relative/setup-token"},
+		{"   ", ""},
+	} {
+		t.Setenv("PORTCULLIS_SETUP_TOKEN_FILE", accepted.envValue)
+		if cfg, err := config.Load(); err != nil || cfg.SetupTokenFile != accepted.want {
+			t.Errorf("PORTCULLIS_SETUP_TOKEN_FILE=%q gave %q, %v; want %q", accepted.envValue, cfg.SetupTokenFile, err, accepted.want)
+		}
+	}
+}
+
 func TestPublicOriginsDefaultToLoopbackOnly(t *testing.T) {
 	cfg, err := config.Load()
 	if err != nil {

@@ -91,10 +91,12 @@ func (x *User) GetStatus() string {
 }
 
 type BootstrapRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
-	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
-	DisplayName   string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Email       string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	Password    string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	DisplayName string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// setup_token is the one-time token the server issued at first start (logged once or written to PORTCULLIS_SETUP_TOKEN_FILE); a missing, wrong, expired, rotated or consumed token is refused (ADR-0052).
+	SetupToken    string `protobuf:"bytes,4,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -146,6 +148,13 @@ func (x *BootstrapRequest) GetPassword() string {
 func (x *BootstrapRequest) GetDisplayName() string {
 	if x != nil {
 		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *BootstrapRequest) GetSetupToken() string {
+	if x != nil {
+		return x.SetupToken
 	}
 	return ""
 }
@@ -602,11 +611,13 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\tR\x06status\"g\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\"\x88\x01\n" +
 	"\x10BootstrapRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12!\n" +
-	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\"<\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x1f\n" +
+	"\vsetup_token\x18\x04 \x01(\tR\n" +
+	"setupToken\"<\n" +
 	"\x11BootstrapResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"@\n" +
 	"\fLoginRequest\x12\x14\n" +

@@ -39,7 +39,7 @@ cd portcullis
 docker compose up --build
 ```
 
-Open [localhost:8080](http://localhost:8080), create the first administrator, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and submit your first request.
+Open [localhost:8080](http://localhost:8080), create the first administrator with the one-time setup token printed by `docker compose logs portcullis`, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and submit your first request.
 
 For production, use the [recommended private-network architecture](docs/operations/recommended-architecture.md): keep Portcullis inside your network and connect through Cloudflare WARP or Tailscale.
 

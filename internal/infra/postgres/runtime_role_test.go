@@ -17,7 +17,7 @@ func assertRuntimeRoleBoundary(t *testing.T, pool *pgxpool.Pool, role string) {
 	ctx := context.Background()
 
 	store := pg.NewIdentityStore(pool)
-	if _, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash",
+	if _, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", nil,
 		testEvent(audit.ActionAuthBootstrap)); err != nil {
 		t.Fatalf("BootstrapAdmin: %v", err)
 	}
@@ -48,6 +48,17 @@ func assertRuntimeRoleBoundary(t *testing.T, pool *pgxpool.Pool, role string) {
 	}
 	if _, err := conn.Exec(ctx, `delete from audit_events`); err == nil {
 		t.Error("runtime DELETE on audit_events must be denied")
+	}
+
+	// Setup tokens are issued, consumed and soft-revoked through INSERT/UPDATE; their rows are never erased (ADR-0052).
+	if _, err := conn.Exec(ctx, `insert into setup_tokens (token_hash, expires_at) values (sha256('runtime-boundary'::bytea), now() + interval '1 hour')`); err != nil {
+		t.Errorf("runtime INSERT on setup_tokens should be allowed: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `update setup_tokens set consumed_at = clock_timestamp() where consumed_at is null and deleted_at is null`); err != nil {
+		t.Errorf("runtime UPDATE on setup_tokens should be allowed: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `delete from setup_tokens`); err == nil {
+		t.Error("runtime DELETE on setup_tokens must be denied")
 	}
 
 	if _, err := conn.Exec(ctx, `alter table audit_events disable trigger audit_events_no_mutation`); err == nil {

@@ -49,6 +49,7 @@ func Load() (Config, error) {
 	}
 	normalizeGoogleConfig(&cfg)
 	normalizeBootstrapAdminConfig(&cfg)
+	cfg.SetupTokenFile = strings.TrimSpace(cfg.SetupTokenFile)
 
 	// Accept a bare port ("8080") as well as "host:port" (":8080"). An explicitly empty address would bind a random port, so reject it.
 	if cfg.Addr == "" {

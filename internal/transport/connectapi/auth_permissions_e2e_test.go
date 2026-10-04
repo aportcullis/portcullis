@@ -55,7 +55,7 @@ func TestLoginAndMeSurvivePermissionResolverFailure(t *testing.T) {
 	authC := portcullisv1connect.NewAuthClient(hc, ts.URL)
 
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, authSvc), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 

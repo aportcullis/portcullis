@@ -578,7 +578,7 @@ func TestBootstrapAdminSerializesConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			_, errs[idx] = store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", testEvent(audit.ActionAuthBootstrap))
+			_, errs[idx] = store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", nil, testEvent(audit.ActionAuthBootstrap))
 		}(i)
 	}
 	wg.Wait()
@@ -610,7 +610,7 @@ func TestRotateSessionLeavesOneActive(t *testing.T) {
 	}
 	store := pg.NewIdentityStore(pool)
 
-	u, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", testEvent(audit.ActionAuthBootstrap))
+	u, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", nil, testEvent(audit.ActionAuthBootstrap))
 	if err != nil {
 		t.Fatalf("BootstrapAdmin: %v", err)
 	}

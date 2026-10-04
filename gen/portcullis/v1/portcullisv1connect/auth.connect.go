@@ -47,7 +47,7 @@ const (
 
 // AuthClient is a client for the portcullis.v1.Auth service.
 type AuthClient interface {
-	// Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
+	// Bootstrap creates the first admin with the first-start setup token; refused once any user exists. It does not start a session — the client logs in afterward.
 	Bootstrap(context.Context, *connect.Request[v1.BootstrapRequest]) (*connect.Response[v1.BootstrapResponse], error)
 	// Login verifies the password and starts a session (sets the session + CSRF cookies).
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
@@ -139,7 +139,7 @@ func (c *authClient) GetConfig(ctx context.Context, req *connect.Request[v1.GetC
 
 // AuthHandler is an implementation of the portcullis.v1.Auth service.
 type AuthHandler interface {
-	// Bootstrap creates the first admin; refused once any user exists. It does not start a session — the client logs in afterward.
+	// Bootstrap creates the first admin with the first-start setup token; refused once any user exists. It does not start a session — the client logs in afterward.
 	Bootstrap(context.Context, *connect.Request[v1.BootstrapRequest]) (*connect.Response[v1.BootstrapResponse], error)
 	// Login verifies the password and starts a session (sets the session + CSRF cookies).
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)

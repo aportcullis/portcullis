@@ -43,6 +43,8 @@ type connsTestEnv struct {
 	tsURL     string
 	transport http.RoundTripper
 	logs      *testLogBuffer
+	// setupTokens issues the first-run setup token the Bootstrap RPC requires (ADR-0052).
+	setupTokens setupTokenIssuer
 }
 
 type testLogBuffer struct {
@@ -148,7 +150,7 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	t.Cleanup(ts.Close)
 
 	serverURL, _ := url.Parse(ts.URL)
-	return &connsTestEnv{pool: pool, store: store, hasher: hasher, serverURL: serverURL, tsURL: ts.URL, transport: ts.Client().Transport, logs: logs}
+	return &connsTestEnv{pool: pool, store: store, hasher: hasher, serverURL: serverURL, tsURL: ts.URL, transport: ts.Client().Transport, logs: logs, setupTokens: authSvc}
 }
 
 func (e *connsTestEnv) executionClient(jar http.CookieJar) portcullisv1connect.QueryExecutionsClient {
@@ -295,7 +297,7 @@ func TestConnectionsLifecycle(t *testing.T) {
 
 	jar, authC, connsC, auditC := env.clients()
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
@@ -464,7 +466,7 @@ func TestConnectionDestinationRefusalsShareOneBucketThroughRawClient(t *testing.
 	ctx := context.Background()
 	jar, authC, connsC, _ := env.clients()
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
@@ -518,7 +520,7 @@ func TestConnectionNumericHostSpellingsAreInvalidThroughRawClient(t *testing.T) 
 	ctx := context.Background()
 	jar, authC, connsC, _ := env.clients()
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
@@ -556,7 +558,7 @@ func TestConnectionsPermissionDenied(t *testing.T) {
 	ctx := context.Background()
 
 	jar, authC, _, _ := env.clients()
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: "admin@example.com", Password: "correct-horse-battery", DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: "admin@example.com", Password: "correct-horse-battery", DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	_ = jar

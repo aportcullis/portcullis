@@ -32,6 +32,23 @@ func (q *Queries) CloseExpiredSessions(ctx context.Context, batchSize int32) (in
 	return result.RowsAffected(), nil
 }
 
+const consumeSetupToken = `-- name: ConsumeSetupToken :execrows
+update public.setup_tokens set consumed_at = clock_timestamp()
+where token_hash = $1
+  and consumed_at is null
+  and deleted_at is null
+  and expires_at > clock_timestamp()
+`
+
+// Consume only the outstanding, unexpired token; zero rows means wrong, expired, rotated or already used (ADR-0052).
+func (q *Queries) ConsumeSetupToken(ctx context.Context, tokenHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeSetupToken, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countUsers = `-- name: CountUsers :one
 select count(*) from public.users
 `
@@ -304,6 +321,24 @@ func (q *Queries) GetUserForLogin(ctx context.Context, lower string) (GetUserFor
 	return i, err
 }
 
+const insertSetupToken = `-- name: InsertSetupToken :exec
+with observed as (select clock_timestamp() as at)
+insert into public.setup_tokens (token_hash, created_at, expires_at)
+select $1, observed.at, observed.at + make_interval(secs => $2::double precision)
+from observed
+`
+
+type InsertSetupTokenParams struct {
+	TokenHash  []byte
+	TtlSeconds float64
+}
+
+// Creation and expiry are anchored to one database-clock observation after the bootstrap lock, so instance clock skew cannot extend a token (ADR-0052).
+func (q *Queries) InsertSetupToken(ctx context.Context, arg InsertSetupTokenParams) error {
+	_, err := q.db.Exec(ctx, insertSetupToken, arg.TokenHash, arg.TtlSeconds)
+	return err
+}
+
 const listOrganizationIDs = `-- name: ListOrganizationIDs :many
 select id from public.organizations order by id
 `
@@ -406,6 +441,17 @@ where user_id = $1 and (failure_count > 0 or locked_until is not null)
 // A successful login clears the slate. The WHERE leaves an already-clean row unwritten, so calling this on every success keeps the hot path write-free while still clearing failures committed by concurrent attempts mid-verify.
 func (q *Queries) ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, resetLoginBackoff, userID)
+	return err
+}
+
+const revokeOutstandingSetupTokens = `-- name: RevokeOutstandingSetupTokens :exec
+update public.setup_tokens set deleted_at = clock_timestamp()
+where consumed_at is null and deleted_at is null
+`
+
+// Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).
+func (q *Queries) RevokeOutstandingSetupTokens(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, revokeOutstandingSetupTokens)
 	return err
 }
 

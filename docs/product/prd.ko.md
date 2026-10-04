@@ -759,6 +759,7 @@ audit_events
   다른 클라이언트는 사용자의 credential bucket을 소진시킬 수 없다. 공유 계정 backoff는 email을 아는 누구나 여전히 유발할 수 있으며, 기기별 lockout이 문서화된 후속 작업이고 이 잔여 위험은 ADR-0006에 기록한다.
 - bootstrap admin 생성은 사용자가 없는 최초 1회로 제한하고 완료 후 bootstrap 경로를 비활성화. **config 기반 부트스트랩 (2026-07-23 증보, ADR-0006):** 대화형 `/bootstrap` 폼 외에 `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` + 정확히 한 개의 비밀번호 소스(`_PASSWORD` 또는 마운트 시크릿 `_PASSWORD_FILE`; 선택 `_DISPLAY_NAME`, 기본 `Admin`)로도 최초 admin을 만들 수 있다.
   서버는 사용자가 0명일 때만 부팅 중 같은 Bootstrap 유스케이스를 실행하고(락 하 재검사로 대화형과 race-safe), 사용자가 있으면 로그만 남기고 건너뛴다.
+  **setup token (2026-10-04 증보, ADR-0052):** 대화형 `/bootstrap`은 사용자가 없는 동안 기동마다 발급되는 일회용 setup token을 요구한다. hash만 저장하고, 로그 또는 소유자 전용 `PORTCULLIS_SETUP_TOKEN_FILE`로 한 번만 전달하며, 24시간 후 만료되고 재시작 시 교체되며, admin 생성과 원자적으로 소비한다. 누락·오류·만료·교체·사용된 token은 구분 없이 거부한다.
   부분 설정·약한 비밀번호는 **기동 거부**(master key와 동일 fail-fast).
   표시 이름(display name)은 이제 **필수**다 — 승인·요청 화면이 사람을 표시 이름으로 렌더링하므로 모든 계정이 하나를 갖는다(헤더는 표시 이름을 보이고 없으면 email fallback).
   로그인한 사용자 이름 옆에 opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하며, 외부 이미지 요청 없이 로컬에서 생성한다(ADR-0041).

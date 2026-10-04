@@ -17,7 +17,7 @@ import (
 
 // authApp is the slice of the auth application service this handler consumes (DIP/ISP — the handler depends on the methods it calls, not the concrete *auth.Service; tests substitute fakes without a database).
 type authApp interface {
-	Bootstrap(ctx context.Context, email, password, displayName string) (identity.User, error)
+	BootstrapWithSetupToken(ctx context.Context, setupToken, email, password, displayName string) (identity.User, error)
 	Login(ctx context.Context, email, password string) (auth.Session, error)
 	Logout(ctx context.Context, token string) error
 	PublicConfig(ctx context.Context) (auth.PublicConfig, error)
@@ -61,11 +61,11 @@ func (a *AuthService) Bootstrap(
 	ctx context.Context,
 	req *connect.Request[portcullisv1.BootstrapRequest],
 ) (*connect.Response[portcullisv1.BootstrapResponse], error) {
-	u, err := a.svc.Bootstrap(ctx, req.Msg.GetEmail(), req.Msg.GetPassword(), req.Msg.GetDisplayName())
+	user, err := a.svc.BootstrapWithSetupToken(ctx, req.Msg.GetSetupToken(), req.Msg.GetEmail(), req.Msg.GetPassword(), req.Msg.GetDisplayName())
 	if err != nil {
 		return nil, authError(err)
 	}
-	return connect.NewResponse(&portcullisv1.BootstrapResponse{User: toProtoUser(u)}), nil
+	return connect.NewResponse(&portcullisv1.BootstrapResponse{User: toProtoUser(user)}), nil
 }
 
 func (a *AuthService) Login(
@@ -176,6 +176,8 @@ func authError(err error) error {
 		return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid credentials"))
 	case errors.Is(err, identity.ErrAlreadyBootstrapped):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("already bootstrapped"))
+	case errors.Is(err, identity.ErrSetupTokenInvalid):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("invalid setup token"))
 	case errors.Is(err, identity.ErrInvalidEmail):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid email"))
 	case errors.Is(err, identity.ErrWeakPassword):

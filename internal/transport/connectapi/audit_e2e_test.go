@@ -34,6 +34,8 @@ type auditTestEnv struct {
 	serverURL *url.URL
 	tsURL     string
 	transport http.RoundTripper
+	// setupTokens issues the first-run setup token the Bootstrap RPC requires (ADR-0052).
+	setupTokens setupTokenIssuer
 }
 
 func newAuditTestEnv(t *testing.T) *auditTestEnv {
@@ -78,7 +80,7 @@ func newAuditTestEnv(t *testing.T) *auditTestEnv {
 	t.Cleanup(ts.Close)
 
 	serverURL, _ := url.Parse(ts.URL)
-	return &auditTestEnv{pool: pool, store: store, hasher: hasher, serverURL: serverURL, tsURL: ts.URL, transport: ts.Client().Transport}
+	return &auditTestEnv{pool: pool, store: store, hasher: hasher, serverURL: serverURL, tsURL: ts.URL, transport: ts.Client().Transport, setupTokens: authSvc}
 }
 
 func TestAuditGetReturnsStoredEvidence(t *testing.T) {
@@ -88,7 +90,7 @@ func TestAuditGetReturnsStoredEvidence(t *testing.T) {
 	adminJar, adminAuth, adminAudit := env.clients()
 	const email, password = "admin@example.com", "correct-horse-battery"
 	if _, err := adminAuth.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{
-		Email: email, Password: password, DisplayName: "Admin",
+		SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin",
 	})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
@@ -160,7 +162,7 @@ func TestAuditListAuthorization(t *testing.T) {
 
 	adminJar, adminAuth, adminAudit := env.clients()
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := adminAuth.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := adminAuth.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	if _, err := adminAuth.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {

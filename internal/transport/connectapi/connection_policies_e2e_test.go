@@ -30,7 +30,7 @@ func TestConnectionPoliciesLifecycle(t *testing.T) {
 	jar, authC, connsC, auditC := env.clients()
 	policiesC := env.policyClient(jar)
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	login, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password}))

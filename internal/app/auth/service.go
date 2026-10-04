@@ -118,8 +118,37 @@ func (s *Service) recordAudit(ctx context.Context, e audit.Event) {
 	}
 }
 
-// Bootstrap creates the first admin. It is refused once any user exists. The password is hashed before the transaction; the repository re-checks the no-user invariant under a lock and writes user + password + membership atomically (so a partial failure can't leave a half-created admin that permanently blocks bootstrap).
-func (s *Service) Bootstrap(ctx context.Context, email, password, displayName string) (_ identity.User, err error) {
+// IssueSetupToken mints the first-run setup token, replacing any outstanding one, and returns its raw value for one-time delivery to the operator; it fails with identity.ErrAlreadyBootstrapped once a user exists (ADR-0052).
+func (s *Service) IssueSetupToken(ctx context.Context) (string, error) {
+	token, err := newToken()
+	if err != nil {
+		return "", err
+	}
+	tokenHash := sha256.Sum256([]byte(token))
+	if err := s.repo.RotateSetupToken(ctx, tokenHash[:], SetupTokenTTL); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// BootstrapWithSetupToken creates the first admin for an interactive caller holding the first-run setup token, consuming the token atomically with the admin creation (ADR-0052).
+func (s *Service) BootstrapWithSetupToken(ctx context.Context, setupToken, email, password, displayName string) (identity.User, error) {
+	setupToken = strings.TrimSpace(setupToken)
+	if setupToken == "" || len(setupToken) > maxSetupTokenLength {
+		s.recordAudit(ctx, newEvent(ctx, audit.ActionAuthBootstrap, audit.OutcomeFailed))
+		return identity.User{}, identity.ErrSetupTokenInvalid
+	}
+	tokenHash := sha256.Sum256([]byte(setupToken))
+	return s.bootstrap(ctx, tokenHash[:], email, password, displayName)
+}
+
+// ProvisionBootstrapAdmin creates the first admin from operator configuration at startup, which needs no setup token because the operator controls the process environment (ADR-0006).
+func (s *Service) ProvisionBootstrapAdmin(ctx context.Context, email, password, displayName string) (identity.User, error) {
+	return s.bootstrap(ctx, nil, email, password, displayName)
+}
+
+// bootstrap creates the first admin. It is refused once any user exists. The password is hashed before the transaction; the repository re-checks the no-user invariant under a lock, consumes the setup token when one is given, and writes user + password + membership atomically (so a partial failure can't leave a half-created admin that permanently blocks bootstrap).
+func (s *Service) bootstrap(ctx context.Context, setupTokenHash []byte, email, password, displayName string) (_ identity.User, err error) {
 	// Audit every login failure with a detached context so disconnects cannot erase the trail. Unknown accounts retain neither actor nor attempted email.
 	failed := newEvent(ctx, audit.ActionAuthBootstrap, audit.OutcomeFailed)
 	defer func() {
@@ -152,7 +181,7 @@ func (s *Service) Bootstrap(ctx context.Context, email, password, displayName st
 		return identity.User{}, err
 	}
 	// The audit event commits in the same transaction as the admin creation; the store completes the actor (the created user's id exists only inside the tx).
-	return s.repo.BootstrapAdmin(ctx, email, displayName, phc,
+	return s.repo.BootstrapAdmin(ctx, email, displayName, phc, setupTokenHash,
 		newEvent(ctx, audit.ActionAuthBootstrap, audit.OutcomeSucceeded))
 }
 

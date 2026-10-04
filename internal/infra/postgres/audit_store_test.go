@@ -295,7 +295,7 @@ func TestStateChangingOpsCommitAuditAtomically(t *testing.T) {
 		return n
 	}
 
-	u, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash",
+	u, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc-hash", nil,
 		audit.Event{ActorType: audit.ActorUser, Action: audit.ActionAuthBootstrap, TargetType: audit.TargetTypeUser, Outcome: audit.OutcomeSucceeded, RequestID: "req-boot"})
 	if err != nil {
 		t.Fatalf("BootstrapAdmin: %v", err)

@@ -59,7 +59,7 @@ func newOIDCService(t *testing.T, repo auth.Repository, rec auth.AuditRecorder, 
 
 func bootstrapUser(t *testing.T, svc *auth.Service) identity.User {
 	t.Helper()
-	u, err := svc.Bootstrap(context.Background(), "admin@example.com", "hunter2-secretz", "Admin")
+	u, err := svc.ProvisionBootstrapAdmin(context.Background(), "admin@example.com", "hunter2-secretz", "Admin")
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}

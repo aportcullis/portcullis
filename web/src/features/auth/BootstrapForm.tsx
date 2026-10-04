@@ -1,49 +1,35 @@
 import type { Component } from "solid-js";
 import { Show, createSignal } from "solid-js";
 
-import { Code, ConnectError } from "@connectrpc/connect";
-
+import { describeBootstrapError } from "@/features/auth/bootstrapError";
 import { PasswordField } from "@/features/auth/PasswordField";
 import { authClient } from "@/shared/api/client";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
-import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
-
-// Bootstrap is refused once any user exists (install-level state, so naming it is not an account oracle); other rejections surface the server's validation reason category without echoing input back.
-function bootstrapError(err: unknown): string {
-  if (err instanceof ConnectError) {
-    switch (err.code) {
-      case Code.FailedPrecondition:
-        return "This instance is already set up.";
-      case Code.InvalidArgument:
-        return "Please double-check the email and display name — and note the password needs at least 15 characters.";
-      case Code.ResourceExhausted:
-        return "Too many attempts — wait a moment and retry.";
-    }
-  }
-  return "Something went wrong. Please retry.";
-}
+import { TextField, TextFieldDescription, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
 export const BootstrapForm: Component<{ onSuccess: () => void }> = (props) => {
+  const [setupToken, setSetupToken] = createSignal("");
   const [email, setEmail] = createSignal("");
   const [displayName, setDisplayName] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [error, setError] = createSignal("");
   const [pending, setPending] = createSignal(false);
 
-  const submit = async (e: SubmitEvent) => {
-    e.preventDefault();
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault();
     setError("");
     setPending(true);
     try {
       await authClient.bootstrap({
+        setupToken: setupToken(),
         email: email(),
         password: password(),
         displayName: displayName(),
       });
       props.onSuccess();
     } catch (err) {
-      setError(bootstrapError(err));
+      setError(describeBootstrapError(err));
     } finally {
       setPending(false);
     }
@@ -52,6 +38,19 @@ export const BootstrapForm: Component<{ onSuccess: () => void }> = (props) => {
   return (
     <form class="flex flex-col gap-4" onSubmit={submit}>
       <TextField>
+        <TextFieldLabel for="setupToken">Setup token</TextFieldLabel>
+        <TextFieldInput
+          id="setupToken"
+          type="text"
+          autocomplete="off"
+          spellcheck={false}
+          required
+          value={setupToken()}
+          onInput={(event) => setSetupToken(event.currentTarget.value)}
+        />
+        <TextFieldDescription>Printed once in the server log at startup, or written to the configured setup token file.</TextFieldDescription>
+      </TextField>
+      <TextField>
         <TextFieldLabel for="email">Email</TextFieldLabel>
         <TextFieldInput
           id="email"
@@ -59,7 +58,7 @@ export const BootstrapForm: Component<{ onSuccess: () => void }> = (props) => {
           autocomplete="username"
           required
           value={email()}
-          onInput={(e) => setEmail(e.currentTarget.value)}
+          onInput={(event) => setEmail(event.currentTarget.value)}
         />
       </TextField>
       <TextField>
@@ -69,7 +68,7 @@ export const BootstrapForm: Component<{ onSuccess: () => void }> = (props) => {
           type="text"
           required
           value={displayName()}
-          onInput={(e) => setDisplayName(e.currentTarget.value)}
+          onInput={(event) => setDisplayName(event.currentTarget.value)}
         />
       </TextField>
       <PasswordField

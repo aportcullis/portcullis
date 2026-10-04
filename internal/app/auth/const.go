@@ -23,6 +23,12 @@ const (
 	backoffJitterFraction   = 0.2
 )
 
+// SetupTokenTTL bounds how long a first-run setup token stays redeemable; ADR-0052 pins it at 24 hours, after which a restart issues a fresh token.
+const SetupTokenTTL = 24 * time.Hour
+
+// maxSetupTokenLength bounds a submitted setup token before hashing; issued tokens are 43 base64url characters.
+const maxSetupTokenLength = 256
+
 // oidcPendingTTL bounds the window between /auth/google/start and the callback. ADR-0007 pins it at exactly 10 minutes; the service enforces it inside the sealed payload in addition to the cookie's Max-Age.
 const oidcPendingTTL = 10 * time.Minute
 

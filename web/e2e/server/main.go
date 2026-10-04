@@ -23,6 +23,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
+// setupTokenFile is where the application writes its first-run setup token; web/e2e/login.ts reads the same repository-relative path.
+const setupTokenFile = ".test-docker/e2e/setup-token"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "browser test server:", err)
@@ -124,7 +127,9 @@ func run() error {
 		"PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true", "PORTCULLIS_STARTUP_MIGRATE=true",
 		"PORTCULLIS_ADDR=127.0.0.1:18080", "PORTCULLIS_SHUTDOWN_TIMEOUT=5s", "PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT=2s",
 		// The default destination policy refuses loopback; the Testcontainers target is published there (ADR-0051).
-		"PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","))
+		"PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","),
+		// The browser bootstrap scenario reads the first-run setup token from this owner-only file (ADR-0052).
+		"PORTCULLIS_SETUP_TOKEN_FILE="+setupTokenFile)
 	server.Stdout, server.Stderr = os.Stdout, os.Stderr
 	if err := server.Start(); err != nil {
 		return err

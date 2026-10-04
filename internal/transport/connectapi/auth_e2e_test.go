@@ -54,11 +54,27 @@ func csrfFromJar(jar http.CookieJar, u *url.URL) string {
 }
 
 type authTestEnv struct {
-	pool      *pgxpool.Pool
-	jar       http.CookieJar
-	serverURL *url.URL
-	client    portcullisv1connect.AuthClient
-	raw       portcullisv1connect.AuthClient
+	pool        *pgxpool.Pool
+	jar         http.CookieJar
+	serverURL   *url.URL
+	client      portcullisv1connect.AuthClient
+	raw         portcullisv1connect.AuthClient
+	setupTokens setupTokenIssuer
+}
+
+// setupTokenIssuer mints the first-run setup token as the composition root does at startup (ADR-0052).
+type setupTokenIssuer interface {
+	IssueSetupToken(ctx context.Context) (string, error)
+}
+
+// mustIssueSetupToken returns a fresh setup token for a not-yet-bootstrapped installation.
+func mustIssueSetupToken(t *testing.T, issuer setupTokenIssuer) string {
+	t.Helper()
+	token, err := issuer.IssueSetupToken(context.Background())
+	if err != nil {
+		t.Fatalf("IssueSetupToken: %v", err)
+	}
+	return token
 }
 
 type authEnvOptions struct {
@@ -126,18 +142,19 @@ func newAuthTestEnv(t *testing.T, opts authEnvOptions) *authTestEnv {
 	httpClient.Jar = jar
 	serverURL, _ := url.Parse(ts.URL)
 	return &authTestEnv{
-		pool:      pool,
-		jar:       jar,
-		serverURL: serverURL,
-		client:    portcullisv1connect.NewAuthClient(httpClient, ts.URL),
-		raw:       portcullisv1connect.NewAuthClient(&http.Client{Transport: ts.Client().Transport}, ts.URL),
+		pool:        pool,
+		jar:         jar,
+		serverURL:   serverURL,
+		client:      portcullisv1connect.NewAuthClient(httpClient, ts.URL),
+		raw:         portcullisv1connect.NewAuthClient(&http.Client{Transport: ts.Client().Transport}, ts.URL),
+		setupTokens: svc,
 	}
 }
 
 func (e *authTestEnv) bootstrapAndLogin(t *testing.T, email, password string) string {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := e.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := e.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, e.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	login, err := e.client.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password}))
@@ -159,7 +176,7 @@ func TestLoginProgressiveBackoffE2E(t *testing.T) {
 	ctx := context.Background()
 
 	const email, password = "admin@example.com", "correct-horse-battery"
-	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
@@ -457,7 +474,7 @@ func TestAuthE2E(t *testing.T) {
 		t.Errorf("fresh GetConfig = %+v, want needs_bootstrap + no google", cfg.Msg)
 	}
 
-	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: email, Password: password, DisplayName: "Admin"})); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
@@ -468,7 +485,7 @@ func TestAuthE2E(t *testing.T) {
 	if cfg.Msg.GetNeedsBootstrap() {
 		t.Error("GetConfig still reports needs_bootstrap after bootstrap")
 	}
-	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: "x@y.z", Password: "another-valid-password", DisplayName: "X"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+	if _, err := env.client.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: "replayed-or-guessed-token", Email: "x@y.z", Password: "another-valid-password", DisplayName: "X"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("second Bootstrap code = %v, want FailedPrecondition", connect.CodeOf(err))
 	}
 

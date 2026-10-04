@@ -197,7 +197,7 @@ func run() error {
 			logger.Error("bootstrap admin password unavailable", "err", err)
 			return err
 		}
-		switch _, err := authSvc.Bootstrap(startupCtx, cfg.BootstrapAdminEmail, password, cfg.BootstrapAdminDisplayName); {
+		switch _, err := authSvc.ProvisionBootstrapAdmin(startupCtx, cfg.BootstrapAdminEmail, password, cfg.BootstrapAdminDisplayName); {
 		case err == nil:
 			logger.Info("bootstrap admin created from config")
 		case errors.Is(err, identity.ErrAlreadyBootstrapped):
@@ -206,6 +206,11 @@ func run() error {
 			logger.Error("bootstrap admin creation failed", "err", err)
 			return err
 		}
+	}
+
+	// Gate the interactive /bootstrap form behind a one-time setup token while no user exists; each start rotates it and delivers it once (ADR-0052).
+	if err := deliverFirstRunSetupToken(startupCtx, logger, authSvc, cfg.SetupTokenFile); err != nil {
+		return err
 	}
 
 	// Authorization: load the seeded permission catalog once (ADR-0008) and refuse to boot if it is missing — an unseeded catalog means every has(permission) check would be undecidable, the same fail-fast stance as the keyring and the runtime-connection checks above.

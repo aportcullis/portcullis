@@ -27,7 +27,7 @@ func TestAttackerCannotExhaustAnotherClientsLoginBucket(t *testing.T) {
 	env := newAuthTestEnv(t, authEnvOptions{trustedProxies: []*net.IPNet{loopback}, rateLimit: true})
 	const victim, password = "sole-admin@example.com", "sole-admin-password-1"
 	const attackerIP, victimIP, otherVictimIP = "203.0.113.7", "198.51.100.20", "198.51.100.21"
-	bootstrap := connect.NewRequest(&portcullisv1.BootstrapRequest{Email: victim, Password: password, DisplayName: "Admin"})
+	bootstrap := connect.NewRequest(&portcullisv1.BootstrapRequest{SetupToken: mustIssueSetupToken(t, env.setupTokens), Email: victim, Password: password, DisplayName: "Admin"})
 	bootstrap.Header().Set("X-Forwarded-For", "192.0.2.1")
 	if _, err := env.raw.Bootstrap(context.Background(), bootstrap); err != nil {
 		t.Fatalf("Bootstrap: %v", err)

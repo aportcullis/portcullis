@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -38,6 +39,10 @@ type fakeRepo struct {
 	failBackoffWrites bool
 
 	failOIDCComplete bool
+
+	// setupTokenHash is the outstanding setup token's hash (nil when none is outstanding), expiring on the repo clock like the store's database clock.
+	setupTokenHash      []byte
+	setupTokenExpiresAt time.Time
 }
 
 func newFake() *fakeRepo {
@@ -60,9 +65,23 @@ func (f *fakeRepo) next(prefix string) string {
 }
 
 func (f *fakeRepo) CountUsers(context.Context) (int64, error) { return int64(len(f.users)), nil }
-func (f *fakeRepo) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, evt audit.Event) (identity.User, error) {
+func (f *fakeRepo) RotateSetupToken(_ context.Context, tokenHash []byte, ttl time.Duration) error {
+	if len(f.users) > 0 {
+		return identity.ErrAlreadyBootstrapped
+	}
+	f.setupTokenHash = append([]byte(nil), tokenHash...)
+	f.setupTokenExpiresAt = f.clock().Add(ttl)
+	return nil
+}
+func (f *fakeRepo) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, setupTokenHash []byte, evt audit.Event) (identity.User, error) {
 	if len(f.users) > 0 {
 		return identity.User{}, identity.ErrAlreadyBootstrapped
+	}
+	if setupTokenHash != nil {
+		if f.setupTokenHash == nil || !bytes.Equal(f.setupTokenHash, setupTokenHash) || !f.clock().Before(f.setupTokenExpiresAt) {
+			return identity.User{}, identity.ErrSetupTokenInvalid
+		}
+		f.setupTokenHash = nil
 	}
 	u, err := f.CreateUser(ctx, email, displayName)
 	if err != nil {
@@ -372,7 +391,7 @@ func TestAuthRecordsAuditEvents(t *testing.T) {
 	repo := newFake()
 	svc := newServiceWithRecorder(t, repo, rec)
 
-	u, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin")
+	u, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin")
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
@@ -500,7 +519,7 @@ func TestFailedLoginAuditSurvivesCancelDuringVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	u, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin")
+	u, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin")
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
@@ -540,7 +559,7 @@ func TestAuthenticateIsPureRead_SlideIdleExtends(t *testing.T) {
 	clock := time.Now()
 	svc := newServiceWithRecorder(t, repo, &capturingRecorder{}).WithClock(func() time.Time { return clock })
 
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	res, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")
@@ -590,7 +609,7 @@ func TestSlideIdleThrottlesFrequentWrites(t *testing.T) {
 	clock := time.Now()
 	svc := newServiceWithRecorder(t, repo, &capturingRecorder{}).WithClock(func() time.Time { return clock })
 
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	res, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")
@@ -621,7 +640,7 @@ func TestSlideIdleRejectsRevokedSessionWithinRenewInterval(t *testing.T) {
 	repo := newFake()
 	clock := time.Now()
 	svc := newServiceWithRecorder(t, repo, &capturingRecorder{}).WithClock(func() time.Time { return clock })
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	res, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")
@@ -649,7 +668,7 @@ func TestLoginRehashesOutdatedProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	baseline := repo.setPasswordCalls
@@ -676,7 +695,7 @@ func TestLoginUniformErrorOnUnverifiableHash(t *testing.T) {
 	repo := newFake()
 
 	boot := newServiceWithRecorder(t, repo, &capturingRecorder{})
-	if _, err := boot.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := boot.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -708,7 +727,7 @@ func TestPublicConfig(t *testing.T) {
 		t.Errorf("fresh instance config = %+v, want google off + needs bootstrap", cfg)
 	}
 
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	svc.WithOIDCProvider(&fakeProvider{})
@@ -726,10 +745,10 @@ func TestBootstrapOnce(t *testing.T) {
 	ctx := context.Background()
 	svc := newService(t, newFake())
 
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
-	if _, err := svc.Bootstrap(ctx, "second@example.com", "another-secret-pw", "Two"); !errors.Is(err, identity.ErrAlreadyBootstrapped) {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "second@example.com", "another-secret-pw", "Two"); !errors.Is(err, identity.ErrAlreadyBootstrapped) {
 		t.Errorf("second Bootstrap = %v, want ErrAlreadyBootstrapped", err)
 	}
 }
@@ -752,7 +771,7 @@ func TestBootstrapPasswordRoundTripsVerbatim(t *testing.T) {
 			t.Parallel()
 			svc := newService(t, newFake())
 			email := "admin@example.com"
-			if _, err := svc.Bootstrap(ctx, email, tc.password, "Admin"); err != nil {
+			if _, err := svc.ProvisionBootstrapAdmin(ctx, email, tc.password, "Admin"); err != nil {
 				t.Fatalf("Bootstrap: %v", err)
 			}
 			if _, err := svc.Login(ctx, email, tc.password); err != nil {
@@ -774,10 +793,10 @@ func TestBootstrapRefusedRecordsFailureEvent(t *testing.T) {
 	rec := &capturingRecorder{}
 	svc := newServiceWithRecorder(t, newFake(), rec)
 
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatalf("first Bootstrap: %v", err)
 	}
-	if _, err := svc.Bootstrap(ctx, "attacker@example.com", "another-secret-pw", "X"); !errors.Is(err, identity.ErrAlreadyBootstrapped) {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "attacker@example.com", "another-secret-pw", "X"); !errors.Is(err, identity.ErrAlreadyBootstrapped) {
 		t.Fatalf("second Bootstrap = %v, want ErrAlreadyBootstrapped", err)
 	}
 
@@ -840,7 +859,7 @@ func TestBootstrapValidatesInput(t *testing.T) {
 			t.Parallel()
 			repo := newFake()
 			svc := newService(t, repo)
-			if _, err := svc.Bootstrap(ctx, "admin@example.com", "correct-horse-battery", tc.display); !errors.Is(err, tc.want) {
+			if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "correct-horse-battery", tc.display); !errors.Is(err, tc.want) {
 				t.Errorf("Bootstrap display = %v, want %v", err, tc.want)
 			}
 			if len(repo.users) != 0 {
@@ -853,7 +872,7 @@ func TestBootstrapValidatesInput(t *testing.T) {
 			t.Parallel()
 			repo := newFake()
 			svc := newService(t, repo)
-			if _, err := svc.Bootstrap(ctx, tc.email, tc.password, "Admin"); !errors.Is(err, tc.want) {
+			if _, err := svc.ProvisionBootstrapAdmin(ctx, tc.email, tc.password, "Admin"); !errors.Is(err, tc.want) {
 				t.Errorf("Bootstrap = %v, want %v", err, tc.want)
 			}
 			if len(repo.users) != 0 {
@@ -868,7 +887,7 @@ func TestLoginRejectsWrongPasswordAndDisabled(t *testing.T) {
 	ctx := context.Background()
 	repo := newFake()
 	svc := newService(t, repo)
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -907,7 +926,7 @@ func TestLoginRejectsOversizedInputBeforeHashing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
 	}
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	hasher.verifies.Store(0)
@@ -934,7 +953,7 @@ func TestLoginCanonicalizesEmailAndPassword(t *testing.T) {
 	svc := newService(t, newFake())
 
 	const bootPw = "café-password-xy"
-	if _, err := svc.Bootstrap(ctx, "Admin@Example.com", bootPw, "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "Admin@Example.com", bootPw, "Admin"); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 	// A differently-cased email and the precomposed é must still authenticate.
@@ -948,7 +967,7 @@ func TestLoginLogoutAuthenticate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	svc := newService(t, newFake())
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -988,7 +1007,7 @@ func TestAuthenticateRejectsExpired(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	svc := newService(t, newFake())
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	res, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")
@@ -1007,7 +1026,7 @@ func TestSlideIdleCapsAtAbsolute(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	svc := newService(t, newFake())
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	res, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")
@@ -1037,7 +1056,7 @@ func TestLoginRevokesPriorSession(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	svc := newService(t, newFake())
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1084,7 +1103,7 @@ func TestLoginCSRFFailureLeavesPriorSessionIntact(t *testing.T) {
 	ctx := context.Background()
 	repo := newFake()
 	svc := newService(t, repo)
-	if _, err := svc.Bootstrap(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
+	if _, err := svc.ProvisionBootstrapAdmin(ctx, "admin@example.com", "hunter2-secretz", "Admin"); err != nil {
 		t.Fatal(err)
 	}
 	first, err := svc.Login(ctx, "admin@example.com", "hunter2-secretz")

@@ -1,4 +1,15 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
 import { expect, type Page } from "@playwright/test";
+
+// The browser harness (web/e2e/server) points PORTCULLIS_SETUP_TOKEN_FILE at this repository-relative file.
+const setupTokenFile = fileURLToPath(new URL("../../.test-docker/e2e/setup-token", import.meta.url));
+
+/** Reads the first-run setup token the application delivered to the harness's owner-only file (ADR-0052). */
+export async function readSetupToken(): Promise<string> {
+  return (await readFile(setupTokenFile, "utf8")).trim();
+}
 
 // ADR-0010's credential buckets refill one token per three seconds.
 const credentialRefillDelayMs = 3_200;

@@ -25,8 +25,10 @@ type Repository interface {
 	// ResetLoginBackoff clears the counter and lockout after a successful login; a row that is already clean is left unwritten (hot-path no-op).
 	ResetLoginBackoff(ctx context.Context, id identity.UserID) error
 
-	// BootstrapAdmin serializes first-admin creation and commits user, password, membership, and audit event together; partial failure leaves bootstrap retryable.
-	BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, evt audit.Event) (identity.User, error)
+	// BootstrapAdmin serializes first-admin creation and commits user, password, membership, and audit event together; partial failure leaves bootstrap retryable. A non-nil setupTokenHash must consume the outstanding unexpired setup token in the same transaction or the call fails with identity.ErrSetupTokenInvalid; nil marks operator provisioning from configuration (ADR-0052).
+	BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string, setupTokenHash []byte, evt audit.Event) (identity.User, error)
+	// RotateSetupToken soft-revokes any outstanding setup token and stores the new hash with a database-clock expiry, serialized with BootstrapAdmin; it fails with identity.ErrAlreadyBootstrapped once a user exists (ADR-0052).
+	RotateSetupToken(ctx context.Context, tokenHash []byte, ttl time.Duration) error
 
 	// RotateSession atomically revokes the user's active sessions and inserts the new one in one transaction (ADR-0006), so a login leaves exactly one session. The audit event commits with the rotation (ADR-0009).
 	RotateSession(ctx context.Context, user identity.UserID, s identity.Session, tokenHash []byte, evt audit.Event) (identity.Session, error)
