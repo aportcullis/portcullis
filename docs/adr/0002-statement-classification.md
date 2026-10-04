@@ -115,7 +115,7 @@ DDL can name catalog code outside `FuncCall`/`A_Expr`: `EXCLUDE … WITH op` sto
 - **Operator classes.** An explicit operator class or operator-class parameters on an index element, exclusion element or partition key is refused, built-in classes included; the default class for the column type is the only one the statement does not name.
 - **Access methods.** Index methods (`CREATE INDEX … USING`, `EXCLUDE USING`) are limited to the built-ins PostgreSQL ships — btree, hash, gist, spgist, gin and brin — and the only table method a statement may name (`CREATE TABLE … USING`, `CREATE TABLE … USING … AS`) is heap.
   The execution-time catalog check additionally requires every named or defaulted method, and its handler, to be a bootstrap pg_catalog object; built-in method names are unique and pinned, so this clause is defense in depth.
-  The target's `default_table_access_method` setting remains trusted target administration (layer 2).
+  Governed sessions also pin `default_table_access_method=heap` (revised 2026-10-04): creation that omits `USING` takes that default, so a target database or role configured with a user-defined table method would otherwise run its handler unchecked.
 
 | # | Literal input | Engines | Expected |
 |---|---|---|---|

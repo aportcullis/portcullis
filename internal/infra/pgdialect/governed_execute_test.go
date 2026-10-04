@@ -142,6 +142,54 @@ func TestGovernedExecutionProceedsAlongsideCompatibleLocks(t *testing.T) {
 	}
 }
 
+func TestGovernedTableCreationIgnoresATargetDefaultAccessMethod(t *testing.T) {
+	pool, target, cred := freshExec(t)
+	ctx := context.Background()
+	// A target whose default table access method is user-defined must not have it applied to governed object creation that omits USING.
+	if _, err := pool.Exec(ctx, `create access method default_tam type table handler heap_tableam_handler`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `alter database "`+target.DatabaseName+`" set default_table_access_method = default_tam`); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		table string
+		sql   string
+	}{
+		{table: "plain_created", sql: "CREATE TABLE plain_created (x int)"},
+		{table: "as_created", sql: "CREATE TABLE as_created AS SELECT 1 AS x"},
+		{table: "into_created", sql: "SELECT 1 AS x INTO into_created"},
+		{table: "explicit_heap", sql: "CREATE TABLE explicit_heap (x int) USING heap"},
+	} {
+		t.Run(scenario.table, func(t *testing.T) {
+			if _, _, _, err := runExec(ctx, t, target, cred, query.Execution{SQL: scenario.sql, Class: query.ClassDDL, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30}); err != nil {
+				t.Fatalf("governed creation failed: %v", err)
+			}
+			var accessMethod string
+			if err := pool.QueryRow(ctx, `select a.amname from pg_class c join pg_am a on a.oid = c.relam where c.oid = to_regclass('public.'||$1)`, scenario.table).Scan(&accessMethod); err != nil {
+				t.Fatal(err)
+			}
+			if accessMethod != "heap" {
+				t.Fatalf("%s uses access method %q, want heap", scenario.table, accessMethod)
+			}
+		})
+	}
+	for _, refused := range []string{
+		"CREATE TABLE named_default (x int) USING default_tam",
+		"CREATE TABLE named_default_as USING default_tam AS SELECT 1 AS x",
+		"CREATE TABLE named_btree (x int) USING btree",
+		"CREATE TABLE named_unknown (x int) USING no_such_am",
+	} {
+		t.Run("refuses "+refused, func(t *testing.T) {
+			_, _, _, err := runExec(ctx, t, target, cred, query.Execution{SQL: refused, Class: query.ClassDDL, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			var rejection *query.Rejection
+			if !errors.As(err, &rejection) {
+				t.Fatalf("named non-heap access method error = %v, want a rejection", err)
+			}
+		})
+	}
+}
+
 func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 	_, target, credential := freshExec(t)
 	dialect := pgdialect.New(pgdialect.Options{})

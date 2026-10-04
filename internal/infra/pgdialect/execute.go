@@ -61,6 +61,8 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 	if governed {
 		// pg_catalog is searched implicitly before every listed schema, so built-ins still resolve first while unqualified objects are created in public.
 		cfg.RuntimeParams["search_path"] = "public"
+		// Object creation that omits USING takes this default; pinning it keeps a target-configured table access method from running unchecked handler code (ADR-0002).
+		cfg.RuntimeParams["default_table_access_method"] = defaultTableAccessMethod
 		cfg.RuntimeParams["statement_timeout"] = strconv.Itoa(exec.TimeoutSeconds * 1000)
 		// A queued lock request blocks every later locker on that object, so the wait is bounded well below the statement timeout (ADR-0021).
 		cfg.RuntimeParams["lock_timeout"] = strconv.FormatInt(d.lockTimeout.Milliseconds(), 10)
