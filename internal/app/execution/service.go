@@ -16,18 +16,21 @@ import (
 
 // Service orchestrates single-use approved execution through injected adapters.
 type Service struct {
-	requests      RequestRepository
-	leases        LeaseRepository
-	connections   ConnectionRepository
-	payloads      PayloadCodec
-	credentials   CredentialCodec
-	dialects      DialectResolver
-	results       ResultWriter
-	admission     Admission
-	owner         string
-	workers       chan struct{}
-	mu            sync.Mutex
-	draining      bool
+	requests    RequestRepository
+	leases      LeaseRepository
+	connections ConnectionRepository
+	payloads    PayloadCodec
+	credentials CredentialCodec
+	dialects    DialectResolver
+	results     ResultWriter
+	admission   Admission
+	owner       string
+	workers     chan struct{}
+	mu          sync.Mutex
+	// admissionStopped refuses new executions; admitted ones keep running through the graceful window.
+	admissionStopped bool
+	// interrupting cancels every active execution, including one that registers after shutdown collected the others.
+	interrupting  bool
 	cancellations map[access.RequestID]context.CancelCauseFunc
 	// active counts admitted executions until their outcome is recorded, so shutdown can wait for them.
 	active sync.WaitGroup
@@ -68,16 +71,12 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	if r.RequesterID != requester {
 		return access.ExecutionCompletion{}, access.ErrNotFound
 	}
-	// Count the execution before its refusal audit is deferred, so shutdown also waits for that audit write.
+	// Count the execution, refused or admitted, before its refusal audit is deferred, so shutdown also waits for that audit write.
 	s.mu.Lock()
-	draining := s.draining
-	if !draining {
-		s.active.Add(1)
-	}
+	admissionStopped := s.admissionStopped
+	s.active.Add(1)
 	s.mu.Unlock()
-	if !draining {
-		defer s.active.Done()
-	}
+	defer s.active.Done()
 	leased := false
 	defer func() {
 		if err == nil || leased {
@@ -90,7 +89,7 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 			err = auditErr
 		}
 	}()
-	if draining {
+	if admissionStopped {
 		return access.ExecutionCompletion{}, query.ErrResultBusy
 	}
 	select {
@@ -175,10 +174,10 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	defer cancel()
 	s.mu.Lock()
 	s.cancellations[id] = interrupt
-	draining = s.draining
+	interrupting := s.interrupting
 	s.mu.Unlock()
-	// Shutdown may have collected the active cancellations before this one registered.
-	if draining {
+	// Shutdown interruption may have collected the active cancellations before this one registered; stopping admission alone does not cancel admitted work.
+	if interrupting {
 		interrupt(errServerShutdown)
 	}
 	defer func() { s.mu.Lock(); delete(s.cancellations, id); s.mu.Unlock() }()
@@ -387,7 +386,8 @@ func (s *Service) ResultOwner(ctx context.Context, requester identity.UserID, id
 // InterruptActive refuses new executions, cancels every active one with an audited server_shutdown cause, and waits until their outcomes are recorded or ctx ends.
 func (s *Service) InterruptActive(ctx context.Context) error {
 	s.mu.Lock()
-	s.draining = true
+	s.admissionStopped = true
+	s.interrupting = true
 	for _, interrupt := range s.cancellations {
 		interrupt(errServerShutdown)
 	}
@@ -403,7 +403,10 @@ func (s *Service) InterruptActive(ctx context.Context) error {
 }
 
 // StopAdmission refuses new executions while the server drains active work.
-func (s *Service) StopAdmission() { s.mu.Lock(); s.draining = true; s.mu.Unlock() }
+func (s *Service) StopAdmission() { s.mu.Lock(); s.admissionStopped = true; s.mu.Unlock() }
+
+// Interrupting reports whether shutdown has started cancelling active executions.
+func (s *Service) Interrupting() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.interrupting }
 
 // Reconcile recovers expired execution owners in the self-hosted organization, paging past failing or locked attempts while a full batch is listed; only a batch that cannot list attempts fails the run.
 func (s *Service) Reconcile(ctx context.Context) (access.ReconcileSummary, error) {
