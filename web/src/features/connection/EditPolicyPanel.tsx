@@ -6,6 +6,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { errorMessage } from "@/entities/connection/store";
 import type { ConnectionSummary } from "@/gen/portcullis/v1/connections_pb";
 import { conflictMessage } from "@/features/connection/policyConflict";
+import { parseMaxResultMiB } from "@/features/connection/policyLimits";
 import { requireReturnedPolicy } from "@/features/connection/policyRead";
 import { rebasePolicy } from "@/features/connection/policyRebase";
 import type { PolicyDraft, StatementClassKey } from "@/features/connection/policyDraft";
@@ -32,6 +33,13 @@ export const EditPolicyPanel: Component<{
   const [openedFrom, setOpenedFrom] = createSignal<PolicyDraft>();
   const [draft, setDraft] = createSignal<PolicyDraft>();
   const [saving, setSaving] = createSignal(false);
+  // The MiB field keeps the admin's raw text so a fractional or partial entry is reported instead of silently keeping the previous limit.
+  const [maxResultInput, setMaxResultInput] = createSignal("");
+  const [maxResultError, setMaxResultError] = createSignal("");
+  const showMaxResultBytes = (bytes: bigint) => {
+    setMaxResultInput((bytes / 1048576n).toString());
+    setMaxResultError("");
+  };
 
   // A response without a policy is a failed read, so the panel shows its error and Retry rather than an empty body.
   const policyRead = createOpenFetch(
@@ -45,6 +53,7 @@ export const EditPolicyPanel: Component<{
         write: { ...current.write },
         ddl: { ...current.ddl },
       });
+      showMaxResultBytes(current.maxResultBytes);
     },
     errorMessage,
   );
@@ -57,6 +66,8 @@ export const EditPolicyPanel: Component<{
       setOpenedFrom();
       setDraft();
       setSaving(false);
+      setMaxResultInput("");
+      setMaxResultError("");
       policyRead.handleOpenChange(true);
     }),
   );
@@ -82,10 +93,18 @@ export const EditPolicyPanel: Component<{
 
   const submit = async (event: SubmitEvent) => {
     event.preventDefault();
-    const edited = draft();
+    const current = draft();
     const base = openedFrom();
     const target = props.target;
-    if (!edited || !base || !target) return;
+    if (!current || !base || !target) return;
+    const maxResult = parseMaxResultMiB(maxResultInput());
+    if (maxResult.status === "invalid") {
+      setMaxResultError(maxResult.message);
+      return;
+    }
+    setMaxResultError("");
+    const edited = { ...current, maxResultBytes: maxResult.bytes };
+    setDraft(edited);
     const problem = validate(edited);
     if (problem !== "") {
       policyRead.setError(problem);
@@ -131,6 +150,7 @@ export const EditPolicyPanel: Component<{
     const { merged, conflicts } = rebasePolicy(base, edited, fresh);
     setOpenedFrom(fresh);
     setDraft(merged);
+    showMaxResultBytes(merged.maxResultBytes);
     policyRead.setError(
       conflictMessage({ status: "refreshed", version: fresh.expectedVersion, conflicts }),
     );
@@ -233,16 +253,17 @@ export const EditPolicyPanel: Component<{
                     type="number"
                     min="1"
                     max="64"
-                    value={Number(form().maxResultBytes / 1048576n)}
+                    value={maxResultInput()}
+                    aria-invalid={maxResultError() !== ""}
+                    aria-describedby={maxResultError() !== "" ? "policy-bytes-error" : undefined}
                     onInput={(event) => {
-                      const mib = event.currentTarget.valueAsNumber;
-                      setDraft((cur) =>
-                        cur && Number.isInteger(mib)
-                          ? { ...cur, maxResultBytes: BigInt(mib) * 1048576n }
-                          : cur,
-                      );
+                      setMaxResultInput(event.currentTarget.value);
+                      setMaxResultError("");
                     }}
                   />
+                  <Show when={maxResultError() !== ""}>
+                    <p id="policy-bytes-error" class="text-xs text-destructive">{maxResultError()}</p>
+                  </Show>
                 </TextField>
               </div>
 

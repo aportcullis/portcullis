@@ -257,6 +257,36 @@ test.describe("application resilience", () => {
     await page.getByRole("button", { name: "Dismiss" }).click();
   });
 
+  test("an invalid max result size is reported instead of silently ignored", async ({ page }) => {
+    const policyButton = page.getByRole("row", { name: /ReqTarget/ }).getByRole("button", { name: "Policy" });
+    const maxResult = page.getByLabel("Max result (MiB)");
+    const save = page.getByRole("button", { name: "Save policy" });
+    await policyButton.click();
+    const original = await maxResult.inputValue();
+
+    for (const [raw, message] of [
+      ["1.5", "Max result must be a positive whole number of MiB."],
+      ["0", "Max result must be a positive whole number of MiB."],
+      ["", "Enter the max result size in MiB."],
+    ]) {
+      await maxResult.fill(raw);
+      await save.click();
+      await expect(page.getByText(message)).toBeVisible();
+      await expect(maxResult).toHaveAttribute("aria-invalid", "true");
+      await expect(save).toBeVisible();
+    }
+
+    await maxResult.fill("8");
+    await expect(maxResult).toHaveAttribute("aria-invalid", "false");
+    await save.click();
+    await expect(save).toHaveCount(0);
+    await policyButton.click();
+    await expect(maxResult).toHaveValue("8");
+    await maxResult.fill(original);
+    await save.click();
+    await expect(save).toHaveCount(0);
+  });
+
   test("a failed or empty policy read shows an error with a working retry", async ({ page }) => {
     const row = page.getByRole("row", { name: /ReqTarget/ });
     const restore = await failProcedure(page, "ConnectionPolicies/Get", "unavailable");
