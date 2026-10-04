@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -125,6 +126,141 @@ func TestE2E_SecurityHeaders(t *testing.T) {
 	}
 	if got := resp.Header.Get("Strict-Transport-Security"); got != "" {
 		t.Errorf("HSTS = %q, want empty (owned by the TLS-terminating proxy)", got)
+	}
+}
+
+// requestProbe is a handler that reports when a request starts and how its context ended.
+type requestProbe struct {
+	started  chan struct{}
+	finish   chan struct{}
+	ended    chan error
+	hookSeen chan error
+}
+
+func newRequestProbe() *requestProbe {
+	return &requestProbe{started: make(chan struct{}, 1), finish: make(chan struct{}), ended: make(chan error, 1), hookSeen: make(chan error, 1)}
+}
+
+func (p *requestProbe) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	p.started <- struct{}{}
+	select {
+	case <-request.Context().Done():
+		p.ended <- request.Context().Err()
+	case <-p.finish:
+		p.ended <- nil
+		writer.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// serveProbe starts a listening server with the probe mounted at /probe.
+func serveProbe(t *testing.T, probe *requestProbe) (*server.Server, string) {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := server.New("127.0.0.1:0", logger, 0, server.Mount{Pattern: "/probe", Handler: probe})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(listener) }()
+	return srv, "http://" + listener.Addr().String()
+}
+
+// startProbeRequest issues one request in the background and waits until the handler runs.
+func startProbeRequest(t *testing.T, probe *requestProbe, base string) {
+	t.Helper()
+	go func() {
+		response, err := http.Get(base + "/probe")
+		if err == nil {
+			_ = response.Body.Close()
+		}
+	}()
+	select {
+	case <-probe.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not reach the handler")
+	}
+}
+
+func TestShutdownTimeoutRunsHooksThenCancelsInFlightRequests(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []struct {
+		name         string
+		inFlight     bool
+		finishInTime bool
+		wantErr      bool
+		wantHook     bool
+	}{
+		{"idle server", false, false, false, false},
+		{"request finishing within the timeout", true, true, false, false},
+		{"request outliving the timeout", true, false, true, true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+			probe := newRequestProbe()
+			srv, base := serveProbe(t, probe)
+			hookRuns := 0
+			srv.OnShutdownTimeout(func(ctx context.Context) {
+				hookRuns++
+				if ctx.Err() != nil {
+					probe.hookSeen <- ctx.Err()
+					return
+				}
+				select {
+				case err := <-probe.ended:
+					probe.hookSeen <- errors.Join(errors.New("request context ended before the hook ran"), err)
+				default:
+					probe.hookSeen <- nil
+				}
+			})
+			if scenario.inFlight {
+				startProbeRequest(t, probe, base)
+			}
+			if scenario.finishInTime {
+				time.AfterFunc(20*time.Millisecond, func() { close(probe.finish) })
+			}
+			err := srv.Shutdown(context.Background(), 200*time.Millisecond)
+			if (err != nil) != scenario.wantErr {
+				t.Fatalf("Shutdown = %v, want error %v", err, scenario.wantErr)
+			}
+			if (hookRuns == 1) != scenario.wantHook || hookRuns > 1 {
+				t.Fatalf("hook runs = %d, want hook %v", hookRuns, scenario.wantHook)
+			}
+			if scenario.wantHook {
+				if hookErr := <-probe.hookSeen; hookErr != nil {
+					t.Fatalf("hook ran with %v", hookErr)
+				}
+			}
+			if !scenario.inFlight {
+				return
+			}
+			select {
+			case ended := <-probe.ended:
+				if scenario.finishInTime && ended != nil {
+					t.Fatalf("finished request was cancelled: %v", ended)
+				}
+				if !scenario.finishInTime && !errors.Is(ended, context.Canceled) {
+					t.Fatalf("stuck request ended with %v, want context.Canceled", ended)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("stuck request context was never cancelled")
+			}
+		})
+	}
+}
+
+func TestShutdownTimeoutHooksRunInRegistrationOrderOnce(t *testing.T) {
+	t.Parallel()
+	probe := newRequestProbe()
+	srv, base := serveProbe(t, probe)
+	var order []string
+	srv.OnShutdownTimeout(func(context.Context) { order = append(order, "executions") })
+	srv.OnShutdownTimeout(func(context.Context) { order = append(order, "streams") })
+	startProbeRequest(t, probe, base)
+	if err := srv.Shutdown(context.Background(), 50*time.Millisecond); err == nil {
+		t.Fatal("stuck request did not fail the shutdown")
+	}
+	if strings.Join(order, ",") != "executions,streams" {
+		t.Fatalf("hook order = %v", order)
 	}
 }
 

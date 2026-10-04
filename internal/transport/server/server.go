@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"path"
 	"strings"
@@ -22,6 +23,9 @@ type Server struct {
 	health     *health.Handler
 	logger     *slog.Logger
 	drainDelay time.Duration
+	// cancelRequests ends every request context derived from the server's base context.
+	cancelRequests       context.CancelFunc
+	shutdownTimeoutHooks []func(context.Context)
 }
 
 // New builds the server with health endpoints, the embedded frontend, and any provided API mounts. drainDelay is how long readiness reports "draining" before connections are closed, giving Kubernetes time to deregister the pod.
@@ -37,8 +41,11 @@ func New(addr string, logger *slog.Logger, drainDelay time.Duration, mounts ...M
 	}
 	mux.Handle("/", s.spa())
 
+	requestsCtx, cancelRequests := context.WithCancel(context.Background())
+	s.cancelRequests = cancelRequests
 	s.http = &http.Server{
 		Addr:              addr,
+		BaseContext:       func(net.Listener) context.Context { return requestsCtx },
 		Handler:           securityHeaders(logging.Middleware(logger)(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 		MaxHeaderBytes:    maxHeaderBytes,
@@ -58,6 +65,14 @@ func (s *Server) Handler() http.Handler { return s.http.Handler }
 // ListenAndServe starts serving and blocks until the server stops.
 func (s *Server) ListenAndServe() error { return s.http.ListenAndServe() }
 
+// Serve accepts connections on an existing listener and blocks until the server stops.
+func (s *Server) Serve(listener net.Listener) error { return s.http.Serve(listener) }
+
+// OnShutdownTimeout registers setup-time work that runs when in-flight requests outlive the shutdown timeout, before their request contexts are cancelled.
+func (s *Server) OnShutdownTimeout(hook func(context.Context)) {
+	s.shutdownTimeoutHooks = append(s.shutdownTimeoutHooks, hook)
+}
+
 // securityHeaders limits scripts to the embedded SPA's origin while preserving inline styles.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +85,7 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// Shutdown marks readiness draining, waits for deregistration, then gives in-flight requests a separate full timeout. Caller cancellation may abort either phase (ADR-0010).
+// Shutdown marks readiness draining, waits for deregistration, then gives in-flight requests a separate full timeout. Requests that outlive it first get the registered shutdown-timeout hooks, then have their contexts cancelled. Caller cancellation may abort either phase (ADR-0010).
 func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) error {
 	s.health.StartDraining()
 	if s.drainDelay > 0 {
@@ -80,9 +95,16 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) error {
 		case <-ctx.Done():
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	drainCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return s.http.Shutdown(ctx)
+	err := s.http.Shutdown(drainCtx)
+	if err != nil {
+		for _, hook := range s.shutdownTimeoutHooks {
+			hook(context.WithoutCancel(ctx))
+		}
+		s.cancelRequests()
+	}
+	return err
 }
 
 // spa serves the embedded built frontend, falling back to index.html for client-side routes. Before the frontend is built it serves a placeholder.
