@@ -30,7 +30,7 @@ Standards verified 2026-06-28 (OWASP/oso/WorkOS/Kubernetes RBAC): permissions ar
 - `roles(id, organization_id, name, is_system, is_bootstrap_default, created_at, deleted_at)` — soft-deleted, never hard-deleted (`docs/conventions/data.md`), plus `unique (id, organization_id)` as the composite-FK target so a membership's role must belong to the membership's own org (ADR-0004).
 - Partial unique indexes (both ignore soft-deleted rows, so a deleted role frees its name): `roles_org_name` on `(organization_id, name)`, and `roles_one_bootstrap_default` on `(organization_id) where is_bootstrap_default` — at most one bootstrap default per org.
 - `role_permissions(role_id, permission_key)` — `permission_key` FKs `permissions(key)` (the catalog is the referential source of truth), primary key `(role_id, permission_key)`, plus a reverse-lookup index on `permission_key`.
-- **Custom roles**: admins (with `roles.create`/`roles.update`/`roles.delete` from the catalog) create roles and assign any catalog permissions.
+- **Custom roles**: admins (with `roles.create`/`roles.update`/`roles.delete` from the catalog) create roles and assign any catalog permissions they themselves hold; ADR-0053 defines the administration services, escalation guard and last-administrator check.
 - **System roles** (`is_system = true`) are seeded **defaults, not a closed set** — their exact permission sets are in the appendix below.
   They cannot be deleted/renamed, but the set of roles is open — admins add custom roles, and **the code never enumerates role names** (e.g. `role == "admin"`) for authorization; only permissions are checked.
 

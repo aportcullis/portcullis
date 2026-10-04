@@ -67,6 +67,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0050](0050-private-vulnerability-reporting.md) | GitHub private vulnerability reporting | Accepted |
 | [0051](0051-connection-destination-policy.md) | Operator destination policy for connection dials | Accepted |
 | [0052](0052-pre-session-origin-and-setup-boundary.md) | Pre-session Host, origin and setup-token boundary | Accepted |
+| [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
 
 ## Template
 ```markdown

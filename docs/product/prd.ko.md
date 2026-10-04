@@ -764,6 +764,9 @@ audit_events
   표시 이름(display name)은 이제 **필수**다 — 승인·요청 화면이 사람을 표시 이름으로 렌더링하므로 모든 계정이 하나를 갖는다(헤더는 표시 이름을 보이고 없으면 email fallback).
   로그인한 사용자 이름 옆에 opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하며, 외부 이미지 요청 없이 로컬에서 생성한다(ADR-0041).
 - 공개 회원가입은 제공하지 않음. admin이 사용자를 생성하면 24시간 유효한 일회용 password setup link를 발급하며 MVP에서는 이메일 발송 없이 한 번만 표시.
+  - token은 digest만 저장하고 사용자당 열린 link는 하나이며 원자적으로 소비한다. 완료 시 해당 사용자의 session을 revoke하고 이후 일반 로그인을 요구한다. 재사용·만료·revoke된 link는 하나의 일반 거부로 응답한다. link는 password가 없는 active 사용자에게만 발급하며 admin의 password 재설정은 후속 작업이다(M2, ADR-0053).
+  - admin은 사용자 목록·생성·비활성화/재활성화·사용자당 role 하나 지정과, seed된 catalog 기반 custom role 생성·수정·soft delete를 수행한다. system role은 읽기 전용이며 사용 중인 role은 삭제할 수 없다(ADR-0053).
+  - 누구도 자신이 갖지 않은 권한을 부여·회수·차단할 수 없고, 자기 자신을 비활성화하거나 role을 바꿀 수 없다(ADR-0053).
 - **Google 소셜 로그인(OIDC):** Authorization Code + PKCE, `state`(CSRF)·`nonce`(replay) 필수, ID token 검증(서명·iss·aud·exp)과 `email_verified` 확인.
   흐름은 **서버 사이드 콜백**(`/auth/google/start`·`/auth/google/callback`)이며 프론트는 Google SDK를 쓰지 않고 백엔드 링크만 둔다.
   기존 `(issuer, subject)` 연결을 먼저 조회한다. 새 연결은 verified email의 현재 Google 소유권 근거(Gmail 또는 서명된 Workspace `hd`)가 있고 **admin이 만든 기존 사용자**와 일치할 때만 허용한다. 과거 검증된 제3자 email만으로는 거부하며 자동 가입·암묵적 제3자 email 연결은 없다. 명시적으로 재인증하는 연결 흐름은 후속 작업이다(ADR-0007). pending state(state/nonce/PKCE verifier)는 단명 AEAD 암호화 `__Host-` 쿠키로 전달.
@@ -839,7 +842,7 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 ```
 0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현
-2  Bridge       PostgreSQL/MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → 결정론 SQL 검토·기본 Read EXPLAIN
+2  Bridge       사용자·custom role 관리 + setup link → PostgreSQL/MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → 결정론 SQL 검토·기본 Read EXPLAIN
 3  Core 2       두 DB 쿼리 저장·유사 이력 추천·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
    ── MVP ──
 4  access 확장  민감정보 마스킹 우선 → 임시 접근·다단계 승인·OIDC/LDAP

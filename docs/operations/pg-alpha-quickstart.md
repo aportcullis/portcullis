@@ -12,7 +12,7 @@ For a disposable local installation, run `docker compose up --build` from the pr
 
 Results expire 15 minutes after admission and may be evicted earlier under quota pressure. Limits are the submitted connection-policy snapshot, capped at 10,000 rows/25 MiB; the existing default policy limits results to 16 MiB. The interface marks truncated snapshots; returning writes still commit the whole approved statement. Only the original requester can execute or read its result, regardless of reviewer access to request details.
 
-The request list refreshes every 30 seconds and when reconnecting or returning to the foreground. Approvers see a pending badge. For distinct-reviewer scenarios use provisioned users and roles; user-management UI arrives in M4.
+The request list refreshes every 30 seconds and when reconnecting or returning to the foreground. Approvers see a pending badge. For distinct-reviewer scenarios, create reviewers under Administration → Users: each new user receives a one-time password setup link that is shown once and expires after 24 hours (ADR-0053).
 
 An `outcome_unknown` means completion could not be confirmed. Check the target database and audit evidence before creating a new request: Portcullis never automatically reruns it. Stop execution sends a best-effort cancellation and is not proof of rollback. Expired owner recovery runs on startup and every 30 seconds. Cache loss after PostgreSQL crash/failover does not change durable execution history.
 

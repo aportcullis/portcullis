@@ -801,6 +801,9 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
   - Display name is required for every account; headers use it with email fallback.
   - Show a stable, locally generated geometric profile image beside the signed-in user's name, derived from the opaque user ID without external image requests (ADR-0041).
 - No public signup; admin-created users get a 24-hour one-time password-setup link, displayed once without MVP email delivery.
+  - Store only the token digest, keep one open link per user, consume it atomically, revoke the user's sessions on completion and require a normal login afterwards; replayed, expired or revoked links get one generic refusal. Links are issued only to active users without a password; admin-initiated password reset is deferred (M2, ADR-0053).
+  - Admins list, create, disable/enable and assign one role per user, and create, edit and soft-delete custom roles from the seeded catalog; system roles are read-only and an in-use role cannot be deleted (ADR-0053).
+  - Nobody grants, strips or locks out permissions they do not hold, and nobody disables or reassigns themselves (ADR-0053).
 - **Google OIDC:** Authorization Code + PKCE, mandatory state/nonce, ID-token signature/issuer/audience/expiry and `email_verified` validation.
   - Use server `/auth/google/start` and `/auth/google/callback`; frontend links to backend without Google SDK.
   - Resolve existing `(issuer, subject)` links first. A new link requires verified email, current Google authority (Gmail or signed Workspace `hd`) and an admin-created existing user; historically verified third-party email alone is refused. No automatic signup or implicit third-party-email linking; explicit reauthenticated linking is future work (ADR-0007).
@@ -879,7 +882,7 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 ```text
 0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
 1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice
-2  Bridge       PostgreSQL/MySQL parity → Kubernetes (Helm/Kustomize) + CNPG → deterministic SQL review and basic read EXPLAIN
+2  Bridge       User/custom-role administration + setup links → PostgreSQL/MySQL parity → Kubernetes (Helm/Kustomize) + CNPG → deterministic SQL review and basic read EXPLAIN
 3  Core 2       Saved queries + similar-history suggestions/reuse across both DBs; schema status/dry-run/impact preview (no apply)
    ── MVP ──
 4  Access       Sensitive-data masking first; temporary web console, multistage approval, OIDC/LDAP
