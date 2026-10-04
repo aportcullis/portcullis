@@ -82,6 +82,52 @@ func TestDeliverFirstRunSetupTokenHandsTheTokenOverOnce(t *testing.T) {
 		}
 	})
 
+	t.Run("symlink at the path is replaced without writing through it", func(t *testing.T) {
+		t.Parallel()
+		logger, _ := newCapturingLogger()
+		directory := t.TempDir()
+		victim := filepath.Join(directory, "victim")
+		if err := os.WriteFile(victim, []byte("unrelated file\n"), 0o644); err != nil {
+			t.Fatalf("seed victim: %v", err)
+		}
+		path := filepath.Join(directory, "setup-token")
+		if err := os.Symlink(victim, path); err != nil {
+			t.Fatalf("plant symlink: %v", err)
+		}
+		if err := deliverFirstRunSetupToken(ctx, logger, fixedSetupTokenIssuer{token: deliveredToken}, path); err != nil {
+			t.Fatalf("deliverFirstRunSetupToken: %v", err)
+		}
+		if victimContent, err := os.ReadFile(victim); err != nil || string(victimContent) != "unrelated file\n" {
+			t.Errorf("symlink target = %q (%v), want it untouched", victimContent, err)
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("token path is not a regular file after delivery (%v, %v)", info, err)
+		}
+		if content, mode := readTokenFile(t, path); content != deliveredToken+"\n" || mode != 0o600 {
+			t.Errorf("token file = %q mode %o, want the token and 0600", content, mode)
+		}
+	})
+
+	t.Run("repeated starts leave only the latest token and no temporary files", func(t *testing.T) {
+		t.Parallel()
+		logger, _ := newCapturingLogger()
+		directory := t.TempDir()
+		path := filepath.Join(directory, "setup-token")
+		for _, token := range []string{"first-start-token", "second-start-token", deliveredToken} {
+			if err := deliverFirstRunSetupToken(ctx, logger, fixedSetupTokenIssuer{token: token}, path); err != nil {
+				t.Fatalf("deliverFirstRunSetupToken(%q): %v", token, err)
+			}
+		}
+		if content, _ := readTokenFile(t, path); content != deliveredToken+"\n" {
+			t.Errorf("token file = %q, want only the latest token", content)
+		}
+		entries, err := os.ReadDir(directory)
+		if err != nil || len(entries) != 1 {
+			t.Errorf("directory holds %d entries (%v), want only the token file", len(entries), err)
+		}
+	})
+
 	t.Run("without a file the token is logged once", func(t *testing.T) {
 		t.Parallel()
 		logger, logs := newCapturingLogger()
@@ -122,7 +168,18 @@ func TestDeliverFirstRunSetupTokenFailsStartupWhenDeliveryFails(t *testing.T) {
 			return filepath.Join(t.TempDir(), "absent", "setup-token")
 		}},
 		{name: "path is a directory", issuer: fixedSetupTokenIssuer{token: deliveredToken}, path: func(t *testing.T) string {
-			return t.TempDir()
+			directory := t.TempDir()
+			path := filepath.Join(directory, "setup-token")
+			if err := os.Mkdir(path, 0o700); err != nil {
+				t.Fatalf("create directory at token path: %v", err)
+			}
+			// The rename onto the directory fails after the temporary file exists, so its removal is observable here.
+			t.Cleanup(func() {
+				if entries, err := os.ReadDir(directory); err != nil || len(entries) != 1 {
+					t.Errorf("failed delivery left %d entries (%v), want only the directory", len(entries), err)
+				}
+			})
+			return path
 		}},
 		{name: "read-only directory", issuer: fixedSetupTokenIssuer{token: deliveredToken}, path: func(t *testing.T) string {
 			directory := t.TempDir()
