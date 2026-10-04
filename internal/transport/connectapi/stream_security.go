@@ -1,13 +1,14 @@
 package connectapi
 
 import (
-	"connectrpc.com/connect"
 	"context"
 	"errors"
-	"github.com/aportcullis/portcullis/internal/domain/identity"
-	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 	"net"
 	"time"
+
+	"connectrpc.com/connect"
+
+	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 )
 
 // StreamSecurityInterceptor authenticates streams and rechecks revoked sessions.
@@ -30,7 +31,7 @@ func (s *StreamSecurityInterceptor) WrapStreamingClient(next connect.StreamingCl
 	return next
 }
 
-// WrapStreamingHandler enforces the session boundary before a stream handler runs.
+// WrapStreamingHandler runs the shared session pipeline before a stream handler runs, then bounds the stream's lifetime and revalidates the session while sending.
 func (s *StreamSecurityInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) (returned error) {
 		defer func() {
@@ -42,32 +43,14 @@ func (s *StreamSecurityInterceptor) WrapStreamingHandler(next connect.StreamingH
 		if !s.limiter.allow(ip) {
 			return connect.NewError(connect.CodeResourceExhausted, errors.New("temporarily busy"))
 		}
-		token, csrf := sessionAndCSRFCookies(conn.RequestHeader())
-		if token == "" {
-			return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
-		}
-		user, session, err := s.sessions.Authenticate(ctx, token)
+		session, err := authenticateSessionRequest(ctx, s.sessions, conn.RequestHeader())
 		if err != nil {
-			return streamAuthenticationError(err)
-		}
-		if csrf == "" || conn.RequestHeader().Get(csrfHeader) != csrf {
-			return connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
-		}
-		if err := s.sessions.VerifyCSRF(token, csrf); err != nil {
-			if errors.Is(err, identity.ErrCSRFKeyVersionUnknown) {
-				return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
-			}
-			return connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
-		}
-		if err := s.sessions.SlideIdle(ctx, session); err != nil {
-			return streamAuthenticationError(err)
+			return err
 		}
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		ctx = context.WithValue(ctx, ctxUser, user)
-		ctx = context.WithValue(ctx, ctxSessionToken, token)
-		ctx = reqmeta.WithClientIP(ctx, ip)
-		guard := &sessionStream{StreamingHandlerConn: conn, sessions: s.sessions, token: token, ctx: ctx, lastChecked: time.Now()}
+		ctx = reqmeta.WithClientIP(withAuthenticatedSession(ctx, session), ip)
+		guard := &sessionStream{StreamingHandlerConn: conn, sessions: s.sessions, token: session.token, ctx: ctx, lastChecked: time.Now()}
 		return next(ctx, guard)
 	}
 }
@@ -87,16 +70,9 @@ func (s *sessionStream) Send(message any) error {
 	if time.Since(s.lastChecked) >= time.Minute {
 		_, _, err := s.sessions.Authenticate(s.ctx, s.token)
 		if err != nil {
-			return streamAuthenticationError(err)
+			return sessionAuthenticationError(err)
 		}
 		s.lastChecked = time.Now()
 	}
 	return s.StreamingHandlerConn.Send(message)
-}
-
-func streamAuthenticationError(err error) error {
-	if isAuthFailure(err) {
-		return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
-	}
-	return connect.NewError(connect.CodeUnavailable, errors.New("temporarily unavailable"))
 }

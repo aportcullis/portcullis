@@ -71,50 +71,18 @@ type sessionAuthenticator interface {
 	SlideIdle(ctx context.Context, sess identity.Session) error
 }
 
-// NewAuthInterceptor authenticates the session cookie and enforces HMAC double-submit CSRF on every non-public unary RPC, injecting the user and raw session token into the context (ADR-0006). Errors are generic so they reveal nothing about why authentication failed.
+// NewAuthInterceptor runs the shared session pipeline on every non-public unary RPC and injects the user and raw session token into the context (ADR-0006).
 func NewAuthInterceptor(svc sessionAuthenticator) connect.UnaryInterceptorFunc {
-	unauthenticated := connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
-	unavailable := connect.NewError(connect.CodeUnavailable, errors.New("temporarily unavailable"))
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if publicProcedures[req.Spec().Procedure] {
 				return next(ctx, req)
 			}
-			// One parse of the Cookie header yields both values (see the helper).
-			sessionTok, csrfTok := sessionAndCSRFCookies(req.Header())
-			if sessionTok == "" {
-				return nil, unauthenticated
-			}
-			user, sess, err := svc.Authenticate(ctx, sessionTok)
+			session, err := authenticateSessionRequest(ctx, svc, req.Header())
 			if err != nil {
-				// An infra failure during the lookup is not an invalid session — a DB blip must not read as a logout (same rule as the idle slide below).
-				if !isAuthFailure(err) {
-					return nil, unavailable
-				}
-				return nil, unauthenticated
+				return nil, err
 			}
-			// CSRF: the readable cookie must equal the X-CSRF-Token header and verify against the session token (a header==cookie match alone is bypassable).
-			header := req.Header().Get(csrfHeader)
-			if csrfTok == "" || header == "" || csrfTok != header {
-				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
-			}
-			if err := svc.VerifyCSRF(sessionTok, header); err != nil {
-				// A token whose key version is not loaded cannot be re-verified, so the session must sign in again rather than read as forgery (ADR-0006).
-				if errors.Is(err, identity.ErrCSRFKeyVersionUnknown) {
-					return nil, unauthenticated
-				}
-				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
-			}
-			// Slide the idle window only now that the request is authorized, so a CSRF-rejected request can't keep the session alive. The conditional write is also the final server-side expiry/revocation check: zero rows means the session died after Authenticate and must reject this request. Other write failures remain retryable infrastructure faults.
-			if err := svc.SlideIdle(ctx, sess); err != nil {
-				if isAuthFailure(err) {
-					return nil, unauthenticated
-				}
-				return nil, unavailable
-			}
-			ctx = context.WithValue(ctx, ctxUser, user)
-			ctx = context.WithValue(ctx, ctxSessionToken, sessionTok)
-			return next(ctx, req)
+			return next(withAuthenticatedSession(ctx, session), req)
 		}
 	}
 }
