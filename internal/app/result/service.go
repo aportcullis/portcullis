@@ -36,41 +36,16 @@ func (s *Service) Save(ctx context.Context, metadata query.SnapshotMetadata, col
 	if limitBytes < 1 || limitBytes > query.MaxSnapshotBytes {
 		return query.SnapshotMetadata{}, query.ErrInvalidResultQuery
 	}
-	count := min(len(rows), 10000)
 	metadata.CreatedAt = time.Now().UTC()
 	metadata.ExpiresAt = metadata.CreatedAt.Add(query.ResultTTL)
-	metadata.RowCount = int64(count)
-	sealed, err := s.codec.Seal(metadata, columns, rows[:count])
+	sealed, err := s.codec.SealWithinBudget(metadata, columns, rows[:min(len(rows), query.MaxResultRows)], limitBytes)
 	if err != nil {
 		return query.SnapshotMetadata{}, err
 	}
 	if sealed.Metadata.ByteCount > limitBytes {
-		low, high := 0, count
-		for low < high {
-			mid := (low + high + 1) / 2
-			metadata.RowCount = int64(mid)
-			candidate, err := s.codec.Seal(metadata, columns, rows[:mid])
-			if err != nil {
-				return query.SnapshotMetadata{}, err
-			}
-			if candidate.Metadata.ByteCount <= limitBytes {
-				low = mid
-			} else {
-				high = mid - 1
-			}
-		}
-		count = low
-		metadata.RowCount = int64(count)
-		metadata.Truncated = true
-		sealed, err = s.codec.Seal(metadata, columns, rows[:count])
-		if err != nil {
-			return query.SnapshotMetadata{}, err
-		}
-	}
-	if sealed.Metadata.ByteCount > limitBytes {
 		return query.SnapshotMetadata{}, query.ErrResultStoreFull
 	}
-	if count < len(rows) {
+	if sealed.Metadata.RowCount < int64(len(rows)) {
 		sealed.Metadata.Truncated = true
 	}
 	if err := s.repository.Put(ctx, sealed); err != nil {

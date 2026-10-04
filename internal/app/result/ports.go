@@ -15,7 +15,8 @@ type Repository interface {
 
 // Codec uses a single per-result key and binds every chunk to its identity.
 type Codec interface {
-	Seal(query.SnapshotMetadata, []query.Column, [][]query.CellValue) (query.SealedResult, error)
+	// SealWithinBudget seals the longest row prefix whose encrypted size fits the byte budget and reports it in RowCount.
+	SealWithinBudget(query.SnapshotMetadata, []query.Column, [][]query.CellValue, int64) (query.SealedResult, error)
 	OpenColumns(query.SealedResult, query.SealedResultChunk) ([]query.Column, error)
 	OpenRows(query.SealedResult, query.SealedResultChunk) ([][]query.CellValue, error)
 }

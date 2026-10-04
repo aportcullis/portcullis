@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/rand"
 	"encoding/json"
+	"math"
 	"strconv"
 
 	"github.com/aportcullis/portcullis/internal/domain/query"
@@ -16,6 +17,11 @@ func NewResultCodec(keyring *Keyring) *ResultCodec { return &ResultCodec{keyring
 
 // Seal authenticates encrypted column metadata and row chunks by result identity.
 func (c *ResultCodec) Seal(metadata query.SnapshotMetadata, columns []query.Column, rows [][]query.CellValue) (query.SealedResult, error) {
+	return c.SealWithinBudget(metadata, columns, rows, math.MaxInt64)
+}
+
+// SealWithinBudget encrypts the longest row prefix whose sealed size fits limitBytes, measuring each row once before a single encryption pass. RowCount reports the sealed prefix; a schema that alone exceeds the budget is sealed with no rows and a ByteCount above the limit for the caller to refuse.
+func (c *ResultCodec) SealWithinBudget(metadata query.SnapshotMetadata, columns []query.Column, rows [][]query.CellValue, limitBytes int64) (query.SealedResult, error) {
 	key := make([]byte, dekLen)
 	if _, err := rand.Read(key); err != nil {
 		return query.SealedResult{}, err
@@ -29,12 +35,36 @@ func (c *ResultCodec) Seal(metadata query.SnapshotMetadata, columns []query.Colu
 	if err != nil {
 		return query.SealedResult{}, err
 	}
+	gcm, err := newGCM(key)
+	if err != nil {
+		return query.SealedResult{}, err
+	}
+	chunkOverhead := int64(gcmNonceLen + gcm.Overhead())
+	columnsPlaintext, err := json.Marshal(columns)
+	if err != nil {
+		return query.SealedResult{}, err
+	}
 	sealed := query.SealedResult{Metadata: metadata, KeyVersion: uint32(c.keyring.active), WrappedDEK: append(nonce, wrapped...)}
-	sealChunk := func(index int, value any) error {
-		plaintext, err := json.Marshal(value)
+	plannedBytes := int64(len(sealed.WrappedDEK)) + chunkOverhead + int64(len(columnsPlaintext))
+	encodedRows := make([][]byte, 0, min(len(rows), query.ResultChunkRows))
+	for idx, row := range rows {
+		encoded, err := json.Marshal(canonicalChunkRow(row))
 		if err != nil {
-			return err
+			return query.SealedResult{}, err
 		}
+		// A chunk's plaintext is the JSON array of its rows: the first row adds the chunk overhead and brackets, later rows a comma.
+		rowBytes := int64(len(encoded)) + 1
+		if idx%query.ResultChunkRows == 0 {
+			rowBytes = int64(len(encoded)) + 2 + chunkOverhead
+		}
+		if plannedBytes+rowBytes > limitBytes {
+			break
+		}
+		plannedBytes += rowBytes
+		encodedRows = append(encodedRows, encoded)
+	}
+	sealed.Metadata.RowCount = int64(len(encodedRows))
+	sealChunk := func(index int, plaintext []byte) error {
 		nonce, ciphertext, err := sealAEAD(key, plaintext, resultChunkAAD(metadata, index))
 		if err != nil {
 			return err
@@ -44,27 +74,46 @@ func (c *ResultCodec) Seal(metadata query.SnapshotMetadata, columns []query.Colu
 		return nil
 	}
 	sealed.Metadata.ByteCount = int64(len(sealed.WrappedDEK))
-	if err := sealChunk(0, columns); err != nil {
+	if err := sealChunk(0, columnsPlaintext); err != nil {
 		return query.SealedResult{}, err
 	}
-	for offset := 0; offset < len(rows); offset += query.ResultChunkRows {
-		end := min(offset+query.ResultChunkRows, len(rows))
-		chunkRows := make([][]query.CellValue, end-offset)
-		for idx, row := range rows[offset:end] {
-			chunkRows[idx] = append([]query.CellValue(nil), row...)
-			for cellIdx := range chunkRows[idx] {
-				cell := &chunkRows[idx][cellIdx]
-				if cell.Kind == query.CellFloat {
-					cell.Text = strconv.FormatFloat(cell.Float, 'g', -1, 64)
-					cell.Float = 0
-				}
-			}
-		}
-		if err := sealChunk(offset/query.ResultChunkRows+1, chunkRows); err != nil {
+	for offset := 0; offset < len(encodedRows); offset += query.ResultChunkRows {
+		end := min(offset+query.ResultChunkRows, len(encodedRows))
+		if err := sealChunk(offset/query.ResultChunkRows+1, joinJSONArray(encodedRows[offset:end])); err != nil {
 			return query.SealedResult{}, err
 		}
 	}
 	return sealed, nil
+}
+
+// canonicalChunkRow copies a row with floats rendered as text, so non-finite values survive JSON.
+func canonicalChunkRow(row []query.CellValue) []query.CellValue {
+	copied := append([]query.CellValue(nil), row...)
+	for cellIdx := range copied {
+		cell := &copied[cellIdx]
+		if cell.Kind == query.CellFloat {
+			cell.Text = strconv.FormatFloat(cell.Float, 'g', -1, 64)
+			cell.Float = 0
+		}
+	}
+	return copied
+}
+
+// joinJSONArray concatenates encoded elements into the exact bytes json.Marshal produces for their slice.
+func joinJSONArray(elements [][]byte) []byte {
+	size := 2
+	for _, element := range elements {
+		size += len(element) + 1
+	}
+	joined := make([]byte, 0, size)
+	joined = append(joined, '[')
+	for idx, element := range elements {
+		if idx > 0 {
+			joined = append(joined, ',')
+		}
+		joined = append(joined, element...)
+	}
+	return append(joined, ']')
 }
 
 // OpenColumns decrypts the snapshot's schema chunk.

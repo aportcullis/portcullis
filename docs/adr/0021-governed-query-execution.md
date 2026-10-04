@@ -73,6 +73,7 @@ A rejected or failed snapshot records `result_store_full` or `result_persistence
 
 Result snapshots use one DEK per result, independently authenticated schema/100-row chunks, owner-and-organization-scoped reads, 15-minute TTL, and ADR-0011 admission/eviction.
 The 25MiB snapshot ceiling cannot enlarge a pinned connection policy's lower limit; new policies retain ADR-0015's 16MiB default.
+An oversized snapshot keeps the longest row prefix that fits the budget: the codec measures each row's encoded size once and encrypts once (revised 2026-10-04), instead of re-sealing the whole snapshot for every step of a binary search.
 Server sorting retains exact integer/decimal precision, NULL-last ordering, and original row ordinal ties.
 CSV processes chunks through the bounded worker pool and escapes spreadsheet formulas in headers and cells.
 The M1 single-process server records and forwards cancellation only for its locally active owner; only a cancellation observed before COMMIT is reported as a rollback.

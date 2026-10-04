@@ -11,6 +11,7 @@ import (
 const (
 	ResultTTL                 = 15 * time.Minute
 	MaxSnapshotBytes    int64 = 25 << 20
+	MaxResultRows             = 10_000
 	UserSnapshotQuota   int64 = 64 << 20
 	GlobalSnapshotQuota int64 = 512 << 20
 	ResultChunkRows           = 100
