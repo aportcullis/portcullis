@@ -48,9 +48,9 @@ func TestExecutionLeaseExecutesOnceAndFencesLateCompletion(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `update public.query_executions set deadline = $1 where request_id = $2`, time.Now().Add(-time.Minute), string(r.ID)); err != nil {
 		t.Fatal(err)
 	}
-	count, err := f.requests.ReconcileExecutions(ctx, f.org)
-	if err != nil || count != 1 {
-		t.Fatalf("reconcile = %d, %v", count, err)
+	batch, err := f.requests.ReconcileExecutions(ctx, f.org, access.ExecutionReconcileBatchSize)
+	if err != nil || batch.Recovered != 1 {
+		t.Fatalf("reconcile = %+v, %v", batch, err)
 	}
 	if err := f.requests.CompleteExecution(ctx, f.org, lease, access.ExecutionCompletion{State: access.StateSucceeded}, reqEvent(audit.Action("EXECUTION_FINISHED"), r.ID)); !errors.Is(err, access.ErrLeaseLost) {
 		t.Fatalf("late completion: %v", err)
@@ -159,6 +159,63 @@ func approvedExecutionRequest(t *testing.T, f reqFixture) access.Request {
 		t.Fatal(err)
 	}
 	return view.Request
+}
+
+// leaseSpan reads the recorded gap between an execution's heartbeat and its deadline.
+func leaseSpan(t *testing.T, f reqFixture, id access.RequestID) time.Duration {
+	t.Helper()
+	var heartbeat, deadline time.Time
+	if err := f.pool.QueryRow(context.Background(), `select heartbeat, deadline from public.query_executions where request_id=$1`, string(id)).Scan(&heartbeat, &deadline); err != nil {
+		t.Fatal(err)
+	}
+	return deadline.Sub(heartbeat)
+}
+
+func TestExecutionLeaseUsesDomainDurationAndReconcileHonorsBatchSize(t *testing.T) {
+	f := newReqFixtureFresh(t)
+	ctx := context.Background()
+	leases := make([]access.ExecutionLease, 0, 3)
+	for range 3 {
+		request := approvedExecutionRequest(t, f)
+		lease, err := f.requests.AcquireExecution(ctx, f.org, request.ID, f.requester, "server", uuid.NewString(), request.Digest, reqEvent(audit.ActionExecutionStarted, request.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if span := leaseSpan(t, f, request.ID); span != access.ExecutionLeaseDuration {
+			t.Fatalf("acquired lease span = %s, want %s", span, access.ExecutionLeaseDuration)
+		}
+		leases = append(leases, lease)
+	}
+	if err := f.requests.HeartbeatExecution(ctx, f.org, leases[0]); err != nil {
+		t.Fatal(err)
+	}
+	if span := leaseSpan(t, f, leases[0].RequestID); span != access.ExecutionLeaseDuration {
+		t.Fatalf("renewed lease span = %s, want %s", span, access.ExecutionLeaseDuration)
+	}
+	if _, err := f.pool.Exec(ctx, `update public.query_executions set deadline = now() - interval '1 minute' where organization_id = $1`, string(f.org)); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		batchSize int
+		want      access.ReconcileBatch
+	}{
+		{2, access.ReconcileBatch{Listed: 2, Recovered: 2}},
+		{2, access.ReconcileBatch{Listed: 1, Recovered: 1}},
+		{2, access.ReconcileBatch{}},
+	} {
+		batch, err := f.requests.ReconcileExecutions(ctx, f.org, step.batchSize)
+		if err != nil || batch != step.want {
+			t.Fatalf("reconcile batch = %+v, %v; want %+v", batch, err, step.want)
+		}
+	}
+	if err := f.requests.HeartbeatExecution(ctx, f.org, leases[1]); !errors.Is(err, access.ErrLeaseLost) {
+		t.Fatalf("recovered owner heartbeat = %v, want ErrLeaseLost", err)
+	}
+	for _, batchSize := range []int{0, -1} {
+		if _, err := f.requests.ReconcileExecutions(ctx, f.org, batchSize); !errors.Is(err, access.ErrInvalidRequest) {
+			t.Fatalf("batch size %d = %v, want ErrInvalidRequest", batchSize, err)
+		}
+	}
 }
 
 func TestExecutionCompletionRecordsResultUnavailableReasonAsEvidence(t *testing.T) {

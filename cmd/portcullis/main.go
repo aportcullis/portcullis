@@ -23,6 +23,7 @@ import (
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
 	executionapp "github.com/aportcullis/portcullis/internal/app/execution"
 	resultapp "github.com/aportcullis/portcullis/internal/app/result"
+	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
@@ -340,14 +341,14 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(access.ExecutionReconcileInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				maintenanceCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				maintenanceCtx, cancel := context.WithTimeout(ctx, access.ExecutionReconcileTimeout)
 				if err := executionSvc.Reconcile(maintenanceCtx); err != nil {
 					logger.Error("execution recovery failed")
 				}

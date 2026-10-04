@@ -7,6 +7,22 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/access"
 )
 
+func TestExecutionLeaseTimingsKeepLiveOwnersAndBoundRecovery(t *testing.T) {
+	t.Parallel()
+	if access.ExecutionHeartbeatInterval >= access.ExecutionLeaseDuration {
+		t.Fatalf("heartbeat %s must renew before the %s lease expires", access.ExecutionHeartbeatInterval, access.ExecutionLeaseDuration)
+	}
+	if access.ExecutionLeaseDuration < 4*access.ExecutionHeartbeatInterval {
+		t.Fatalf("lease %s must tolerate four missed %s heartbeats (PRD §4.4)", access.ExecutionLeaseDuration, access.ExecutionHeartbeatInterval)
+	}
+	if access.ExecutionReconcileTimeout >= access.ExecutionReconcileInterval {
+		t.Fatalf("reconcile run %s must end before the next %s tick", access.ExecutionReconcileTimeout, access.ExecutionReconcileInterval)
+	}
+	if access.ExecutionReconcileBatchSize < 1 {
+		t.Fatalf("reconcile batch size %d must be positive", access.ExecutionReconcileBatchSize)
+	}
+}
+
 func TestExecutionCompletionAcceptsOnlyKnownResultUnavailableReasons(t *testing.T) {
 	t.Parallel()
 	expiry := time.Now()

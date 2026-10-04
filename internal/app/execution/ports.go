@@ -14,7 +14,7 @@ type LeaseRepository interface {
 	AcquireExecution(ctx context.Context, org identity.OrganizationID, requestID access.RequestID, requester identity.UserID, owner, attemptID string, digest []byte, event audit.Event) (access.ExecutionLease, error)
 	HeartbeatExecution(ctx context.Context, org identity.OrganizationID, lease access.ExecutionLease) error
 	CompleteExecution(ctx context.Context, org identity.OrganizationID, lease access.ExecutionLease, completion access.ExecutionCompletion, event audit.Event) error
-	ReconcileExecutions(ctx context.Context, org identity.OrganizationID) (int, error)
+	ReconcileExecutions(ctx context.Context, org identity.OrganizationID, batchSize int) (access.ReconcileBatch, error)
 	GetExecution(context.Context, identity.OrganizationID, access.RequestID) (access.ExecutionCompletion, error)
 	RecordExecutionRefusal(context.Context, identity.OrganizationID, access.RequestID, identity.UserID, string, audit.Event) error
 }

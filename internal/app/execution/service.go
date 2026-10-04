@@ -347,19 +347,22 @@ func (s *Service) ResultOwner(ctx context.Context, requester identity.UserID, id
 // StopAdmission refuses new executions while the server drains active work.
 func (s *Service) StopAdmission() { s.mu.Lock(); s.draining = true; s.mu.Unlock() }
 
-// Reconcile recovers expired execution owners in the self-hosted organization.
+// Reconcile recovers expired execution owners in the self-hosted organization, requesting further batches while a full batch is listed.
 func (s *Service) Reconcile(ctx context.Context) error {
 	org, err := s.requests.DefaultOrganizationID(ctx)
 	if err != nil {
 		return err
 	}
 	for {
-		count, err := s.leases.ReconcileExecutions(ctx, org)
+		batch, err := s.leases.ReconcileExecutions(ctx, org, access.ExecutionReconcileBatchSize)
 		if err != nil {
 			return err
 		}
-		if count < 100 {
+		if batch.Listed < access.ExecutionReconcileBatchSize {
 			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 	}
 }

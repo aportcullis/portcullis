@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"crypto/hmac"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -85,7 +86,7 @@ func (s *AccessRequestStore) AcquireExecution(ctx context.Context, org identity.
 		if !hmac.Equal(r.Digest, digest) {
 			return access.ErrPayloadIntegrity
 		}
-		recorded, err := q.InsertQueryExecution(ctx, db.InsertQueryExecutionParams{RequestID: requestUUID, OrganizationID: organizationUUID, Owner: owner, AttemptID: attemptUUID, At: timeToTS(at)})
+		recorded, err := q.InsertQueryExecution(ctx, db.InsertQueryExecutionParams{RequestID: requestUUID, OrganizationID: organizationUUID, Owner: owner, AttemptID: attemptUUID, At: timeToTS(at), LeaseMilliseconds: access.ExecutionLeaseDuration.Milliseconds()})
 		if err != nil {
 			return err
 		}
@@ -134,7 +135,7 @@ func (s *AccessRequestStore) HeartbeatExecution(ctx context.Context, org identit
 		if err != nil {
 			return err
 		}
-		count, err := q.HeartbeatQueryExecution(ctx, db.HeartbeatQueryExecutionParams{At: timeToTS(at), RequestID: rid, OrganizationID: oid, Owner: lease.Owner, AttemptID: aid})
+		count, err := q.HeartbeatQueryExecution(ctx, db.HeartbeatQueryExecutionParams{At: timeToTS(at), LeaseMilliseconds: access.ExecutionLeaseDuration.Milliseconds(), RequestID: rid, OrganizationID: oid, Owner: lease.Owner, AttemptID: aid})
 		if err != nil {
 			return err
 		}
@@ -201,15 +202,18 @@ func (s *AccessRequestStore) CompleteExecution(ctx context.Context, org identity
 	return nil
 }
 
-// ReconcileExecutions records unknown outcomes for expired owners without retrying SQL.
-func (s *AccessRequestStore) ReconcileExecutions(ctx context.Context, org identity.OrganizationID) (int, error) {
+// ReconcileExecutions records unknown outcomes for up to batchSize expired owners without retrying SQL.
+func (s *AccessRequestStore) ReconcileExecutions(ctx context.Context, org identity.OrganizationID, batchSize int) (access.ReconcileBatch, error) {
 	oid, err := stringToUUID(string(org))
 	if err != nil {
-		return 0, err
+		return access.ReconcileBatch{}, err
 	}
-	requests, err := s.conns.q.ListOverdueExecutions(ctx, oid)
+	if batchSize < 1 || batchSize > math.MaxInt32 {
+		return access.ReconcileBatch{}, access.ErrInvalidRequest
+	}
+	requests, err := s.conns.q.ListOverdueExecutions(ctx, db.ListOverdueExecutionsParams{OrganizationID: oid, BatchSize: int32(batchSize)})
 	if err != nil {
-		return 0, err
+		return access.ReconcileBatch{}, err
 	}
 	count := 0
 	for _, rid := range requests {
@@ -236,10 +240,10 @@ func (s *AccessRequestStore) ReconcileExecutions(ctx context.Context, org identi
 			return nil
 		})
 		if err != nil {
-			return count, err
+			return access.ReconcileBatch{Listed: len(requests), Recovered: count}, err
 		}
 	}
-	return count, nil
+	return access.ReconcileBatch{Listed: len(requests), Recovered: count}, nil
 }
 
 func (s *AccessRequestStore) finishExecutionAt(ctx context.Context, q *db.Queries, r access.Request, recorded db.QueryExecution, c access.ExecutionCompletion, event audit.Event, at time.Time) error {

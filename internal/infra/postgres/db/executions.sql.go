@@ -94,23 +94,25 @@ func (q *Queries) GetQueryExecution(ctx context.Context, arg GetQueryExecutionPa
 }
 
 const heartbeatQueryExecution = `-- name: HeartbeatQueryExecution :execrows
-update public.query_executions set heartbeat = $1::timestamptz, deadline = $1::timestamptz + interval '60 seconds'
-where request_id = $2 and organization_id = $3
-  and owner = $4 and attempt_id = $5 and outcome is null
+update public.query_executions set heartbeat = $1::timestamptz, deadline = $1::timestamptz + $2::bigint * interval '1 millisecond'
+where request_id = $3 and organization_id = $4
+  and owner = $5 and attempt_id = $6 and outcome is null
   and deadline > $1::timestamptz
 `
 
 type HeartbeatQueryExecutionParams struct {
-	At             pgtype.Timestamptz
-	RequestID      pgtype.UUID
-	OrganizationID pgtype.UUID
-	Owner          string
-	AttemptID      pgtype.UUID
+	At                pgtype.Timestamptz
+	LeaseMilliseconds int64
+	RequestID         pgtype.UUID
+	OrganizationID    pgtype.UUID
+	Owner             string
+	AttemptID         pgtype.UUID
 }
 
 func (q *Queries) HeartbeatQueryExecution(ctx context.Context, arg HeartbeatQueryExecutionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, heartbeatQueryExecution,
 		arg.At,
+		arg.LeaseMilliseconds,
 		arg.RequestID,
 		arg.OrganizationID,
 		arg.Owner,
@@ -123,18 +125,19 @@ func (q *Queries) HeartbeatQueryExecution(ctx context.Context, arg HeartbeatQuer
 }
 
 const insertQueryExecution = `-- name: InsertQueryExecution :one
-with stamp as (select $5::timestamptz as at)
+with stamp as (select $6::timestamptz as at)
 insert into public.query_executions (request_id, organization_id, owner, attempt_id, heartbeat, deadline, started_at)
-select $1, $2, $3, $4, stamp.at, stamp.at + interval '60 seconds', stamp.at from stamp
+select $1, $2, $3, $4, stamp.at, stamp.at + $5::bigint * interval '1 millisecond', stamp.at from stamp
 returning request_id, organization_id, owner, attempt_id, heartbeat, deadline, started_at, finished_at, outcome, rows_affected, duration_ms, result_id, result_expires_at, row_count, byte_count, truncated
 `
 
 type InsertQueryExecutionParams struct {
-	RequestID      pgtype.UUID
-	OrganizationID pgtype.UUID
-	Owner          string
-	AttemptID      pgtype.UUID
-	At             pgtype.Timestamptz
+	RequestID         pgtype.UUID
+	OrganizationID    pgtype.UUID
+	Owner             string
+	AttemptID         pgtype.UUID
+	LeaseMilliseconds int64
+	At                pgtype.Timestamptz
 }
 
 func (q *Queries) InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error) {
@@ -143,6 +146,7 @@ func (q *Queries) InsertQueryExecution(ctx context.Context, arg InsertQueryExecu
 		arg.OrganizationID,
 		arg.Owner,
 		arg.AttemptID,
+		arg.LeaseMilliseconds,
 		arg.At,
 	)
 	var i QueryExecution
@@ -170,11 +174,16 @@ func (q *Queries) InsertQueryExecution(ctx context.Context, arg InsertQueryExecu
 const listOverdueExecutions = `-- name: ListOverdueExecutions :many
 select request_id from public.query_executions
 where organization_id = $1 and outcome is null and deadline <= clock_timestamp()
-order by request_id limit 100
+order by request_id limit $2::int
 `
 
-func (q *Queries) ListOverdueExecutions(ctx context.Context, organizationID pgtype.UUID) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, listOverdueExecutions, organizationID)
+type ListOverdueExecutionsParams struct {
+	OrganizationID pgtype.UUID
+	BatchSize      int32
+}
+
+func (q *Queries) ListOverdueExecutions(ctx context.Context, arg ListOverdueExecutionsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listOverdueExecutions, arg.OrganizationID, arg.BatchSize)
 	if err != nil {
 		return nil, err
 	}

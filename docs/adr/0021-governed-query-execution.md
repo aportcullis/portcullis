@@ -18,6 +18,7 @@ No target connection is opened before this transaction commits.
 Lease heartbeat runs every 15 seconds and extends the deadline by 60 seconds.
 An expired lease cannot be revived by its former owner.
 Startup and 30-second background reconciliation mark expired attempts outcome_unknown without retrying target SQL.
+The `access` execution constants are the single source of these timings: the store passes the lease duration to its queries, the composition root schedules reconciliation from them, and a run bounded to 10 seconds requests further batches of 100 while a full batch is listed (2026-10-04).
 Reconciliation and completion both lock request then execution, so concurrent transitions serialize.
 Completion is fenced by executing state, owner, attempt ID, and live deadline.
 A late completion appends LATE_COMPLETION_OBSERVED without changing the original outcome.

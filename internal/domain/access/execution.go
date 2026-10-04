@@ -5,12 +5,20 @@ import (
 	"time"
 )
 
-// Execution lease timings follow PRD §4.4.
+// Execution lease timings follow PRD §4.4; a reconciliation run is bounded by its timeout and recovers overdue attempts in batches.
 const (
-	ExecutionHeartbeatInterval = 15 * time.Second
-	ExecutionLeaseDuration     = 60 * time.Second
-	ExecutionReconcileInterval = 30 * time.Second
+	ExecutionHeartbeatInterval  = 15 * time.Second
+	ExecutionLeaseDuration      = 60 * time.Second
+	ExecutionReconcileInterval  = 30 * time.Second
+	ExecutionReconcileTimeout   = 10 * time.Second
+	ExecutionReconcileBatchSize = 100
 )
+
+// ReconcileBatch reports one reconciliation batch: how many overdue attempts were listed and how many were recorded outcome_unknown.
+type ReconcileBatch struct {
+	Listed    int
+	Recovered int
+}
 
 // Execution errors refuse replay and stale completion without revealing payloads.
 var (
