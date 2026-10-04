@@ -38,6 +38,7 @@ M1 uses a stricter candidate proof: under pinned `search_path=public`, every vis
 PostgreSQL searches pg_catalog implicitly before every listed schema, so built-in names still resolve first while unqualified objects created by approved DDL land in `public` (revised 2026-10-04: listing `pg_catalog` first made it the creation schema, so every unqualified governed DDL failed with 42501 after approval).
 Explicit types must also resolve exclusively to built-in catalog types.
 Reject the whole statement when any candidate is untrusted, even if PostgreSQL would select a safe overload for these arguments.
+These safeguards are the zero value of `query.Execution` (2026-10-04): only an explicit `Ungoverned` flag, set by adapter tests of raw transaction behavior, skips them, so a caller that forgets a field is refused before dialing instead of running unchecked.
 This intentionally reduces compatibility; it does not claim to reproduce PostgreSQL overload selection.
 ADR-0002 and both PRD translations adopt this conservative alternative to exact selected-OID resolution.
 Catalog ownership, concurrent target catalog changes, implicit casts from user-defined relation columns, views, triggers, row security, and function bodies remain under the least-privilege target account and trusted database administrator boundary.

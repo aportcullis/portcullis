@@ -220,7 +220,7 @@ func (f *executionFixture) BindNamed(string, []query.Parameter) (string, []query
 }
 func (f *executionFixture) Execute(ctx context.Context, _ connection.Target, _ connection.TLSMode, _ connection.Credential, exec query.Execution) (query.ResultStream, error) {
 	f.executions++
-	if !f.acquired || !exec.Governed {
+	if !f.acquired || exec.Ungoverned {
 		return nil, errors.New("unleased or ungoverned target execution")
 	}
 	if f.execErr != nil {

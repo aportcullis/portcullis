@@ -20,8 +20,9 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 	if !exec.Class.Valid() {
 		return nil, &query.Rejection{Reason: query.RejectNotAllowlisted}
 	}
+	governed := !exec.Ungoverned
 	var parsed query.Statement
-	if exec.Governed {
+	if governed {
 		var parseErr error
 		parsed, parseErr = d.ParseSingle(exec.SQL)
 		if parseErr != nil {
@@ -57,7 +58,7 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 		"bytea_output":                "hex",
 	}
 
-	if exec.Governed {
+	if governed {
 		// pg_catalog is searched implicitly before every listed schema, so built-ins still resolve first while unqualified objects are created in public.
 		cfg.RuntimeParams["search_path"] = "public"
 		cfg.RuntimeParams["statement_timeout"] = strconv.Itoa(exec.TimeoutSeconds * 1000)
@@ -96,7 +97,7 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 		return nil, redactExecError(ctx, err)
 	}
 
-	if exec.Governed {
+	if governed {
 		if err := validateCatalog(ctx, conn, parsed); err != nil {
 			closeConn(ctx, conn)
 			return nil, err

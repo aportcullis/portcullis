@@ -39,7 +39,7 @@ func TestGovernedExecutionPreservesClassifierMeaningAcrossServerStringModes(t *t
 		t.Fatalf("fresh server string mode = %q, want %q: %v", setting, expectedSetting, err)
 	}
 	columns, rows, _, err := runExec(ctx, t, target, credential, query.Execution{
-		SQL: `SELECT 'a\' -- ', 42 --'`, Class: query.ClassRead, Governed: true,
+		SQL: `SELECT 'a\' -- ', 42 --'`, Class: query.ClassRead,
 		MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30,
 	})
 	if err != nil {

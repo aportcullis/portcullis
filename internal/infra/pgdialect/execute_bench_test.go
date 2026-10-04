@@ -167,7 +167,7 @@ func sampleRaw(ctx context.Context, cfg *pgconn.Config, sql string) (sample quer
 }
 
 func sampleAdapter(ctx context.Context, dialect *pgdialect.Dialect, target connection.Target, cred connection.Credential, sql string) (sample querySample, err error) {
-	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead})
+	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, Ungoverned: true})
 	if err != nil {
 		return sample, err
 	}

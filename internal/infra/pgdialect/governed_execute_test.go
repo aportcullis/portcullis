@@ -20,7 +20,7 @@ func TestGovernedExecutionRejectsUserOverloadBeforeItRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := pgdialect.New(pgdialect.Options{})
-	stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: "SELECT lower(v) FROM custom_t", Class: query.ClassRead, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: "SELECT lower(v) FROM custom_t", Class: query.ClassRead, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if stream != nil {
 		_ = stream.Close()
 	}
@@ -39,7 +39,7 @@ func TestGovernedExecutionRejectsUserOperatorInSubqueryComparison(t *testing.T) 
 	}
 	d := pgdialect.New(pgdialect.Options{})
 	for _, sql := range []string{"SELECT v FROM custom_ids WHERE v = ANY (SELECT 1)", "SELECT v FROM custom_ids WHERE v IN (SELECT 1)"} {
-		stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+		stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 		if stream != nil {
 			_ = stream.Close()
 		}
@@ -53,7 +53,7 @@ func TestGovernedExecutionRejectsUserOperatorInSubqueryComparison(t *testing.T) 
 func TestGovernedUnqualifiedDDLCreatesObjectInPublicSchema(t *testing.T) {
 	pool, target, cred := freshExec(t)
 	ctx := context.Background()
-	_, _, _, err := runExec(ctx, t, target, cred, query.Execution{SQL: "CREATE TABLE governed_ddl (x int)", Class: query.ClassDDL, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	_, _, _, err := runExec(ctx, t, target, cred, query.Execution{SQL: "CREATE TABLE governed_ddl (x int)", Class: query.ClassDDL, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err != nil {
 		t.Fatalf("governed unqualified DDL failed: %v", err)
 	}
@@ -94,7 +94,7 @@ func executeWhileLockHeld(t *testing.T, scenario lockScenario) (time.Duration, e
 	}
 	dialect := pgdialect.New(pgdialect.Options{LockTimeout: time.Second})
 	started := time.Now()
-	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: scenario.statement, Class: scenario.class, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: scenario.statement, Class: scenario.class, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err == nil {
 		for stream.Next() {
 			_ = stream.Row()
@@ -146,7 +146,7 @@ func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 	_, target, credential := freshExec(t)
 	dialect := pgdialect.New(pgdialect.Options{})
 	sql := "SELECT " + strings.TrimSuffix(strings.Repeat("NULL::integer,", 8), ",") + " FROM generate_series(1,20)"
-	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, credential, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: 20, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, credential, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: 20, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 func TestGovernedOversizedCellRefusesProtocolBeforeReturningRows(t *testing.T) {
 	_, target, credential := freshExec(t)
 	dialect := pgdialect.New(pgdialect.Options{})
-	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT repeat('x', 29 * 1024 * 1024)", Class: query.ClassRead, Governed: true, MaxRows: 10000, MaxResultBytes: query.MaxSnapshotBytes, TimeoutSeconds: 30})
+	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT repeat('x', 29 * 1024 * 1024)", Class: query.ClassRead, MaxRows: 10000, MaxResultBytes: query.MaxSnapshotBytes, TimeoutSeconds: 30})
 	if stream != nil {
 		_ = stream.Close()
 	}
@@ -182,7 +182,7 @@ func TestGovernedTruncatedReturningWriteCommitsWholeStatement(t *testing.T) {
 		t.Fatal(err)
 	}
 	dialect := pgdialect.New(pgdialect.Options{})
-	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "INSERT INTO returning_test SELECT generate_series(1,5) RETURNING id", Class: query.ClassWrite, Governed: true, MaxRows: 2, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "INSERT INTO returning_test SELECT generate_series(1,5) RETURNING id", Class: query.ClassWrite, MaxRows: 2, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func drainGovernedRead(t *testing.T, target connection.Target, cred connection.C
 	t.Helper()
 	dialect := pgdialect.New(pgdialect.Options{})
 	started := time.Now()
-	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: maxRows, MaxResultBytes: maxResultBytes, TimeoutSeconds: 30})
+	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: maxRows, MaxResultBytes: maxResultBytes, TimeoutSeconds: 30})
 	if err != nil {
 		return governedDrain{elapsed: time.Since(started), err: err}
 	}
@@ -324,7 +324,7 @@ func TestGovernedExecutionCapsRowsAndBytesBeforeDecoding(t *testing.T) {
 		{"byte cap", "SELECT repeat('x',1000) FROM generate_series(1,5)", 100, 2100, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stream, err := d.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{SQL: tc.sql, Class: query.ClassRead, Governed: true, MaxRows: tc.rows, MaxResultBytes: tc.bytes, TimeoutSeconds: 30})
+			stream, err := d.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{SQL: tc.sql, Class: query.ClassRead, MaxRows: tc.rows, MaxResultBytes: tc.bytes, TimeoutSeconds: 30})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -354,7 +354,7 @@ func TestGovernedExecutionRunsGrammarRewrittenCatalogFunctions(t *testing.T) {
 		{sql: "SELECT ('a%b' LIKE 'a!%b' ESCAPE '!')::text || ('abc' SIMILAR TO 'a%')::text", want: "truetrue"},
 	} {
 		t.Run(scenario.sql, func(t *testing.T) {
-			_, rows, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: scenario.sql, Class: query.ClassRead, Governed: true, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			_, rows, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: scenario.sql, Class: query.ClassRead, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
 			if err != nil {
 				t.Fatalf("grammar-rewritten built-in refused: %v", err)
 			}
@@ -381,7 +381,7 @@ create function pg_catalog.timezone(int, text) returns text language plpgsql sta
 		"SELECT now() AT TIME ZONE 'UTC'",
 	} {
 		t.Run(sql, func(t *testing.T) {
-			_, _, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: sql, Class: query.ClassRead, Governed: true, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			_, _, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
 			var rejection *query.Rejection
 			if !errors.As(err, &rejection) {
 				t.Fatalf("catalog gate did not reject a planted pg_catalog overload: %v", err)
@@ -393,7 +393,7 @@ create function pg_catalog.timezone(int, text) returns text language plpgsql sta
 // executeGovernedDDL runs one governed DDL statement and drains its stream.
 func executeGovernedDDL(ctx context.Context, t *testing.T, target connection.Target, credential connection.Credential, sql string) error {
 	t.Helper()
-	_, _, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: sql, Class: query.ClassDDL, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	_, _, _, err := runExec(ctx, t, target, credential, query.Execution{SQL: sql, Class: query.ClassDDL, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	return err
 }
 

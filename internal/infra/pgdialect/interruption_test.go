@@ -84,7 +84,7 @@ func TestInterruptionBeforeCommitIsMarkedRolledBack(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
 			pool, target, cred := freshExec(t)
-			_, _, _, err := runExec(scenario.startContext(t), t, target, cred, query.Execution{SQL: scenario.sql, Class: scenario.class, Governed: true, MaxRows: 100, MaxResultBytes: 1 << 20, TimeoutSeconds: 30})
+			_, _, _, err := runExec(scenario.startContext(t), t, target, cred, query.Execution{SQL: scenario.sql, Class: scenario.class, MaxRows: 100, MaxResultBytes: 1 << 20, TimeoutSeconds: 30})
 			if !errors.Is(err, query.ErrInterruptedBeforeCommit) || !errors.Is(err, scenario.cause) {
 				t.Fatalf("interruption = %v, want a before-commit %v", err, scenario.cause)
 			}
@@ -118,7 +118,7 @@ func TestCommitInterruptionStaysUncertainWhileServerTimeoutIsConfirmed(t *testin
 			if scenario.slowCommit {
 				installSlowCommitTrigger(t, pool, 4)
 			}
-			_, _, _, err := runExec(scenario.startContext(t), t, target, cred, query.Execution{SQL: scenario.sql, Class: scenario.class, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: scenario.timeoutSeconds})
+			_, _, _, err := runExec(scenario.startContext(t), t, target, cred, query.Execution{SQL: scenario.sql, Class: scenario.class, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: scenario.timeoutSeconds})
 			if scenario.wantCause != nil {
 				if !errors.Is(err, scenario.wantCause) || errors.Is(err, query.ErrInterruptedBeforeCommit) {
 					t.Fatalf("commit interruption = %v, want an uncertain %v", err, scenario.wantCause)
@@ -140,7 +140,7 @@ func TestUninterruptedWriteCommitsThroughDeferredWork(t *testing.T) {
 	t.Parallel()
 	pool, target, cred := freshExec(t)
 	installSlowCommitTrigger(t, pool, 1)
-	_, _, affected, err := runExec(context.Background(), t, target, cred, query.Execution{SQL: "INSERT INTO exec_t (id, v) VALUES (1, 'a'), (2, 'b')", Class: query.ClassWrite, Governed: true, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
+	_, _, affected, err := runExec(context.Background(), t, target, cred, query.Execution{SQL: "INSERT INTO exec_t (id, v) VALUES (1, 'a'), (2, 'b')", Class: query.ClassWrite, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err != nil || affected != 2 {
 		t.Fatalf("deferred-work write = %d, %v", affected, err)
 	}

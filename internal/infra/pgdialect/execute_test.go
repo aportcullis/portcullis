@@ -64,8 +64,9 @@ func TestExecuteCloseStopsNext(t *testing.T) {
 
 	d := pgdialect.New(pgdialect.Options{})
 	stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{
-		SQL:   "SELECT 1",
-		Class: query.ClassRead,
+		SQL:        "SELECT 1",
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -86,8 +87,9 @@ func TestExecuteReadOnlyRejectsWrite(t *testing.T) {
 	pool, target, cred := freshExec(t)
 
 	_, _, _, err := runExec(context.Background(), t, target, cred, query.Execution{
-		SQL:   "INSERT INTO exec_t (id, v) VALUES (1, 'smuggled')",
-		Class: query.ClassRead,
+		SQL:        "INSERT INTO exec_t (id, v) VALUES (1, 'smuggled')",
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	var ee *query.ExecError
 	if !errors.As(err, &ee) {
@@ -111,8 +113,9 @@ func TestExecuteWriteCommits(t *testing.T) {
 	pool, target, cred := freshExec(t)
 
 	_, _, affected, err := runExec(context.Background(), t, target, cred, query.Execution{
-		SQL:   "INSERT INTO exec_t (id, v) VALUES (1, 'committed')",
-		Class: query.ClassWrite,
+		SQL:        "INSERT INTO exec_t (id, v) VALUES (1, 'committed')",
+		Class:      query.ClassWrite,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -138,8 +141,9 @@ func TestExecuteWriteRollsBackOnFailure(t *testing.T) {
 	}
 
 	_, _, _, err := runExec(context.Background(), t, target, cred, query.Execution{
-		SQL:   "INSERT INTO exec_t (id, v) VALUES (2, 'first'), (1, 'dup-secret')",
-		Class: query.ClassWrite,
+		SQL:        "INSERT INTO exec_t (id, v) VALUES (2, 'first'), (1, 'dup-secret')",
+		Class:      query.ClassWrite,
+		Ungoverned: true,
 	})
 	var ee *query.ExecError
 	if !errors.As(err, &ee) {
@@ -166,8 +170,9 @@ func TestExecuteDDLCommits(t *testing.T) {
 	pool, target, cred := freshExec(t)
 
 	_, _, _, err := runExec(context.Background(), t, target, cred, query.Execution{
-		SQL:   "CREATE TABLE exec_ddl (x int)",
-		Class: query.ClassDDL,
+		SQL:        "CREATE TABLE exec_ddl (x int)",
+		Class:      query.ClassDDL,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -193,8 +198,9 @@ func TestExecuteCancelStopsQuery(t *testing.T) {
 	}()
 	start := time.Now()
 	_, _, _, err := runExec(ctx, t, target, cred, query.Execution{
-		SQL:   "SELECT pg_sleep(30)",
-		Class: query.ClassRead,
+		SQL:        "SELECT pg_sleep(30)",
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	elapsed := time.Since(start)
 	if err == nil {
@@ -223,7 +229,8 @@ func TestExecutePreservesDeclaredParameterTypes(t *testing.T) {
 			{Type: query.ParamString, Text: "value"},
 			{Type: query.ParamNull},
 		},
-		Class: query.ClassRead,
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -242,9 +249,10 @@ func TestExecutePreservesDeclaredParameterTypes(t *testing.T) {
 	}
 	// Null must infer its type from the integer operand.
 	_, nullableRows, _, err := runExec(context.Background(), t, target, cred, query.Execution{
-		SQL:   "SELECT 42::bigint = $1 AS comparison",
-		Args:  []query.TypedValue{{Type: query.ParamNull}},
-		Class: query.ClassRead,
+		SQL:        "SELECT 42::bigint = $1 AS comparison",
+		Args:       []query.TypedValue{{Type: query.ParamNull}},
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("contextual null: %v", err)
@@ -267,7 +275,8 @@ func TestExecuteBindsTypedArgs(t *testing.T) {
 			{Type: query.ParamUUID, Text: "3B241101-E2BB-4255-8CAF-4136C566A962"},
 			{Type: query.ParamNull, Text: ""},
 		},
-		Class: query.ClassRead,
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -306,7 +315,8 @@ func TestExecuteCellValueMapping(t *testing.T) {
 			timestamptz '2026-07-19 12:34:56+09:00' AS tstz,
 			'{"a":1}'::jsonb AS j, '3B241101-E2BB-4255-8CAF-4136C566A962'::uuid AS u,
 			'{1,2}'::int4[] AS arr, interval '1 day' AS unk, NULL::text AS nul`,
-		Class: query.ClassRead,
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -420,8 +430,9 @@ func TestExecuteConnectionFailuresUseBuckets(t *testing.T) {
 
 	d := pgdialect.New(pgdialect.Options{})
 	_, execErr := d.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{
-		SQL:   "SELECT 1",
-		Class: query.ClassRead,
+		SQL:        "SELECT 1",
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	assertBucket(t, execErr, connection.TestBucketUnreachable, "pw-exec-unreachable")
 }
@@ -435,8 +446,9 @@ func TestExecuteWrongPasswordUsesAuthBucket(t *testing.T) {
 	}
 	d := pgdialect.New(pgdialect.Options{})
 	_, execErr := d.Execute(context.Background(), target, connection.TLSModeDisable, bad, query.Execution{
-		SQL:   "SELECT 1",
-		Class: query.ClassRead,
+		SQL:        "SELECT 1",
+		Class:      query.ClassRead,
+		Ungoverned: true,
 	})
 	assertBucket(t, execErr, connection.TestBucketAuthFailed, "definitely-wrong-exec-password")
 }

@@ -165,7 +165,7 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	go s.maintainLease(workCtx, org, lease, cancel, heartbeatDone, heartbeatStopped)
 	defer func() { cancel(); close(heartbeatDone); <-heartbeatStopped }()
 	targetOutcome = TargetUnhealthy
-	completion, targetOutcome = s.runTarget(workCtx, dialect, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, Governed: true, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
+	completion, targetOutcome = s.runTarget(workCtx, dialect, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
 	completion.DurationMilliseconds = time.Since(started).Milliseconds()
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer finishCancel()

@@ -42,7 +42,7 @@ func TestExecutionRejectsMissingOrMismatchedStringReportBeforeSQL(t *testing.T) 
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			stream, err := pgdialect.New(pgdialect.Options{}).Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT 1", Class: query.ClassRead, Governed: true, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			stream, err := pgdialect.New(pgdialect.Options{}).Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT 1", Class: query.ClassRead, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
 			if stream != nil {
 				_ = stream.Close()
 			}

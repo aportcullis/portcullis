@@ -10,8 +10,9 @@ type Execution struct {
 	SQL            string
 	Args           []TypedValue
 	Class          StatementClass
-	Governed       bool
 	MaxRows        int
 	MaxResultBytes int64
 	TimeoutSeconds int
+	// Ungoverned skips the single-statement, catalog and limit safeguards; only adapter tests of raw transaction behavior set it, so the zero value stays governed.
+	Ungoverned bool
 }
