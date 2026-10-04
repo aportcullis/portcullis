@@ -325,6 +325,47 @@ func TestReconcileSkipsAttemptsLockedByAnotherTransaction(t *testing.T) {
 	}
 }
 
+func TestExecutionCompletionRecordsInterruptionCauseAsEvidence(t *testing.T) {
+	f := newReqFixture(t)
+	ctx := context.Background()
+	for _, scenario := range []struct {
+		name       string
+		completion access.ExecutionCompletion
+		wantCause  string
+		wantErr    error
+	}{
+		{"shutdown before commit", access.ExecutionCompletion{State: access.StateCancelled, InterruptionCause: access.InterruptedByShutdown}, "server_shutdown", nil},
+		{"owner cancel during commit", access.ExecutionCompletion{State: access.StateOutcomeUnknown, InterruptionCause: access.InterruptedByOwner}, "owner_cancel", nil},
+		{"uninterrupted failure", access.ExecutionCompletion{State: access.StateFailed}, "", nil},
+		{"forged cause", access.ExecutionCompletion{State: access.StateCancelled, InterruptionCause: "admin override"}, "", access.ErrInvalidRequest},
+		{"cause on a success", access.ExecutionCompletion{State: access.StateSucceeded, InterruptionCause: access.InterruptedByShutdown}, "", access.ErrInvalidRequest},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			request := approvedExecutionRequest(t, f)
+			lease, err := f.requests.AcquireExecution(ctx, f.org, request.ID, f.requester, "server", uuid.NewString(), request.Digest, reqEvent(audit.ActionExecutionStarted, request.ID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = f.requests.CompleteExecution(ctx, f.org, lease, scenario.completion, reqEvent(audit.ActionExecutionFinished, request.ID))
+			if !errors.Is(err, scenario.wantErr) || (scenario.wantErr == nil && err != nil) {
+				t.Fatalf("CompleteExecution = %v, want %v", err, scenario.wantErr)
+			}
+			var finished int
+			var cause *string
+			if err := f.pool.QueryRow(ctx, `select count(*), max(metadata->>'interruption_cause') from public.audit_events where target_id=$1 and action='EXECUTION_FINISHED'`, string(request.ID)).Scan(&finished, &cause); err != nil {
+				t.Fatal(err)
+			}
+			recorded := ""
+			if cause != nil {
+				recorded = *cause
+			}
+			if recorded != scenario.wantCause || (finished == 1) != (scenario.wantErr == nil) {
+				t.Fatalf("finished events = %d with cause %q, want cause %q", finished, recorded, scenario.wantCause)
+			}
+		})
+	}
+}
+
 func TestExecutionCompletionRecordsResultUnavailableReasonAsEvidence(t *testing.T) {
 	f := newReqFixture(t)
 	ctx := context.Background()

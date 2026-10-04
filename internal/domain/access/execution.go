@@ -69,6 +69,19 @@ const (
 	ResultUnavailablePersistenceFailed ResultUnavailableReason = "result_persistence_failed"
 )
 
+// ExecutionShutdownTimeout bounds interrupting active executions and recording their outcomes during server shutdown.
+const ExecutionShutdownTimeout = 20 * time.Second
+
+// InterruptionCause names who interrupted an execution before it completed, recorded as audit evidence.
+type InterruptionCause string
+
+// Interruption causes recorded on EXECUTION_FINISHED (ADR-0021).
+const (
+	InterruptedByOwner     InterruptionCause = "owner_cancel"
+	InterruptedByShutdown  InterruptionCause = "server_shutdown"
+	InterruptedByLeaseLoss InterruptionCause = "lease_lost"
+)
+
 // ExecutionCompletion records confirmed execution metadata without result values.
 type ExecutionCompletion struct {
 	State                   State
@@ -80,11 +93,21 @@ type ExecutionCompletion struct {
 	ByteCount               int64
 	Truncated               bool
 	ResultUnavailableReason ResultUnavailableReason
+	InterruptionCause       InterruptionCause
 }
 
-// Valid reports whether this completion can terminate an executing request; a result unavailability reason is allowed only on a success without a stored result.
+// Valid reports whether this completion can terminate an executing request; a result unavailability reason is allowed only on a success without a stored result, and an interruption cause only on an execution that did not succeed.
 func (c ExecutionCompletion) Valid() bool {
 	if c.State != StateSucceeded && c.State != StateFailed && c.State != StateCancelled && c.State != StateOutcomeUnknown {
+		return false
+	}
+	switch c.InterruptionCause {
+	case "":
+	case InterruptedByOwner, InterruptedByShutdown, InterruptedByLeaseLoss:
+		if c.State == StateSucceeded {
+			return false
+		}
+	default:
 		return false
 	}
 	switch c.ResultUnavailableReason {

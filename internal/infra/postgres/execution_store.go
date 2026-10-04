@@ -323,6 +323,9 @@ func (s *AccessRequestStore) finishExecutionAt(ctx context.Context, q *db.Querie
 	if c.ResultUnavailableReason != "" {
 		evt.Metadata["result_unavailable_reason"] = string(c.ResultUnavailableReason)
 	}
+	if c.InterruptionCause != "" {
+		evt.Metadata["interruption_cause"] = string(c.InterruptionCause)
+	}
 	if c.State != access.StateSucceeded {
 		evt.Outcome = audit.OutcomeFailed
 	}

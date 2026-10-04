@@ -23,7 +23,7 @@ func TestExecutionLeaseTimingsKeepLiveOwnersAndBoundRecovery(t *testing.T) {
 	}
 }
 
-func TestExecutionCompletionAcceptsOnlyKnownResultUnavailableReasons(t *testing.T) {
+func TestExecutionCompletionAcceptsOnlyKnownEvidence(t *testing.T) {
 	t.Parallel()
 	expiry := time.Now()
 	for _, scenario := range []struct {
@@ -39,6 +39,11 @@ func TestExecutionCompletionAcceptsOnlyKnownResultUnavailableReasons(t *testing.
 		{"reason beside a stored result", access.ExecutionCompletion{State: access.StateSucceeded, ResultID: "result", ResultExpiresAt: &expiry, ResultUnavailableReason: access.ResultUnavailableStoreFull}, false},
 		{"reason on a failed execution", access.ExecutionCompletion{State: access.StateFailed, ResultUnavailableReason: access.ResultUnavailablePersistenceFailed}, false},
 		{"reason on an unknown outcome", access.ExecutionCompletion{State: access.StateOutcomeUnknown, ResultUnavailableReason: access.ResultUnavailableStoreFull}, false},
+		{"shutdown-cancelled execution", access.ExecutionCompletion{State: access.StateCancelled, InterruptionCause: access.InterruptedByShutdown}, true},
+		{"owner-cancelled commit left unknown", access.ExecutionCompletion{State: access.StateOutcomeUnknown, InterruptionCause: access.InterruptedByOwner}, true},
+		{"lease loss before commit", access.ExecutionCompletion{State: access.StateCancelled, InterruptionCause: access.InterruptedByLeaseLoss}, true},
+		{"forged interruption cause", access.ExecutionCompletion{State: access.StateCancelled, InterruptionCause: "operator said so"}, false},
+		{"interruption cause on a success", access.ExecutionCompletion{State: access.StateSucceeded, InterruptionCause: access.InterruptedByShutdown}, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()

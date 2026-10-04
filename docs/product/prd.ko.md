@@ -771,6 +771,7 @@ audit_events
 - production TLS는 reverse proxy/ingress에서 종료.
   신뢰할 proxy 목록 밖의 forwarded header는 무시.
 - `/livez`와 metadata DB 의존성을 확인하는 `/readyz`를 분리하고 graceful shutdown 시 새 실행을 차단.
+  shutdown timeout이 지나도 실행 중인 요청은 취소하고 metadata 연결을 닫기 전에 결과를 기록하며, `EXECUTION_FINISHED`에 `interruption_cause`(`server_shutdown`, `owner_cancel`, `lease_lost`)를 남긴다(ADR-0010, ADR-0021).
 - 구조화 로그와 metrics에는 request ID, 상태, duration, count만 포함하고 SQL·파라미터·credential은 기본 제외.
 - schema migration 전 backup과 복구 절차를 문서화하고 지원 버전 간 upgrade test를 제공.
 - 외부 telemetry는 기본 비활성화하며 사용자 승인 없이 query 또는 usage metadata를 전송하지 않음.

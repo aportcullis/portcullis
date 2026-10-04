@@ -27,6 +27,7 @@ A late completion appends LATE_COMPLETION_OBSERVED without changing the original
 
 Expiry and invalid approval decisions commit their system audit event before returning a refusal.
 Owner-verified preflight refusals, including saturated workers and shutdown admission, record EXECUTION_REJECTED without acquiring a lease.
+Shutdown (2026-10-04): when in-flight requests outlive the shutdown timeout, the server's hook calls `InterruptActive`, which refuses new executions, cancels each active execution's context with a shutdown cause, and waits up to `access.ExecutionShutdownTimeout` (20 seconds) for their outcomes to be recorded before request contexts end and the metadata pool closes. The maintenance loop is joined before the pool closes and logs only classified causes. EXECUTION_FINISHED records `interruption_cause` (`server_shutdown`, `owner_cancel` or `lease_lost`) from the execution context's cancel cause; the domain accepts only these values and never on a success. Source: [Go context.WithCancelCause](https://pkg.go.dev/context#WithCancelCause).
 STARTED identifies admission to target execution; treating a refused preflight as STARTED would falsely imply ownership and target admission. PRD §6.1 distinguishes these events in both translations.
 All execution events carry the immutable request's digest, class, connection, and redacted SQL.
 They never carry original SQL, parameters, database errors, or result values.

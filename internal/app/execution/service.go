@@ -28,8 +28,16 @@ type Service struct {
 	workers       chan struct{}
 	mu            sync.Mutex
 	draining      bool
-	cancellations map[access.RequestID]context.CancelFunc
+	cancellations map[access.RequestID]context.CancelCauseFunc
+	// active counts admitted executions until their outcome is recorded, so shutdown can wait for them.
+	active sync.WaitGroup
 }
+
+// Interruption causes distinguish who cancelled an execution's context.
+var (
+	errOwnerCancelled = errors.New("execution: cancelled by its owner")
+	errServerShutdown = errors.New("execution: interrupted by server shutdown")
+)
 
 // New wires governed execution with a bounded number of active workers.
 func New(requests RequestRepository, leases LeaseRepository, connections ConnectionRepository, payloads PayloadCodec, credentials CredentialCodec, dialect Dialect, results ResultWriter, owner string, workers int) (*Service, error) {
@@ -44,7 +52,7 @@ func NewWithDialects(requests RequestRepository, leases LeaseRepository, connect
 	if requests == nil || leases == nil || connections == nil || payloads == nil || credentials == nil || dialects == nil || results == nil || owner == "" || workers < 1 {
 		return nil, errors.New("execution: invalid dependencies")
 	}
-	return &Service{requests: requests, leases: leases, connections: connections, payloads: payloads, credentials: credentials, dialects: dialects, results: results, owner: owner, workers: make(chan struct{}, workers), cancellations: make(map[access.RequestID]context.CancelFunc)}, nil
+	return &Service{requests: requests, leases: leases, connections: connections, payloads: payloads, credentials: credentials, dialects: dialects, results: results, owner: owner, workers: make(chan struct{}, workers), cancellations: make(map[access.RequestID]context.CancelCauseFunc)}, nil
 }
 
 // Execute runs only the authenticated stored approval unit, once.
@@ -60,6 +68,16 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	if r.RequesterID != requester {
 		return access.ExecutionCompletion{}, access.ErrNotFound
 	}
+	// Count the execution before its refusal audit is deferred, so shutdown also waits for that audit write.
+	s.mu.Lock()
+	draining := s.draining
+	if !draining {
+		s.active.Add(1)
+	}
+	s.mu.Unlock()
+	if !draining {
+		defer s.active.Done()
+	}
 	leased := false
 	defer func() {
 		if err == nil || leased {
@@ -72,9 +90,6 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 			err = auditErr
 		}
 	}()
-	s.mu.Lock()
-	draining := s.draining
-	s.mu.Unlock()
 	if draining {
 		return access.ExecutionCompletion{}, query.ErrResultBusy
 	}
@@ -154,25 +169,49 @@ func (s *Service) Execute(ctx context.Context, requester identity.UserID, id acc
 	}
 	leased = true
 	started := time.Now()
-	workCtx, cancel := context.WithTimeout(ctx, time.Duration(target.Policy.Limits.QueryTimeoutSeconds)*time.Second+query.ExecutionDeadlineGrace)
+	interruptCtx, interrupt := context.WithCancelCause(ctx)
+	defer interrupt(nil)
+	workCtx, cancel := context.WithTimeout(interruptCtx, time.Duration(target.Policy.Limits.QueryTimeoutSeconds)*time.Second+query.ExecutionDeadlineGrace)
 	defer cancel()
 	s.mu.Lock()
-	s.cancellations[id] = cancel
+	s.cancellations[id] = interrupt
+	draining = s.draining
 	s.mu.Unlock()
+	// Shutdown may have collected the active cancellations before this one registered.
+	if draining {
+		interrupt(errServerShutdown)
+	}
 	defer func() { s.mu.Lock(); delete(s.cancellations, id); s.mu.Unlock() }()
 	heartbeatDone := make(chan struct{})
 	heartbeatStopped := make(chan struct{})
-	go s.maintainLease(workCtx, org, lease, cancel, heartbeatDone, heartbeatStopped)
+	go s.maintainLease(workCtx, org, lease, interrupt, heartbeatDone, heartbeatStopped)
 	defer func() { cancel(); close(heartbeatDone); <-heartbeatStopped }()
 	targetOutcome = TargetUnhealthy
 	completion, targetOutcome = s.runTarget(workCtx, dialect, r, material, openedCredential, query.Execution{SQL: boundSQL, Args: args, Class: class, MaxRows: target.Policy.Limits.MaxRows, MaxResultBytes: min(target.Policy.Limits.MaxResultBytes, query.MaxSnapshotBytes), TimeoutSeconds: target.Policy.Limits.QueryTimeoutSeconds})
 	completion.DurationMilliseconds = time.Since(started).Milliseconds()
+	completion.InterruptionCause = interruptionCauseOf(completion.State, context.Cause(interruptCtx))
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer finishCancel()
 	if err := s.leases.CompleteExecution(finishCtx, org, lease, completion, event); err != nil {
 		return access.ExecutionCompletion{}, err
 	}
 	return completion, nil
+}
+
+// interruptionCauseOf names who interrupted an execution that did not succeed, ignoring parent-context ends such as a requester disconnect.
+func interruptionCauseOf(state access.State, cause error) access.InterruptionCause {
+	if state == access.StateSucceeded || cause == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(cause, errOwnerCancelled):
+		return access.InterruptedByOwner
+	case errors.Is(cause, errServerShutdown):
+		return access.InterruptedByShutdown
+	case errors.Is(cause, access.ErrLeaseLost):
+		return access.InterruptedByLeaseLoss
+	}
+	return ""
 }
 
 func (s *Service) runTarget(ctx context.Context, dialect Dialect, r access.Request, material connection.Connection, credential connection.Credential, request query.Execution) (access.ExecutionCompletion, TargetOutcome) {
@@ -268,7 +307,7 @@ func failedExecutionState(err error) access.State {
 	return access.StateOutcomeUnknown
 }
 
-func (s *Service) maintainLease(ctx context.Context, org identity.OrganizationID, lease access.ExecutionLease, cancel context.CancelFunc, done <-chan struct{}, stopped chan<- struct{}) {
+func (s *Service) maintainLease(ctx context.Context, org identity.OrganizationID, lease access.ExecutionLease, interrupt context.CancelCauseFunc, done <-chan struct{}, stopped chan<- struct{}) {
 	defer close(stopped)
 	ticker := time.NewTicker(access.ExecutionHeartbeatInterval)
 	defer ticker.Stop()
@@ -280,8 +319,9 @@ func (s *Service) maintainLease(ctx context.Context, org identity.OrganizationID
 			heartbeatCtx, heartbeatCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			err := s.leases.HeartbeatExecution(heartbeatCtx, org, lease)
 			heartbeatCancel()
+			// An unrenewed lease can be recovered by another server, so the attempt stops either way.
 			if err != nil {
-				cancel()
+				interrupt(access.ErrLeaseLost)
 				return
 			}
 		}
@@ -302,16 +342,16 @@ func (s *Service) Cancel(ctx context.Context, requester identity.UserID, id acce
 		return access.ErrNotFound
 	}
 	s.mu.Lock()
-	cancel := s.cancellations[id]
+	interrupt := s.cancellations[id]
 	s.mu.Unlock()
-	if cancel == nil {
+	if interrupt == nil {
 		return access.ErrNotExecutable
 	}
 	event := auditevent.NewUser(ctx, requester, audit.Action("EXECUTION_CANCEL_REQUESTED"), audit.TargetTypeAccessRequest, audit.OutcomeSucceeded)
 	if err := s.leases.RecordExecutionRefusal(ctx, org, id, requester, "cancel_requested", event); err != nil {
 		return err
 	}
-	cancel()
+	interrupt(errOwnerCancelled)
 	return nil
 }
 
@@ -342,6 +382,24 @@ func (s *Service) ResultOwner(ctx context.Context, requester identity.UserID, id
 	}
 	org, err := s.requests.DefaultOrganizationID(ctx)
 	return org, completion.ResultID, err
+}
+
+// InterruptActive refuses new executions, cancels every active one with an audited server_shutdown cause, and waits until their outcomes are recorded or ctx ends.
+func (s *Service) InterruptActive(ctx context.Context) error {
+	s.mu.Lock()
+	s.draining = true
+	for _, interrupt := range s.cancellations {
+		interrupt(errServerShutdown)
+	}
+	s.mu.Unlock()
+	recorded := make(chan struct{})
+	go func() { s.active.Wait(); close(recorded) }()
+	select {
+	case <-recorded:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // StopAdmission refuses new executions while the server drains active work.

@@ -339,31 +339,34 @@ func run() error {
 
 	srv := server.New(cfg.Addr, logger, cfg.DrainDelay, mounts...)
 	srv.Health().Register("metadata-db", func(ctx context.Context) error { return pool.Ping(ctx) })
+	// Executions still running at the shutdown timeout are interrupted with an audited cause before their request contexts end and the pool closes.
+	srv.OnShutdownTimeout(func(ctx context.Context) {
+		interruptCtx, cancel := context.WithTimeout(ctx, access.ExecutionShutdownTimeout)
+		defer cancel()
+		if err := executionSvc.InterruptActive(interruptCtx); err != nil {
+			logger.Error("active executions did not stop before shutdown", postgres.ErrorLogFields(err)...)
+		}
+	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	maintenanceCtx, stopMaintenance := context.WithCancel(ctx)
+	maintenanceDone := make(chan struct{})
 	go func() {
+		defer close(maintenanceDone)
 		ticker := time.NewTicker(access.ExecutionReconcileInterval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-maintenanceCtx.Done():
 				return
 			case <-ticker.C:
-				maintenanceCtx, cancel := context.WithTimeout(ctx, access.ExecutionReconcileTimeout)
-				summary, err := executionSvc.Reconcile(maintenanceCtx)
-				logExecutionRecovery(logger, summary, err)
-				org, err := requestStore.DefaultOrganizationID(maintenanceCtx)
-				if err == nil {
-					err = resultStore.PurgeExpired(maintenanceCtx, org)
-				}
-				if err != nil {
-					logger.Error("result cleanup failed")
-				}
-				cancel()
+				runMaintenance(maintenanceCtx, logger, executionSvc, requestStore, resultStore)
 			}
 		}
 	}()
+	// Join maintenance before the deferred pool.Close so no run uses a closing pool.
+	defer func() { stopMaintenance(); <-maintenanceDone }()
 
 	// A bind/serve failure must terminate the process with a non-zero exit, not fall through to the normal shutdown path.
 	serveErr := make(chan error, 1)
@@ -391,6 +394,21 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// runMaintenance reconciles overdue executions and purges expired results within one bounded run.
+func runMaintenance(ctx context.Context, logger *slog.Logger, executions *executionapp.Service, requests *postgres.AccessRequestStore, results *postgres.ResultStore) {
+	runCtx, cancel := context.WithTimeout(ctx, access.ExecutionReconcileTimeout)
+	defer cancel()
+	summary, err := executions.Reconcile(runCtx)
+	logExecutionRecovery(logger, summary, err)
+	org, err := requests.DefaultOrganizationID(runCtx)
+	if err == nil {
+		err = results.PurgeExpired(runCtx, org)
+	}
+	if err != nil {
+		logger.Error("result cleanup failed", postgres.ErrorLogFields(err)...)
+	}
 }
 
 // logExecutionRecovery logs a reconciliation run with classified causes only, since raw database errors can echo row data.
