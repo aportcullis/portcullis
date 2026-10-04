@@ -8,7 +8,7 @@ func (k *Keyring) ActiveVersion() uint32 { return uint32(k.active) }
 // RotateRecord authenticates a historical envelope and replaces its encryption version.
 func (k *Keyring) RotateRecord(record encryption.Record) (encryption.Record, error) {
 	aad := AAD(record.Kind, record.OrganizationID, record.ID)
-	if record.Kind != "result_set" {
+	if record.Kind != RecordTypeResultSet {
 		plain, err := k.Open(Blob{KeyVersion: KeyVersion(record.KeyVersion), WrappedDEK: record.WrappedDEK, Nonce: record.Nonce, Ciphertext: record.Ciphertext}, aad)
 		if err != nil {
 			return encryption.Record{}, err

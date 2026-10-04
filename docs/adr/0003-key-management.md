@@ -55,6 +55,10 @@ portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]
 - `record_type` — fixed lowercase token per table, e.g. `connection_credential`, `request_payload`, `saved_query_version`, `result_chunk`, `schema_artifact_file`, `oidc_pending` (the OIDC pending-auth cookie, ADR-0007).
 - `organization_id` / `record_id` — canonical lowercase UUID text of the owning org and row.
 - `chunk_index` — present only for chunked payloads (result chunks, artifact files), decimal.
+- **Result chunk manifest** (amended 2026-10-04): a `result_chunk` AAD continues `|<chunk_index>|m1|<row_count>|<truncated 0/1>|<chunk_count>`, where `chunk_count` = 1 schema chunk + ⌈row_count / 100⌉ row chunks.
+  The plaintext `result_sets` metadata a reader trusts for paging and CSV export is therefore authenticated by every chunk: changing the row count, truncation flag or implied chunk count makes every open fail and the read reports `result unavailable`.
+  The `result_set` DEK-wrap AAD is unchanged, so `key rotate` still rewraps result keys from identity alone.
+  Snapshots sealed before the manifest no longer open; they are refused as unavailable and expire within the 15-minute result TTL, so no migration is needed.
 - The KEK `key_version` is *not* in the AAD: it is bound implicitly — it selects the HKDF-derived wrap key, so a tampered version fails the unwrap authentication.
   (PRD §8.1's "key ID" binding is satisfied by this mechanism.)
 

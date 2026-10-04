@@ -30,7 +30,7 @@ func (c *ResultCodec) SealWithinBudget(metadata query.SnapshotMetadata, columns 
 	if err != nil {
 		return query.SealedResult{}, err
 	}
-	aad := AAD("result_set", string(metadata.OrganizationID), metadata.ID)
+	aad := AAD(RecordTypeResultSet, string(metadata.OrganizationID), metadata.ID)
 	nonce, wrapped, err := sealAEAD(wrapKey, key, aad)
 	if err != nil {
 		return query.SealedResult{}, err
@@ -63,9 +63,11 @@ func (c *ResultCodec) SealWithinBudget(metadata query.SnapshotMetadata, columns 
 		plannedBytes += rowBytes
 		encodedRows = append(encodedRows, encoded)
 	}
+	// The manifest in every chunk's AAD authenticates the final row count and truncation, so both are settled before the first seal.
 	sealed.Metadata.RowCount = int64(len(encodedRows))
+	sealed.Metadata.Truncated = metadata.Truncated || len(encodedRows) < len(rows)
 	sealChunk := func(index int, plaintext []byte) error {
-		nonce, ciphertext, err := sealAEAD(key, plaintext, resultChunkAAD(metadata, index))
+		nonce, ciphertext, err := sealAEAD(key, plaintext, resultChunkAAD(sealed.Metadata, index))
 		if err != nil {
 			return err
 		}
@@ -160,8 +162,15 @@ func (c *ResultCodec) OpenRows(result query.SealedResult, chunk query.SealedResu
 	return rows, nil
 }
 
+// resultChunkAAD binds a chunk to its result identity, its index, and the snapshot manifest (row count, truncation flag, chunk count), so editing the plaintext metadata row fails every chunk open (ADR-0003).
 func resultChunkAAD(metadata query.SnapshotMetadata, index int) []byte {
-	return append(AAD("result_chunk", string(metadata.OrganizationID), metadata.ID), []byte("|"+strconv.Itoa(index))...)
+	truncated := "0"
+	if metadata.Truncated {
+		truncated = "1"
+	}
+	chunkCount := 1 + (metadata.RowCount+query.ResultChunkRows-1)/query.ResultChunkRows
+	manifest := "|" + strconv.Itoa(index) + "|" + resultManifestVersion + "|" + strconv.FormatInt(metadata.RowCount, 10) + "|" + truncated + "|" + strconv.FormatInt(chunkCount, 10)
+	return append(AAD(RecordTypeResultChunk, string(metadata.OrganizationID), metadata.ID), manifest...)
 }
 
 func (c *ResultCodec) openChunk(result query.SealedResult, chunk query.SealedResultChunk) ([]byte, error) {
@@ -172,7 +181,7 @@ func (c *ResultCodec) openChunk(result query.SealedResult, chunk query.SealedRes
 	if len(result.WrappedDEK) < gcmNonceLen {
 		return nil, ErrDecrypt
 	}
-	key, err := openAEAD(wrapKey, result.WrappedDEK[:gcmNonceLen], result.WrappedDEK[gcmNonceLen:], AAD("result_set", string(result.Metadata.OrganizationID), result.Metadata.ID))
+	key, err := openAEAD(wrapKey, result.WrappedDEK[:gcmNonceLen], result.WrappedDEK[gcmNonceLen:], AAD(RecordTypeResultSet, string(result.Metadata.OrganizationID), result.Metadata.ID))
 	if err != nil {
 		return nil, err
 	}

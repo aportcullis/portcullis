@@ -30,7 +30,14 @@ const (
 	RecordTypeAccessRequestPayload = "access_request_payload"
 	// RecordTypeConnectionCredential is a registered connection's database login pair (ADR-0003 names this token; ADR-0014 uses it).
 	RecordTypeConnectionCredential = "connection_credential"
+	// RecordTypeResultSet is a result snapshot's wrapped DEK; key rotation rewraps it under the same AAD (ADR-0011).
+	RecordTypeResultSet = "result_set"
+	// RecordTypeResultChunk is one encrypted result chunk; its AAD also carries the chunk index and snapshot manifest (ADR-0003).
+	RecordTypeResultChunk = "result_chunk"
 )
+
+// resultManifestVersion versions the manifest suffix of result chunk AAD; snapshots sealed before it was introduced fail to open and expire within the result TTL.
+const resultManifestVersion = "m1"
 
 // connectionCredentialVersion versions the JSON layout inside a sealed connection credential, so fields (e.g. a custom root CA) can be added compatibly (ADR-0014).
 const connectionCredentialVersion = 1

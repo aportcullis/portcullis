@@ -1,7 +1,7 @@
 # ADR-0011: Result store quota & eviction
 
 - **Status:** Accepted — model fixed; numeric values are **provisional until the Core 2 load test** (they gate Core 2 per the PRD §12.2 and are re-confirmed, not re-designed, by it).
-- **Date:** 2026-07-04 (amended 2026-10-03: preserve live snapshots on admission refusal)
+- **Date:** 2026-07-04 (amended 2026-10-03: preserve live snapshots on admission refusal; amended 2026-10-04: authenticated snapshot metadata)
 
 ## Context
 The PRD fixes the result-store shape (§6, §7.1, §12.1): PostgreSQL `result_cache` schema, UNLOGGED `result_sets`/`result_chunks`, per-result DEK (AES-256-GCM, ADR-0003 envelope), 15-minute TTL, per-result caps of **10,000 rows / 25 MiB** (`truncated=true` beyond), and a **512 MiB** global logical cap with LRU eviction.
@@ -27,6 +27,9 @@ Reject invalid or individually oversized incoming snapshots before accounting. F
 5. Every eviction of a non-expired snapshot leaves an audit event (`RESULT_EVICTED`, actor `system:result-store`, metadata: cause `user_quota|global_cap`).
 
 `last_accessed_at` updates are throttled to once per minute per snapshot (same rationale as the session idle-slide throttle, ADR-0006 Parameters).
+
+### Metadata integrity (amended 2026-10-04)
+`row_count` and `truncated` are final before a snapshot is sealed and are authenticated, with the derived chunk count, inside every chunk's AAD (ADR-0003). A reader that finds them altered gets `result unavailable` instead of a silently shortened page or CSV, or a false truncation notice. `byte_size` stays unauthenticated accounting input for quota decisions.
 
 ### UNLOGGED autovacuum & bloat *(provisional — confirm via the Core 2 load test)*
 - `result_chunks` / `result_sets` get per-table storage parameters: `autovacuum_vacuum_scale_factor = 0.02`, `autovacuum_analyze_scale_factor = 0.05`, `autovacuum_vacuum_cost_delay = 0` — churn is the norm here (15-min TTL), so vacuum must keep up with delete volume; UNLOGGED tables skip WAL, making aggressive vacuum cheap.

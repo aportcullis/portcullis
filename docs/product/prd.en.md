@@ -670,6 +670,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 - **Query snapshots:** Execute once, store AEAD chunks in PostgreSQL UNLOGGED storage for 15 minutes, and paginate/sort/filter without rerunning.
   - Stop at the first snapshot ceiling of 10,000 rows or 25MiB; mark `truncated=true`.
     A read stops reading the target at the ceiling and cancels the rest of the statement, so rows affected equals the delivered rows; a returning write still drains and commits the whole statement (ADR-0021).
+    Row count, truncation and chunk count are authenticated with the encrypted chunks, so altered snapshot metadata reads as an unavailable result (ADR-0003/0011).
     Apply any lower connection-policy limit first (new policies default to 16MiB, ADR-0015/0021).
     Separate pre-decode cell/row memory admission can truncate wide NULL results earlier even when value payloads are small (ADR-0021).
   - Default global storage 512MiB with expiry/LRU, per-user 64MiB and eviction/rejection order in ADR-0011; display expiry/eviction.

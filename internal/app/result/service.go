@@ -38,15 +38,14 @@ func (s *Service) Save(ctx context.Context, metadata query.SnapshotMetadata, col
 	}
 	metadata.CreatedAt = time.Now().UTC()
 	metadata.ExpiresAt = metadata.CreatedAt.Add(query.ResultTTL)
+	// Row count and truncation are authenticated inside every chunk, so rows beyond the snapshot ceiling are marked before sealing; the codec adds budget truncation itself.
+	metadata.Truncated = metadata.Truncated || len(rows) > query.MaxResultRows
 	sealed, err := s.codec.SealWithinBudget(metadata, columns, rows[:min(len(rows), query.MaxResultRows)], limitBytes)
 	if err != nil {
 		return query.SnapshotMetadata{}, err
 	}
 	if sealed.Metadata.ByteCount > limitBytes {
 		return query.SnapshotMetadata{}, query.ErrResultStoreFull
-	}
-	if sealed.Metadata.RowCount < int64(len(rows)) {
-		sealed.Metadata.Truncated = true
 	}
 	if err := s.repository.Put(ctx, sealed); err != nil {
 		return query.SnapshotMetadata{}, err
@@ -55,7 +54,6 @@ func (s *Service) Save(ctx context.Context, metadata query.SnapshotMetadata, col
 	if err != nil {
 		return query.SnapshotMetadata{}, err
 	}
-	stored.Metadata.Truncated = sealed.Metadata.Truncated
 	return stored.Metadata, nil
 }
 
@@ -195,7 +193,11 @@ func (s *Service) openSchema(ctx context.Context, org identity.OrganizationID, o
 		return query.SealedResult{}, nil, err
 	}
 	columns, err := s.codec.OpenColumns(sealed, chunk)
-	return sealed, columns, err
+	if err != nil {
+		// An authentication failure means the snapshot or its manifest was altered or sealed under an older layout; it is unavailable, not a server fault.
+		return query.SealedResult{}, nil, query.ErrResultUnavailable
+	}
+	return sealed, columns, nil
 }
 
 func (s *Service) readRows(ctx context.Context, sealed query.SealedResult, start, end int) ([][]query.CellValue, error) {
