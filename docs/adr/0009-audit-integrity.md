@@ -130,6 +130,13 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
      Unknown new tables get the default policy, so a migration that forgets grants fails its very first boot in CI; a new sensitive table fails until its policy entry lands — the review gate, enforced.
      In the runtime-connection check a missing required verb is always fatal; a forbidden one is the dev-downgradable over-privilege class.
 
+### Migration history and bounds (amended 2026-10-04)
+- **Checksummed history**: migration 0019 adds `schema_migrations.checksum` (sha256 of the exact embedded file); the runner records it for each new file and backfills rows applied before the column existed.
+  Before applying anything it refuses a recorded checksum that differs from the embedded file (a released migration was edited) and any recorded version the binary does not ship (a newer binary migrated this database), so an older binary cannot run against a schema it does not know.
+- **Separate lock wait**: the session migration lock is polled with `pg_try_advisory_lock` for a bounded wait (default 2 minutes, `WithLockWaitTimeout`), and the server and `portcullis migrate` no longer run migration inside the 30-second startup budget.
+- **Bounded transactions**: each file runs with `SET LOCAL lock_timeout` (5s) and `statement_timeout` (15m); a `55P03` lock timeout rolls back and retries the whole file up to five times with a backoff, while a statement timeout fails without retry.
+- **Constraint additions**: migration 0017 added its CHECK while validating existing rows under the table lock; it is released and stays as is, and future CHECKs on populated tables use `NOT VALID` followed by `VALIDATE CONSTRAINT` (data.md).
+
 ### Audit table shape (normative — mirrors migration 0001)
 - Columns: `id uuid pk`, `organization_id` (FK, restrict), `occurred_at timestamptz default now()`, `actor_type` (`check in ('user','system','service')`), `actor_user_id` (nullable FK), `actor_service`, `action`, `target_type`, `target_id`, `outcome`, `previous_state`, `next_state`, `payload_digest bytea`, `payload_digest_key_version int`, `request_id`, `connection_id uuid`, `query_type`, `rows_affected bigint`, `duration_ms bigint`, `risk_score double precision`, `metadata jsonb not null default '{}'`.
 - **Digest pairing is CHECK-enforced**, not convention: `(payload_digest is null) = (payload_digest_key_version is null)` (a digest without its key version is unverifiable; a version without a digest is meaningless), and `payload_digest_key_version > 0` when present.
@@ -165,5 +172,6 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
 
 ## Sources (checked 2026-07-03)
 - OWASP Logging Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
-- PostgreSQL ALTER TABLE (owner can disable triggers): https://www.postgresql.org/docs/current/sql-altertable.html
+- PostgreSQL ALTER TABLE (owner can disable triggers; `NOT VALID` CHECK then `VALIDATE CONSTRAINT` takes a weaker lock): https://www.postgresql.org/docs/current/sql-altertable.html
+- PostgreSQL client settings — `lock_timeout` applies per lock acquisition and `statement_timeout` per statement (checked 2026-10-04): https://www.postgresql.org/docs/current/runtime-config-client.html
 - Transactional outbox (single-DB: same-tx write suffices): https://pradeepl.com/blog/transactional-outbox-pattern/

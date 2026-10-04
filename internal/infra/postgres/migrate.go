@@ -1,13 +1,16 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -24,9 +27,23 @@ func WithRuntimeRole(name string) MigrateOption {
 	return func(c *migrateConfig) { c.runtimeRole = name }
 }
 
+// WithLockWaitTimeout bounds how long Migrate waits for another instance's migration lock.
+func WithLockWaitTimeout(wait time.Duration) MigrateOption {
+	return func(c *migrateConfig) { c.lockWait = wait }
+}
+
 // Migrate applies unrecorded files in filename order, one transaction each, on a dedicated advisory-lock connection to serialize startup.
 func Migrate(ctx context.Context, pool *pgxpool.Pool, opts ...MigrateOption) error {
-	cfg := migrateConfig{runtimeRole: defaultRuntimeRole}
+	cfg := migrateConfig{
+		runtimeRole: defaultRuntimeRole,
+		lockWait:    defaultMigrationLockWait,
+		timeouts: migrationTimeouts{
+			lockTimeout:      defaultMigrationLockTimeout,
+			statementTimeout: defaultMigrationStatementTimeout,
+			attempts:         defaultMigrationLockAttempts,
+			retryBackoff:     defaultMigrationRetryBackoff,
+		},
+	}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -34,14 +51,21 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, opts ...MigrateOption) err
 	if !runtimeRolePattern.MatchString(cfg.runtimeRole) {
 		return fmt.Errorf("invalid runtime role name %q", cfg.runtimeRole)
 	}
+	if cfg.lockWait <= 0 {
+		return fmt.Errorf("migration lock wait must be positive, got %s", cfg.lockWait)
+	}
+	files, err := loadMigrationFiles()
+	if err != nil {
+		return err
+	}
 
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("acquire migration lock connection: %w", err)
 	}
 	defer conn.Release()
-	if _, err := conn.Exec(ctx, `select pg_advisory_lock($1, $2)`, lockClassMigrate, 0); err != nil {
-		return fmt.Errorf("acquire migration lock: %w", err)
+	if err := acquireMigrationLock(ctx, conn, cfg.lockWait); err != nil {
+		return err
 	}
 	defer func() {
 		// Explicit unlock — a session lock is not dropped when the connection returns to the pool. WithoutCancel so a cancelled ctx still releases the lock.
@@ -98,29 +122,21 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, opts ...MigrateOption) err
 		return fmt.Errorf("set runtime role setting: %w", err)
 	}
 
-	names, err := migrationNames()
+	// Refuse a history this binary cannot vouch for before applying anything: an edited released file or a version from a newer binary.
+	applied, err := verifyMigrationHistory(ctx, conn, files)
 	if err != nil {
 		return err
 	}
-
-	for _, name := range names {
-		version := strings.TrimSuffix(name, ".sql")
-		var applied bool
-		if err := conn.QueryRow(ctx,
-			`select exists(select 1 from public.schema_migrations where version = $1)`, version,
-		).Scan(&applied); err != nil {
-			return err
-		}
-		if applied {
+	for _, file := range files {
+		if applied[file.version] {
 			continue
 		}
-		body, err := migrations.FS.ReadFile(name)
-		if err != nil {
-			return err
+		if err := applyMigration(ctx, conn, file, cfg.timeouts); err != nil {
+			return fmt.Errorf("migration %s: %w", file.version, err)
 		}
-		if err := applyOne(ctx, conn, version, string(body)); err != nil {
-			return fmt.Errorf("migration %s: %w", version, err)
-		}
+	}
+	if err := backfillMigrationChecksums(ctx, conn, files); err != nil {
+		return err
 	}
 
 	// Verify effective runtime privileges on every boot to detect role renames and grant drift (ADR-0009).
@@ -242,33 +258,179 @@ func isUndefinedObject(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "42704"
 }
 
-func migrationNames() ([]string, error) {
+// loadMigrationFiles reads the embedded migrations in filename order with their content checksums.
+func loadMigrationFiles() ([]migrationFile, error) {
 	entries, err := fs.ReadDir(migrations.FS, ".")
 	if err != nil {
 		return nil, err
 	}
 	var names []string
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".sql") {
-			names = append(names, e.Name())
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".sql") {
+			names = append(names, entry.Name())
 		}
 	}
 	sort.Strings(names)
-	return names, nil
+	files := make([]migrationFile, 0, len(names))
+	for _, name := range names {
+		body, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			return nil, err
+		}
+		digest := sha256.Sum256(body)
+		files = append(files, migrationFile{version: strings.TrimSuffix(name, ".sql"), body: string(body), checksum: digest[:]})
+	}
+	return files, nil
 }
 
-func applyOne(ctx context.Context, conn *pgxpool.Conn, version, body string) error {
+// acquireMigrationLock polls for the session migration lock until the wait elapses, so a stuck peer fails startup with a clear error.
+func acquireMigrationLock(ctx context.Context, conn *pgxpool.Conn, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
+	for {
+		var acquired bool
+		if err := conn.QueryRow(ctx, `select pg_try_advisory_lock($1, $2)`, lockClassMigrate, 0).Scan(&acquired); err != nil {
+			return fmt.Errorf("acquire migration lock: %w", err)
+		}
+		if acquired {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out after %s waiting for the migration lock held by another instance (ADR-0009)", wait)
+		}
+		timer := time.NewTimer(min(migrationLockPollInterval, time.Until(deadline)))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("wait for migration lock: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+// hasMigrationChecksumColumn reports whether migration 0019 has added schema_migrations.checksum yet.
+func hasMigrationChecksumColumn(ctx context.Context, q rowQuerier) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx, `
+		select exists (
+		    select 1 from pg_catalog.pg_attribute
+		    where attrelid = 'public.schema_migrations'::regclass and attname = 'checksum' and not attisdropped)`,
+	).Scan(&exists)
+	return exists, err
+}
+
+// verifyMigrationHistory returns the applied versions and refuses unknown versions or checksums that differ from the embedded files.
+func verifyMigrationHistory(ctx context.Context, conn *pgxpool.Conn, files []migrationFile) (map[string]bool, error) {
+	embedded := make(map[string][]byte, len(files))
+	for _, file := range files {
+		embedded[file.version] = file.checksum
+	}
+	withChecksum, err := hasMigrationChecksumColumn(ctx, conn)
+	if err != nil {
+		return nil, fmt.Errorf("inspect schema_migrations: %w", err)
+	}
+	historySQL := `select version, null::bytea from public.schema_migrations order by version`
+	if withChecksum {
+		historySQL = `select version, checksum from public.schema_migrations order by version`
+	}
+	rows, err := conn.Query(ctx, historySQL)
+	if err != nil {
+		return nil, fmt.Errorf("read schema_migrations: %w", err)
+	}
+	defer rows.Close()
+	applied := map[string]bool{}
+	var unknown, edited []string
+	for rows.Next() {
+		var version string
+		var checksum []byte
+		if err := rows.Scan(&version, &checksum); err != nil {
+			return nil, err
+		}
+		want, known := embedded[version]
+		switch {
+		case !known:
+			unknown = append(unknown, version)
+		case checksum != nil && !bytes.Equal(checksum, want):
+			edited = append(edited, version)
+		}
+		applied[version] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("schema_migrations records versions this binary does not ship (%s); run the binary that applied them or restore a matching backup (ADR-0009)", strings.Join(unknown, ", "))
+	}
+	if len(edited) > 0 {
+		return nil, fmt.Errorf("embedded migration checksum differs from the applied history for %s; released migrations are immutable (docs/conventions/data.md, ADR-0009)", strings.Join(edited, ", "))
+	}
+	return applied, nil
+}
+
+// backfillMigrationChecksums records the embedded checksum for applied versions that predate the checksum column.
+func backfillMigrationChecksums(ctx context.Context, conn *pgxpool.Conn, files []migrationFile) error {
+	withChecksum, err := hasMigrationChecksumColumn(ctx, conn)
+	if err != nil || !withChecksum {
+		return err
+	}
+	for _, file := range files {
+		if _, err := conn.Exec(ctx, `update public.schema_migrations set checksum = $2 where version = $1 and checksum is null`, file.version, file.checksum); err != nil {
+			return fmt.Errorf("backfill checksum for %s: %w", file.version, err)
+		}
+	}
+	return nil
+}
+
+// applyMigration runs one file and its history row in a bounded transaction, retrying the whole file when a lock wait times out.
+func applyMigration(ctx context.Context, conn *pgxpool.Conn, file migrationFile, timeouts migrationTimeouts) error {
+	var err error
+	for attempt := 1; attempt <= timeouts.attempts; attempt++ {
+		err = applyMigrationOnce(ctx, conn, file, timeouts)
+		var pgErr *pgconn.PgError
+		if err == nil || !errors.As(err, &pgErr) || pgErr.Code != lockNotAvailableCode || attempt == timeouts.attempts {
+			return err
+		}
+		timer := time.NewTimer(timeouts.retryBackoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return err
+}
+
+func applyMigrationOnce(ctx context.Context, conn *pgxpool.Conn, file migrationFile, timeouts migrationTimeouts) error {
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, body); err != nil {
+	// set_config(..., true) is SET LOCAL: the bounds end with this transaction.
+	if _, err := tx.Exec(ctx, `select set_config('lock_timeout', $1, true), set_config('statement_timeout', $2, true)`,
+		postgresMilliseconds(timeouts.lockTimeout), postgresMilliseconds(timeouts.statementTimeout)); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `insert into public.schema_migrations (version) values ($1)`, version); err != nil {
+	if _, err := tx.Exec(ctx, file.body); err != nil {
+		return err
+	}
+	withChecksum, err := hasMigrationChecksumColumn(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if withChecksum {
+		_, err = tx.Exec(ctx, `insert into public.schema_migrations (version, checksum) values ($1, $2)`, file.version, file.checksum)
+	} else {
+		_, err = tx.Exec(ctx, `insert into public.schema_migrations (version) values ($1)`, file.version)
+	}
+	if err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// postgresMilliseconds renders a duration as a PostgreSQL time setting.
+func postgresMilliseconds(duration time.Duration) string {
+	return fmt.Sprintf("%dms", duration.Milliseconds())
 }

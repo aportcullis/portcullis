@@ -214,6 +214,12 @@ type RolePermission struct {
 	PermissionKey string
 }
 
+type SchemaMigration struct {
+	Version   string
+	AppliedAt pgtype.Timestamptz
+	Checksum  []byte
+}
+
 type Session struct {
 	ID                pgtype.UUID
 	UserID            pgtype.UUID

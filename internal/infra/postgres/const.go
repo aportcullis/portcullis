@@ -1,10 +1,23 @@
 package postgres
 
+import "time"
+
 // Advisory-lock classes — the first argument of the two-arg pg_advisory_xact_lock, so each purpose gets its own keyspace and a per-object id in one class can never collide with another class's lock.
 const (
 	lockClassBootstrap int32 = 1 // first-run bootstrap (one global lock, object 0)
 	lockClassSession   int32 = 2 // per-user session rotation
 	lockClassMigrate   int32 = 3 // schema migration (one global lock, object 0)
+)
+
+// Migration bounds (ADR-0009): the migration-lock wait is separate from the startup budget, and each migration transaction bounds its lock waits and statements, retrying a lock timeout a few times.
+const (
+	defaultMigrationLockWait         = 2 * time.Minute
+	migrationLockPollInterval        = 100 * time.Millisecond
+	defaultMigrationLockTimeout      = 5 * time.Second
+	defaultMigrationStatementTimeout = 15 * time.Minute
+	defaultMigrationLockAttempts     = 5
+	defaultMigrationRetryBackoff     = time.Second
+	lockNotAvailableCode             = "55P03"
 )
 
 // defaultRuntimeRole is the runtime role name the migration SQL is written against; Migrate substitutes it when WithRuntimeRole configures another name.

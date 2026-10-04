@@ -15,7 +15,12 @@ Use **partial unique indexes** for one-per-scope invariants (e.g. one `is_bootst
 ## Migrations
 Ordered SQL in `migrations/` (embedded, applied at startup, tracked in `schema_migrations`).
 A committed migration is **immutable once released** — add a new file, never edit an applied one.
+The runner records each file's sha256 in `schema_migrations.checksum` and refuses to start when an applied file's checksum changed or the database records a version the binary does not ship (ADR-0009).
 Use `if not exists` / `or replace` so migrations are re-runnable.
+
+- **Keep migration locks short**
+  - Each file runs with `lock_timeout` 5s (retried as a whole) and `statement_timeout` 15m; design files to fit those bounds.
+  - Add a CHECK or foreign key to a populated table as `NOT VALID`, then `VALIDATE CONSTRAINT` in a later statement, so validation takes `SHARE UPDATE EXCLUSIVE` instead of blocking writes; released 0017 predates this rule and is not edited.
 The migration runner drops any session-local temporary objects and pins its dedicated session to `search_path = public` (`pg_catalog` remains implicitly first); never rely on a role/DSN-provided search path without schema-qualifying every migration.
 
 - **Separate migration and runtime privileges**

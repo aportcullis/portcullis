@@ -823,6 +823,7 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
   - Executions still running when the shutdown timeout expires are cancelled and their outcomes recorded before metadata connections close; `EXECUTION_FINISHED` carries `interruption_cause` (`server_shutdown`, `owner_cancel` or `lease_lost`) (ADR-0010, ADR-0021).
 - Structured logs/metrics contain request IDs, states, durations, and counts, excluding SQL/parameters/credentials by default.
 - Document pre-migration backups/restoration and provide upgrade tests between supported versions.
+- Metadata migrations refuse edited released files and versions the binary does not ship, wait a bounded time for another instance's migration lock, and bound each file's lock waits and statements, added 2026-10-04, ADR-0009.
 - Default external telemetry off; never transmit queries or usage metadata without user consent.
 
 ---
