@@ -1,7 +1,7 @@
 import { A } from "@solidjs/router";
 import { create } from "@bufbuild/protobuf";
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 
 import type { GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestSchema } from "@/gen/portcullis/v1/access_requests_pb";
@@ -36,6 +36,7 @@ import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
+import { RequestEvidence } from "@/features/request/RequestEvidence";
 import { RequestExecutionSummary } from "@/features/request/RequestExecutionSummary";
 import { RequestRowActions } from "@/features/request/RequestRowActions";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
@@ -200,90 +201,7 @@ export const RequestDetailsPanel: Component<{
             <RequestExecutionSummary requestId={props.requestId} />
           </Show>
           <div class="request-review-layout">
-          <div class="content-surface request-evidence">
-            <h2 class="text-base font-semibold">Request evidence</h2>
-            <Show when={detail()?.payload} fallback={
-              <div class="flex flex-col gap-1">
-                <span class="text-sm font-medium">SQL (redacted)</span>
-                <pre class="overflow-x-auto rounded-md border border-input bg-muted p-3 text-sm">{current().redactedSql || "—"}</pre>
-              </div>
-            }>
-              {(payload) => (
-                <>
-                  <Show when={payload().body !== ""}>
-                    <div class="flex flex-col gap-1">
-                      <span class="text-sm font-medium">Body</span>
-                      <p class="whitespace-pre-wrap break-words rounded-md border border-input p-3 text-sm">{payload().body}</p>
-                    </div>
-                  </Show>
-                  <div class="flex flex-col gap-1">
-                    <span class="text-sm font-medium">SQL</span>
-                    <pre class="overflow-x-auto rounded-md border border-input bg-muted p-3 font-mono text-sm">{payload().sql}</pre>
-                  </div>
-                  <Show when={payload().params.length > 0}>
-                    <div class="flex flex-col gap-1">
-                      <span class="text-sm font-medium">Parameters</span>
-                      <For each={payload().params}>
-                        {(param) => (
-                          <div class="text-sm text-muted-foreground">
-                            <span class="font-mono">:{param.name}</span> ({param.type}) ={" "}
-                            {param.type === "null" ? "null" : param.value}
-                          </div>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                </>
-              )}
-            </Show>
-
-            {/* Show the submitted target snapshot rather than today’s mutable connection; drafts have no snapshot (PRD §4.3). */}
-            <Show when={current().connectionFingerprint !== ""}>
-              <div class="flex flex-col gap-1">
-                <span class="text-sm font-medium">Target at submit</span>
-                <div class="text-sm text-muted-foreground">
-                  {current().connectionName} ({current().connectionDbType}) · config v
-                  {current().connectionConfigVersion.toString()}
-                </div>
-                <div class="font-mono text-xs text-muted-foreground break-all">
-                  {current().connectionFingerprint}
-                </div>
-              </div>
-            </Show>
-
-            <div class="flex flex-col gap-1">
-              <span class="text-sm font-medium">
-                Approvals ({current().validApprovals.toString()} / {current().requiredApprovals})
-              </span>
-              <Show when={current().approvals.length > 0} fallback={<span class="text-sm text-muted-foreground">No decisions yet.</span>}>
-                <For each={current().approvals}>
-                  {(decision) => (
-                    <div class="flex items-center gap-2 text-sm">
-                      <Badge
-                        variant={
-                          decision.decision === "rejected"
-                            ? "destructive"
-                            : decision.valid
-                              ? "default"
-                              : "outline"
-                        }
-                      >
-                        {decision.decision}
-                      </Badge>
-                      <span>{actorLabel(decision.approver)}</span>
-                      <Show when={decision.reason !== ""}>
-                        <span class="text-muted-foreground">— {decision.reason}</span>
-                      </Show>
-                      <Show when={decision.decision === "approved" && !decision.valid}>
-                        <span class="text-xs text-muted-foreground">(no longer counts)</span>
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </Show>
-            </div>
-
-          </div>
+          <RequestEvidence request={current()} payload={detail()?.payload} />
           <aside aria-label="Request actions" class="content-surface decision-panel">
             <div class="request-section-heading">
               <div class="page-eyebrow">Next action</div>
