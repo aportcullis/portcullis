@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"strings"
 	"unicode"
 )
@@ -31,6 +32,9 @@ func NewTarget(host string, port int, database string) (Target, error) {
 	if host == "" || len(host) > maxHostLength || containsSpaceOrControl(host) || strings.ContainsAny(host, ",/@?#|") {
 		return Target{}, ErrInvalidTarget
 	}
+	if isNonCanonicalNumericHost(host) {
+		return Target{}, ErrInvalidTarget
+	}
 	if port < 1 || port > 65535 {
 		return Target{}, ErrInvalidTarget
 	}
@@ -47,6 +51,29 @@ func (t Target) Fingerprint(dbType DBType) string {
 		fingerprintPrefixV1, dbType, strings.ToLower(t.Host), t.Port, t.DatabaseName)
 	sum := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(sum[:])
+}
+
+// isNonCanonicalNumericHost reports a host that is not a canonical IP literal but ends in a numeric label, which no DNS hostname does and which inet_aton-style resolvers read as decimal, octal or hexadecimal IPv4 (ADR-0051).
+func isNonCanonicalNumericHost(host string) bool {
+	if _, err := netip.ParseAddr(host); err == nil {
+		return false
+	}
+	labels := strings.Split(strings.TrimSuffix(host, "."), ".")
+	return isNumericLabel(labels[len(labels)-1])
+}
+
+// isNumericLabel reports a label made only of decimal digits or a 0x-prefixed hexadecimal number.
+func isNumericLabel(label string) bool {
+	digits, isHex := strings.CutPrefix(strings.ToLower(label), "0x")
+	if digits == "" {
+		return isHex
+	}
+	return !strings.ContainsFunc(digits, func(character rune) bool {
+		if isHex {
+			return !strings.ContainsRune("0123456789abcdef", character)
+		}
+		return character < '0' || character > '9'
+	})
 }
 
 // containsSpaceOrControl rejects characters that can smuggle extra connection parameters or corrupt logs: any Unicode whitespace or control character. Used for the host, where whitespace is never legitimate.

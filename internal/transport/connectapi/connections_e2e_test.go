@@ -513,6 +513,44 @@ func TestConnectionDestinationRefusalsShareOneBucketThroughRawClient(t *testing.
 	}
 }
 
+func TestConnectionNumericHostSpellingsAreInvalidThroughRawClient(t *testing.T) {
+	env := newConnsTestEnv(t)
+	ctx := context.Background()
+	jar, authC, connsC, _ := env.clients()
+	const email, password = "admin@example.com", "correct-horse-battery"
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	csrf := csrfFromJar(jar, env.serverURL)
+
+	for _, canonicalHost := range []string{"169.254.169.254", "::ffff:169.254.169.254", "metadata.attacker.test"} {
+		canonical := env.targetConfig()
+		canonical.Host = canonicalHost
+		testResp, err := connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{Target: &portcullisv1.TestConnectionRequest_Config{Config: canonical}}), csrf))
+		if err != nil || testResp.Msg.GetOk() {
+			t.Fatalf("canonical host %q = (%v, %v), want an in-band test result", canonicalHost, testResp.Msg.GetOk(), err)
+		}
+	}
+
+	for _, spelledHost := range []string{"2852039166", "0251.0376.0251.0376", "0xa9fea9fe", "169.254.43518", "169.254.169.254."} {
+		t.Run(spelledHost, func(t *testing.T) {
+			spelled := env.targetConfig()
+			spelled.Host = spelledHost
+			_, err := connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{Target: &portcullisv1.TestConnectionRequest_Config{Config: spelled}}), csrf))
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Fatalf("Test code = %v, want InvalidArgument", connect.CodeOf(err))
+			}
+			_, err = connsC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateConnectionRequest{DisplayName: "Spelled " + spelledHost, Config: spelled}), csrf))
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Fatalf("Create code = %v, want InvalidArgument", connect.CodeOf(err))
+			}
+		})
+	}
+}
+
 func TestConnectionsPermissionDenied(t *testing.T) {
 	env := newConnsTestEnv(t)
 	ctx := context.Background()

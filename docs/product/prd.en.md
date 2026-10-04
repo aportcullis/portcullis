@@ -737,6 +737,7 @@ kviklet already has pagination, request filters, stored results, and full-cell v
   - Always refuse unspecified, link-local, multicast and broadcast addresses and cloud metadata endpoints; operators add `PORTCULLIS_CONNECTION_DENIED_CIDRS` and may restrict to `PORTCULLIS_CONNECTION_ALLOWED_CIDRS`.
   - Without an allow list, every other address except loopback is permitted; a co-located database requires listing loopback explicitly.
   - Every refusal returns the single `destination-refused` bucket without dialing, so callers cannot map internal networks.
+  - Reject hosts that are not canonical IP literals but end in a numeric label, such as decimal, octal, hexadecimal or shortened IPv4 spellings, as invalid targets.
 - **Git sources, Schema milestone:** AEAD-encrypt credentials and redact logs.
   - Enforce allowed Git hosts/outbound destinations, redirect restrictions, and DNS-rebinding defenses.
   - Cap clone size, files, and duration; disallow submodules, Git LFS, and symlinks by default.

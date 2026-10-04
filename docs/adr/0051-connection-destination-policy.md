@@ -39,7 +39,7 @@ Each list accepts at most 256 canonical CIDR entries. Entries without a prefix l
 
 - The browser E2E and load-test harnesses publish their Testcontainers targets on loopback, so they set the allow list to loopback plus private ranges; Go integration tests pass the same policy through `dbtest.TargetDestinationPolicy`.
 - Local development that registers a target on `localhost` must set `PORTCULLIS_CONNECTION_ALLOWED_CIDRS`; `.env.example` documents it.
-- Hosts given as non-canonical numeric spellings (decimal, octal or hexadecimal IPv4 forms) are still resolved and checked as addresses, so they cannot bypass the policy; rejecting those spellings at validation is a separate concern.
+- Target validation rejects a host that is not a canonical IP literal but ends in a numeric label, such as `2130706433`, `0177.0.0.1`, `0x7f000001`, `127.1` or `169.254.169.254.`. No DNS hostname has an all-numeric top-level label, while inet_aton-style resolvers read these forms as IPv4, so rejecting them follows the OWASP advice to compare only the parsed address; dial-time checks would still refuse whatever such a spelling resolved to.
 - Addresses that embed IPv4 in other IPv6 forms (NAT64 `64:ff9b::/96`, 6to4) are matched as IPv6; operators on such networks express the corresponding IPv6 ranges in their lists.
 
 ## Sources
