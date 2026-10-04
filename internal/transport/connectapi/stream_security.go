@@ -4,6 +4,7 @@ import (
 	"connectrpc.com/connect"
 	"context"
 	"errors"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/platform/reqmeta"
 	"net"
 	"time"
@@ -49,7 +50,13 @@ func (s *StreamSecurityInterceptor) WrapStreamingHandler(next connect.StreamingH
 		if err != nil {
 			return streamAuthenticationError(err)
 		}
-		if csrf == "" || conn.RequestHeader().Get(csrfHeader) != csrf || !s.sessions.VerifyCSRF(token, csrf) {
+		if csrf == "" || conn.RequestHeader().Get(csrfHeader) != csrf {
+			return connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
+		}
+		if err := s.sessions.VerifyCSRF(token, csrf); err != nil {
+			if errors.Is(err, identity.ErrCSRFKeyVersionUnknown) {
+				return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+			}
 			return connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
 		}
 		if err := s.sessions.SlideIdle(ctx, session); err != nil {

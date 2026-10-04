@@ -66,5 +66,6 @@ type AuditRecorder interface {
 // CSRFProtector binds tokens to the opaque session token before persistence; the adapter owns format and keying (ADR-0006).
 type CSRFProtector interface {
 	Issue(sessionToken string) (string, error)
-	Verify(sessionToken, token string) bool
+	// Verify returns nil for a valid token, identity.ErrCSRFKeyVersionUnknown when the issuing key version is not loaded, and identity.ErrCSRFTokenInvalid otherwise.
+	Verify(sessionToken, token string) error
 }

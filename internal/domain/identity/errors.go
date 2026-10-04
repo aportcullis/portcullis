@@ -26,4 +26,10 @@ var (
 	ErrEmailTaken = errors.New("identity: email already registered")
 
 	ErrMembershipExists = errors.New("identity: membership already exists")
+
+	// ErrCSRFTokenInvalid means a CSRF token is malformed, forged, or bound to another session.
+	ErrCSRFTokenInvalid = errors.New("identity: invalid csrf token")
+
+	// ErrCSRFKeyVersionUnknown means a well-formed CSRF token names a key version this process has not loaded (or predates key versioning), so its session must sign in again (ADR-0006).
+	ErrCSRFKeyVersionUnknown = errors.New("identity: csrf token key version not loaded")
 )

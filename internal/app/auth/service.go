@@ -297,8 +297,8 @@ func (s *Service) SlideIdle(ctx context.Context, sess identity.Session) error {
 	return s.repo.ExtendSessionIdle(ctx, sess.ID, newIdle)
 }
 
-// VerifyCSRF reports whether csrfToken is valid for the session identified by its raw token — the value in the __Host-portcullis_session cookie, which the transport interceptor holds (delegated to the protector; ADR-0006).
-func (s *Service) VerifyCSRF(sessionToken, csrfToken string) bool {
+// VerifyCSRF checks csrfToken against the session's raw cookie token and returns the protector's verdict (ADR-0006).
+func (s *Service) VerifyCSRF(sessionToken, csrfToken string) error {
 	return s.csrf.Verify(sessionToken, csrfToken)
 }
 

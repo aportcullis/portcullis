@@ -1,6 +1,6 @@
 # ADR-0006: Authentication & sessions
 
-- **Status:** Accepted (amended 2026-07-04: normative Parameters section — every numeric limit, ordering invariant, and wire format the implementation uses)
+- **Status:** Accepted (amended 2026-07-04: normative Parameters section — every numeric limit, ordering invariant, and wire format the implementation uses; amended 2026-10-04: key-versioned CSRF tokens)
 - **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
@@ -57,7 +57,11 @@ Standards verified on 2026-06-28 (OWASP):
 
 ### Tokens & wire formats
 - Session token: 32 CSPRNG bytes, cookie value = **`base64.RawURLEncoding`** of those bytes; store keeps `sha256(raw cookie string bytes)` in `sessions.token_hash`.
-- CSRF token wire format: **`base64url(mac) + "." + base64url(nonce)`** (raw/unpadded), where `nonce` = 16 CSPRNG bytes and `mac = HMAC-SHA-256(payload-integrity key, "csrf:" + session_cookie_value + ":" + nonce)` — the literal `csrf:`/`:` namespacing prevents cross-purpose digest collisions on the shared keyring; verification is constant-time.
+- CSRF token wire format (amended 2026-10-04): **`decimal(key_version) + "." + base64url(mac) + "." + base64url(nonce)`** (raw/unpadded), where `nonce` = 16 CSPRNG bytes and `mac = HMAC-SHA-256(payload-integrity key of key_version, "csrf:" + session_cookie_value + ":" + nonce)` — the literal `csrf:`/`:` namespacing prevents cross-purpose digest collisions on the shared keyring; verification is constant-time.
+  - The key version is bound by key selection, as for every keyring digest (ADR-0003); verification recomputes the MAC under the version the token names, so a master-key rotation keeps live sessions working while that version stays loaded (the multi-version keyring retains every historical version).
+  - The version must be the canonical positive decimal `Issue` produces, the MAC 32 bytes and the nonce 16 bytes; anything else, a relabelled version, or a MAC mismatch is a CSRF failure (`PermissionDenied`).
+  - A well-formed token naming a version the process has not loaded (for example after rolling back to an older keyring), or a well-formed pre-versioning two-part token, cannot be re-verified and is not evidence of forgery: the interceptor answers `Unauthenticated`, so the SPA routes to sign-in instead of a stuck session where even `Logout` was refused.
+  - Upgrading from the two-part format therefore asks each live session to sign in once.
 - Login timing equalizer: at service construction, precompute one Argon2 hash of the fixed string `"portcullis-login-timing-equalizer"`; construction **fails** if hashing fails (a half-built service never starts).
   Unknown-email and OIDC-only (no password row) logins verify against this dummy hash so they cost the same as a wrong password; the user lookup is a single query either way (equal round-trips).
   The attempted email of an unknown account is never persisted.
@@ -126,4 +130,5 @@ The 15-code-point minimum is a registration-time policy only.
 
 ## Sources (checked 2026-06-28)
 - OWASP Session Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
-- OWASP CSRF Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+- OWASP CSRF Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html (rechecked 2026-10-04: the signed double-submit token needs a secret key and a session-dependent value; the sheet leaves key rotation to key-management practice).
+- OWASP Key Management Cheat Sheet (checked 2026-10-04): https://cheatsheetseries.owasp.org/cheatsheets/Key_Management_Cheat_Sheet.html

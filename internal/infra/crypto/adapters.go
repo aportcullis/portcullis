@@ -3,10 +3,12 @@ package crypto
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aportcullis/portcullis/internal/domain/access"
@@ -84,50 +86,78 @@ func NewCSRFProtector(kr *Keyring) *CSRFProtector {
 	return &CSRFProtector{kr: kr}
 }
 
-// Issue returns a fresh token bound to the session token (a new nonce each call). The token is base64url(mac) + "." + base64url(nonce) — nonce suffixed (ADR-0006).
+// Issue returns a fresh token bound to the session token under the active key version: decimal(key_version) + "." + base64url(mac) + "." + base64url(nonce) (ADR-0006).
 func (c *CSRFProtector) Issue(sessionToken string) (string, error) {
-	nonce := make([]byte, 16)
+	nonce := make([]byte, csrfNonceLen)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	mac, err := c.mac(sessionToken, nonce)
+	digest, err := c.kr.Digest(csrfMACInput(sessionToken, nonce))
 	if err != nil {
 		return "", err
 	}
 	enc := base64.RawURLEncoding
-	return enc.EncodeToString(mac) + "." + enc.EncodeToString(nonce), nil
+	return strconv.FormatUint(uint64(digest.KeyVersion), 10) + "." + enc.EncodeToString(digest.Sum) + "." + enc.EncodeToString(nonce), nil
 }
 
-// Verify reports whether token is a valid CSRF token for the session token.
-func (c *CSRFProtector) Verify(sessionToken, token string) bool {
-	mb, nb, ok := strings.Cut(token, ".")
+// Verify recomputes the MAC under the token's own key version, so tokens survive rotation while that version stays loaded; an unloaded version or a pre-versioning token yields identity.ErrCSRFKeyVersionUnknown.
+func (c *CSRFProtector) Verify(sessionToken, token string) error {
+	segments := strings.Split(token, ".")
+	if len(segments) == 2 {
+		// Tokens minted before key versioning cannot name their key; a well-formed one asks the session to sign in again instead of reading as forgery.
+		if _, _, ok := decodeCSRFMACAndNonce(segments[0], segments[1]); ok {
+			return identity.ErrCSRFKeyVersionUnknown
+		}
+		return identity.ErrCSRFTokenInvalid
+	}
+	if len(segments) != 3 {
+		return identity.ErrCSRFTokenInvalid
+	}
+	version, ok := parseCSRFKeyVersion(segments[0])
 	if !ok {
-		return false
+		return identity.ErrCSRFTokenInvalid
 	}
-	enc := base64.RawURLEncoding
-	got, err := enc.DecodeString(mb)
-	if err != nil {
-		return false
+	mac, nonce, ok := decodeCSRFMACAndNonce(segments[1], segments[2])
+	if !ok {
+		return identity.ErrCSRFTokenInvalid
 	}
-	nonce, err := enc.DecodeString(nb)
-	if err != nil {
-		return false
+	valid, err := c.kr.VerifyDigest(csrfMACInput(sessionToken, nonce), Digest{KeyVersion: version, Sum: mac})
+	switch {
+	case errors.Is(err, ErrUnknownKeyVersion):
+		return identity.ErrCSRFKeyVersionUnknown
+	case err != nil || !valid:
+		return identity.ErrCSRFTokenInvalid
+	default:
+		return nil
 	}
-	want, err := c.mac(sessionToken, nonce)
-	if err != nil {
-		return false
-	}
-	return subtle.ConstantTimeCompare(want, got) == 1
 }
 
-// mac computes HMAC(session_token || nonce), namespaced to avoid collisions with other keyring digests.
-func (c *CSRFProtector) mac(sessionToken string, nonce []byte) ([]byte, error) {
-	msg := append([]byte("csrf:"+sessionToken+":"), nonce...)
-	d, err := c.kr.Digest(msg)
-	if err != nil {
-		return nil, err
+// parseCSRFKeyVersion accepts only the canonical positive decimal spelling Issue produces.
+func parseCSRFKeyVersion(text string) (KeyVersion, bool) {
+	version, err := strconv.ParseUint(text, 10, 31)
+	if err != nil || version == 0 || strconv.FormatUint(version, 10) != text {
+		return 0, false
 	}
-	return d.Sum, nil
+	return KeyVersion(version), true
+}
+
+// decodeCSRFMACAndNonce decodes both base64url segments and checks their fixed lengths.
+func decodeCSRFMACAndNonce(macText, nonceText string) ([]byte, []byte, bool) {
+	enc := base64.RawURLEncoding
+	mac, err := enc.DecodeString(macText)
+	if err != nil || len(mac) != sha256.Size {
+		return nil, nil, false
+	}
+	nonce, err := enc.DecodeString(nonceText)
+	if err != nil || len(nonce) != csrfNonceLen {
+		return nil, nil, false
+	}
+	return mac, nonce, true
+}
+
+// csrfMACInput namespaces the session token and nonce so the CSRF MAC cannot collide with other keyring digests; the key version is bound by key selection.
+func csrfMACInput(sessionToken string, nonce []byte) []byte {
+	return append([]byte("csrf:"+sessionToken+":"), nonce...)
 }
 
 // AccessRequestPayloadCodec seals narrative, SQL and typed parameters under organization/request AAD and exposes the keyring digest (ADR-0003/0018).

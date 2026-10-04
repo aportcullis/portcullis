@@ -65,14 +65,25 @@ type authEnvOptions struct {
 	wrapStore      func(*postgres.IdentityStore) auth.Repository
 	trustedProxies []*net.IPNet
 	rateLimit      bool
+	// sharedPool serves another instance over an already-migrated metadata database, as after a restart with a different keyring.
+	sharedPool *pgxpool.Pool
+	// keyring overrides the default single-version test keyring.
+	keyring *crypto.Keyring
 }
 
 func newAuthTestEnv(t *testing.T, opts authEnvOptions) *authTestEnv {
 	t.Helper()
-	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
-	if err := postgres.Migrate(ctx, pool); err != nil {
-		t.Fatalf("migrate: %v", err)
+	pool := opts.sharedPool
+	if pool == nil {
+		pool = dbtest.FreshPostgres(t)
+		if err := postgres.Migrate(ctx, pool); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+	}
+	keyring := opts.keyring
+	if keyring == nil {
+		keyring = loadTestKeyring(t)
 	}
 
 	store := postgres.NewIdentityStore(pool)
@@ -81,7 +92,7 @@ func newAuthTestEnv(t *testing.T, opts authEnvOptions) *authTestEnv {
 		repo = opts.wrapStore(store)
 	}
 	weak := crypto.Argon2Params{Memory: 8 * 1024, Time: 1, Threads: 1, KeyLen: 32, SaltLen: 16}
-	svc, err := auth.New(repo, crypto.NewArgon2Hasher(weak, 4), crypto.NewCSRFProtector(loadTestKeyring(t)), postgres.NewAuditStore(pool), auth.Config{})
+	svc, err := auth.New(repo, crypto.NewArgon2Hasher(weak, 4), crypto.NewCSRFProtector(keyring), postgres.NewAuditStore(pool), auth.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

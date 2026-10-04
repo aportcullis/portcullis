@@ -297,12 +297,17 @@ func (h *rehashHasher) Verify(_ context.Context, password, encoded string) (ok, 
 type fakeCSRF struct{}
 
 func (fakeCSRF) Issue(sessionToken string) (string, error) { return "csrf:" + sessionToken, nil }
-func (fakeCSRF) Verify(sessionToken, token string) bool    { return token == "csrf:"+sessionToken }
+func (fakeCSRF) Verify(sessionToken, token string) error {
+	if token != "csrf:"+sessionToken {
+		return identity.ErrCSRFTokenInvalid
+	}
+	return nil
+}
 
 type errCSRF struct{}
 
 func (errCSRF) Issue(string) (string, error) { return "", errors.New("rng failed") }
-func (errCSRF) Verify(string, string) bool   { return false }
+func (errCSRF) Verify(string, string) error  { return identity.ErrCSRFTokenInvalid }
 
 type capturingRecorder struct {
 	mu      sync.Mutex
@@ -960,14 +965,14 @@ func TestLoginLogoutAuthenticate(t *testing.T) {
 		t.Fatalf("Authenticate = %v, %v", u, err)
 	}
 
-	if !svc.VerifyCSRF(res.Token, res.CSRF) {
-		t.Error("VerifyCSRF should accept the issued token")
+	if err := svc.VerifyCSRF(res.Token, res.CSRF); err != nil {
+		t.Errorf("VerifyCSRF should accept the issued token: %v", err)
 	}
-	if svc.VerifyCSRF(res.Token, "forged") {
+	if svc.VerifyCSRF(res.Token, "forged") == nil {
 		t.Error("VerifyCSRF should reject a forged token")
 	}
 	// Contract pin: CSRF binds the raw session TOKEN, not the session id — a transport interceptor must pass the cookie value, not Session.ID, or every check fails.
-	if svc.VerifyCSRF(string(res.Session.ID), res.CSRF) {
+	if svc.VerifyCSRF(string(res.Session.ID), res.CSRF) == nil {
 		t.Error("VerifyCSRF must be keyed by the session token, not the session id")
 	}
 

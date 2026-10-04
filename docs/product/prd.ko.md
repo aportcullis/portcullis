@@ -735,6 +735,7 @@ audit_events
   (ADR-0010)
 - session token은 CSPRNG 32바이트(opaque)이고 cookie는 `__Host-` prefix + `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
   상태 변경 요청은 **HMAC 서명·세션 바인딩된 double-submit CSRF token**(읽기 가능한 `__Host-` CSRF cookie ↔ `X-CSRF-Token` 헤더 일치 + HMAC 검증)을 검증한다. naive double-submit은 우회 가능하므로 쓰지 않는다.
+  CSRF token은 HMAC에 쓴 master key 버전을 담아 key rotation 후에도 session이 유지되고, 로드되지 않은 key 버전의 token은 모든 요청을 거부하는 대신 다시 로그인하도록 안내한다.
   (ADR-0006)
 - 기본 idle expiry 12시간, absolute expiry 7일.
   로그인 endpoint에는 IP와 계정 기준 rate limit(토큰버킷 수치는 ADR-0010) 및 점진적 backoff(계정 연계 실패 카운터·lockout 수치는 ADR-0006 Parameters) 적용.

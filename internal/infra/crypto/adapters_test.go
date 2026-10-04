@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/connection"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/domain/query"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 )
@@ -146,18 +148,111 @@ func TestCSRFProtectorIssueVerify(t *testing.T) {
 	if t1 == t2 {
 		t.Error("each Issue should produce a fresh token")
 	}
-	if !c.Verify("sess-1", t1) || !c.Verify("sess-1", t2) {
+	if c.Verify("sess-1", t1) != nil || c.Verify("sess-1", t2) != nil {
 		t.Error("issued tokens must verify for their session")
 	}
 	// Wrong session, malformed, tampered, and a different key must all fail.
-	if c.Verify("sess-2", t1) {
+	if !errors.Is(c.Verify("sess-2", t1), identity.ErrCSRFTokenInvalid) {
 		t.Error("token must not verify for another session")
 	}
-	if c.Verify("sess-1", "garbage") || c.Verify("sess-1", t1+"x") {
+	if !errors.Is(c.Verify("sess-1", "garbage"), identity.ErrCSRFTokenInvalid) || !errors.Is(c.Verify("sess-1", t1+"x"), identity.ErrCSRFTokenInvalid) {
 		t.Error("malformed/tampered tokens must fail")
 	}
-	if other := crypto.NewCSRFProtector(loadKeyring(t, 0x02)); other.Verify("sess-1", t1) {
+	if other := crypto.NewCSRFProtector(loadKeyring(t, 0x02)); !errors.Is(other.Verify("sess-1", t1), identity.ErrCSRFTokenInvalid) {
 		t.Error("token must not verify under a different key")
+	}
+}
+
+// csrfRotationKeys returns base64 master keys for key versions one, two, and three.
+func csrfRotationKeys() (string, string, string) {
+	encode := func(seed byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{seed}, 32)) }
+	return encode(0x11), encode(0x22), encode(0x33)
+}
+
+// loadRotatedKeyring loads an active key with the given retained previous-key list.
+func loadRotatedKeyring(t *testing.T, active, previous string) *crypto.Keyring {
+	t.Helper()
+	ring, err := crypto.LoadVersionedKeyring(active, "", previous, "")
+	if err != nil {
+		t.Fatalf("LoadVersionedKeyring: %v", err)
+	}
+	return ring
+}
+
+func TestCSRFTokenSurvivesMasterKeyRotationWhileItsKeyIsRetained(t *testing.T) {
+	t.Parallel()
+	firstKey, secondKey, thirdKey := csrfRotationKeys()
+	issuedUnderFirst, err := crypto.NewCSRFProtector(loadRotatedKeyring(t, firstKey, "")).Issue("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated := crypto.NewCSRFProtector(loadRotatedKeyring(t, secondKey, "1:"+firstKey))
+	issuedUnderSecond, err := rotated.Issue("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	twiceRotated := crypto.NewCSRFProtector(loadRotatedKeyring(t, thirdKey, "1:"+firstKey+",2:"+secondKey))
+	cases := []struct {
+		name      string
+		protector *crypto.CSRFProtector
+		token     string
+	}{
+		{"first-version token after one rotation", rotated, issuedUnderFirst},
+		{"active-version token after rotation", rotated, issuedUnderSecond},
+		{"first-version token after two rotations", twiceRotated, issuedUnderFirst},
+		{"second-version token after two rotations", twiceRotated, issuedUnderSecond},
+	}
+	for _, tc := range cases {
+		if err := tc.protector.Verify("sess-1", tc.token); err != nil {
+			t.Errorf("%s: Verify = %v, want nil", tc.name, err)
+		}
+	}
+}
+
+func TestCSRFTokenRefusesUnloadedForgedAndCrossVersionTokens(t *testing.T) {
+	t.Parallel()
+	firstKey, secondKey, _ := csrfRotationKeys()
+	issuedUnderFirst, err := crypto.NewCSRFProtector(loadRotatedKeyring(t, firstKey, "")).Issue("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated := crypto.NewCSRFProtector(loadRotatedKeyring(t, secondKey, "1:"+firstKey))
+	issuedUnderSecond, err := rotated.Issue("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rolledBack := crypto.NewCSRFProtector(loadRotatedKeyring(t, firstKey, ""))
+	replacedWithoutRetention := crypto.NewCSRFProtector(loadRotatedKeyring(t, secondKey, ""))
+	versionText, macAndNonce, found := strings.Cut(issuedUnderSecond, ".")
+	if !found || versionText != "2" {
+		t.Fatalf("token %q does not lead with its key version 2", issuedUnderSecond)
+	}
+	_, firstMacAndNonce, _ := strings.Cut(issuedUnderFirst, ".")
+	cases := []struct {
+		name      string
+		protector *crypto.CSRFProtector
+		token     string
+		want      error
+	}{
+		{"keyring rolled back below the token's version", rolledBack, issuedUnderSecond, identity.ErrCSRFKeyVersionUnknown},
+		{"master key replaced without retaining version one", replacedWithoutRetention, issuedUnderFirst, identity.ErrCSRFTokenInvalid},
+		{"unknown future version", rotated, "9." + macAndNonce, identity.ErrCSRFKeyVersionUnknown},
+		{"pre-versioning two-part token", rotated, macAndNonce, identity.ErrCSRFKeyVersionUnknown},
+		{"second-version MAC relabelled as first version", rotated, "1." + macAndNonce, identity.ErrCSRFTokenInvalid},
+		{"first-version MAC relabelled as second version", rotated, "2." + firstMacAndNonce, identity.ErrCSRFTokenInvalid},
+		{"non-canonical version spelling", rotated, "02." + macAndNonce, identity.ErrCSRFTokenInvalid},
+		{"zero version", rotated, "0." + macAndNonce, identity.ErrCSRFTokenInvalid},
+		{"signed version", rotated, "+2." + macAndNonce, identity.ErrCSRFTokenInvalid},
+		{"truncated nonce", rotated, issuedUnderSecond[:len(issuedUnderSecond)-2], identity.ErrCSRFTokenInvalid},
+		{"extra segment", rotated, issuedUnderSecond + ".AAAA", identity.ErrCSRFTokenInvalid},
+	}
+	for _, tc := range cases {
+		if err := tc.protector.Verify("sess-1", tc.token); !errors.Is(err, tc.want) {
+			t.Errorf("%s: Verify = %v, want %v", tc.name, err, tc.want)
+		}
+	}
+	if err := rotated.Verify("sess-2", issuedUnderSecond); !errors.Is(err, identity.ErrCSRFTokenInvalid) {
+		t.Errorf("other session: Verify = %v, want %v", err, identity.ErrCSRFTokenInvalid)
 	}
 }
 

@@ -67,7 +67,7 @@ func isAuthFailure(err error) bool {
 // sessionAuthenticator is the slice of the auth service the interceptor consumes (DIP/ISP).
 type sessionAuthenticator interface {
 	Authenticate(ctx context.Context, token string) (identity.User, identity.Session, error)
-	VerifyCSRF(sessionToken, csrfToken string) bool
+	VerifyCSRF(sessionToken, csrfToken string) error
 	SlideIdle(ctx context.Context, sess identity.Session) error
 }
 
@@ -95,7 +95,14 @@ func NewAuthInterceptor(svc sessionAuthenticator) connect.UnaryInterceptorFunc {
 			}
 			// CSRF: the readable cookie must equal the X-CSRF-Token header and verify against the session token (a header==cookie match alone is bypassable).
 			header := req.Header().Get(csrfHeader)
-			if csrfTok == "" || header == "" || csrfTok != header || !svc.VerifyCSRF(sessionTok, header) {
+			if csrfTok == "" || header == "" || csrfTok != header {
+				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
+			}
+			if err := svc.VerifyCSRF(sessionTok, header); err != nil {
+				// A token whose key version is not loaded cannot be re-verified, so the session must sign in again rather than read as forgery (ADR-0006).
+				if errors.Is(err, identity.ErrCSRFKeyVersionUnknown) {
+					return nil, unauthenticated
+				}
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid CSRF token"))
 			}
 			// Slide the idle window only now that the request is authorized, so a CSRF-rejected request can't keep the session alive. The conditional write is also the final server-side expiry/revocation check: zero rows means the session died after Authenticate and must reject this request. Other write failures remain retryable infrastructure faults.

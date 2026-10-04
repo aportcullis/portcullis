@@ -772,6 +772,7 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
   - Fallback notification polling is every 30 seconds (§7.4).
 - Tokens contain 32 CSPRNG bytes; cookies use `__Host-`, HttpOnly, Secure, SameSite=Lax, Path=/.
   - State-changing requests validate HMAC-signed, session-bound double-submit CSRF: readable `__Host-` cookie equals `X-CSRF-Token`, plus HMAC verification, ADR-0006.
+  - The CSRF token names its master-key version so sessions survive key rotation; a token whose key version is not loaded asks the user to sign in again instead of refusing every request, ADR-0006.
   - Do not use naive double-submit.
 - Default idle expiry 12 hours and absolute expiry 7 days.
   - Apply IP/account token buckets from ADR-0010 and progressive account-linked failure backoff/lockout parameters from ADR-0006.
