@@ -3,9 +3,12 @@ package dbtest
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,6 +33,13 @@ type postgresFixture struct {
 }
 
 var metadataPostgres, targetPostgres postgresFixture
+
+// freshDatabaseProcessToken identifies this test binary's fresh databases: its PID plus random bytes, so a reused PID on another host or container cannot collide either.
+var freshDatabaseProcessToken = func() string {
+	random := make([]byte, 6)
+	_, _ = rand.Read(random)
+	return fmt.Sprintf("%d_%s", os.Getpid(), hex.EncodeToString(random))
+}()
 
 // Postgres returns the PostgreSQL 18 metadata fixture, independently of target-family selection.
 func Postgres(t testing.TB) *pgxpool.Pool {
@@ -114,10 +124,11 @@ func (f *postgresFixture) fresh(t testing.TB, admin *pgxpool.Pool) *pgxpool.Pool
 	t.Helper()
 	ctx := context.Background()
 
-	name := fmt.Sprintf("pc_fresh_%d", f.freshDB.Add(1))
+	// The process token keeps names unique across test binaries sharing one container; the counter keeps them unique within this binary.
+	name := fmt.Sprintf("pc_fresh_%s_%d", freshDatabaseProcessToken, f.freshDB.Add(1))
 	if _, err := admin.Exec(ctx, "create database "+name); err != nil {
 		if f.required {
-			t.Fatalf("required fresh postgres needs CREATEDB privilege: %v", err)
+			t.Fatalf("required fresh postgres could not create %s (CREATEDB privilege and a unique name are required): %v", name, err)
 		}
 		// An external test DB (PORTCULLIS_TEST_DATABASE_URL) may connect as a non-superuser without CREATEDB; skip rather than fail there.
 		t.Skipf("FreshPostgres needs CREATEDB privilege: %v", err)
