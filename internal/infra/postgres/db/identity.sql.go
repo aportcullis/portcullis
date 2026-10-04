@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const closeExpiredSessions = `-- name: CloseExpiredSessions :execrows
+update public.sessions s
+set revoked_at = least(s.idle_expires_at, s.absolute_expires_at)
+where s.id in (
+    select expired.id from public.sessions expired
+    where expired.revoked_at is null
+      and (expired.idle_expires_at <= clock_timestamp() or expired.absolute_expires_at <= clock_timestamp())
+    order by expired.idle_expires_at
+    limit $1::int4
+    for update skip locked)
+`
+
+// Retention under soft-delete: an expired session keeps its row and gets revoked_at set to the instant it ended, so the active-session partial indexes stay small; rows another transaction holds are skipped until the next sweep (ADR-0006).
+func (q *Queries) CloseExpiredSessions(ctx context.Context, batchSize int32) (int64, error) {
+	result, err := q.db.Exec(ctx, closeExpiredSessions, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countUsers = `-- name: CountUsers :one
 select count(*) from public.users
 `

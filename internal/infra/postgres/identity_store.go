@@ -465,6 +465,18 @@ func (s *IdentityStore) RevokeSession(ctx context.Context, id identity.SessionID
 	return tx.Commit(ctx)
 }
 
+// CloseExpiredSessions stamps expired, unrevoked sessions with the instant they ended, keeping the rows as history while the active-session indexes stay small (ADR-0006).
+func (s *IdentityStore) CloseExpiredSessions(ctx context.Context) (int64, error) {
+	var total int64
+	for {
+		closed, err := s.q.CloseExpiredSessions(ctx, sessionSweepBatchSize)
+		total += closed
+		if err != nil || closed < sessionSweepBatchSize {
+			return total, err
+		}
+	}
+}
+
 func (s *IdentityStore) RevokeUserSessions(ctx context.Context, user identity.UserID) error {
 	uid, err := stringToUUID(string(user))
 	if err != nil {

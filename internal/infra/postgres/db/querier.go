@@ -20,6 +20,8 @@ type Querier interface {
 	BumpConnectionPolicyVersion(ctx context.Context, arg BumpConnectionPolicyVersionParams) (Connection, error)
 	// Archive sweeps drafts to cancelled (§4.3: draft → cancelled on archive), on the same observed instant as the expiry above.
 	CancelDraftsForConnection(ctx context.Context, arg CancelDraftsForConnectionParams) ([]AccessRequest, error)
+	// Retention under soft-delete: an expired session keeps its row and gets revoked_at set to the instant it ended, so the active-session partial indexes stay small; rows another transaction holds are skipped until the next sweep (ADR-0006).
+	CloseExpiredSessions(ctx context.Context, batchSize int32) (int64, error)
 	// Counts on the EFFECTIVE state too, so the total matches the filtered rows.
 	CountAccessRequests(ctx context.Context, arg CountAccessRequestsParams) (int64, error)
 	// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".

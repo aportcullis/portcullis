@@ -10,6 +10,7 @@
 
 ## Indexes
 Design an index for every lookup and foreign key (e.g. `organization_memberships(user_id)`, `role_permissions(permission_key)`).
+A non-partial index must lead with each foreign key's first column; `TestForeignKeysHaveCoveringIndexes` enforces this over `public` and `result_cache`.
 Use **partial unique indexes** for one-per-scope invariants (e.g. one `is_bootstrap_default` role per org, ignoring soft-deleted rows).
 
 ## Migrations

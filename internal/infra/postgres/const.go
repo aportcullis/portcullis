@@ -17,6 +17,9 @@ const (
 	resultPurgeBatchSize = 500
 )
 
+// sessionSweepBatchSize bounds each expired-session sweep statement (ADR-0006).
+const sessionSweepBatchSize = 1000
+
 // Migration bounds (ADR-0009): the migration-lock wait is separate from the startup budget, and each migration transaction bounds its lock waits and statements, retrying a lock timeout a few times.
 const (
 	defaultMigrationLockWait         = 2 * time.Minute

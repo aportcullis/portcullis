@@ -123,6 +123,18 @@ where id = $1 and revoked_at is null;
 update public.sessions set revoked_at = now()
 where user_id = $1 and revoked_at is null;
 
+-- name: CloseExpiredSessions :execrows
+-- Retention under soft-delete: an expired session keeps its row and gets revoked_at set to the instant it ended, so the active-session partial indexes stay small; rows another transaction holds are skipped until the next sweep (ADR-0006).
+update public.sessions s
+set revoked_at = least(s.idle_expires_at, s.absolute_expires_at)
+where s.id in (
+    select expired.id from public.sessions expired
+    where expired.revoked_at is null
+      and (expired.idle_expires_at <= clock_timestamp() or expired.absolute_expires_at <= clock_timestamp())
+    order by expired.idle_expires_at
+    limit sqlc.arg('batch_size')::int4
+    for update skip locked);
+
 -- name: ExtendSessionIdle :execrows
 -- Check expiry with clock_timestamp() after lock waits, then extend idle expiry monotonically within absolute expiry; now() could resurrect an expired session.
 update public.sessions

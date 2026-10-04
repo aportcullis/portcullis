@@ -374,7 +374,7 @@ func run() error {
 			case <-maintenanceCtx.Done():
 				return
 			case <-ticker.C:
-				runMaintenance(maintenanceCtx, logger, executionSvc, resultStore)
+				runMaintenance(maintenanceCtx, logger, executionSvc, resultStore, store)
 			}
 		}
 	}()
@@ -410,7 +410,7 @@ func run() error {
 }
 
 // runMaintenance reconciles overdue executions and purges expired results within one bounded run.
-func runMaintenance(ctx context.Context, logger *slog.Logger, executions *executionapp.Service, results *postgres.ResultStore) {
+func runMaintenance(ctx context.Context, logger *slog.Logger, executions *executionapp.Service, results *postgres.ResultStore, identities *postgres.IdentityStore) {
 	runCtx, cancel := context.WithTimeout(ctx, access.ExecutionReconcileTimeout)
 	defer cancel()
 	summary, err := executions.Reconcile(runCtx)
@@ -418,6 +418,10 @@ func runMaintenance(ctx context.Context, logger *slog.Logger, executions *execut
 	// Every organization's expired snapshots are purged; one failing organization does not stop the others.
 	if err := resultapp.PurgeExpiredInEveryOrganization(runCtx, results); err != nil {
 		logger.Error("result cleanup failed", postgres.ErrorLogFields(err)...)
+	}
+	// Expired sessions are closed, not deleted, so the active-session indexes stay small while history remains (ADR-0006).
+	if _, err := identities.CloseExpiredSessions(runCtx); err != nil {
+		logger.Error("expired session sweep failed", postgres.ErrorLogFields(err)...)
 	}
 }
 

@@ -21,6 +21,9 @@ Standards verified on 2026-06-28 (OWASP):
 - The store keeps only **`sha256(token)`** (column `sessions.token_hash`); the raw token lives only in the cookie.
   (The token is high-entropy, so an unkeyed hash is sufficient to prevent reversal.)
 - `sessions` rows carry `idle_expires_at`, `absolute_expires_at`, `revoked_at`.
+- **Retention (amended 2026-10-04):** session rows are never hard-deleted (data.md soft delete).
+  The 30-second maintenance tick closes expired, unrevoked sessions by setting `revoked_at` to the instant they ended (`least(idle_expires_at, absolute_expires_at)`), in batches with `FOR UPDATE SKIP LOCKED`; an already revoked session keeps its original `revoked_at`.
+  Partial indexes on unrevoked rows (`user_id`, `idle_expires_at`) keep rotation and the sweep proportional to live sessions; physical archival of old history rows is a later operator retention decision.
 
 ### Cookie
 - Name **`__Host-portcullis_session`**; attributes **`HttpOnly; Secure; SameSite=Lax; Path=/`**, no `Domain`.
