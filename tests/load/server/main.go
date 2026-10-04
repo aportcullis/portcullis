@@ -160,7 +160,7 @@ func run() error {
 			server.Env = append(server.Env, value)
 		}
 	}
-	server.Env = append(server.Env, "PORTCULLIS_DATABASE_URL="+runtimeURL.String(), "PORTCULLIS_MASTER_KEY="+masterText, "PORTCULLIS_STARTUP_MIGRATE=false", "PORTCULLIS_ADDR=127.0.0.1:18082", "PORTCULLIS_SHUTDOWN_TIMEOUT=10s")
+	server.Env = append(server.Env, "PORTCULLIS_DATABASE_URL="+runtimeURL.String(), "PORTCULLIS_MASTER_KEY="+masterText, "PORTCULLIS_STARTUP_MIGRATE=false", "PORTCULLIS_ADDR=127.0.0.1:18082", "PORTCULLIS_SHUTDOWN_TIMEOUT=10s", "PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","))
 	server.Stdout, server.Stderr = logFile, logFile
 	if err := server.Start(); err != nil {
 		return err

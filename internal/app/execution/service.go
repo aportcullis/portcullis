@@ -270,7 +270,11 @@ func targetHealthAfterFailure(err error) TargetOutcome {
 		return TargetInconclusive
 	}
 	var connectionFailure *connection.TestError
-	if errors.As(err, &connectionFailure) || failedExecutionState(err) == access.StateOutcomeUnknown {
+	// A destination-policy refusal happens before any dial, so it says nothing about the target's health (ADR-0051).
+	if errors.As(err, &connectionFailure) && connectionFailure.Bucket == connection.TestBucketDestinationRefused {
+		return TargetNotAttempted
+	}
+	if connectionFailure != nil || failedExecutionState(err) == access.StateOutcomeUnknown {
 		return TargetUnhealthy
 	}
 	return TargetHealthy

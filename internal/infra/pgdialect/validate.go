@@ -21,7 +21,7 @@ const defaultTestTimeout = 10 * time.Second
 
 // ValidateConnection authenticates and pings the stored target, then disconnects. Failures expose only safe classifications (ADR-0014).
 func (d *Dialect) ValidateConnection(ctx context.Context, target connection.Target, mode connection.TLSMode, cred connection.Credential) error {
-	cfg, err := buildConfig(target, mode, cred, d.validateTimeout)
+	cfg, err := d.buildGuardedConfig(target, mode, cred)
 	if err != nil {
 		// Config assembly failed before any dial; nothing target-specific to classify, and the raw error must not leak.
 		return &connection.TestError{Bucket: connection.TestBucketFailed}

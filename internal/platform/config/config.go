@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/setting"
 	"github.com/aportcullis/portcullis/internal/platform/logging"
 )
@@ -144,6 +145,13 @@ func Load() (Config, error) {
 		}
 		cfg.trustedProxyNets = append(cfg.trustedProxyNets, network)
 	}
+
+	// Parse the connection destination lists once at startup so a typo fails fast rather than silently widening or blocking every target dial (ADR-0051).
+	destinations, err := parseConnectionDestinations(cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.connectionDestinations = destinations
 	return cfg, nil
 }
 
@@ -169,6 +177,17 @@ func validateDatabasePool(cfg Config) error {
 		return fmt.Errorf("database_lock_timeout %s exceeds database_statement_timeout %s", cfg.DatabaseLockTimeout, cfg.DatabaseStatementTimeout)
 	}
 	return nil
+}
+
+// parseConnectionDestinations builds the destination policy, naming the offending setting when either CIDR list is invalid.
+func parseConnectionDestinations(cfg Config) (connection.DestinationPolicy, error) {
+	if _, err := connection.NewDestinationPolicy(cfg.ConnectionAllowedCIDRs, nil); err != nil {
+		return connection.DestinationPolicy{}, fmt.Errorf("invalid connection_allowed_cidrs: %w", err)
+	}
+	if _, err := connection.NewDestinationPolicy(nil, cfg.ConnectionDeniedCIDRs); err != nil {
+		return connection.DestinationPolicy{}, fmt.Errorf("invalid connection_denied_cidrs: %w", err)
+	}
+	return connection.NewDestinationPolicy(cfg.ConnectionAllowedCIDRs, cfg.ConnectionDeniedCIDRs)
 }
 
 // normalizeGoogleConfig gives all Google-login consumers one canonical view of environment values. In particular, whitespace-only client IDs must not pass validation as disabled and later enable routes with an invalid raw value.

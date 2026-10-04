@@ -41,7 +41,7 @@ func (d *Dialect) Execute(ctx context.Context, target connection.Target, mode co
 		return nil, err
 	}
 
-	cfg, err := buildConfig(target, mode, cred, d.validateTimeout)
+	cfg, err := d.buildGuardedConfig(target, mode, cred)
 	if err != nil {
 		return nil, &connection.TestError{Bucket: connection.TestBucketFailed}
 	}

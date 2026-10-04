@@ -48,7 +48,7 @@ func assertBucket(t *testing.T, err error, want connection.TestBucket, password 
 func TestValidateConnectionSucceedsAgainstRealTarget(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 
 	if err := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
 		t.Fatalf("Test: %v", err)
@@ -79,7 +79,7 @@ func TestValidateConnectionIgnoresProcessEnvironment(t *testing.T) {
 		t.Run(tc.env, func(t *testing.T) {
 			target, cred := pgCoords(t)
 			t.Setenv(tc.env, tc.val)
-			validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+			validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 			if err := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred); err != nil {
 				t.Fatalf("Test with %s=%s in the environment: %v", tc.env, tc.val, err)
 			}
@@ -94,7 +94,7 @@ func TestValidateConnectionClassifiesWrongPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, bad)
 	assertBucket(t, got, connection.TestBucketAuthFailed, "definitely-wrong-password")
 }
@@ -106,7 +106,7 @@ func TestValidateConnectionClassifiesUnknownDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	got := validator.ValidateConnection(context.Background(), missing, connection.TLSModeDisable, cred)
 	assertBucket(t, got, connection.TestBucketUnknownDatabase, cred.Password)
 }
@@ -114,7 +114,7 @@ func TestValidateConnectionClassifiesUnknownDatabase(t *testing.T) {
 func TestValidateConnectionClassifiesTLSFailure(t *testing.T) {
 	t.Parallel()
 	target, cred := pgCoords(t)
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeVerifyFull, cred)
 	assertBucket(t, got, connection.TestBucketTLSFailed, cred.Password)
 }
@@ -140,7 +140,7 @@ func TestValidateConnectionClassifiesUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 5 * time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: 5 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred)
 	assertBucket(t, got, connection.TestBucketUnreachable, "pw-unreachable")
 }
@@ -173,7 +173,7 @@ func TestValidateConnectionHonorsTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	start := time.Now()
 	got := validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred)
 	if elapsed := time.Since(start); elapsed > 5*time.Second {

@@ -65,6 +65,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0048](0048-commit-based-changelog.md) | Reviewed Conventional Commit changelogs with offline git-cliff | Accepted |
 | [0049](0049-multiarchitecture-container-builds.md) | AMD64/ARM64 cross-compilation and native image smoke gates | Accepted |
 | [0050](0050-private-vulnerability-reporting.md) | GitHub private vulnerability reporting | Accepted |
+| [0051](0051-connection-destination-policy.md) | Operator destination policy for connection dials | Accepted |
 
 ## Template
 ```markdown

@@ -79,6 +79,7 @@ func TestBreakerMeasuresTargetHealthInsteadOfSQLSuccess(t *testing.T) {
 		{"syntax error", &query.ExecError{SQLState: "42601"}, false, execution.TargetHealthy},
 		{"connection lost", &query.ExecError{SQLState: "08006"}, false, execution.TargetUnhealthy},
 		{"target unreachable", &connection.TestError{Bucket: connection.TestBucketUnreachable}, false, execution.TargetUnhealthy},
+		{"destination refused before dialing", &connection.TestError{Bucket: connection.TestBucketDestinationRefused}, false, execution.TargetNotAttempted},
 		{"policy deadline", context.DeadlineExceeded, false, execution.TargetInconclusive},
 		{"owner cancellation", context.Canceled, false, execution.TargetInconclusive},
 		{"local response bound", query.ErrResponseLimit, false, execution.TargetInconclusive},

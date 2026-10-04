@@ -104,7 +104,7 @@ No lease or cancel-and-wait: the credential is already in memory and the dial ma
 Long-running query **executions** remain the real concern and keep their own archive guard (above).
 
 ### Error redaction (PRD §8.1: "대상 DB 오류도 credential을 redaction한 뒤 반환")
-Target-DB errors are classified into coarse buckets — `unreachable`, `auth-failed`, `tls-failed`, `unknown-database`, `timeout`, `failed` (fallback) — and **only the bucket's fixed message** crosses the API boundary.
+Target-DB errors are classified into coarse buckets — `unreachable`, `auth-failed`, `tls-failed`, `unknown-database`, `timeout`, `destination-refused` ([ADR-0051](0051-connection-destination-policy.md)), `failed` (fallback) — and **only the bucket's fixed message** crosses the API boundary.
 Raw driver text is never returned and never logged above debug-free fields (OWASP Logging Cheat Sheet: authentication passwords and database connection strings must never reach logs).
 Tests assert the password substring appears in no returned or logged message.
 

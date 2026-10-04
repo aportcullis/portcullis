@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/query"
+	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"strings"
@@ -19,7 +20,7 @@ func TestGovernedExecutionRejectsUserOverloadBeforeItRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: "SELECT lower(v) FROM custom_t", Class: query.ClassRead, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if stream != nil {
 		_ = stream.Close()
@@ -37,7 +38,7 @@ func TestGovernedExecutionRejectsUserOperatorInSubqueryComparison(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	for _, sql := range []string{"SELECT v FROM custom_ids WHERE v = ANY (SELECT 1)", "SELECT v FROM custom_ids WHERE v IN (SELECT 1)"} {
 		stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 		if stream != nil {
@@ -92,7 +93,7 @@ func executeWhileLockHeld(t *testing.T, scenario lockScenario) (time.Duration, e
 			t.Fatal(err)
 		}
 	}
-	dialect := pgdialect.New(pgdialect.Options{LockTimeout: time.Second})
+	dialect := pgdialect.New(pgdialect.Options{LockTimeout: time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	started := time.Now()
 	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{SQL: scenario.statement, Class: scenario.class, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err == nil {
@@ -192,7 +193,7 @@ func TestGovernedTableCreationIgnoresATargetDefaultAccessMethod(t *testing.T) {
 
 func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 	_, target, credential := freshExec(t)
-	dialect := pgdialect.New(pgdialect.Options{})
+	dialect := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	sql := "SELECT " + strings.TrimSuffix(strings.Repeat("NULL::integer,", 8), ",") + " FROM generate_series(1,20)"
 	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, credential, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: 20, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err != nil {
@@ -213,7 +214,7 @@ func TestGovernedNullRowsCannotBypassDecodedMemoryBudget(t *testing.T) {
 
 func TestGovernedOversizedCellRefusesProtocolBeforeReturningRows(t *testing.T) {
 	_, target, credential := freshExec(t)
-	dialect := pgdialect.New(pgdialect.Options{})
+	dialect := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT repeat('x', 29 * 1024 * 1024)", Class: query.ClassRead, MaxRows: 10000, MaxResultBytes: query.MaxSnapshotBytes, TimeoutSeconds: 30})
 	if stream != nil {
 		_ = stream.Close()
@@ -229,7 +230,7 @@ func TestGovernedTruncatedReturningWriteCommitsWholeStatement(t *testing.T) {
 	if _, err := pool.Exec(ctx, `create table public.returning_test(id int primary key)`); err != nil {
 		t.Fatal(err)
 	}
-	dialect := pgdialect.New(pgdialect.Options{})
+	dialect := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	stream, err := dialect.Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "INSERT INTO returning_test SELECT generate_series(1,5) RETURNING id", Class: query.ClassWrite, MaxRows: 2, MaxResultBytes: 4096, TimeoutSeconds: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +264,7 @@ type governedDrain struct {
 // drainGovernedRead runs one governed read and consumes every row the stream offers.
 func drainGovernedRead(t *testing.T, target connection.Target, cred connection.Credential, sql string, maxRows int, maxResultBytes int64) governedDrain {
 	t.Helper()
-	dialect := pgdialect.New(pgdialect.Options{})
+	dialect := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	started := time.Now()
 	stream, err := dialect.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{SQL: sql, Class: query.ClassRead, MaxRows: maxRows, MaxResultBytes: maxResultBytes, TimeoutSeconds: 30})
 	if err != nil {
@@ -361,7 +362,7 @@ func assertNoActiveTargetQuery(t *testing.T, pool *pgxpool.Pool, sql string) {
 
 func TestGovernedExecutionCapsRowsAndBytesBeforeDecoding(t *testing.T) {
 	_, target, cred := freshExec(t)
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	for _, tc := range []struct {
 		name, sql string
 		rows      int

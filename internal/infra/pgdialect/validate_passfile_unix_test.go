@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aportcullis/portcullis/internal/domain/connection"
+	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 )
 
@@ -24,7 +25,7 @@ func TestValidateConnectionConfigAssemblyDoesNotBlockOnPassfile(t *testing.T) {
 	}
 	t.Setenv("PGPASSFILE", fifo)
 
-	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: time.Second})
+	validator := pgdialect.New(pgdialect.Options{ValidateTimeout: time.Second, Destinations: dbtest.TargetDestinationPolicy(t)})
 	done := make(chan error, 1)
 	go func() {
 		done <- validator.ValidateConnection(context.Background(), target, connection.TLSModeDisable, cred)

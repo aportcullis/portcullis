@@ -10,6 +10,7 @@ import (
 
 	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/query"
+	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -42,7 +43,7 @@ func TestExecutionRejectsMissingOrMismatchedStringReportBeforeSQL(t *testing.T) 
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			stream, err := pgdialect.New(pgdialect.Options{}).Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT 1", Class: query.ClassRead, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
+			stream, err := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)}).Execute(ctx, target, connection.TLSModeDisable, credential, query.Execution{SQL: "SELECT 1", Class: query.ClassRead, MaxRows: 10, MaxResultBytes: 4096, TimeoutSeconds: 30})
 			if stream != nil {
 				_ = stream.Close()
 			}

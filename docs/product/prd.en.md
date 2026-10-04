@@ -732,6 +732,11 @@ kviklet already has pagination, request filters, stored results, and full-cell v
 - **Exposure:** Never expose passwords, original DSNs, session tokens, plaintext parameters, or result rows in APIs/logs/audit.
   - Redact target DB errors before returning them.
 - **Target privileges:** Provide least-privilege setup guidance and connection-test warnings matching policy.
+- **Connection destinations (ADR-0051):** Connection tests, create/update and governed executions dial only addresses the operator destination policy permits.
+  - Resolve the host once at dial time, refuse the target unless every resolved address is permitted, and dial only the checked addresses, so DNS rebinding cannot substitute an unchecked one.
+  - Always refuse unspecified, link-local, multicast and broadcast addresses and cloud metadata endpoints; operators add `PORTCULLIS_CONNECTION_DENIED_CIDRS` and may restrict to `PORTCULLIS_CONNECTION_ALLOWED_CIDRS`.
+  - Without an allow list, every other address except loopback is permitted; a co-located database requires listing loopback explicitly.
+  - Every refusal returns the single `destination-refused` bucket without dialing, so callers cannot map internal networks.
 - **Git sources, Schema milestone:** AEAD-encrypt credentials and redact logs.
   - Enforce allowed Git hosts/outbound destinations, redirect restrictions, and DNS-rebinding defenses.
   - Cap clone size, files, and duration; disallow submodules, Git LFS, and symlinks by default.

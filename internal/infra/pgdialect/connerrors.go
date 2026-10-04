@@ -23,6 +23,9 @@ const (
 
 // classify maps a dial/auth error onto the caller-safe test buckets (ADR-0014). The raw error — which can embed driver text and, in principle, credential material — never crosses this function (PRD §8.1).
 func classify(err error) *connection.TestError {
+	if errors.Is(err, errDestinationRefused) {
+		return &connection.TestError{Bucket: connection.TestBucketDestinationRefused}
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return &connection.TestError{Bucket: connection.TestBucketTimeout}
 	}

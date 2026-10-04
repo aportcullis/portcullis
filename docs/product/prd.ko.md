@@ -697,6 +697,11 @@ audit_events
 - API·로그·audit에서 password, 원문 DSN, session token, 암호화 전 parameter values, result row를 노출하지 않음.
   대상 DB 오류도 credential을 redaction한 뒤 반환.
 - 관리 대상 DB 계정은 connection 정책에 맞는 최소 권한 계정을 사용하도록 setup guide와 connection test 경고를 제공.
+- **Connection 목적지 정책(ADR-0051):** connection test, 생성·수정, governed execution은 운영자 목적지 정책이 허용한 주소로만 접속한다.
+  - dial 시점에 host를 한 번만 해석하고, 해석된 모든 주소가 허용될 때만 그 검사한 주소로 접속해 DNS rebinding이 검사하지 않은 주소를 끼워 넣지 못하게 한다.
+  - unspecified·link-local·multicast·broadcast 주소와 cloud metadata endpoint는 항상 거부한다. 운영자는 `PORTCULLIS_CONNECTION_DENIED_CIDRS`로 거부 대역을 더하고 `PORTCULLIS_CONNECTION_ALLOWED_CIDRS`로 허용 대역을 제한할 수 있다.
+  - allow list가 없으면 loopback을 제외한 나머지 주소를 허용한다. 같은 호스트의 DB는 loopback을 명시적으로 허용해야 한다.
+  - 모든 거부는 접속 없이 단일 `destination-refused` bucket을 반환해 호출자가 내부 네트워크를 탐색하지 못하게 한다.
 - **Git 소스 보안(Schema 마일스톤):** git credential은 connection credential과 동일하게 AEAD로 암호화 저장하고 로그에서 redaction.
   허용 Git host·outbound allowlist를 강제하고 **redirect 제한과 DNS rebinding 방어**를 둔다. **clone 크기·파일 수·timeout 상한**을 적용하고, **submodule·Git LFS·symlink는 기본 금지**한다. fetch한 migration 파일은 승인 artifact(4.5)로 고정해 재읽기 없이 apply하며, artifact의 **보존 기간과 접근 권한**을 정의한다.
 

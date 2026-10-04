@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/aportcullis/portcullis/internal/domain/connection"
 )
 
 // Config is the typed runtime configuration. Fields map to env vars as PORTCULLIS_<FIELD>, with "." in nested keys replaced by "_". Load (config.go) parses and validates it.
@@ -63,6 +65,10 @@ type Config struct {
 	ExecutionLockTimeout time.Duration `mapstructure:"execution_lock_timeout"`
 	// TrustedProxies is a comma-separated list of CIDRs whose requests carry a real client IP in X-Forwarded-For (used for rate-limit keying). Empty (default) means the direct peer IP is trusted — the correct setting for direct exposure.
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
+	// ConnectionAllowedCIDRs is a comma-separated list of CIDRs connection tests and governed executions may dial; empty (default) permits every address except loopback (ADR-0051).
+	ConnectionAllowedCIDRs []string `mapstructure:"connection_allowed_cidrs"`
+	// ConnectionDeniedCIDRs is a comma-separated list of CIDRs that are refused even inside the allow list; link-local, metadata, unspecified, multicast and broadcast addresses are always refused (ADR-0051).
+	ConnectionDeniedCIDRs []string `mapstructure:"connection_denied_cidrs"`
 
 	// Google login (OIDC, ADR-0007). All three unset ⇒ the feature is disabled and password login is unaffected; a partial setup fails startup. GoogleClientID is the OAuth client id from the Google Cloud console.
 	GoogleClientID string `mapstructure:"google_client_id"`
@@ -84,6 +90,8 @@ type Config struct {
 
 	// trustedProxyNets is TrustedProxies parsed to networks, populated by Load.
 	trustedProxyNets []*net.IPNet
+	// connectionDestinations is the policy parsed from the connection CIDR lists, populated by Load.
+	connectionDestinations connection.DestinationPolicy
 }
 
 // TrustedProxyNets returns the parsed trusted-proxy networks (see TrustedProxies).
@@ -92,6 +100,11 @@ func (c Config) TrustedProxyNets() []*net.IPNet { return c.trustedProxyNets }
 // HTTPDrainTimeout is how long in-flight requests may drain before executions are interrupted.
 func (c Config) HTTPDrainTimeout() time.Duration {
 	return c.ShutdownTimeout - c.ShutdownInterruptTimeout
+}
+
+// ConnectionDestinationPolicy returns the parsed connection destination policy (see ConnectionAllowedCIDRs).
+func (c Config) ConnectionDestinationPolicy() connection.DestinationPolicy {
+	return c.connectionDestinations
 }
 
 // GoogleEnabled reports whether Google login is configured. Load has already validated all-or-nothing, so the client id alone is decisive.

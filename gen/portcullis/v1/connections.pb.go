@@ -872,7 +872,7 @@ func (*TestConnectionRequest_Id) isTestConnectionRequest_Target() {}
 type TestConnectionResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Ok    bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
-	// On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014). Raw target-DB errors are never returned (PRD §8.1).
+	// On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "destination-refused" | "failed" (ADR-0014, ADR-0051). Raw target-DB errors are never returned (PRD §8.1).
 	Message       string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

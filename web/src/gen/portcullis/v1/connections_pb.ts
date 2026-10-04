@@ -450,7 +450,7 @@ export type TestConnectionResponse = Message<"portcullis.v1.TestConnectionRespon
   ok: boolean;
 
   /**
-   * On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "failed" (ADR-0014). Raw target-DB errors are never returned (PRD §8.1).
+   * On failure, the coarse classification only — "unreachable" | "auth-failed" | "tls-failed" | "unknown-database" | "timeout" | "destination-refused" | "failed" (ADR-0014, ADR-0051). Raw target-DB errors are never returned (PRD §8.1).
    *
    * @generated from field: string message = 2;
    */

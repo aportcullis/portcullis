@@ -92,7 +92,7 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	}
 	connSvc, err := connapp.New(
 		postgres.NewConnectionStore(pool),
-		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second}),
+		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)}),
 		crypto.NewConnectionCredentialCodec(keyring),
 		postgres.NewAuditStore(pool),
 	)
@@ -108,7 +108,7 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 		requestStore,
 		requestStore,
 		crypto.NewAccessRequestPayloadCodec(keyring),
-		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second}),
+		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)}),
 		24*time.Hour,
 	)
 	if err != nil {
@@ -133,7 +133,7 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	executionSvc, err := executionapp.New(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgdialect.New(pgdialect.Options{}), resultSvc, "test-server", 2)
+	executionSvc, err := executionapp.New(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)}), resultSvc, "test-server", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,6 +456,60 @@ func TestConnectionsLifecycle(t *testing.T) {
 		if !seen {
 			t.Errorf("audit trail is missing %s", action)
 		}
+	}
+}
+
+func TestConnectionDestinationRefusalsShareOneBucketThroughRawClient(t *testing.T) {
+	env := newConnsTestEnv(t)
+	ctx := context.Background()
+	jar, authC, connsC, _ := env.clients()
+	const email, password = "admin@example.com", "correct-horse-battery"
+	if _, err := authC.Bootstrap(ctx, connect.NewRequest(&portcullisv1.BootstrapRequest{Email: email, Password: password, DisplayName: "Admin"})); err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if _, err := authC.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: email, Password: password})); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	csrf := csrfFromJar(jar, env.serverURL)
+
+	permitted := env.targetConfig()
+	testResp, err := connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{Target: &portcullisv1.TestConnectionRequest_Config{Config: permitted}}), csrf))
+	if err != nil || !testResp.Msg.GetOk() {
+		t.Fatalf("permitted Test = (%v, %q, %v), want ok", testResp.Msg.GetOk(), testResp.Msg.GetMessage(), err)
+	}
+	created, err := connsC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateConnectionRequest{DisplayName: "Permitted", Config: permitted}), csrf))
+	if err != nil {
+		t.Fatalf("permitted Create: %v", err)
+	}
+	testResp, err = connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{Target: &portcullisv1.TestConnectionRequest_Id{Id: created.Msg.GetConnection().GetId()}}), csrf))
+	if err != nil || !testResp.Msg.GetOk() {
+		t.Fatalf("permitted Test by id = (%v, %q, %v), want ok", testResp.Msg.GetOk(), testResp.Msg.GetMessage(), err)
+	}
+
+	for _, refusedHost := range []string{"169.254.169.254", "::ffff:169.254.169.254", "fe80::1", "0.0.0.0", "224.0.0.1", "fd00:ec2::254"} {
+		t.Run(refusedHost, func(t *testing.T) {
+			refused := env.targetConfig()
+			refused.Host = refusedHost
+			testResp, err := connsC.Test(ctx, withCSRF(connect.NewRequest(&portcullisv1.TestConnectionRequest{Target: &portcullisv1.TestConnectionRequest_Config{Config: refused}}), csrf))
+			if err != nil {
+				t.Fatalf("Test: %v", err)
+			}
+			if testResp.Msg.GetOk() || testResp.Msg.GetMessage() != "destination-refused" {
+				t.Fatalf("Test = (%v, %q), want (false, destination-refused)", testResp.Msg.GetOk(), testResp.Msg.GetMessage())
+			}
+			_, err = connsC.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateConnectionRequest{DisplayName: "Refused " + refusedHost, Config: refused}), csrf))
+			if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "destination-refused") {
+				t.Fatalf("Create = %v, want FailedPrecondition destination-refused", err)
+			}
+			if strings.Contains(err.Error(), refused.GetPassword()) {
+				t.Fatal("refusal leaks the password")
+			}
+		})
+	}
+
+	list, err := connsC.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.ListConnectionsRequest{}), csrf))
+	if err != nil || len(list.Msg.GetConnections()) != 1 {
+		t.Fatalf("List = %d connections, %v; want only the permitted one", len(list.Msg.GetConnections()), err)
 	}
 }
 

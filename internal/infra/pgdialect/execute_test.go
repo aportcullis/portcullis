@@ -37,7 +37,7 @@ func freshExec(t *testing.T) (*pgxpool.Pool, connection.Target, connection.Crede
 
 func runExec(ctx context.Context, t *testing.T, target connection.Target, cred connection.Credential, exec query.Execution) (cols []query.Column, rows [][]query.CellValue, rowsAffected int64, err error) {
 	t.Helper()
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, exec)
 	if err != nil {
 		return nil, nil, 0, err
@@ -62,7 +62,7 @@ func TestExecuteCloseStopsNext(t *testing.T) {
 	_, target, cred := freshExec(t)
 	ctx := context.Background()
 
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	stream, err := d.Execute(ctx, target, connection.TLSModeDisable, cred, query.Execution{
 		SQL:        "SELECT 1",
 		Class:      query.ClassRead,
@@ -428,7 +428,7 @@ func TestExecuteConnectionFailuresUseBuckets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	_, execErr := d.Execute(context.Background(), target, connection.TLSModeDisable, cred, query.Execution{
 		SQL:        "SELECT 1",
 		Class:      query.ClassRead,
@@ -444,7 +444,7 @@ func TestExecuteWrongPasswordUsesAuthBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := pgdialect.New(pgdialect.Options{})
+	d := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)})
 	_, execErr := d.Execute(context.Background(), target, connection.TLSModeDisable, bad, query.Execution{
 		SQL:        "SELECT 1",
 		Class:      query.ClassRead,

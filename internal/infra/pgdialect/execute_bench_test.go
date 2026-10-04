@@ -62,7 +62,7 @@ ANALYZE bench_orders;`, seedRows)
 	if err != nil {
 		b.Fatal(err)
 	}
-	dialect := pgdialect.New(pgdialect.Options{})
+	dialect := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(b)})
 	cursor := seedRows * 9 / 10
 	joinRows := seedRows / 1000
 	if seedRows%1000 >= 42 {
