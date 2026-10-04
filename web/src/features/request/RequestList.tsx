@@ -2,9 +2,10 @@ import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
 import { For, Show, createEffect, createSignal, on, onMount, onCleanup } from "solid-js";
 
-import { requestStateFilterOptions, shouldPollRequestList, stateBadge, stateLabel } from "@/entities/request/model";
+import { actorLabel, requestStateFilterOptions, shouldPollRequestList, stateBadge, stateLabel } from "@/entities/request/model";
 import { hasPermission, session } from "@/entities/session/store";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
+import { filterSelectClass } from "@/features/request/selectStyles";
 import { rangeEnd, rangeStart } from "@/entities/request/pagination";
 import {
   goToPage,
@@ -35,11 +36,7 @@ import {
   TableRow,
 } from "@/shared/ui/table";
 
-const selectClass =
-  "flex h-9 w-44 rounded-md border border-input bg-background px-3 py-1 text-sm";
 
-const actorLabel = (actor?: { displayName: string; email: string }): string =>
-  actor ? actor.displayName || actor.email : "—";
 
 // RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details page carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
@@ -71,7 +68,7 @@ export const RequestList: Component = () => {
         </label>
         <select
           id="req-filter"
-          class={selectClass}
+          class={filterSelectClass}
           value={stateFilter()}
           onChange={(event) => setFilter(event.currentTarget.value)}
         >

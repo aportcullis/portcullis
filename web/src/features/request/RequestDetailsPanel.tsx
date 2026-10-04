@@ -6,7 +6,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import type { GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestSchema } from "@/gen/portcullis/v1/access_requests_pb";
 import { instanceConfig } from "@/entities/instance/config";
-import { isExecutionOutcomeState, isLiveRequestState, stateBadge, stateLabel } from "@/entities/request/model";
+import { actorLabel, isExecutionOutcomeState, isLiveRequestState, stateBadge, stateLabel } from "@/entities/request/model";
 import { truncateReasonCodePoints, countReasonCodePoints } from "@/entities/request/reason";
 import {
   approveAccessRequest,
@@ -43,8 +43,6 @@ import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-f
 // The stand-in for "no request is open" — see current() below.
 const noRequest = create(AccessRequestSchema, {});
 
-const actorLabel = (a?: { displayName: string; email: string }): string =>
-  a ? a.displayName || a.email : "—";
 
 /** Reads and reviews one request without replacing SQL edits during refresh. */
 export const RequestDetailsPanel: Component<{

@@ -4,11 +4,10 @@ import { For, Index, Show } from "solid-js";
 import { paramTypes } from "@/entities/request/model";
 import type { RequestDraft } from "@/features/request/draft";
 import { appendDraftParameter, removeDraftParameter, updateDraftParameter, isParameterValueDisabled, parseParameterType } from "@/features/request/draft";
+import { formSelectClass } from "@/features/request/selectStyles";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-const selectClass =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
 // ParamEditor edits the typed parameter rows of a request draft (PRD §4.2): name, type (the 8-value vocabulary), and value — the value input goes inert for a null parameter. Named parameters bind server-side (never string substitution); this form only declares them.
 export const ParamEditor: Component<{
@@ -53,7 +52,7 @@ export const ParamEditor: Component<{
                 </label>
                 <select
                   id={`param-type-${parameterIdx}`}
-                  class={selectClass}
+                  class={formSelectClass}
                   value={row().type}
                   disabled={props.disabled}
                   onChange={(event) => {

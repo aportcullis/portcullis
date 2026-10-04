@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
-import { hasLiveRequests, isExecutionOutcomeState, isLiveRequestState, requestStateFilterOptions, shouldPollRequestList } from "@/entities/request/model";
+import { actorLabel, hasLiveRequests, isExecutionOutcomeState, isLiveRequestState, requestStateFilterOptions, shouldPollRequestList } from "@/entities/request/model";
+
+describe("actor label", () => {
+  it("prefers the display name", () => {
+    expect(actorLabel({ displayName: "Dana", email: "dana@example.com" })).toBe("Dana");
+  });
+
+  it("falls back to the email when the display name is empty", () => {
+    expect(actorLabel({ displayName: "", email: "dana@example.com" })).toBe("dana@example.com");
+  });
+
+  it("shows a dash for an unknown actor", () => {
+    expect(actorLabel(undefined)).toBe("—");
+  });
+
+  it("shows nothing invented when both fields are empty", () => {
+    expect(actorLabel({ displayName: "", email: "" })).toBe("");
+  });
+});
 
 // Background polling only pays off while a request can still change; finished requests never move again (PRD §4.4).
 describe("live request states", () => {

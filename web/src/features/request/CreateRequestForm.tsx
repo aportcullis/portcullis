@@ -31,6 +31,7 @@ import { instanceConfig } from "@/entities/instance/config";
 import { RequestNarrativeFields } from "@/features/request/RequestNarrativeFields";
 import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
+import { formSelectClass } from "@/features/request/selectStyles";
 import { errorMessage } from "@/shared/api/errors";
 import type { SessionOutcome } from "@/shared/lib/dialogSession";
 import { createDialogSession } from "@/shared/lib/dialogSession";
@@ -38,8 +39,6 @@ import { PageHeader } from "@/shared/ui/PageHeader";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 
-const selectClass =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
 /** Composes and saves a request before navigating to its stored detail page. */
 export const CreateRequestForm: Component = () => {
@@ -207,7 +206,7 @@ export const CreateRequestForm: Component = () => {
             </label>
             <select
               id="req-connection"
-              class={selectClass}
+              class={formSelectClass}
               value={connectionId()}
               // Once the draft is saved it is bound to its connection; only the payload can be edited, so the connection is locked.
               disabled={busy() || savedId() !== ""}

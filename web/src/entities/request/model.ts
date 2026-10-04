@@ -70,6 +70,11 @@ const terminalStates: readonly AccessRequestState[] = [
   ...executionOutcomeStates,
 ];
 
+/** Names a requester or approver by display name, falling back to email, or a dash when the actor is unknown. */
+export function actorLabel(actor?: { displayName: string; email: string }): string {
+  return actor ? actor.displayName || actor.email : "—";
+}
+
 /** Reports whether a request in this state can still change, so a background refresh may show something new. */
 export function isLiveRequestState(state: AccessRequestState): boolean {
   return !terminalStates.includes(state);
