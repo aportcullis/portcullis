@@ -1,6 +1,6 @@
 .PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e build release run devkey test test-race lint vuln audit verify hooks tidy clean
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
-.PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check
+.PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -47,7 +47,7 @@ endif
 # Build the linter with the project's Go toolchain to match its type checker.
 GOLANGCI_LINT_VERSION := v2.14.0
 lint:
-	@drift="$$(gofmt -l internal cmd)"; \
+	@drift="$$(gofmt -l $$(git ls-files '*.go'))"; \
 		if [ -n "$$drift" ]; then echo "gofmt needed (run 'gofmt -w'):"; echo "$$drift"; exit 1; fi
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --timeout=10m --enable=unparam --enable=misspell --enable=prealloc
 
@@ -144,6 +144,9 @@ dockerfile-check:
 ignore-check:
 	bash tests/release/ignore-check.sh
 
+clean-check:
+	bash tests/release/clean-check.sh
+
 release-check:
 	bash tests/release/tags.sh
 
@@ -151,6 +154,7 @@ verify:
 	$(MAKE) release-check
 	$(MAKE) dockerfile-check
 	$(MAKE) ignore-check
+	$(MAKE) clean-check
 	$(MAKE) changelog-check
 	go build ./...
 	go vet ./...
@@ -169,8 +173,10 @@ hooks:
 tidy:
 	go mod tidy
 
+# Remove build outputs only; generated Go/TypeScript sources are committed and regenerated with `make generate`.
 clean:
-	rm -rf bin web/src/gen
+	rm -rf bin
+	find internal/platform/assets/dist -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
 
 # Verify integrity and known vulnerabilities before delivery.
 .PHONY: supply-chain load-audit install-policy-test
