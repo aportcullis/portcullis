@@ -94,9 +94,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await dialog.getByRole("button", { name: "Export CSV", exact: true }).click();
   const downloadLink = dialog.getByRole("link", { name: "Download CSV", exact: true });
   await expect(downloadLink).toBeVisible();
-  const prepared = await downloadLink.evaluate(async link => (await fetch((link as HTMLAnchorElement).href)).text());
-  expect(prepared).toContain("9007199254740994,'=formula");
-  expect(prepared).toContain("9007199254741018,'=formula");
+  // The saved download is read back below; the page itself may not fetch its blob: URL because connect-src admits only the SPA origin.
   const download = page.waitForEvent("download");
   await downloadLink.click();
   const csv = await download;

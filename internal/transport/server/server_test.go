@@ -264,6 +264,55 @@ func TestShutdownTimeoutHooksRunInRegistrationOrderOnce(t *testing.T) {
 	}
 }
 
+// parseCSPDirectives splits a Content-Security-Policy header into directive name → source list.
+func parseCSPDirectives(header string) map[string][]string {
+	directives := map[string][]string{}
+	for _, directive := range strings.Split(header, ";") {
+		fields := strings.Fields(directive)
+		if len(fields) > 0 {
+			directives[fields[0]] = fields[1:]
+		}
+	}
+	return directives
+}
+
+func TestContentSecurityPolicyRestrictsEveryFetchToTheSPAOrigin(t *testing.T) {
+	t.Parallel()
+	_, ts := newTestServer(t)
+	for _, path := range []string{"/", "/login", "/livez", "/assets/missing.js"} {
+		resp := get(t, ts.URL, path)
+		_ = resp.Body.Close()
+		directives := parseCSPDirectives(resp.Header.Get("Content-Security-Policy"))
+		// Success: each fetch class the SPA uses is limited to its own origin, with data: images and inline styles kept for the embedded bundle.
+		want := map[string]string{
+			"default-src":     "'self'",
+			"script-src":      "'self'",
+			"style-src":       "'self' 'unsafe-inline'",
+			"img-src":         "'self' data:",
+			"connect-src":     "'self'",
+			"object-src":      "'none'",
+			"frame-ancestors": "'none'",
+			"base-uri":        "'self'",
+			"form-action":     "'self'",
+		}
+		for name, sources := range want {
+			if got := strings.Join(directives[name], " "); got != sources {
+				t.Errorf("%s: %s = %q, want %q", path, name, got, sources)
+			}
+		}
+		// Refusal: no directive may admit inline or evaluated script, wildcard or scheme-wide origins, or blob: sources.
+		for name, sources := range directives {
+			for _, source := range sources {
+				switch {
+				case name != "style-src" && source == "'unsafe-inline'",
+					source == "'unsafe-eval'", source == "*", source == "https:", source == "http:", source == "blob:":
+					t.Errorf("%s: %s admits %s", path, name, source)
+				}
+			}
+		}
+	}
+}
+
 func TestShutdownDrainDelayNotChargedToShutdownTimeout(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

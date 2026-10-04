@@ -73,14 +73,14 @@ func (s *Server) OnShutdownTimeout(hook func(context.Context)) {
 	s.shutdownTimeoutHooks = append(s.shutdownTimeoutHooks, hook)
 }
 
-// securityHeaders limits scripts to the embedded SPA's origin while preserving inline styles.
+// securityHeaders limits every fetch class to the embedded SPA's origin, allowing data: images and inline styles only (ADR-0010).
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		h.Set("Content-Security-Policy", "script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
 		next.ServeHTTP(w, r)
 	})
 }
