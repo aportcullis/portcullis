@@ -29,12 +29,13 @@
     "tailwindcss": "4.3.2"
   },
   "devDependencies": {
+    "@bufbuild/protoc-gen-es": "2.12.1",
     "@playwright/test": "1.61.1",
     "@types/node": "24.13.2",
+    "oxlint": "1.85.0",
     "typescript": "7.0.2",
     "vite": "8.1.0",
     "vite-plugin-solid": "2.11.12",
-    "vitest": "4.1.11",
-    "oxlint": "1.85.0"
+    "vitest": "4.1.11"
   }
 }

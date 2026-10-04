@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Regenerate Connect/protobuf and sqlc code in the given directory with the pinned generator images.
+# Regenerate Connect/protobuf code with the pinned go-tool buf and local plugins, and sqlc code with the pinned image, in the given directory.
 source "$(dirname "$0")/codegen-images.sh"
 workspace="$(cd "${1:-.}" && pwd)"
-run_generator() {
-  docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
-    --mount "type=bind,source=$workspace,target=/src" --workdir /src "$@"
-}
-run_generator "$BUF_IMAGE" generate
-run_generator "$SQLC_IMAGE" generate
+(cd "$workspace" && go tool buf generate)
+docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
+  --mount "type=bind,source=$workspace,target=/src" --workdir /src "$SQLC_IMAGE" generate

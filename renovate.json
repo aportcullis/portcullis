@@ -32,7 +32,7 @@
     },
     {
       "customType": "regex",
-      "description": "Pinned buf and sqlc code generators",
+      "description": "Pinned sqlc code generator",
       "managerFilePatterns": [
         "/^\\.github/scripts/codegen-images\\.sh$/"
       ],
@@ -40,44 +40,6 @@
         "_IMAGE='(?<depName>[a-z0-9./-]+):(?<currentValue>[0-9.]+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
       ],
       "datasourceTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "Remote protobuf-go plugin pinned to the Go protobuf runtime",
-      "managerFilePatterns": [
-        "/^buf\\.gen\\.yaml$/"
-      ],
-      "matchStrings": [
-        "remote: buf\\.build/protocolbuffers/go:v(?<currentValue>[0-9.]+)"
-      ],
-      "depNameTemplate": "google.golang.org/protobuf",
-      "datasourceTemplate": "go",
-      "extractVersionTemplate": "^v(?<version>.+)$"
-    },
-    {
-      "customType": "regex",
-      "description": "Remote connect-go plugin pinned to the Connect Go runtime",
-      "managerFilePatterns": [
-        "/^buf\\.gen\\.yaml$/"
-      ],
-      "matchStrings": [
-        "remote: buf\\.build/connectrpc/go:v(?<currentValue>[0-9.]+)"
-      ],
-      "depNameTemplate": "connectrpc.com/connect",
-      "datasourceTemplate": "go",
-      "extractVersionTemplate": "^v(?<version>.+)$"
-    },
-    {
-      "customType": "regex",
-      "description": "Remote protobuf-es plugin pinned to the TypeScript protobuf runtime",
-      "managerFilePatterns": [
-        "/^buf\\.gen\\.yaml$/"
-      ],
-      "matchStrings": [
-        "remote: buf\\.build/bufbuild/es:v(?<currentValue>[0-9.]+)"
-      ],
-      "depNameTemplate": "@bufbuild/protobuf",
-      "datasourceTemplate": "npm"
     }
   ],
   "packageRules": [

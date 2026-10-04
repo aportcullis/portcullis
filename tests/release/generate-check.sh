@@ -12,6 +12,9 @@ git ls-files --cached --others --exclude-standard -z | while IFS= read -r -d '' 
   fi
 done
 
+# The copy reuses the installed web dependencies for the local protobuf-es plugin.
+ln -s "$PWD/web/node_modules" "$copy/web/node_modules"
+
 failures=0
 bash .github/scripts/generate.sh "$copy"
 for generated in gen web/src/gen internal/infra/postgres/db; do
@@ -21,7 +24,7 @@ for generated in gen web/src/gen internal/infra/postgres/db; do
     failures=$((failures + 1))
   fi
 done
-if ! docker run --rm --mount "type=bind,source=$copy,target=/src,readonly" --workdir /src "$BUF_IMAGE" lint; then
+if ! (cd "$copy" && go tool buf lint); then
   echo "buf lint failed" >&2
   failures=$((failures + 1))
 fi

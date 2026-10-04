@@ -19,7 +19,7 @@
   - `make changelog-check` exercises real Git history and release boundaries; included in `make verify`. `make release-notes` renders only the current tag for the GHCR publication summary.
 - **Dependency security**
   - `make vuln` runs pinned govulncheck; `make audit` also runs pnpm audit. `make supply-chain` verifies Go modules, audits both npm lockfiles and checks fresh-install script rejection; CI runs it after the functional gate.
-- `make generate` — `buf generate` (Connect Go + TS) and `sqlc generate` through the digest-pinned images in `.github/scripts/codegen-images.sh`, so no local buf or sqlc install is needed.
+- `make generate` — `buf generate` (Connect Go + TS) through `go tool buf` with local plugins, and `sqlc generate` through the digest-pinned image in `.github/scripts/codegen-images.sh`; generation needs no network and no local buf or sqlc install (run `pnpm -C web install` first for the TypeScript plugin).
 - `make generate-check` regenerates in a disposable copy and fails on generated-code drift, `buf lint` violations or an untidy `go.mod`; `make proto-breaking` runs `buf breaking` against `origin/main`. Both are part of `make verify`.
 - `make load-check` — strict TypeScript, locally bundled k6 scripts and Zod RPC/fixture contract tests; included in `make verify`.
 - `make load-test` — k6 2.3.0 scenario tests against an isolated installation; fixture and sizing instructions in [performance guide](../performance/README.md).
@@ -28,7 +28,7 @@
 ## Codegen
 Generated code is **committed** — Go (`gen/`, `internal/infra/postgres/db/`) so `go build` works without the codegen tools, and the TS client (`web/src/gen/`) so `pnpm`/`tsc` and CI work without running `buf`.
 Regenerate by editing `proto/*.proto` and the `*.sql` queries, then `make generate`; never hand-edit the generated files.
-Pin remote plugin versions in `buf.gen.yaml` to the corresponding Go/TypeScript runtime versions; update pins and generated output together.
+The protobuf plugins are pinned through the runtimes themselves: `protoc-gen-go` and `protoc-gen-connect-go` are `go tool` entries resolved from the same modules as the Go runtime, and `@bufbuild/protoc-gen-es` is an exact web devDependency matching `@bufbuild/protobuf`; update the runtime, plugin and generated output together.
 
 ## Dependencies
 **Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification. Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.

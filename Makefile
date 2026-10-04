@@ -56,10 +56,10 @@ devkey:
 	@head -c 32 /dev/urandom | base64
 
 
-generate:
+generate: web-install
 	bash .github/scripts/generate.sh
 
-generate-check:
+generate-check: web-install
 	bash tests/release/generate-check.sh
 
 proto-breaking:
