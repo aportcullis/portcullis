@@ -775,7 +775,8 @@ Reject server-file/network/session-affecting commands such as `COPY ... PROGRAM`
   - The CSRF token names its master-key version so sessions survive key rotation; a token whose key version is not loaded asks the user to sign in again instead of refusing every request, ADR-0006.
   - Do not use naive double-submit.
 - Default idle expiry 12 hours and absolute expiry 7 days.
-  - Apply IP/account token buckets from ADR-0010 and progressive account-linked failure backoff/lockout parameters from ADR-0006.
+  - Apply IP and per-client account (email + client IP) token buckets from ADR-0010 and progressive account-linked failure backoff/lockout parameters from ADR-0006.
+  - Other clients cannot exhaust a user's credential bucket. The shared account backoff can still be triggered by anyone who knows an email; per-device lockout is the documented follow-up and this residual risk is recorded in ADR-0006.
 - **Bootstrap:** Only once with no users; disable afterward.
   - Alongside `/bootstrap`, support `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` and exactly one `_PASSWORD` or mounted `_PASSWORD_FILE` source, with optional `_DISPLAY_NAME` defaulting to Admin, added 2026-07-23, ADR-0006.
   - Startup invokes the same use case only with zero users and rechecks under lock against interactive races; otherwise log and skip.

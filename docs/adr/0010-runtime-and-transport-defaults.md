@@ -24,7 +24,7 @@ Values marked **(config)** are operator-tunable env vars; everything else is a c
 - **The interactive bucket is sized from genuine traffic, and a throttle is not an outage** (amended 2026-07-26): the non-credential bucket (`Me`/`Logout`/`GetConfig` and every authenticated read or mutation) exists to shed a garbage-session flood before the per-request DB session lookup — **not** to pace legitimate use; that is the credential bucket's job.
   At 60 tokens refilling 1/s it did pace legitimate use: one SPA action fans out to several RPCs (opening a dialog lists targets; approving mutates and re-reads the page), so ordinary browsing drew `ResourceExhausted`, and a shared office IP multiplies it.
   OWASP's DoS guidance is to baseline real traffic before choosing a threshold, so the floor is now a test rather than a guess — `TestOrdinaryInteractionBurstIsNotThrottled` pins that ~20 actions' worth of fan-out passes, `TestAuthenticatedProcedureRateLimited` pins that a flood is still shed — and the numbers move to **240 burst, 5/s sustained** per IP.
-  The credential bucket (10 burst, 1 per 3s, plus the per-email bucket) is untouched: brute force is a different threat with a different rate.
+  The credential bucket (10 burst, 1 per 3s, plus the per-account bucket, now keyed by email and client IP) is untouched: brute force is a different threat with a different rate.
   A shed request also reads differently now.
   It carries "too many requests, retry in a moment" instead of the login message (a user who merely clicked quickly was being told their credentials were throttled), and the SPA's boot-time reads retry `ResourceExhausted` with doubling backoff (`web/src/shared/api/retry.ts`) instead of rendering it as "the server could not be reached" — that card was a dead end with a manual Retry button for a condition that clears in a second.
   Everything else still surfaces immediately: an `Unauthenticated` is an answer, an `Unavailable` is an outage, and retrying either would only delay the truth.
@@ -74,7 +74,9 @@ Values marked **(config)** are operator-tunable env vars; everything else is a c
 - Stream handler panics propagate to the shared recover option, which logs procedure and panic type exactly as for unary handlers and returns a generic `Internal`.
 
 ### Rate limiting (`internal/transport/connectapi`)
-For the **public** procedures (Bootstrap, Login) two **independent** token-bucket stores — keyed by client IP and by normalized email — must both admit the request, **before any hashing**; over limit → Connect `ResourceExhausted`.
+For the **public** procedures (Bootstrap, Login) two **independent** token-bucket stores — keyed by client IP and by **(normalized email, client IP)** — must both admit the request, **before any hashing**; over limit → Connect `ResourceExhausted`.
+The account bucket is keyed per client (amended 2026-10-04): a bucket keyed by email alone let anyone keep a named account, including the sole admin, throttled by sending one login every refill interval from anywhere.
+Cross-IP guessing against one account is bounded by the database-backed account backoff instead, as OWASP recommends associating the failure counter with the account rather than the source IP; its residual lockout risk is recorded in ADR-0006.
 The IP key is canonicalized via `net.ParseIP(...).String()` (IPv6 spellings of one address share a bucket).
 
 **Authenticated procedures are throttled too** (amended 2026-07-05): Me/Logout carry no email, so a **third, more generous per-IP store** guards them, so a flood of requests carrying garbage session cookies cannot drive unbounded DB session lookups through the Auth interceptor.
@@ -83,9 +85,9 @@ It is more generous than login because one SPA interaction fires several RPCs.
 **Key-byte bound** (amended 2026-07-05): every bucket key, regardless of dimension, is capped — a key over `maxRateLimitKeyBytes` (320) is SHA-256-collapsed before use, so no attacker-influenced key (a spoofed/malformed `X-Forwarded-For`, a future per-token key) can hold large strings.
 The bucket-count cap bounds the map size; this bounds each entry's key size.
 
-| Parameter | Login/Bootstrap (per IP, per email) | Authenticated (per IP) |
+| Parameter | Login/Bootstrap (per IP; per email + IP) | Authenticated (per IP) |
 |---|---|---|
-| burst | **10** tokens | **240** tokens |
+| burst | **10** tokens per IP; **5** per email + IP (the default backoff threshold) | **240** tokens |
 | refill | **1 token / 3s** | **5 tokens / 1s** |
 | idle-bucket TTL | **10 min** | **10 min** |
 | max buckets per store | **50,000** — sweep idle first, then evict least-recently-seen | **50,000** |

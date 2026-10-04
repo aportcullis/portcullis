@@ -738,7 +738,8 @@ audit_events
   CSRF token은 HMAC에 쓴 master key 버전을 담아 key rotation 후에도 session이 유지되고, 로드되지 않은 key 버전의 token은 모든 요청을 거부하는 대신 다시 로그인하도록 안내한다.
   (ADR-0006)
 - 기본 idle expiry 12시간, absolute expiry 7일.
-  로그인 endpoint에는 IP와 계정 기준 rate limit(토큰버킷 수치는 ADR-0010) 및 점진적 backoff(계정 연계 실패 카운터·lockout 수치는 ADR-0006 Parameters) 적용.
+  로그인 endpoint에는 IP 기준과 클라이언트별 계정(email + client IP) 기준 rate limit(토큰버킷 수치는 ADR-0010) 및 점진적 backoff(계정 연계 실패 카운터·lockout 수치는 ADR-0006 Parameters) 적용.
+  다른 클라이언트는 사용자의 credential bucket을 소진시킬 수 없다. 공유 계정 backoff는 email을 아는 누구나 여전히 유발할 수 있으며, 기기별 lockout이 문서화된 후속 작업이고 이 잔여 위험은 ADR-0006에 기록한다.
 - bootstrap admin 생성은 사용자가 없는 최초 1회로 제한하고 완료 후 bootstrap 경로를 비활성화. **config 기반 부트스트랩 (2026-07-23 증보, ADR-0006):** 대화형 `/bootstrap` 폼 외에 `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` + 정확히 한 개의 비밀번호 소스(`_PASSWORD` 또는 마운트 시크릿 `_PASSWORD_FILE`; 선택 `_DISPLAY_NAME`, 기본 `Admin`)로도 최초 admin을 만들 수 있다.
   서버는 사용자가 0명일 때만 부팅 중 같은 Bootstrap 유스케이스를 실행하고(락 하 재검사로 대화형과 race-safe), 사용자가 있으면 로그만 남기고 건너뛴다.
   부분 설정·약한 비밀번호는 **기동 거부**(master key와 동일 fail-fast).

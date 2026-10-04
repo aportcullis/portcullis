@@ -104,10 +104,10 @@ func (l *rateLimiter) evictOldestLocked() {
 	}
 }
 
-// NewRateLimitInterceptor limits all procedures by client IP and credential procedures additionally by email, before hashing or session lookup (ADR-0010). NewClientIPInterceptor must run first.
+// NewRateLimitInterceptor limits all procedures by client IP and credential procedures additionally by (email, client IP), before hashing or session lookup (ADR-0010). Keying the account bucket by client keeps other clients from exhausting it; the database backoff counts failures across IPs (ADR-0006). NewClientIPInterceptor must run first.
 func NewRateLimitInterceptor() connect.UnaryInterceptorFunc {
 	byIP := newRateLimiter(loginRefill, loginBurst, rateLimiterTTL, maxLimiterBuckets)
-	byEmail := newRateLimiter(loginRefill, loginBurst, rateLimiterTTL, maxLimiterBuckets)
+	byAccountClient := newRateLimiter(loginAccountRefill, loginAccountBurst, rateLimiterTTL, maxLimiterBuckets)
 	byIPAuth := newRateLimiter(authRefill, authBurst, rateLimiterTTL, maxLimiterBuckets)
 	exhausted := connect.NewError(connect.CodeResourceExhausted, errors.New("too many attempts, retry later"))
 	// A shed interactive request is not a failed attempt at anything, so it says so: the login message would tell a user who merely clicked quickly that their credentials are being rate limited.
@@ -126,12 +126,21 @@ func NewRateLimitInterceptor() connect.UnaryInterceptorFunc {
 			if ip != "" && !byIP.allow("ip:"+ip) {
 				return nil, exhausted
 			}
-			if key := emailBucketKey(req.Any()); key != "" && !byEmail.allow(key) {
+			if key := accountClientBucketKey(req.Any(), ip); key != "" && !byAccountClient.allow(key) {
 				return nil, exhausted
 			}
 			return next(ctx, req)
 		}
 	}
+}
+
+// accountClientBucketKey pairs the normalized login email with the canonical client IP, or returns "" when the message carries no usable email.
+func accountClientBucketKey(msg any, ip string) string {
+	email := emailBucketKey(msg)
+	if email == "" {
+		return ""
+	}
+	return email + "|ip:" + ip
 }
 
 // emailBucketKey ignores missing or oversized emails so invalid input cannot evict legitimate per-email counters; the per-IP limit still applies.
