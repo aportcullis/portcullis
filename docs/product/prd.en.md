@@ -1,10 +1,9 @@
 # Portcullis — Product Requirements Document
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
-> **Shared revision:** v0.12 / 2026-10-04. Update requirements and section numbers in both languages in the same change.
+> **Translations:** Update requirements and section numbers in both languages in the same change.
 > **Scope amendment (ADR-0025):** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
 > **Deployment sequencing (ADR-0035):** M2 is MySQL parity → Kubernetes (Helm/Kustomize) and CNPG → SQL review/EXPLAIN.
-> **Status:** Draft v0.12 (2026-10-04; 2026-07-04: resolved §12.2 decisions through ADR-0001–0012, quantified limits and contracts, added the §4.9 temporary-access threat model).
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.

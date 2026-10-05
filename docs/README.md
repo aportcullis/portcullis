@@ -28,7 +28,9 @@ Product requirements are maintained in Korean and English; other documents adopt
 - **One contract, two languages.**
   - Use `<name>.ko.md` and `<name>.en.md` for translated pairs in the same subject folder.
   - Preserve section numbers, requirement scope, states, identifiers, limits, and source links across translations.
-  - Update both files and their shared revision in the same change; a translation is a complete document, not a summary.
+  - Update both files in the same change; a translation is a complete document, not a summary.
+- **Versions come only from git tags.**
+  - Documents carry no revision or status numbers; git history records their changes.
 - **Resolve differences explicitly.**
   - The existing Korean PRD is the baseline for this initial translation.
   - If wording differs in meaning, resolve the requirement in Korean and update English before implementation; use an ADR for technical decisions.
