@@ -80,6 +80,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0052](0052-pre-session-origin-and-setup-boundary.md) | Pre-session Host, origin and setup-token boundary | Accepted |
 | [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
 | [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
+| [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Accepted |
 
 ## Template
 ```markdown

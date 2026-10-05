@@ -87,6 +87,7 @@ Click a request title to see Draft → Review → Ready → Execution below the 
 
 Execution summaries show the recorded server duration and affected rows in request details and results. The interval includes DB connection, SQL execution, result collection, and snapshot storage.
 
+Search and sorting have labeled controls, with copy and CSV actions grouped separately. Text view wraps long values without clipping them.
 Column sorting applies across the cached snapshot and preserves numeric precision. Table/Text and clipboard copy use the current filtered page; CSV exports the complete snapshot in original query order. The walkthrough ends at the prepared download link.
 
 ![Paged results with exact large integers, decimal revenue, and visible-page copy](docs/media/results.png)

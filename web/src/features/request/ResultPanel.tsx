@@ -137,29 +137,35 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       <Show when={result()}>{snapshot => <>
         <Show when={snapshot().truncated}><p role="status">Result truncated by the row or byte limit. CSV contains only this cached snapshot.</p></Show>
         <p class="text-xs text-muted-foreground">Results expire after 15 minutes and may be evicted earlier.</p>
-        <form class="content-surface flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); setFilter(filterDraft()); setPage(1); reload(); }}>
-          <input aria-label="Filter results" class="rounded-md border px-3 text-sm" value={filterDraft()} maxLength={1000} onInput={event => setFilterDraft(event.currentTarget.value)} placeholder="Contains text in any column" />
-          <Button variant="outline" type="submit">Filter results</Button>
+        <div class="content-surface result-controls">
+        <form class="result-filter" onSubmit={event => { event.preventDefault(); setFilter(filterDraft()); setPage(1); reload(); }}>
+          <label class="result-search-label">Search results
+          <input aria-label="Filter results" class="result-control" value={filterDraft()} maxLength={1000} onInput={event => setFilterDraft(event.currentTarget.value)} placeholder="Search all columns" />
+          </label>
+          <Button type="submit">Filter results</Button>
+        </form>
+        <div role="group" aria-label="Result actions" class="result-actions">
           <Button type="button" variant="outline" disabled={copying()} onClick={() => void copyVisibleRows()}>Copy visible rows</Button>
           <Button type="button" variant="outline" disabled={exporting()} onClick={() => void exportCSV()}>Export CSV</Button>
-          <Show when={downloadURL()}>{url => <a class="inline-flex items-center rounded-md border px-4 text-sm" href={url()} download="query-result.csv">Download CSV</a>}</Show>
+          <Show when={downloadURL()}>{url => <a class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground" href={url()} download="query-result.csv">Download CSV</a>}</Show>
           <Show when={exportError()}><p role="alert" class="basis-full text-sm text-destructive">CSV export failed: {exportError()}</p></Show>
-        </form>
-        <div class="flex flex-wrap items-center gap-3">
-          <label class="flex items-center gap-2 text-sm">Sort by
-            <select aria-label="Sort by" class="h-10 rounded-md border bg-background px-3" value={sortColumn() === undefined ? "" : String(sortColumn())} onChange={event => applySorting(event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value), false)}>
+        </div>
+        <div role="group" aria-label="Result sorting" class="result-sorting">
+          <label class="result-sort-label">Sort by
+            <select aria-label="Sort by" class="result-control" value={sortColumn() === undefined ? "" : String(sortColumn())} onChange={event => applySorting(event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value), false)}>
               <option value="">Original query order</option>
               <For each={snapshot().columns}>{(column, index) => <option value={String(index())}>{column.name} (column {index() + 1})</option>}</For>
             </select>
           </label>
           <Show when={sortColumn() !== undefined}>
-            <label class="flex items-center gap-2 text-sm">Direction
-              <select aria-label="Sort direction" class="h-10 rounded-md border bg-background px-3" value={descending() ? "descending" : "ascending"} onChange={event => applySorting(sortColumn(), event.currentTarget.value === "descending")}>
+            <label class="result-sort-label">Direction
+              <select aria-label="Sort direction" class="result-control" value={descending() ? "descending" : "ascending"} onChange={event => applySorting(sortColumn(), event.currentTarget.value === "descending")}>
                 <option value="ascending">Ascending</option><option value="descending">Descending</option>
               </select>
             </label>
             <Button type="button" variant="outline" onClick={() => applySorting(undefined, false)}>Restore query order</Button>
           </Show>
+        </div>
         </div>
         <p role="status" class="text-sm text-muted-foreground">
           <Show when={sortColumn() !== undefined} fallback="Original query order.">
@@ -176,7 +182,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
         </div>
         <Show when={copyMessage()}><p role="status" class="text-sm text-muted-foreground">{copyMessage()}</p></Show>
         <Show when={refreshing()}><p role="status" aria-busy="true" class="text-sm text-muted-foreground">Updating results… The rows below are from the previous view.</p></Show>
-        <Show when={view() === "table"} fallback={<pre aria-label="Text results" class="max-h-[36rem] overflow-auto rounded-lg border bg-card p-4 font-mono text-sm">{resultText(snapshot())}</pre>}>
+        <Show when={view() === "table"} fallback={<pre aria-label="Text results" class="result-text max-h-[36rem] overflow-auto rounded-lg border bg-card p-4 font-mono text-sm leading-6">{resultText(snapshot())}</pre>}>
         <div class="overflow-x-auto"><Table>
           <TableHeader><TableRow><For each={snapshot().columns}>{(column, index) => <TableHead aria-sort={sortColumn() === index() ? descending() ? "descending" : "ascending" : undefined}>
             <button class="text-left" title={sortColumn() !== index() ? "Sort ascending" : descending() ? "Restore query order" : "Sort descending"} onClick={() => cycleColumnSorting(index())}>
@@ -185,16 +191,19 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
             </button>
           </TableHead>}</For></TableRow></TableHeader>
           <TableBody><For each={table.getRowModel().rows}>{row => <TableRow><For each={row.getVisibleCells()}>{cell => <TableCell>
-            <button class="max-w-64 truncate text-left font-mono text-sm" onClick={() => setFullCell(String(cell.getValue()))} title="View full cell">{String(cell.getValue())}</button>
+            <button class="max-w-64 truncate rounded px-1 py-1 text-left font-mono text-sm hover:bg-muted focus-visible:bg-muted" onClick={() => setFullCell(String(cell.getValue()))} title="View full cell">{String(cell.getValue())}</button>
           </TableCell>}</For></TableRow>}</For></TableBody>
         </Table></div>
         </Show>
         <Show when={fullCell() !== undefined}><div><Button variant="ghost" onClick={() => setFullCell()}>Close cell</Button><pre aria-label="Full cell" class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded border p-3">{fullCell()}</pre></div></Show>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="text-sm">{snapshot().totalCount.toString()} rows · Page {snapshot().page} of {Math.max(snapshot().totalPages, 1)}</span>
-          <select aria-label="Rows per page" value={pageSize()} onChange={event => { setPageSize(Number(event.currentTarget.value)); setPage(1); reload(); }}><For each={[10, 20, 50, 100]}>{size => <option value={size}>{size}</option>}</For></select>
+          <label class="flex items-center gap-2 text-sm">Rows per page
+          <select class="result-control w-auto" aria-label="Rows per page" value={pageSize()} onChange={event => { setPageSize(Number(event.currentTarget.value)); setPage(1); reload(); }}><For each={[10, 20, 50, 100]}>{size => <option value={size}>{size}</option>}</For></select></label>
+          <div class="flex flex-wrap gap-2">
           <Button variant="outline" disabled={refreshing() || page() <= 1} onClick={() => { setPage(page() - 1); reload(); }}>Previous page</Button>
           <Button variant="outline" disabled={refreshing() || page() >= snapshot().totalPages} onClick={() => { setPage(page() + 1); reload(); }}>Next page</Button>
+          </div>
         </div>
       </>}</Show>
   </section>;

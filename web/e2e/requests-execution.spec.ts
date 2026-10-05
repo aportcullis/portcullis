@@ -28,7 +28,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await page.getByRole("button", { name: "New request" }).click();
   await page.getByLabel("Connection").selectOption({ label: "ExecutionTarget" });
   await page.getByLabel("Title", { exact: true }).fill("Query review");
-  await page.getByLabel("SQL", { exact: true }).fill("SELECT (9007199254740993::bigint + g) AS exact_value, '=formula'::text AS note, CASE WHEN g % 2 = 0 THEN '2026-10-03T00:00:00Z'::timestamptz ELSE '2026-10-03T00:00:00.5Z'::timestamptz END AS recorded_at FROM generate_series(1,25) AS g ORDER BY g ASC");
+  await page.getByLabel("SQL", { exact: true }).fill("SELECT (9007199254740993::bigint + g) AS exact_value, ('=formula' || repeat('long-value-', 100))::text AS note, CASE WHEN g % 2 = 0 THEN '2026-10-03T00:00:00Z'::timestamptz ELSE '2026-10-03T00:00:00.5Z'::timestamptz END AS recorded_at FROM generate_series(1,25) AS g ORDER BY g ASC");
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   const row = page.getByRole("region", { name: "Request details" });
   await expect(row.getByText("Approved", { exact: true })).toBeVisible();
@@ -79,6 +79,25 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await dialog.getByRole("button", { name: "Text", exact: true }).click();
   await expect(dialog.getByLabel("Text results")).toContainText("9007199254740994\t=formula");
   await expect(dialog.getByLabel("Text results")).not.toContainText("9007199254741018");
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(dark => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+    for (const width of [320, 480, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      const filterInput = dialog.getByLabel("Filter results", { exact: true });
+      const inputBounds = await filterInput.boundingBox();
+      const buttonBounds = await dialog.getByRole("button", { name: "Filter results", exact: true }).boundingBox();
+      if (inputBounds === null || buttonBounds === null) throw new Error("Result filter controls have no layout box");
+      expect(inputBounds.height).toBe(buttonBounds.height);
+      expect(inputBounds.width).toBeGreaterThanOrEqual(180);
+      await expect.poll(() => dialog.getByLabel("Text results").evaluate(element => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
+      await expect.poll(() => dialog.getByLabel("Text results").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await expect(dialog.getByLabel("Text results")).toContainText("long-value-".repeat(100));
+      if (width === 320) await test.info().attach(`Narrow Text results ${theme}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    }
+  }
+  await page.evaluate(() => document.documentElement.classList.remove("dark"));
+  await page.setViewportSize({ width: 1280, height: 900 });
   await dialog.getByRole("button", { name: "Copy visible rows", exact: true }).click();
   await expect(dialog.getByText("Copied 1 visible rows with column headers.")).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());

@@ -521,6 +521,8 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md), [ADR-0021](../adr/0021-governed-query-execution.md), [ADR-0022](../adr/0022-page-first-workflows.md), [ADR-0023](../adr/0023-local-sql-formatting.md)과 [ADR-0033](../adr/0033-type-aware-result-sorting.md), wire 타입·캐시 처리·라우팅·정렬 구현은 기술 계약에서 정의한다.
 Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/0037-page-hierarchy-and-responsive-ux.md), [ADR-0038](../adr/0038-inline-request-workflow.md), [ADR-0039](../adr/0039-result-views-and-clipboard.md)와 [ADR-0040](../adr/0040-recorded-execution-time.md), UI 변경·반응형 탐색·인라인 진행·clipboard·실행 시간 표시는 기존 권한 경계를 유지한다.
 
+Per [ADR-0055](../adr/0055-result-exploration-layout.md), 결과 컨트롤은 좁은 화면에서도 정렬과 접근성을 유지하고 Text 보기는 내용을 생략하지 않고 긴 값을 줄바꿈한다.
+
 ### 7.2 Connection 추가 플로우
 - 타입별 폼을 제공하고 사용하지 않는 필드는 숨김.
   - PostgreSQL: host/port/database/user/password/TLS mode.

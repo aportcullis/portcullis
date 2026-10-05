@@ -24,7 +24,8 @@ Choose a column and direction to sort the complete cached snapshot using its dec
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](results.gif)
 
-Switch between Table and Text without rerunning SQL. Copy visible rows includes headers and only the current sorted/filtered page, escaping formula-like text for spreadsheet paste. Clipboard denial stays inline and leaves Text/CSV available.
+Use the labeled search field to filter text across all columns, then select a column and direction in the sorting controls. Copy and CSV actions are grouped separately from search, and controls stack on narrow screens.
+Switch between Table and Text without rerunning SQL. Text view wraps long values without omitting content. Copy visible rows includes headers and only the current sorted/filtered page, escaping formula-like text for spreadsheet paste. Clipboard denial stays inline and leaves Text/CSV available.
 
 ![Tab-separated Text view of the same bounded result page](results-text.png)
 

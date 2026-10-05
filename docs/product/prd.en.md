@@ -545,6 +545,8 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md), [ADR-0021](../adr/0021-governed-query-execution.md), [ADR-0022](../adr/0022-page-first-workflows.md), [ADR-0023](../adr/0023-local-sql-formatting.md) and [ADR-0033](../adr/0033-type-aware-result-sorting.md), wire types, cache processing, routing and sorting implementation are technical contracts.
 Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/0037-page-hierarchy-and-responsive-ux.md), [ADR-0038](../adr/0038-inline-request-workflow.md), [ADR-0039](../adr/0039-result-views-and-clipboard.md) and [ADR-0040](../adr/0040-recorded-execution-time.md), customization, responsive navigation, inline progress, clipboard and timing behavior preserve the existing authorization boundary.
 
+Per [ADR-0055](../adr/0055-result-exploration-layout.md), result controls stay aligned and reachable on narrow screens; Text view wraps long values without dropping content.
+
 ### 7.2 Add connection
 
 - Show type-specific fields and hide irrelevant ones.
