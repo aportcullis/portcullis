@@ -1,6 +1,6 @@
 # ADR-0041: Default profile identicons
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0056](0056-account-menu-and-csv-dialog.md)
 - **Date:** 2026-10-03
 
 ## Context

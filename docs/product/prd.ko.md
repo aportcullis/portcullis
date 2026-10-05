@@ -523,6 +523,9 @@ Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/00
 
 Per [ADR-0055](../adr/0055-result-exploration-layout.md), 결과 컨트롤은 좁은 화면에서도 정렬과 접근성을 유지하고 Text 보기는 내용을 생략하지 않고 긴 값을 줄바꿈한다.
 
+- M1 계정 컨트롤은 프로필 이미지 메뉴에서 사용자 정보·역할·지원되는 프로필 설정·로그아웃을 제공한다. CSV 내보내기는 툴바에 다운로드 버튼을 추가하는 대신 범위·스프레드시트 안전성·진행 상태·취소·오류를 다루는 확인 모달을 사용한다(ADR-0056).
+- M3는 수동으로 넘기는 미검토 요청 카드, 권한이 있는 대기 요청 수 배지와 요청자 상태 알림을 제공한다. M3 프로필 설정은 사용 가능한 Google 사진 또는 고정된 기본 생성 이미지를 사용하고 사용자 지정 이미지를 지원하며 기존 계정 권한을 유지한다.
+
 ### 7.2 Connection 추가 플로우
 - 타입별 폼을 제공하고 사용하지 않는 필드는 숨김.
   - PostgreSQL: host/port/database/user/password/TLS mode.
@@ -602,8 +605,8 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   서버는 사용자가 0명일 때만 부팅 중 같은 Bootstrap 유스케이스를 실행하고(락 하 재검사로 대화형과 race-safe), 사용자가 있으면 로그만 남기고 건너뛴다.
   **setup token (ADR-0052):** 대화형 `/bootstrap`은 사용자가 없는 동안 기동마다 발급되는 일회용 setup token을 요구한다. hash만 저장하고, 로그 또는 소유자 전용 `PORTCULLIS_SETUP_TOKEN_FILE`로 한 번만 전달하며, 24시간 후 만료되고 재시작 시 교체되며, admin 생성과 원자적으로 소비한다. 누락·오류·만료·교체·사용된 token은 구분 없이 거부한다.
   부분 설정·약한 비밀번호는 **기동 거부**(master key와 동일 fail-fast).
-  표시 이름(display name)은 이제 **필수**다 — 승인·요청 화면이 사람을 표시 이름으로 렌더링하므로 모든 계정이 하나를 갖는다(헤더는 표시 이름을 보이고 없으면 email fallback).
-  로그인한 사용자 이름 옆에 opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하며, 외부 이미지 요청 없이 로컬에서 생성한다(ADR-0041).
+  표시 이름(display name)은 모든 계정에 **필수**다. 승인·요청 화면과 계정 메뉴는 표시 이름을 사용하고, 이전 계정에 이름이 없으면 email로 표시한다.
+  opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하고 메뉴에서 계정 정보를 제공하며, 기본 이미지는 외부 요청 없이 로컬에서 생성한다(ADR-0056).
 - 공개 회원가입은 제공하지 않음. admin이 사용자를 생성하면 24시간 유효한 일회용 password setup link를 발급하며 MVP에서는 이메일 발송 없이 한 번만 표시.
   - token은 digest만 저장하고 사용자당 열린 link는 하나이며 원자적으로 소비한다. 완료 시 해당 사용자의 session을 revoke하고 이후 일반 로그인을 요구한다. 재사용·만료·revoke된 link는 하나의 일반 거부로 응답한다. link는 password가 없는 active 사용자에게만 발급하며 admin의 password 재설정은 후속 작업이다(ADR-0053).
   - admin은 사용자 목록·생성·비활성화/재활성화·사용자당 role 하나 지정과, seed된 catalog 기반 custom role 생성·수정·soft delete를 수행한다. system role은 읽기 전용이며 사용 중인 role은 삭제할 수 없다(ADR-0053).

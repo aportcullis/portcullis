@@ -8,12 +8,20 @@ User and custom-role administration with one-time password setup links belongs t
 Administrators can create users, assign roles, disable/enable accounts and manage custom permission bundles without escalating their own authority.
 Revalidate active approver eligibility before execution, serialize permission removal with approval/execution checks, revoke affected sessions and audit every administration mutation.
 
+## UI usability
+
+Result exploration provides readable search, sorting and paging controls and wraps complete Text values on narrow screens.
+The account header shows a profile-image menu button; names, email, role, profile actions and sign-out appear inside its menu rather than filling the header.
+CSV export opens a dialog explaining snapshot scope, query order and spreadsheet safety before download, with progress, errors and cancellation inside the dialog instead of adding another toolbar action.
+These are small improvements to existing M1 workflows, separate from M3 personalization and review notifications.
+
 ## Acceptance
 
 - The PostgreSQL governance journey works from bootstrap through distinct review, one execution, exact results/CSV and audit.
 - Users and Roles RPCs and permission-aware SPA pages support administration and one-time password setup.
 - Cross-organization access, privilege escalation, self-administration and last-administrator removal are refused, including concurrent changes.
 - Disabled or demoted approvers cannot supply a still-valid quorum; concurrent role-permission removal cannot bypass this rule.
+- Account menus and CSV export dialogs support keyboard interaction, focus return and 320 px layouts without changing session, CSRF or result ownership checks.
 - Release admission binds a tag to its release branch and publication promotes the verified image digest.
 - Build version appears only in startup logs; Health responses do not expose it.
 - Review findings, documentation and CHANGELOG are resolved, and both `make verify` and `make supply-chain` pass before release readiness.

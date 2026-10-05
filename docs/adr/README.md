@@ -66,7 +66,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0038](0038-inline-request-workflow.md) | Inline request workflow from authorized summary facts | Accepted |
 | [0039](0039-result-views-and-clipboard.md) | Bounded result views, clipboard export and loading | Accepted |
 | [0040](0040-recorded-execution-time.md) | Recorded execution time in request and result views | Accepted |
-| [0041](0041-default-profile-identicons.md) | Stable local default profile images | Accepted |
+| [0041](0041-default-profile-identicons.md) | Stable local default profile images | Superseded by ADR-0056 |
 | [0042](0042-private-network-deployment.md) | Private-network deployment through WARP or Tailscale | Accepted |
 | [0043](0043-load-package-imports.md) | Portable package-root imports for TypeScript k6 tests | Accepted |
 | [0044](0044-postgresql-string-interpretation.md) | Pin execution string interpretation and reject mismatched server reports | Accepted |
@@ -81,6 +81,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
 | [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
 | [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Accepted |
+| [0056](0056-account-menu-and-csv-dialog.md) | Avatar account menu and bounded CSV export dialog | Accepted |
 
 ## Template
 ```markdown

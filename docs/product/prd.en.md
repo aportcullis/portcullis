@@ -547,6 +547,9 @@ Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/00
 
 Per [ADR-0055](../adr/0055-result-exploration-layout.md), result controls stay aligned and reachable on narrow screens; Text view wraps long values without dropping content.
 
+- M1 account controls use a profile-image menu for identity, role, supported profile actions and sign-out. CSV export uses a confirmation dialog with scope, spreadsheet safety, progress, cancellation and errors rather than adding a prepared-download toolbar action (ADR-0056).
+- M3 adds manually navigated pending-review cards, an authorized pending-review badge and requester status notifications. M3 profile settings use a Google account photo when available or a stable generated fallback, support user-selected images and preserve current account permissions.
+
 ### 7.2 Add connection
 
 - Show type-specific fields and hide irrelevant ones.
@@ -632,8 +635,8 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   - Startup invokes the same use case only with zero users and rechecks under lock against interactive races; otherwise log and skip.
   - Interactive `/bootstrap` requires a one-time setup token issued at each start while no user exists, ADR-0052. Store only its hash; deliver it once through the log or an owner-only `PORTCULLIS_SETUP_TOKEN_FILE`; expire it after 24 hours; replace it on restart; consume it atomically with admin creation. Refuse missing, wrong, expired, rotated or used tokens uniformly.
   - Incomplete configuration or weak passwords refuse startup.
-  - Display name is required for every account; headers use it with email fallback.
-  - Show a stable, locally generated geometric profile image beside the signed-in user's name, derived from the opaque user ID without external image requests (ADR-0041).
+  - Display name is required for every account; the account menu shows it with email fallback.
+  - Show a stable, locally generated geometric profile image derived from the opaque user ID; reveal account identity through its menu without external fallback-image requests (ADR-0056).
 - No public signup; admin-created users get a 24-hour one-time password-setup link, displayed once without MVP email delivery.
   - Store only the token digest, keep one open link per user, consume it atomically, revoke the user's sessions on completion and require a normal login afterwards; replayed, expired or revoked links get one generic refusal. Links are issued only to active users without a password; admin-initiated password reset is deferred (ADR-0053).
   - Admins list, create, disable/enable and assign one role per user, and create, edit and soft-delete custom roles from the seeded catalog; system roles are read-only and an in-use role cannot be deleted (ADR-0053).
