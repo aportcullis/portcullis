@@ -526,6 +526,8 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 - 결과 저장 기본 한도는 조직별 512 MiB·사용자별 64 MiB다. 새 스냅샷을 저장할 수 없어도 기존 유효 결과를 보존하고 만료·축출을 표시한다. 임시 처리 동시성은 기본 2이며 포화 시 `429 Retry-After`를 반환한다.
 - 무제한·재실행 기반 내보내기, 메모리에 상주하는 결과 캐시와 모든 spreadsheet 재저장의 안전성 보장은 제공하지 않는다.
 
+- 기본은 SQL이 반환한 결과 순서다. 표의 열 제목으로 오름차순·내림차순·원래 순서를 전환하고, 선택한 열에만 화살표를 표시한다. 열 사이에 희미한 세로 구분선을 두고 별도 정렬 선택 영역은 표시하지 않는다. 표시 순서를 바꿀 때 SQL을 다시 실행하지 않는다(ADR-0058).
+
 Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md), [ADR-0021](../adr/0021-governed-query-execution.md), [ADR-0022](../adr/0022-page-first-workflows.md), [ADR-0023](../adr/0023-local-sql-formatting.md)과 [ADR-0033](../adr/0033-type-aware-result-sorting.md), wire 타입·캐시 처리·라우팅·정렬 구현은 기술 계약에서 정의한다.
 Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/0037-page-hierarchy-and-responsive-ux.md), [ADR-0038](../adr/0038-inline-request-workflow.md), [ADR-0039](../adr/0039-result-views-and-clipboard.md)와 [ADR-0040](../adr/0040-recorded-execution-time.md), UI 변경·반응형 탐색·인라인 진행·clipboard·실행 시간 표시는 기존 권한 경계를 유지한다.
 

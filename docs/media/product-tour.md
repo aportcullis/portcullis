@@ -18,13 +18,14 @@ Click a request title to expand its current workflow beneath the list row. The g
 
 The execution summary labels recorded server time and affected rows. This interval includes DB connection/execution, result collection and snapshot storage; approval waiting, browser rendering and later paging/sorting are excluded. The original requester also sees the durable summary in completed request details.
 
-Choose a column and direction to sort the complete cached snapshot using its declared data type. Numeric precision and timezone-aware timestamp ordering are preserved; equal values keep their original order and NULL values stay last. Restore the original query order at any time. Sorting and filtering do not execute SQL again.
+Click a Table column header to cycle through ascending, descending and original query order across the complete cached snapshot. Only the active column shows a sort arrow, and subtle dashed lines separate result columns.
+Numeric precision and timezone-aware timestamp ordering are preserved; equal values keep their original order and NULL values stay last. Restore the original query order at any time. Sorting and filtering do not execute SQL again.
 
 ![Paged typed results with exact large integers, decimal revenue and visible-page copy](results.png)
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](results.gif)
 
-Use the labeled search field to filter text across all columns, then select a column and direction in the sorting controls. Copy and CSV actions are grouped separately from search, and controls stack on narrow screens.
+Use the labeled search field to filter text across all columns. Sorting stays in the Table headers; no separate ordering selectors appear. Copy and CSV actions are grouped separately from search, and controls stack on narrow screens.
 Switch between Table and Text without rerunning SQL. Text view wraps long values without omitting content. Copy visible rows includes headers and only the current sorted/filtered page, escaping formula-like text for spreadsheet paste. Clipboard denial stays inline and leaves Text/CSV available.
 
 ![Tab-separated Text view of the same bounded result page](results-text.png)

@@ -59,9 +59,8 @@
   .result-filter { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 0.75rem; min-width: 0; }
   .result-search-label { display: flex; flex: 1 1 18rem; flex-direction: column; gap: 0.5rem; min-width: 0; font-size: 0.875rem; font-weight: 500; }
   .result-control { height: 2.5rem; min-width: 0; width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: var(--background); padding-inline: 0.75rem; font-size: 0.875rem; font-weight: 400; }
-  .result-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
-  .result-sorting { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 0.75rem; min-width: 0; }
-  .result-sort-label { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; max-width: 100%; font-size: 0.875rem; }
+  .result-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .result-table :is(th, td):not(:last-child) { border-inline-end: 1px dashed var(--border); }
   .result-text { min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 8; }
   @media (max-width: 48rem) {
     .application-header-content { align-items: flex-start; flex-direction: column; gap: 0.75rem; }

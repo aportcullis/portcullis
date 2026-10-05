@@ -58,7 +58,7 @@ These decisions establish the Core 1 foundation.
 | [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted |
 | [0031](0031-typescript-seven-native-tooling.md) | TypeScript 7 and native lint enforcement without the classic compiler API | Accepted |
 | [0032](0032-request-title-and-body.md) | Access request titles and explanatory bodies | Accepted |
-| [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Accepted |
+| [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Superseded by ADR-0058 |
 | [0034](0034-apache-two-project-license.md) | Apache License 2.0 for Portcullis | Accepted |
 | [0035](0035-kubernetes-cnpg-after-mysql.md) | Kubernetes/CNPG immediately after MySQL parity | Accepted |
 | [0036](0036-ui-customization-boundaries.md) | UI design values and layout independent of governance | Accepted |
@@ -80,9 +80,10 @@ These decisions establish the Core 1 foundation.
 | [0052](0052-pre-session-origin-and-setup-boundary.md) | Pre-session Host, origin and setup-token boundary | Accepted |
 | [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
 | [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
-| [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Accepted |
+| [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Superseded by ADR-0058 |
 | [0056](0056-account-menu-and-csv-dialog.md) | Avatar account menu and bounded CSV export dialog | Accepted |
 | [0057](0057-keycloak-oidc-in-mvp.md) | Optional Keycloak OIDC sign-in in M3 with local authorization | Accepted |
+| [0058](0058-header-only-result-sorting.md) | Optional column-header sorting with SQL result order as default | Accepted |
 
 ## Template
 ```markdown

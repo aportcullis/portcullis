@@ -9,7 +9,8 @@ Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in 
 - Historical `make verify` evidence includes real-browser native CSV saving/readback in the recorded Docker-hosted Chromium environment.
 - User/role domain, application services and PostgreSQL administration persistence are present.
 - Password setup token issuance and persistence are implemented.
-- Result controls have aligned search, copy/export, sorting and paging groups; Text values wrap without dropping content at tested viewport widths in both themes.
+- Result controls have aligned search, copy/export and paging controls; Text values wrap without dropping content at tested viewport widths in both themes.
+- Result tables use subtle dashed column separators and show a sorting arrow only on the active column. Table headers cycle sorting without a separate ordering selector.
 
 Per [ADR-0053](../../adr/0053-user-and-role-administration.md), user and role administration is M1 scope.
 Per [administration use cases](../../../internal/app/administration/users.go) and [administration persistence](../../../internal/infra/postgres/administration_store.go), backend components exist without establishing a complete administration UI.

@@ -1,6 +1,6 @@
 # ADR-0055: Result exploration controls and readable text
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0058](0058-header-only-result-sorting.md); processing and other presentation contracts remain binding through that decision.
 - **Date:** 2026-10-05
 
 ## Context

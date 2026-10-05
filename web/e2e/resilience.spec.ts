@@ -330,10 +330,10 @@ test.describe("application resilience", () => {
 
     // Sort: a refused sort leaves the header announcing the order of the rows still shown.
     restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
-    await results.getByLabel("Sort by").selectOption({ index: 1 });
+    await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
     await expect(results.getByText("simulated failure")).toBeVisible();
     await expect(markerHeader).not.toHaveAttribute("aria-sort", /.+/);
-    await expect(results.getByLabel("Sort by")).toHaveValue("");
+    await expect(results.getByText("Original query order.", { exact: true })).toBeVisible();
     await restore();
 
     // Filter: a refused filter keeps the applied (empty) filter, so the next page still pages the whole snapshot.
@@ -370,7 +370,7 @@ test.describe("application resilience", () => {
     // The export covers the whole snapshot, so a view change while it streams must neither drop it nor leave its button disabled.
     const viewChanges: Array<{ name: string; change: () => Promise<void> }> = [
       { name: "page", change: () => results.getByRole("button", { name: "Next page", exact: true }).click() },
-      { name: "sort", change: async () => { await results.getByLabel("Sort by").selectOption({ index: 1 }); } },
+      { name: "sort", change: async () => { await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click(); } },
       { name: "filter", change: async () => { await results.getByLabel("Filter results").fill("10"); await results.getByRole("button", { name: "Filter results", exact: true }).click(); } },
     ];
     for (const viewChange of viewChanges) {
@@ -391,7 +391,9 @@ test.describe("application resilience", () => {
     const heldFailure = new Promise<void>((resolve) => { releaseFailure = resolve; });
     await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { await heldFailure; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "unavailable", message: "simulated failure" }) }); });
     await exportButton.click();
-    await results.getByLabel("Sort by").selectOption({ index: 0 });
+    await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
+    await expect(results.getByRole("columnheader", { name: /marker/ })).toHaveAttribute("aria-sort", "descending");
+    await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
     releaseFailure();
     await expect(results.getByText(/^CSV export failed:/)).toBeVisible();
     await expect(exportButton).toBeEnabled();

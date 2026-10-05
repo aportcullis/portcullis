@@ -1,6 +1,6 @@
 import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { For, Index, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import { createSolidTable, getCoreRowModel } from "@tanstack/solid-table";
 
 import type { QueryExecution, QueryResultPage, QueryResultRow } from "@/gen/portcullis/v1/query_executions_pb";
@@ -150,29 +150,14 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
           <Show when={downloadURL()}>{url => <a class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground" href={url()} download="query-result.csv">Download CSV</a>}</Show>
           <Show when={exportError()}><p role="alert" class="basis-full text-sm text-destructive">CSV export failed: {exportError()}</p></Show>
         </div>
-        <div role="group" aria-label="Result sorting" class="result-sorting">
-          <label class="result-sort-label">Sort by
-            <select aria-label="Sort by" class="result-control" value={sortColumn() === undefined ? "" : String(sortColumn())} onChange={event => applySorting(event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value), false)}>
-              <option value="">Original query order</option>
-              <For each={snapshot().columns}>{(column, index) => <option value={String(index())}>{column.name} (column {index() + 1})</option>}</For>
-            </select>
-          </label>
-          <Show when={sortColumn() !== undefined}>
-            <label class="result-sort-label">Direction
-              <select aria-label="Sort direction" class="result-control" value={descending() ? "descending" : "ascending"} onChange={event => applySorting(sortColumn(), event.currentTarget.value === "descending")}>
-                <option value="ascending">Ascending</option><option value="descending">Descending</option>
-              </select>
-            </label>
-            <Button type="button" variant="outline" onClick={() => applySorting(undefined, false)}>Restore query order</Button>
-          </Show>
-        </div>
+
         </div>
         <p role="status" class="text-sm text-muted-foreground">
           <Show when={sortColumn() !== undefined} fallback="Original query order.">
             Sorted by {snapshot().columns[sortColumn() ?? 0]?.name} {descending() ? "descending" : "ascending"} across the cached snapshot. NULL values last.
           </Show>
         </p>
-        <p class="text-xs text-muted-foreground">Sorting uses each column's data type across all cached rows. CSV exports the complete snapshot in original query order, including rows hidden by filters.</p>
+        <p id="result-sorting-help" class="sr-only">Column buttons cycle ascending, descending and original query order. Sorting changes only the cached result view; CSV uses original query order.</p>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div role="group" aria-label="Result view" class="inline-flex gap-1 rounded-lg border bg-card p-1">
             <Button type="button" size="sm" variant={view() === "table" ? "default" : "ghost"} aria-pressed={view() === "table"} onClick={() => setView("table")}>Table</Button>
@@ -183,13 +168,13 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
         <Show when={copyMessage()}><p role="status" class="text-sm text-muted-foreground">{copyMessage()}</p></Show>
         <Show when={refreshing()}><p role="status" aria-busy="true" class="text-sm text-muted-foreground">Updating results… The rows below are from the previous view.</p></Show>
         <Show when={view() === "table"} fallback={<pre aria-label="Text results" class="result-text max-h-[36rem] overflow-auto rounded-lg border bg-card p-4 font-mono text-sm leading-6">{resultText(snapshot())}</pre>}>
-        <div class="overflow-x-auto"><Table>
-          <TableHeader><TableRow><For each={snapshot().columns}>{(column, index) => <TableHead aria-sort={sortColumn() === index() ? descending() ? "descending" : "ascending" : undefined}>
-            <button class="text-left" title={sortColumn() !== index() ? "Sort ascending" : descending() ? "Restore query order" : "Sort descending"} onClick={() => cycleColumnSorting(index())}>
-              {column.name} {sortColumn() === index() ? descending() ? "↓" : "↑" : "↕"}
-              <span class="block text-xs text-muted-foreground">{LogicalType[column.logicalType]} · {column.dbTypeName}</span>
+        <div class="overflow-x-auto"><Table class="result-table" aria-describedby="result-sorting-help">
+          <TableHeader><TableRow><Index each={snapshot().columns}>{(column, index) => <TableHead aria-sort={sortColumn() === index ? descending() ? "descending" : "ascending" : undefined}>
+            <button type="button" class="w-full rounded px-1 py-1 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" title={sortColumn() !== index ? "Sort ascending" : descending() ? "Restore query order" : "Sort descending"} onClick={() => cycleColumnSorting(index)}>
+              {column().name}<Show when={sortColumn() === index}><span aria-hidden="true" class="ml-1">{descending() ? "↓" : "↑"}</span></Show>
+              <span class="block text-xs text-muted-foreground">{LogicalType[column().logicalType]} · {column().dbTypeName}</span>
             </button>
-          </TableHead>}</For></TableRow></TableHeader>
+          </TableHead>}</Index></TableRow></TableHeader>
           <TableBody><For each={table.getRowModel().rows}>{row => <TableRow><For each={row.getVisibleCells()}>{cell => <TableCell>
             <button class="max-w-64 truncate rounded px-1 py-1 text-left font-mono text-sm hover:bg-muted focus-visible:bg-muted" onClick={() => setFullCell(String(cell.getValue()))} title="View full cell">{String(cell.getValue())}</button>
           </TableCell>}</For></TableRow>}</For></TableBody>

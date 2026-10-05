@@ -558,6 +558,8 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 - Default result storage is 512 MiB per organization and 64 MiB per user; preserve live results when a new snapshot cannot fit, show expiry/eviction, and bound temporary processing with default concurrency 2 and `429 Retry-After` on saturation.
 - No unlimited/re-execution export, resident in-process result cache or claim of universal spreadsheet re-save safety.
 
+- Preserve SQL result order by default. Table headers cycle ascending, descending and original order; only the active column shows an arrow. Use subtle vertical column separators without separate ordering selectors, and never rerun SQL for display sorting (ADR-0058).
+
 Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md) and [ADR-0021](../adr/0021-governed-query-execution.md), wire types, cache processing and execution are technical contracts.
 Per [ADR-0022](../adr/0022-page-first-workflows.md), [ADR-0023](../adr/0023-local-sql-formatting.md) and [ADR-0033](../adr/0033-type-aware-result-sorting.md), routing, formatting and sorting implementation follow the corresponding technical contracts.
 Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/0037-page-hierarchy-and-responsive-ux.md) and [ADR-0038](../adr/0038-inline-request-workflow.md), customization, responsive navigation and inline progress preserve existing authorization.
