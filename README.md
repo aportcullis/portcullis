@@ -11,23 +11,23 @@ English · [한국어](README.ko.md)
 
 [Quickstart](#getting-started) · [Demo](#see-it-in-action) · [Docs](#documentation) · [Changelog](CHANGELOG.md) · [Community](#community) · [Contribute](#contributing)
 
-Portcullis brings SQL requests, approval, execution, and audit into one application. Review the exact SQL and parameters, apply connection policies, and explore an approved execution's results in your own infrastructure. One Go binary includes the web UI; PostgreSQL stores metadata.
+Portcullis manages SQL requests, approvals, execution and audit on your own infrastructure. Review the SQL and parameters before execution, then explore the results in the same application. The web UI ships inside one Go binary; PostgreSQL stores metadata.
 
-**Development alpha:** the PostgreSQL governance workflow has passing evidence; M1 user/role administration and release safeguards are still in progress. The full MVP follows later milestones. Check the [database support matrix](docs/product/database-support.md) and [validation record](docs/milestones/m1/validation.md) before adopting it.
+**Development alpha:** the PostgreSQL workflow has been tested. User and role administration and release preparation are still in progress. See [database support](docs/product/database-support.md) and [validation results](docs/milestones/m1/validation.md) for what has been verified. Later milestones complete the MVP.
 
 ## What you can do
 
-- **Govern access:** configure Read / Write / DDL permissions, reviewer quorums, and execution limits per connection.
-- **Review with context:** compose a title, body, SQL, and typed parameters; follow progress inline and review frozen submissions.
-- **Execute once:** revalidate approvals and policies, then report the outcome without automatically replaying uncertain executions.
-- **Explore results:** sort by column, filter, inspect cells, switch Table/Text views, copy visible rows, or export CSV without rerunning SQL.
+- **Set approval policies:** choose allowed SQL types, required approvals and execution limits for each connection.
+- **Request and review:** submit SQL with a description and typed parameters. Reviewers see the exact submitted content.
+- **Execute once:** check approvals and policies again before execution. SQL is never automatically retried when the outcome is uncertain.
+- **Explore results:** sort, filter, inspect cells, switch Table/Text views, copy a page or export CSV without rerunning SQL.
 
 <details>
 <summary>Security and self-hosting details</summary>
 
-Authorization is enforced on the server. Credentials and request payloads are encrypted; encrypted result snapshots expire, and audit records are append-only. Connection policies bound execution time, row count, and result size.
+The server checks every permission. Credentials, request data and cached results are encrypted. Cached results expire; audit records can only be appended. Connection policies limit execution time, row count and result size.
 
-Run with Docker Compose and the embedded web UI. Local authentication is included; Google OIDC is optional. See the [architecture](docs/ARCHITECTURE.md) and [operations quickstart](docs/operations/pg-alpha-quickstart.md) for boundaries and operating requirements.
+Run with Docker Compose and the built-in web UI. Local login is included; Google OIDC is optional. See the [architecture](docs/ARCHITECTURE.md) and [operations guide](docs/operations/pg-alpha-quickstart.md) for details.
 
 </details>
 
@@ -41,66 +41,81 @@ cd portcullis
 docker compose up --build
 ```
 
-Open [localhost:8080](http://localhost:8080), create the first administrator with the one-time setup token printed by `docker compose logs portcullis`, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and submit your first request.
-If the initial administrator email and password are configured in advance, startup creates the account and skips token issuance and the setup screen; sign in directly. See the options in [.env.example](.env.example).
+1. Open [localhost:8080](http://localhost:8080).
+2. Copy the setup token from `docker compose logs portcullis` and create the first administrator.
+3. Follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to add a connection and submit a request.
 
-For production, use the [recommended private-network architecture](docs/operations/recommended-architecture.md): keep Portcullis inside your network and connect through Cloudflare WARP or Tailscale.
+If you configure the initial administrator email and password in advance, the account is created at startup. Sign in directly; no setup token is issued. See [.env.example](.env.example) for the settings.
+
+For production, keep Portcullis on a private network and connect through Cloudflare WARP or Tailscale. See the [recommended deployment](docs/operations/recommended-architecture.md).
 
 <details>
 <summary>Local demo settings and persistence</summary>
 
-The default policy requires one distinct reviewer. For a disposable single-user demo, set **Read approvals** to `0`.
+By default, another user must approve a request. For a disposable single-user demo, set **Read approvals** to `0`.
 
-Compose preserves metadata and master keys in volumes. Sample credentials and disabled database TLS are for local demonstrations. Consult the quickstart for operating requirements, backup considerations, and execution limitations.
+Compose stores metadata and master keys in volumes. Sample credentials and disabled database TLS are for local demos only. The quickstart covers backups, operating requirements and execution limits.
 
 </details>
 
 ## See it in action
 
-Submit SQL with context → get a distinct review → execute once → explore the result. These captures show the actual application with synthetic data.
+These recordings show the actual application using sample data.
 
-### Request and review
+### Request, review and execute
 
-![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
+Submit SQL, get approval from another user and execute once.
 
-Request context and SQL have separate sections. Reviewers inspect the submitted SQL beside dedicated approval and rejection controls.
-
-![Request composition grouped into context and SQL, with inline review guidance](docs/media/request.png)
-
-![A distinct reviewer inspecting SQL beside approval and rejection controls](docs/media/review.png)
-
-The demo reviewer is fixture-provisioned; user-management screens belong to M1 scope.
-
-### Follow request progress
-
-Click a request title to see Draft → Review → Ready → Execution below the row. Unavailable history and uncertain outcomes are labeled explicitly.
-
-![A pending request expanded into its four-stage workflow](docs/media/requests.png)
-
-### Explore results
-
-![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
-
-Search and sorting have labeled controls, with copy and CSV actions grouped separately. Column sorting applies across the cached snapshot and preserves numeric precision. Table/Text and clipboard copy use the current filtered page; CSV exports the complete snapshot in original query order. The walkthrough ends at the prepared download link.
-
-![Paged results with exact large integers, decimal revenue, and visible-page copy](docs/media/results.png)
-
-Text view wraps long values without clipping them. Execution summaries show the recorded server duration and affected rows; the interval includes DB connection, SQL execution, result collection, and snapshot storage.
-
-![Tab-separated Text view of the same result page](docs/media/results-text.png)
+![SQL submission, approval by another user and one-time execution](docs/media/workflow.gif)
 
 <details>
-<summary>Connection registration and policy controls</summary>
+<summary>View request and review screenshots</summary>
 
-Register a target connection and define allowed SQL classes, approval requirements and execution limits before submitting requests.
+Add a description, SQL and typed parameters to a request.
 
-![Target connection registration and existing connections](docs/media/connections.png)
+![Request composition](docs/media/request.png)
 
-![Per-connection approval requirements and execution limits](docs/media/policy.png)
+Review the submitted SQL and approve or reject it.
+
+![Approval and rejection controls](docs/media/review.png)
+
+Expand a request to follow its progress. Missing history and uncertain outcomes are shown explicitly.
+
+![Request progress from draft to execution](docs/media/requests.png)
 
 </details>
 
-More screenshots and workflow explanations: [product tour](docs/media/product-tour.md).
+### Explore results
+
+Sort, filter, copy a page or export CSV from the cached result.
+
+![Result paging, sorting, filtering and CSV preparation](docs/media/results.gif)
+
+<details>
+<summary>View Table and Text screenshots</summary>
+
+Sorting covers the entire cached result and preserves numeric precision. Table/Text views and clipboard copy use the current filtered page. CSV includes the full result in the original query order; the recording ends at the download link.
+
+![Paged results with sorting and copy controls](docs/media/results.png)
+
+Text view wraps long values. The execution summary shows affected rows and server duration, including DB connection, execution, result collection and storage.
+
+![Text result view](docs/media/results-text.png)
+
+</details>
+
+<details>
+<summary>View connection and policy screenshots</summary>
+
+Register a database connection, then set allowed SQL types, required approvals and execution limits.
+
+![Database connections](docs/media/connections.png)
+
+![Connection approval policy and execution limits](docs/media/policy.png)
+
+</details>
+
+See the [product tour](docs/media/product-tour.md) for more details.
 
 ## Documentation
 
@@ -112,17 +127,17 @@ More screenshots and workflow explanations: [product tour](docs/media/product-to
 | Explore what's next | [Roadmap](docs/milestones/README.md) · [Product requirements](docs/product/prd.en.md) |
 | Develop or customize the UI | [Development guide](docs/development.md) · [UI customization](docs/conventions/frontend.md#changing-the-ui) · [Component catalog](web/src/shared/ui/README.md) |
 
-Browse the [documentation index](docs/README.md) for the full reference. PRDs and landing pages have Korean and English versions; other documents currently remain in English.
+See the [documentation index](docs/README.md) for all guides. Product requirements and landing pages are available in Korean and English; other guides are currently in English.
 
 ## Community
 
-Try the application, share workflow feedback, or help improve it. [COMMUNITY.md](COMMUNITY.md) explains how to participate. Use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for bugs, questions, and feedback; Discussions setup is not yet verified.
+Report bugs, ask questions or share feedback through [GitHub issues](https://github.com/aportcullis/portcullis/issues). See [COMMUNITY.md](COMMUNITY.md) for ways to participate.
 
-Suspected vulnerabilities belong in the private reporting process described in [SECURITY.md](SECURITY.md), rather than public issues.
+Report suspected vulnerabilities privately by following [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-Documentation, bug reproductions, tests, and small fixes are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and discuss substantial changes in an issue before implementation.
+Help with documentation, bug reproduction, tests or small improvements. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and discuss substantial changes in an issue before implementation.
 
 ## License
 
