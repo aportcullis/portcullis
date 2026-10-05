@@ -32,7 +32,7 @@ These decisions establish the Core 1 foundation.
 | ADR | Topic | Status |
 |---|---|---|
 | [0006](0006-authentication-and-sessions.md) | Authentication & sessions (cookies, CSRF) | Accepted |
-| [0007](0007-social-login-google-oidc.md) | Social login via Google (OIDC) | Accepted |
+| [0007](0007-social-login-google-oidc.md) | Social login via Google (OIDC) | Superseded by ADR-0057 |
 | [0008](0008-rbac-roles-and-permissions.md) | RBAC — permissions in SQL catalog, roles in DB | Accepted |
 | [0009](0009-audit-integrity.md) | Audit integrity — same-tx delivery, runtime role boundary | Accepted |
 | [0010](0010-runtime-and-transport-defaults.md) | Runtime & transport defaults (timeouts, caps, rate limits, boot) | Accepted |
@@ -82,6 +82,7 @@ These decisions establish the Core 1 foundation.
 | [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
 | [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Accepted |
 | [0056](0056-account-menu-and-csv-dialog.md) | Avatar account menu and bounded CSV export dialog | Accepted |
+| [0057](0057-keycloak-oidc-in-mvp.md) | Optional Keycloak OIDC sign-in in M3 with local authorization | Accepted |
 
 ## Template
 ```markdown

@@ -77,7 +77,7 @@ Expand BI gradually from MVP saved queries and result grids.
 - **Initial BI scope:** Scheduling/BI alert engines, dozens of visualization types, and embedded/public dashboards are outside initial releases and may be considered in the later roadmap.
 - **ETL/CDC:** No real-time streaming or automatic synchronization between connections.
 - **Own schema diff engine:** Use the proven Atlas OSS engine.
-- **Enterprise IAM or identity store:** MVP provides local email/password accounts and Google OIDC; other OIDC providers, LDAP, SAML, and SCIM are later delegated to external IdPs.
+- **Enterprise IAM or identity store:** MVP provides local email/password accounts, Google OIDC and optional Keycloak OIDC in M3. Portcullis retains application permissions; broader federation, LDAP, SAML, SCIM and group-role sync remain later integrations.
 - **Multitenant SaaS in MVP:** Retain model hooks while operating as single-org self-hosting.
 
 ### 2.3 MVP release boundary
@@ -86,7 +86,7 @@ Expand BI gradually from MVP saved queries and result grids.
 
 - **Target databases:** PostgreSQL and MySQL; metadata always uses PostgreSQL.
 - **Deployment:** Docker Compose quickstart; M2 adds single-instance Kubernetes deployment through Helm/Kustomize and external or CloudNativePG-managed metadata PostgreSQL.
-- **Authentication:** Local email/password with argon2id, Google OIDC, server-side sessions, and initial admin bootstrap.
+- **Authentication:** Local email/password with argon2id, Google OIDC, optional Keycloak OIDC in M3, server-side sessions, and initial admin bootstrap.
 - **Requests:** Approval of one SQL statement against one connection with exact parameter values.
 - **Policy:** Per-connection `read`/`write`/`ddl` `required_approvals`, default 1 and 0 for automatic approval, no self-approval, default 24-hour approval validity, and one execution per approval.
 - **Execution:** Connection-specific allowed statement classes, default read-only, with admin explicitly enabling write/DDL.
@@ -99,7 +99,7 @@ Expand BI gradually from MVP saved queries and result grids.
 - Additional target databases, temporary access sessions, and DB proxy.
 - Team/role approval rules, ordered multistage approvals, and break-glass.
   - Quorum approval by N people with the same role is included.
-- OIDC providers other than Google, LDAP, SAML, SCIM, and IdP group-role sync.
+- OIDC providers other than Google and the M3 Keycloak integration, LDAP, SAML, SCIM, and IdP group-role sync.
 - Application HA and Terraform/OpenTofu providers. CNPG automatic target discovery remains Later.
 - Schema Change Governance, reserved for the **Schema milestone** after the first MVP.
 
@@ -336,7 +336,8 @@ Use the 0.9.2 fixes for approved-command replacement and result-log exposure as 
 | Multistage/role review gates | Post-MVP | Start with explicit quorum/role rules before a policy DSL |
 | EXPLAIN | M2 (basic read plans) | Distinguish read safety from `ANALYZE` execution per DB |
 | Google OIDC | MVP | Server callbacks, no frontend SDK; currently authoritative verified-email linking to admin-created users, no signup, ADR-0007 |
-| Other OIDC/LDAP and group-role sync | Post-MVP | External IdP as source of truth |
+| Keycloak OIDC | M3 | Optional company SSO; explicitly linked existing users, local roles and server sessions, ADR-0057 |
+| Other OIDC/LDAP and group-role sync | Post-MVP | External IdP authentication; application authorization remains governed locally |
 | Native DB client proxy | Later/deferred | Web console replaces temporary access; reconsider only after strong native-client demand and complete wire policy/audit/credential design; kviklet 0.9 PG/MySQL/MariaDB is Enterprise beta, with separate dialect implementation/validation cost |
 | API keys | Later/after validation | Separate scope, expiry, and rotation from UI sessions |
 
@@ -464,7 +465,7 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | Metadata | PostgreSQL | Compose initially; external PG or CNPG-managed PG through Helm/Kustomize in M2 |
 | Metadata access | `sqlc` on `pgx` | Raw SQL with type safety, no ORM |
 | Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL differences |
-| Authentication | argon2id passwords, Google OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; other OIDC/SAML later |
+| Authentication | argon2id passwords, Google OIDC, M3 Keycloak OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; broader federation later |
 | Authorization | Go RBAC/org scope | Repository enforcement and cross-org integration tests; no metadata RLS in MVP, schema remains RLS-ready, ADR-0004 |
 | Frontend | SolidJS SPA/Vite | CSR, embedded using `go:embed` |
 | UI | Kobalte/Tailwind/TanStack Table | Data grid is central to the product |
@@ -667,6 +668,12 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
 - Never disable/delete/demote the last active admin; audit disabling/role changes and revoke sessions immediately.
 - Disabled requesters cannot execute; revalidate unexecuted approvals from disabled users or users who lost approval permission.
 
+- **Keycloak OIDC (M3):** Optional sign-in through an operator-configured Keycloak realm, with server-side Authorization Code + PKCE S256, state/nonce and signature/issuer/audience/expiry validation.
+  - Administrators explicitly link the configured issuer and subject to an existing user; email equality alone never links accounts or creates users. Keycloak roles and groups do not grant Portcullis permissions.
+  - Issue the existing HttpOnly server session and retain CSRF, account-disable, local logout and authorization checks. Provider tokens stay out of browser storage; Keycloak logout or account disable does not imply immediate revocation of an existing local session.
+  - Verify a real Keycloak login, wrong-realm/token rejection, replay, denied linking, local session revocation and provider failure without bypassing authentication. Local administrative recovery remains available; broader federation and upstream session-revocation synchronization are separate scope.
+  Per [ADR-0057](../adr/0057-keycloak-oidc-in-mvp.md), Keycloak extends provider scope while preserving the Google-specific linking rules of ADR-0007.
+
 ### 8.4 Audit, retention, and privacy
 
 - Runtime cannot update/delete audit; audit every admin setting change.
@@ -735,7 +742,7 @@ M1 is the first releasable alpha; M3 completes MVP, subject to product validatio
 | M0 | Foundation | [M0](../milestones/m0/scope.md) |
 | M1 | PostgreSQL governance + user/role administration | [M1](../milestones/m1/scope.md) |
 | M2 | MySQL → Kubernetes/CNPG → SQL review/EXPLAIN | [M2](../milestones/m2/scope.md) |
-| M3 | Query assets + schema preview; MVP | [M3](../milestones/m3/scope.md) |
+| M3 | Query assets + schema preview + Keycloak SSO; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | Masking → temporary console and identity | [M4](../milestones/m4/scope.md) |
 | M5 | Schema approval/apply/recovery/verify | [M5](../milestones/m5/scope.md) |
 | M6 | Providers + agent grants/MCP Gateway | [M6](../milestones/m6/scope.md) |

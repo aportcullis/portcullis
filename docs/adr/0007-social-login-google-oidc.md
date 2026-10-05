@@ -1,6 +1,6 @@
 # ADR-0007: Social login via Google (OIDC)
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0057](0057-keycloak-oidc-in-mvp.md); Google-specific flow and linking rules remain binding through that decision.
 - **Amendment history:** amended 2026-07-04: PKCE method, redirect target, and the pending cookie's exact TTL pinned
 - **Date:** 2026-06-28 (amended 2026-07-04)
 

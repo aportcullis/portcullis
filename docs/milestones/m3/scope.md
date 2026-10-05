@@ -7,6 +7,15 @@ Turn useful SQL into reusable assets: saved queries, versions, favorites, organi
 **Discover while composing:** Inline similar-query history suggestions show authorized titles, authors, timestamps and status, with separate View history and Use this query actions. Preserve composition during history navigation and provide undo for filling SQL; parameter values and previous approval are not inherited.
 Match within the selected connection/dialect and current permissions, and disclose historical target-config changes. Search requires neither target execution nor external AI. This core reuse flow remains planned; see [ADR-0046](../../adr/0046-similar-query-history-suggestions.md).
 
+## Keycloak sign-in
+
+Add optional company SSO through an operator-configured Keycloak realm after the reusable-query foundation. Authenticate through standard OIDC server callbacks and issue the existing HttpOnly session; Portcullis continues to own users, roles and request authorization.
+Administrators explicitly bind the configured issuer and subject to an existing account. Do not auto-create users, link by email alone or import Keycloak roles/groups as permissions. Local administrative recovery remains available.
+
+**Acceptance:** A pinned real Keycloak fixture verifies successful login, wrong issuer/audience, invalid or expired tokens, state/nonce/PKCE and replay rejection, denied account linking, disabled users, local logout/session revocation and provider failure. Existing Google/local login, CSRF and cross-organization checks still pass.
+Provider tokens never enter browser storage. Keycloak logout or disabling a Keycloak account does not automatically revoke a Portcullis session; upstream revocation synchronization requires a separate decision. LDAP, SAML, SCIM, additional providers and group-role synchronization remain outside this slice.
+Per [ADR-0057](../../adr/0057-keycloak-oidc-in-mvp.md), this is M3 scope; M2 retains its database, deployment and SQL-review sequence.
+
 ## Review inbox and profile personalization
 
 Show the current user's actionable pending reviews as a set of request cards with manual previous/next navigation and a link to the complete review list. Each card presents the request context and approval state and opens the governed detail page for a decision.

@@ -68,7 +68,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - **초기 BI 범위:** 스케줄링·BI 알림 엔진, 수십 종 시각화, 임베드/퍼블릭 대시보드는 초기 릴리스 범위 밖이며 필요 시 후속 로드맵에서 검토한다.
 - **데이터 이동(ETL/CDC) 도구가 아니다.** 두 connection 간 실시간 스트리밍/자동 데이터 동기화는 하지 않는다.
 - **자체 schema diff 엔진을 만들지 않는다.** Atlas(검증된 OSS 엔진)를 빌려 쓴다.
-- **자체 엔터프라이즈 IAM/ID 저장소가 되지 않는다.** MVP는 로컬 계정(이메일/비밀번호)과 Google 소셜 로그인(OIDC)을 제공하고, 그 외 OIDC provider·LDAP·SAML·SCIM은 이후 외부 IdP에 위임한다.
+- **자체 엔터프라이즈 IAM/ID 저장소가 되지 않는다.** MVP는 로컬 계정(이메일/비밀번호), Google OIDC와 M3의 선택적 Keycloak OIDC 연동을 제공한다. 애플리케이션 권한은 Portcullis에서 관리하며, 추가 인증 제공자·LDAP·SAML·SCIM·그룹과 역할 동기화는 후속 범위다.
 - **멀티테넌트 SaaS를 MVP에서 만들지 않는다.** 데이터 모델에 흔적만 남기고, 셀프호스트 single-org로 동작한다.
 
 ### 2.3 MVP 릴리스 경계
@@ -77,7 +77,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - **관리 대상 DB:** PostgreSQL, MySQL.
   제품 메타데이터 DB는 관리 대상 종류와 무관하게 PostgreSQL.
 - **배포:** Docker Compose quickstart. M2에서 Helm/Kustomize 기반 단일 인스턴스 Kubernetes 배포와 외부 또는 CloudNativePG 관리 메타데이터 PostgreSQL 연동을 추가한다.
-- **인증:** 로컬 이메일/비밀번호(argon2id)와 **Google 소셜 로그인(OIDC)**, 서버사이드 세션.
+- **인증:** 로컬 이메일/비밀번호(argon2id), **Google OIDC**, M3의 선택적 Keycloak OIDC 연동과 서버사이드 세션.
   최초 admin bootstrap 절차 제공.
 - **접근 요청:** 하나의 connection을 대상으로 한 단일 SQL statement와 정확한 파라미터 값의 승인 요청.
 - **정책:** connection·statement 종류별 필요 승인자 수(`read`/`write`/`ddl` 각 `required_approvals`, 기본 1, 0=자동 승인), 자기 승인 금지, 기본 승인 유효기간 24시간, 승인당 실행 1회.
@@ -91,7 +91,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - PostgreSQL/MySQL 외 추가 관리 대상 DB, 임시 접근 세션과 DB proxy.
 - team/role별 승인 규칙, 순서가 있는 다단계 승인, break-glass.
   동일 역할의 N명 정족수 승인은 MVP에 포함.
-- Google 외 OIDC provider/LDAP, SAML, SCIM 및 IdP group-role sync.
+- Google과 M3 Keycloak 연동 외의 OIDC 제공자, LDAP, SAML, SCIM 및 IdP 그룹과 역할 동기화.
 - 애플리케이션 고가용성, Terraform/OpenTofu provider. CNPG 관리 대상 자동 발견은 Later로 유지한다.
 - Schema Change Governance(첫 MVP 다음의 **Schema 마일스톤** 범위).
 
@@ -312,7 +312,8 @@ Portcullis에 telemetry를 추가하는 결정은 하지 않는다. 0.9.2의 승
 | 다단계·role-based review gate | post-MVP | 정책 DSL보다 명시적 quorum/role rule부터 시작 |
 | EXPLAIN | M2 (기본 Read 실행계획) | DB별 read safety와 `ANALYZE` 실행 여부를 분리 |
 | Google 소셜 로그인(OIDC) | MVP | 서버 사이드 콜백 flow(프론트 SDK 없음). admin이 만든 사용자에 현재 소유권 근거가 있는 verified email로 링크, 자동 가입 없음(ADR-0007) |
-| 그 외 OIDC provider/LDAP 및 group-role sync | post-MVP | 외부 IdP를 source of truth로 사용 |
+| Keycloak OIDC | M3 | 선택적 회사 SSO, 기존 사용자와 명시적 연결, 로컬 역할과 서버 세션, ADR-0057 |
+| 그 외 OIDC 제공자·LDAP 및 그룹과 역할 동기화 | post-MVP | 외부 IdP로 인증하며 애플리케이션 권한은 Portcullis에서 관리 |
 | DB client용 proxy | Later (보류) | 임시 접근은 웹 console session으로 대체하므로 기본 미채택. native client(psql 등) 강한 수요가 검증되고 wire-level 정책·audit 완전성·credential 발급이 풀릴 때만 재고. kviklet 0.9는 PostgreSQL/MySQL/MariaDB를 지원하지만 Enterprise-only(beta); Portcullis도 dialect별 wire 구현·검증 비용을 별도로 평가 |
 | API key | Later/검증 후 | 사용자 UI session과 분리된 scope·expiry·rotation 요구 |
 
@@ -432,7 +433,7 @@ multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와
 | 메타데이터 DB | PostgreSQL | 초기 Compose; M2에서 Helm/Kustomize 기반 외부 PG 또는 CNPG 관리 PG |
 | 메타데이터 DB 접근 | `sqlc` on `pgx` | raw SQL + 타입 안전. ORM 미사용 |
 | 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL 차이를 명시적으로 격리 |
-| 인증 | password(argon2id) + Google OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 그 외 OIDC/SAML은 이후 |
+| 인증 | password(argon2id) + Google OIDC + M3 Keycloak OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 추가 인증 연동은 이후 |
 | Authz | Go 레이어(RBAC + org 스코프) | repository 강제 + cross-org 통합 테스트. metadata RLS는 MVP 미적용으로 확정(ADR-0004, 스키마는 RLS-ready) |
 | 프론트엔드 | SolidJS SPA + Vite | CSR. `go:embed`로 바이너리에 포함 |
 | UI 라이브러리 | Kobalte + Tailwind + TanStack Table | 데이터 그리드가 제품 핵심 |
@@ -627,6 +628,12 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   사용자 비활성화와 role 변경은 audit event를 남기고 기존 session을 즉시 revoke.
 - 비활성화된 requester는 실행할 수 없고, 비활성화되거나 approver 권한을 잃은 사용자의 아직 실행되지 않은 승인은 실행 시 무효 처리.
 
+- **Keycloak OIDC(M3):** 운영자가 설정한 Keycloak realm으로 선택적 로그인을 제공한다. 서버에서 Authorization Code + PKCE S256을 사용하며 state·nonce와 토큰 서명·issuer·audience·만료를 검증한다.
+  - 관리자가 설정된 issuer와 subject를 기존 사용자에 명시적으로 연결한다. 이메일 일치만으로 계정을 연결하거나 사용자를 생성하지 않으며, Keycloak 역할·그룹으로 Portcullis 권한을 부여하지 않는다.
+  - 기존 HttpOnly 서버 세션과 CSRF·계정 비활성화·로컬 로그아웃·권한 검사를 유지한다. 제공자 토큰은 브라우저 저장소에 두지 않는다. Keycloak 로그아웃이나 계정 비활성화만으로 기존 로컬 세션이 즉시 폐기된다고 보장하지 않는다.
+  - 실제 Keycloak 로그인, 다른 realm·잘못된 토큰 거부, 재전송, 허용되지 않은 계정 연결, 로컬 세션 폐기와 제공자 장애를 검증한다. 로컬 관리자 복구 경로를 유지하며 추가 인증 제공자와 외부 세션 폐기 동기화는 별도 범위다.
+  Per [ADR-0057](../adr/0057-keycloak-oidc-in-mvp.md), Keycloak 연동은 제공자 범위를 확장하며 ADR-0007의 Google 계정 연결 규칙을 유지한다.
+
 ### 8.4 Audit, 보존, 개인정보
 - audit event는 애플리케이션 runtime 권한으로 수정·삭제할 수 없으며, 모든 관리자 설정 변경도 audit 대상.
 - MVP는 audit event 삭제 API를 제공하지 않고 기본 무기한 보존. self-host 운영자가 메타데이터 DB backup·보존 책임을 가짐.
@@ -691,7 +698,7 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
 | M0 | 토대 | [M0](../milestones/m0/scope.md) |
 | M1 | PostgreSQL 거버넌스 + 사용자·역할 관리 | [M1](../milestones/m1/scope.md) |
 | M2 | MySQL → Kubernetes/CNPG → SQL 검토·EXPLAIN | [M2](../milestones/m2/scope.md) |
-| M3 | 쿼리 자산 + schema 미리보기; MVP | [M3](../milestones/m3/scope.md) |
+| M3 | 쿼리 자산 + schema 미리보기 + Keycloak SSO; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | 마스킹 → 임시 console·인증 확장 | [M4](../milestones/m4/scope.md) |
 | M5 | schema 승인·apply·복구·verify | [M5](../milestones/m5/scope.md) |
 | M6 | provider + 에이전트 권한·MCP Gateway | [M6](../milestones/m6/scope.md) |
