@@ -5,11 +5,13 @@
 
 ## Context
 
-Uncached full-suite execution reproduced Testcontainers v0.43.0 reaper startup failures: separate Go package processes discover the shared Ryuk container while it is still created, and readiness refuses before database SQL runs. A successful retry does not establish a reliable gate. The library uses a process-local mutex and discovers reapers across test processes; Portcullis cannot coordinate those processes with its fixture mutex.
+Uncached full-suite execution reproduced Testcontainers v0.43.0 reaper startup failures: separate Go package processes discover the shared Ryuk container while it is still created, and readiness refuses before database SQL runs. A successful retry does not establish a reliable gate.
+The library uses a process-local mutex and discovers reapers across test processes; Portcullis cannot coordinate those processes with its fixture mutex.
 
 ## Decision
 
-Run the canonical Go test and race targets and the PostgreSQL compatibility package command with `-p 1`. This schedules package processes sequentially without disabling `t.Parallel`, scenario-controlled competing callers, shuffled order, uncached execution or the race detector. Retain required real databases and Testcontainers cleanup. Refuse fixture startup failures rather than skipping or retrying application SQL. Keep the application concurrency and database-locking contracts unchanged.
+Run the canonical Go test and race targets and the PostgreSQL compatibility package command with `-p 1`. This schedules package processes sequentially without disabling `t.Parallel`, scenario-controlled competing callers, shuffled order, uncached execution or the race detector. Retain required real databases and Testcontainers cleanup.
+Refuse fixture startup failures rather than skipping or retrying application SQL. Keep the application concurrency and database-locking contracts unchanged.
 
 ### Amendment 2026-10-04: concurrent verify groups
 

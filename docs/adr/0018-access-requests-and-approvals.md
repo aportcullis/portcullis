@@ -29,7 +29,8 @@ Since kviklet 0.8.0, other execute-right holders may execute approved single-exe
   The plaintext is versioned JSON `{v, sql, params}`; the request id is app-generated (canonical UUID) before sealing, the ADR-0014 lesson.
 - `payload_digest` = the keyring HMAC (`Keyring.Digest`, ADR-0003) over the **canonical serialization of the FULL approval unit** (amended 2026-07-24): payload-format version, organization, requester, connection, pinned policy version, statement class, normalized SQL (line endings + NFC only — no whitespace/semantic rewrite, §4.3), and the typed parameter values (sorted by name).
   Computed before encryption and redaction (§8.4), stored with its key version (the all-or-nothing pairing audit_events already uses).
-  The digest thus binds *everything that was approved*, not just the SQL, so a change to a parameter, the connection, or the policy version yields a different digest and requires a new request — the OWASP transaction-authorization stance the executor slice re-verifies just before running (the earlier "exact SQL only" reading contradicted §4.3 and is corrected; PRD §8.4 is reconciled to §4.3 alongside this).
+  The digest binds **everything approved**, including SQL, parameters, connection and policy version. Any change produces a different digest and requires a new request; execution rechecks it just before running, following OWASP transaction authorization.
+  The earlier "exact SQL only" reading contradicted §4.3 and is corrected; PRD §8.4 is reconciled with §4.3 alongside this.
   The canonical builder is `access.CanonicalPayload`; the codec's `Digest` takes the canonical bytes.
 - `redacted_sql` (ADR-0016 redactor) is stored on the row — the canonical copy; audit events **copy** it into their metadata (§6, self-contained audit).
 - Submit pipeline order (corrected 2026-07-24 to match the code and PRD §4.3): `BindNamed → ParseSingle → Classify → mapClass → policy gate (pinned) → Redact → Digest → Seal`. **BindNamed runs first** — `:name` is not PostgreSQL syntax, so the grammar cannot parse the raw payload; the lexer pass rewrites `:name → $N` (validating parameter names/arity/types on the way) and the parser reads that.
@@ -54,7 +55,10 @@ Since kviklet 0.8.0, other execute-right holders may execute approved single-exe
   The handler's coarse permission gate is a check-then-act window; without the re-check a permission revoked after it could still terminally **reject** a request.
   Approve is separately protected by the valid-count (a stale approval never counts), but reject is a single terminal act with no count to protect it — the re-check closes that gap.
   (§8.3 revokes sessions on role change, which shrinks the window to an already-in-flight request; the re-check is the contract-level guarantee §4.4 requires.)
-- **Database lifecycle guard** (amended 2026-10-04): a `BEFORE UPDATE` row trigger on `access_requests` (migration 0018, modelled on the `query_executions` evidence guard) refuses with SQLSTATE `42501` any edge outside `access.State.CanTransitionTo`, any change to identity columns, any change to a submitted row other than state, reason, approval expiry, version, `updated_at` and the rotatable payload envelope, any change to a terminal row other than a key-rotation envelope rewrap, a submit snapshot stamped on a draft, an `expires_at` change outside the approving transition, and a reason change without its transition.
+- **Database lifecycle guard** (amended 2026-10-04): a `BEFORE UPDATE` row trigger on `access_requests` (migration 0018, following the `query_executions` evidence guard) refuses the following with SQLSTATE `42501`.
+  - An edge outside `access.State.CanTransitionTo` or a change to identity columns.
+  - A submitted-row change outside state, reason, approval expiry, version, `updated_at` or the rotatable payload envelope; a terminal-row change outside a key-rotation envelope rewrap.
+  - A submit snapshot stamped on a draft, an `expires_at` change outside approval, or a reason change without its transition.
   Without it the runtime role's `UPDATE` grant alone allowed reviving a terminal request, extending an approval window or rewriting the redacted SQL approvers saw.
   The trigger runs as the invoking role, so it exempts principals holding the table owner's privileges: they could disable it anyway, and boot verification already refuses a runtime connection with that reach (ADR-0009).
   A pin test walks every state pair as the runtime role against the domain graph, and the store's transition helper also checks `CanTransitionTo` before its conditional update (`ErrInvalidTransition`).
@@ -62,7 +66,8 @@ Since kviklet 0.8.0, other execute-right holders may execute approved single-exe
 
 ### Approver validity — computed, never stored
 An approval **counts** iff, at count time: the approver's user row is `active`, the approver still resolves the `requests.approve` permission through the live membership→role→role_permissions join (the `PermissionsForUser` shape), and `approver_id ≠ requester_id`.
-Approval rows are immutable; validity is a predicate evaluated when it matters (approve-time counting now, the pre-execution re-check in the next slice), so §4.4's rule falls out structurally: an invalidated approval in `pending` simply stops counting and the request stays `pending`; in `approved`, the pre-execution re-check finding `count < required` expires the request (`approval_invalidated`) instead of executing.
+Approval rows are immutable; validity is evaluated when needed (approve-time counting now and the pre-execution check in the next slice), enforcing §4.4 structurally.
+An invalid approval in `pending` stops counting while the request remains `pending`. In `approved`, a pre-execution count below the required quorum expires the request with `approval_invalidated` instead of executing.
 A pin test compares the SQL predicate against `PermissionsForUser` results so the two cannot drift.
 
 ### Expiry — lazy observation, no sweeper
@@ -156,8 +161,11 @@ No window either way.
   A JSON client is still first-class, and a contract test runs the budget through one; it just has to live with the arithmetic — a payload of quotes at the budget is refused by the request cap, as `ResourceExhausted`, before the validator sees it.
 - **The approval unit binds the connection's CONFIGURATION, not just its id** (amended 2026-07-27, external review round 13).
   The canonical unit gained `connection_config_version` and `CanonicalPayloadVersion` went to **2**; the submit snapshot also records `connection_fingerprint`.
-  The id survives a config replacement while host, port, database, TLS mode and credential do not, so an approved request kept its approval and the executor's digest re-check would have waved it through — the approvers reviewed one database and the statement would have run on another (OWASP transaction authorization: *"If transaction data is modified, the code could invalidate any previously entered authorization data"*; PRD §4.3 says the same in its own words).
-  Three parts hold it up: **(a)** `ReplaceConfig` expires the connection's un-executed `pending`/`approved` requests as `expired(connection_changed)` in its own transaction — the same hook the policy cascade uses, with its own reason and actor. **Drafts are deliberately untouched**: the connection is still there and a draft carries no approval, so it is simply submitted against the new configuration (unlike archive, which takes the connection away and cancels them). **(b)** `Submit` re-verifies the pinned config version against the locked connection row, exactly as it does the policy pin, and refuses with `ErrConnectionChanged` → `ABORTED`.
+  The ID survives configuration replacement while host, port, database, TLS mode and credential do not. An unchanged ID could therefore preserve approval and pass the digest check against a target the approvers did not review.
+  OWASP transaction authorization says *"If transaction data is modified, the code could invalidate any previously entered authorization data"*; PRD §4.3 states the same requirement.
+  Three parts hold it up: **(a)** `ReplaceConfig` expires the connection's un-executed `pending`/`approved` requests as `expired(connection_changed)` in its own transaction — the same hook the policy cascade uses, with its own reason and actor.
+  **Drafts are deliberately untouched**: the connection is still there and a draft carries no approval, so it is simply submitted against the new configuration (unlike archive, which takes the connection away and cancels them).
+  **(b)** `Submit` re-verifies the pinned config version against the locked connection row, exactly as it does the policy pin, and refuses with `ErrConnectionChanged` → `ABORTED`.
   A replacement committing between the pipeline and the write cannot land a request against a target nobody classified. **(c)** The fingerprint is **evidence, not a guard**: connections keep no config history, so without it an expired request could not say what it had been approved for.
   `canonical_test` pins the unit's exact field set, so widening or narrowing it forces a decision about the version constant.
   Execution-time re-verification remains the executor slice's seam (nothing calls `Execute` yet, so this was latent — but the write path that creates the hazard exists today, which is why the pin and the cascade land now).
@@ -184,7 +192,8 @@ No window either way.
   Since ADR-0053 (M1), disabling a user or assigning a role locks the user and membership `for update`, so those revocations serialize with the check.
   Removing a permission from a role does not lock memberships and stays outside this guarantee.
   Stating this is the point: the earlier "race-free" wording promised a guarantee the code cannot deliver alone.
-- **Auto-approval timestamps** (amended 2026-07-26): the quorum-0 approval instant is stamped by the DB inside the transaction that holds the connection row lock, and the row's `expires_at`, the system APPROVED event's `occurred_at`, and that event's metadata copy of `expires_at` are **all derived from it** (`SubmitAccessRequest` stamps `clock_timestamp() + validity`; the store recovers the instant as `expires_at - validity`).
+- **Auto-approval timestamps** (amended 2026-07-26): the database stamps the quorum-0 approval instant inside the transaction holding the connection row lock. The row's `expires_at`, system APPROVED event's `occurred_at` and metadata `expires_at` all derive from that instant.
+  `SubmitAccessRequest` stamps `clock_timestamp() + validity`; the store recovers the instant as `expires_at - validity`.
   The application cannot know the instant — it builds the event before the lock is taken — so it deliberately omits `expires_at` from the metadata and the store fills it.
   Three facts about one moment must not be sourced from two clocks.
 - **List consistency in the SPA** (amended 2026-07-24): after any mutation the store **re-reads the current page** rather than merging the response into the local list.
@@ -194,7 +203,10 @@ No window either way.
   Draft-first is also the UX: the dialog offers both "Save draft" and "Submit"; a draft persisted in a dialog session is reused (not re-created) on a subsequent save/submit, and its owner can edit it from the detail view (user decision 2026-07-22).
 
 ## Consequences
-- The execution slice only adds: the `query_executions` table + lease, the breaker-gated executor consuming the sealed payload via `BindNamed`/`Execute`, the authoritative pre-execution revalidation (`approval_invalidated`), the **executor-side function resolution** (ADR-0002 "Function effects": resolve every referenced function/operator to an OID under a pinned `search_path` and match a trusted catalog — the classification-time name allow-list is a coarse pre-filter, and `provolatile` is a hygiene check, not a boundary, since PostgreSQL treats volatility as "a promise to the optimizer" it never enforces), the digest re-verification just before running (§4.3), and the `executing`-edge implementations — every contract it needs (pinned policy join, effective-state derivation, archive guard, digest) is fixed here.
+- The execution slice adds the `query_executions` table and lease, breaker-gated executor consuming sealed payload through `BindNamed`/`Execute`, authoritative pre-execution validation (`approval_invalidated`), digest verification (§4.3) and `executing` transitions.
+  Executor-side function resolution follows ADR-0002 "Function effects": resolve every referenced function/operator to an OID under a pinned `search_path` and match a trusted catalog.
+  The classification-time name allowlist is a coarse prefilter. `provolatile` is a hygiene check rather than a boundary because PostgreSQL treats volatility as "a promise to the optimizer" without enforcing it.
+  The pinned policy join, effective-state derivation, archive guard and digest contracts are already defined here.
 - Approval evidence is append-only and validity is derived, so "who approved, and did it still count" is answerable from history without trusting mutable rows.
 - The lazy-expiry model means a dashboard can show `expired` while the row still says `approved`; every path that could *act* on the request observes the TTL under the row lock it holds (see above), so the lag is cosmetic only.
 - A policy change or archive atomically invalidates in-flight requests with a first-class audit trail — no window where an old quorum approves against a new policy.

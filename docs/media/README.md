@@ -23,7 +23,8 @@ The CSV sequence checks the downloaded file contains all 30 synthetic rows despi
 
 ## Reproduce
 
-Use Go, pnpm, Python 3 with pip, Docker and project-local Playwright Chromium. Obtain any required path-specific permission before accessing a Docker socket, tool cache or browser installation outside your workspace. Set `DOCKER_HOST` to the permitted socket and `DOCKER_CONFIG` to a project-local directory containing `config.json` with `{"auths":{}}`. The capture owns its container and removes it and its server on completion or error. Ports `15432` and `18080` must be free; do not run E2E concurrently.
+Use Go, pnpm, Python 3 with pip, Docker and project-local Playwright Chromium. Obtain any required path-specific permission before accessing a Docker socket, tool cache or browser installation outside your workspace. Set `DOCKER_HOST` to the permitted socket and `DOCKER_CONFIG` to a project-local configuration directory with an empty `auths` object.
+The capture owns its container and removes it and its server on completion or error. Ports `15432` and `18080` must be free; do not run E2E concurrently.
 
 From the project root, with frontend dependencies already installed, set `DOCKER_CONFIG`, `DOCKER_HOST`, `PLAYWRIGHT_BROWSERS_PATH` and `PYTHONPATH` to the explicitly permitted test environment.
 Install Playwright Chromium and Pillow 12.1.1 there, then run the tracked capture tools:
@@ -39,6 +40,8 @@ It checks request transitions, single-use execution, approval button layout, exa
 Temporary frames stay in the ignored working directory selected by the capture tool; only final PNGs and GIFs belong in Git.
 The synthetic password and randomly generated master key are confined to this throwaway installation.
 
-The GIFs are deliberately paced step walkthroughs rather than continuous video. The only added visual element is a caption strip outside the unchanged application screenshot. Each captioned frame is encoded with a 128-color palette and a 1.6–2.8 second reading pause. Full-page captures keep approval actions visible; GIF frames share a canvas sized to the tallest captured page. Keep a static result screenshot and descriptive alt text in the README so understanding the feature does not depend on animation.
+The GIFs are deliberately paced step walkthroughs rather than continuous video. The only added visual element is a caption strip outside the unchanged application screenshot. Each captioned frame is encoded with a 128-color palette and a 1.6–2.8 second reading pause. Full-page captures keep approval actions visible; GIF frames share a canvas sized to the tallest captured page.
+Keep a static result screenshot and descriptive alt text in the README so understanding the feature does not depend on animation.
 
-Capture API behavior follows the [Playwright screenshot documentation](https://playwright.dev/docs/api/class-page#page-screenshot); GIF encoding follows [Pillow's GIF documentation](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif). Inspect every final screenshot and the GIF sequence before committing refreshed media. Use only synthetic accounts, SQL and results; do not capture actual credentials or operational data.
+Capture API behavior follows the [Playwright screenshot documentation](https://playwright.dev/docs/api/class-page#page-screenshot); GIF encoding follows [Pillow's GIF documentation](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif). Inspect every final screenshot and the GIF sequence before committing refreshed media.
+Use only synthetic accounts, SQL and results; do not capture actual credentials or operational data.

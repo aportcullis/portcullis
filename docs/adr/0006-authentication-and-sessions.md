@@ -1,6 +1,7 @@
 # ADR-0006: Authentication & sessions
 
-- **Status:** Accepted (amended 2026-07-04: normative Parameters section — every numeric limit, ordering invariant, and wire format the implementation uses; amended 2026-10-04: key-versioned CSRF tokens)
+- **Status:** Accepted
+- **Amendment history:** amended 2026-07-04: normative Parameters section — every numeric limit, ordering invariant, and wire format the implementation uses; amended 2026-10-04: key-versioned CSRF tokens
 - **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
@@ -56,7 +57,8 @@ Standards verified on 2026-06-28 (OWASP):
   Behind a reverse proxy the real client IP is recovered from `X-Forwarded-For` only for peers in `PORTCULLIS_TRUSTED_PROXIES` (CIDRs); otherwise the direct peer IP is used, so a client can't spoof its own key.
 - **Bootstrap** creates the first admin (active user + the `is_bootstrap_default` role's membership in the default org — resolved by flag, never by name, ADR-0008) only when zero users exist; otherwise it is refused.
   Amended 2026-10-04: the interactive `Bootstrap` RPC also requires the one-time setup token issued at startup and consumes it in the admin-creation transaction (ADR-0052).
-- **Config-based bootstrap** (amended 2026-07-22): `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` plus exactly one password source (`_PASSWORD` or `_PASSWORD_FILE`, mirroring the master-key file pattern; optional `_DISPLAY_NAME`, default `Admin`) makes `serve` run the same Bootstrap use case at startup — same validation, same zero-users-only invariant (re-checked under the lock, so a concurrent interactive bootstrap is race-safe), same `AUTH_BOOTSTRAP` audit event (RequestID/SourceIP are empty outside a request, which the event contract allows).
+- **Config-based bootstrap** (amended 2026-07-22): `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` plus exactly one password source (`_PASSWORD` or `_PASSWORD_FILE`, mirroring the master-key file pattern) makes `serve` run the same Bootstrap use case at startup. Optional `_DISPLAY_NAME` defaults to `Admin`.
+  Validation and the zero-users-only invariant remain the same; rechecking under the lock makes concurrent interactive bootstrap race-safe. The same `AUTH_BOOTSTRAP` event allows empty RequestID/SourceIP outside a request.
   `ErrAlreadyBootstrapped` is the normal steady state after the first boot and is skipped with a log line; any other failure (partial config, weak password, invalid email) **fails startup** — the master-key fail-fast posture, because an operator who configured an admin must never boot without one.
   The variables can be removed after the first boot; the password value itself is never logged.
 
@@ -64,7 +66,8 @@ Standards verified on 2026-06-28 (OWASP):
 
 ### Tokens & wire formats
 - Session token: 32 CSPRNG bytes, cookie value = **`base64.RawURLEncoding`** of those bytes; store keeps `sha256(raw cookie string bytes)` in `sessions.token_hash`.
-- CSRF token wire format (amended 2026-10-04): **`decimal(key_version) + "." + base64url(mac) + "." + base64url(nonce)`** (raw/unpadded), where `nonce` = 16 CSPRNG bytes and `mac = HMAC-SHA-256(payload-integrity key of key_version, "csrf:" + session_cookie_value + ":" + nonce)` — the literal `csrf:`/`:` namespacing prevents cross-purpose digest collisions on the shared keyring; verification is constant-time.
+- CSRF token wire format (amended 2026-10-04): **`decimal(key_version) + "." + base64url(mac) + "." + base64url(nonce)`** (raw/unpadded). The nonce contains 16 CSPRNG bytes.
+  `mac = HMAC-SHA-256(payload-integrity key of key_version, "csrf:" + session_cookie_value + ":" + nonce)`. The literal `csrf:`/`:` namespace prevents cross-purpose digest collisions on the shared keyring; verification is constant-time.
   - The key version is bound by key selection, as for every keyring digest (ADR-0003); verification recomputes the MAC under the version the token names, so a master-key rotation keeps live sessions working while that version stays loaded (the multi-version keyring retains every historical version).
   - The version must be the canonical positive decimal `Issue` produces, the MAC 32 bytes and the nonce 16 bytes; anything else, a relabelled version, or a MAC mismatch is a CSRF failure (`PermissionDenied`).
   - A well-formed token naming a version the process has not loaded (for example after rolling back to an older keyring), or a well-formed pre-versioning two-part token, cannot be re-verified and is not evidence of forgery: the interceptor answers `Unauthenticated`, so the SPA routes to sign-in instead of a stuck session where even `Logout` was refused.
@@ -85,7 +88,8 @@ Standards verified on 2026-06-28 (OWASP):
   This is an intentional choice over OWASP's non-persistent default: the 7d absolute cap, 12h idle expiry, and rotation-on-login bound the exposure, and server-side revocation (logout, new login) invalidates the row regardless of the cookie's lifetime.
 - Idle slide is throttled: the `idle_expires_at` UPDATE runs at most once per **1 min** (`IdleRenewInterval`) per session, and the store uses `greatest()` so a late-arriving older request can never move expiry backward.
 - **The slide's expiry re-check reads `clock_timestamp()`, not `now()`** (amended 2026-07-26, external review round 12).
-  The UPDATE re-checks `revoked_at`, `idle_expires_at` and `absolute_expires_at` because a session can end between `Authenticate` and the post-CSRF slide — but `now()` is the *transaction's start* time, so a slide that parked on the session row's lock (two concurrent requests on one session do exactly that) judged the deadline by a value from **before** the wait, passed, and pushed `idle_expires_at` into the future.
+  The UPDATE rechecks `revoked_at`, `idle_expires_at` and `absolute_expires_at` because a session can end between `Authenticate` and the post-CSRF expiry extension.
+  `now()` is the *transaction's start* time. An extension waiting on the session row lock judged the deadline using an instant from **before** the wait, passed and pushed `idle_expires_at` forward; two concurrent requests on one session reproduce this case.
   That resurrects a session the server had already expired, which is the inverse of OWASP's *"Session timeout management and expiration must be enforced server-side"*.
   Reproduced by holding the row while the deadline passes; the same fix as the audit clock rule in ADR-0009, applied to a predicate instead of a stamp.
   Previously deferred as "a stamp-free `now()`, therefore hygiene" — that reading was wrong: a re-check that reads a pre-wait clock does not re-check anything.
@@ -103,7 +107,11 @@ Standards verified on 2026-06-28 (OWASP):
 |---|---|
 | password | NFC-normalized, then **15–1024 Unicode code points** (upper bound caps Argon2 input cost) |
 | email | canonicalized (trim + lowercase); ≤ **254** chars; stdlib RFC 5322 parse as a bare addr-spec, then domain must contain a dot and every label must be non-empty with no leading/trailing hyphen |
-| display name | ≤ **256** code points, **no control (Cc), format (Cf), or line/paragraph separator (Zl/Zp) characters** — Cf covers bidi overrides (U+202E) and zero-width characters that spoof rendered names; Zl/Zp (U+2028/U+2029) render as real line breaks that a plain `\n` (rejected as Cc) would, so omitting them leaves the same log/UI line-injection open (amended 2026-07-05); empty/whitespace-only **rejected** (amended 2026-07-22: the display name is what approval and request views show for a person, so every account carries one; the header shows it with the email as fallback for pre-change rows) |
+| display name | ≤ **256** code points; no control (Cc), format (Cf), or line/paragraph separator (Zl/Zp) characters; empty/whitespace-only values rejected |
+
+Display-name character validation was amended 2026-07-05. Cf includes bidi overrides (U+202E) and zero-width characters that can spoof names. Zl/Zp (U+2028/U+2029) create line breaks like `\n` (rejected as Cc); excluding them closes the same log/UI line-injection boundary.
+The 2026-07-22 amendment rejects empty/whitespace-only names because approval and request views identify people by display name. Every account carries a name; pre-change rows use email as the header fallback.
+
 
 The password/email UPPER bounds also apply to **login input** (not just registration): an over-cap value can never match a stored credential, so Login rejects it before any DB or hashing work — the upper password bound exists precisely to cap Argon2 input cost on verification.
 The 15-code-point minimum is a registration-time policy only.
@@ -115,7 +123,8 @@ The 15-code-point minimum is a registration-time policy only.
   After **5** consecutive failures, reject logins for a lockout window starting at **1 min**, doubling per subsequent failure to a **15 min** cap, with **±20% jitter** on expiry (so unlock times can't be probed exactly); the counter resets on success or expiry.
   Lockout responses are indistinguishable from wrong-credential responses (no oracle). *Provisional:* window sizes re-checked against support-load reality after MVP.
   Interpretation pinned at implementation (amended 2026-07-11; revised same day after review found an increment/lockout race, a two-clock skew hazard, and unbounded sub-threshold state):
-  - **One atomic statement per failure, one clock.** Counting and locking happen in a single upsert (`RecordLoginFailure`) evaluated entirely on the **database clock**: the count is bumped, and at/after the threshold the same statement imposes/extends the lockout — `min(base·2^(n−threshold), cap)·jitter` with the exponent clamped to [0,30] (no overflow) and `greatest()` so a concurrent shorter jittered window never moves an expiry backward.
+  - **One atomic statement per failure, one clock.**
+    Counting and locking happen in a single upsert (`RecordLoginFailure`) evaluated entirely on the **database clock**: the count is bumped, and at/after the threshold the same statement imposes/extends the lockout — `min(base·2^(n−threshold), cap)·jitter` with the exponent clamped to [0,30] (no overflow) and `greatest()` so a concurrent shorter jittered window never moves an expiry backward.
     A split increment-then-lock design would let a stale lockout land after a concurrent success reset, and judging expiry on the app clock would let ordinary app/DB skew either disable doubling or re-lock at the first post-expiry mistake.
     The login query returns the locked flag evaluated by the same database clock.
   - **Attempts during a lockout count** — each re-derives (and doubles) the window, so hammering a locked account extends it, bounded by the cap.

@@ -5,7 +5,8 @@
 
 ## Context
 
-PRD §3 and §8.3 promise that admins manage users and custom roles, that admin-created users receive a 24-hour one-time password setup link, and that Google sign-in links only to admin-created users (ADR-0007). ADR-0008 seeded `users.*` and `roles.*` permissions, but no API, use case or screen enforced them. Only the bootstrap admin could sign in, so distinct-reviewer quorum (PRD §4.3) and Google sign-in for anyone else were unreachable, and the alpha quickstart deferred user management to M4 while PRD §11 scheduled it nowhere.
+PRD §3 and §8.3 promise that admins manage users and custom roles, that admin-created users receive a 24-hour one-time password setup link, and that Google sign-in links only to admin-created users (ADR-0007). ADR-0008 seeded `users.*` and `roles.*` permissions, but no API, use case or screen enforced them.
+Only the bootstrap admin could sign in, so distinct-reviewer quorum (PRD §4.3) and Google sign-in for anyone else were unreachable, and the alpha quickstart deferred user management to M4 while PRD §11 scheduled it nowhere.
 
 The decision must keep authorization permission-based (ADR-0008), organization-scoped (ADR-0004), audited atomically (ADR-0009), and consistent with session rotation on privilege change (ADR-0006).
 
@@ -30,7 +31,9 @@ The decision must keep authorization permission-based (ADR-0008), organization-s
 - A link is valid for 24 hours (`identity.PasswordSetupValidity`), and a partial unique index allows one open link per user. Issuing a new link revokes the previous open one in the same transaction.
 - Links are issued only for active users that have no password yet. Administrator-initiated password reset of an existing password is deferred, because it would let a user manager take over a more privileged account.
 - The SPA builds `/setup-password#token=<token>` from its own origin rather than a server-supplied host, and the token travels in the fragment so it never reaches server logs or a `Referer` header; the setup page also sets `no-referrer`.
-- The public `Auth.CompletePasswordSetup` RPC shares the credential rate limits. It validates the password policy first, looks the token up, hashes the password, then in one transaction consumes the token with a conditional update (`consumed_at is null and revoked_at is null and expires_at > now()` on the database clock and the user still active), stores the password, revokes every session of the user and commits `USER_PASSWORD_SET`. A replayed, expired, revoked, unknown or disabled-user token returns one generic refusal. Completion does not sign the user in; they log in normally.
+- The public `Auth.CompletePasswordSetup` RPC shares the credential rate limits.
+  It validates the password policy first, looks the token up, hashes the password, then in one transaction consumes the token with a conditional update (`consumed_at is null and revoked_at is null and expires_at > now()` on the database clock and the user still active), stores the password, revokes every session of the user and commits `USER_PASSWORD_SET`.
+  A replayed, expired, revoked, unknown or disabled-user token returns one generic refusal. Completion does not sign the user in; they log in normally.
 - Disabling a user revokes their open setup link.
 
 ### Roles
@@ -46,7 +49,8 @@ The decision must keep authorization permission-based (ADR-0008), organization-s
 
 - **No privilege escalation.** The actor must hold every permission of a role it creates, of both the old and the new permission set of a role it updates, of a role it assigns, and of the target user's current role when it assigns, disables or enables that user. A user manager therefore cannot grant, strip or lock out permissions it does not hold.
 - **No self-administration.** An actor cannot disable, enable or reassign itself.
-- **Last administrator.** ADR-0008 defines an administrator as an active member whose role holds both `users.update` and `users.disable`. Every disable, role assignment and role update runs inside a transaction holding a per-organization advisory lock, applies the change, then counts administrators and rolls back with FailedPrecondition when none remain. The lock serializes concurrent administrators so two cannot remove each other.
+- **Last administrator.** ADR-0008 defines an administrator as an active member whose role holds both `users.update` and `users.disable`. Every disable, role assignment and role update runs inside a transaction holding a per-organization advisory lock, applies the change, then counts administrators and rolls back with FailedPrecondition when none remain.
+  The lock serializes concurrent administrators so two cannot remove each other.
 - The request-time permission check only admits the call. Inside the organization-locked transaction the store re-reads the actor's active status and current role permissions and re-runs the escalation guard against them, so an actor disabled or demoted by a concurrent administrator cannot complete a change it no longer holds the authority for.
 - Every administration transaction that also touches a user's credentials takes the organization lock before any user row lock, so administration and password setup completion never wait on each other in opposite orders.
 

@@ -39,4 +39,5 @@ See [tooling](docs/conventions/tooling.md) for commands and dependency requireme
 
 ## Change history
 
-Use Conventional Commit subjects (`feat`, `fix`, `docs`, `test`, `ci`, and other appropriate types) with an optional scope. Mark incompatible changes with `!` and a `BREAKING CHANGE:` footer that explains migration. Keep the existing small-commit process. Maintainers run `make changelog RELEASE_TAG=vX.Y.Z` and review [CHANGELOG.md](CHANGELOG.md) before tagging a release; contributors do not need a separate changeset file or a generated snapshot for every commit. See the [release guide](docs/operations/container-releases.md).
+Use Conventional Commit subjects (`feat`, `fix`, `docs`, `test`, `ci`, and other appropriate types) with an optional scope. Mark incompatible changes with `!` and a `BREAKING CHANGE:` footer that explains migration. Keep the existing small-commit process.
+Maintainers run `make changelog RELEASE_TAG=vX.Y.Z` and review [CHANGELOG.md](CHANGELOG.md) before tagging a release; contributors do not need a separate changeset file or a generated snapshot for every commit. See the [release guide](docs/operations/container-releases.md).

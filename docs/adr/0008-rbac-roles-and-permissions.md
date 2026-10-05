@@ -1,6 +1,7 @@
 # ADR-0008: RBAC — permissions in code, roles in the database
 
-- **Status:** Accepted (amended 2026-07-04: the seeded catalog and system-role grants are transcribed as the normative appendix; column/name fixes to match the shipped schema; amended 2026-10-04: enforced-key constants and startup catalog coverage check)
+- **Status:** Accepted
+- **Amendment history:** amended 2026-07-04: the seeded catalog and system-role grants are transcribed as the normative appendix; column/name fixes to match the shipped schema; amended 2026-10-04: enforced-key constants and startup catalog coverage check
 - **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context

@@ -1,6 +1,6 @@
 # ADR-0001: Managed-DB driver & SQL parser
 
-- **Status:** Accepted — drivers and parsers settled.
+- **Status:** Accepted
   (Amended 2026-07-04: PG/SQLite parser picks closed, minimum engine versions pinned; the remaining acceptance gate is the ADR-0002 fixture suite passing during adapter work. Amended 2026-07-19: PG gate CLOSED — pgplex/pgparser v0.2.0 pinned in go.mod, the PG-applicable ADR-0002 fixtures pass; MySQL/SQLite gates remain open until those adapters land in M2.)
 - **Date:** 2026-06-27 (amended 2026-07-04, 2026-07-19)
 
@@ -58,7 +58,11 @@ Two directions:
     The residual 0.4% regression-suite gap is covered by the allow-list model: what doesn't parse is rejected, never guessed.
   - **MySQL = `github.com/pingcap/tidb/pkg/parser`** (the parser sub-module inside the TiDB monorepo — the standalone `pingcap/parser` repo is deprecated).
     MySQL 8.0-compatible, goyacc-based, actively maintained; import only the sub-module, never top-level TiDB.
-  - **SQLite = the SQLite engine itself via `modernc.org/sqlite/lib`** (same stack as the driver — no second parser): single-statement check via `sqlite3_prepare_v2`'s unparsed tail (non-empty tail beyond trailing `;`/whitespace ⇒ reject), classification via the **authorizer callback's action codes** during prepare (`SQLITE_READ`/`SQLITE_SELECT` ⇒ read; `SQLITE_INSERT`/`UPDATE`/`DELETE` ⇒ write; `SQLITE_CREATE_*`/`DROP_*`/ `ALTER_TABLE` ⇒ ddl; `SQLITE_ATTACH`/`DETACH`/`PRAGMA`/`TRANSACTION`/`SAVEPOINT` and any unlisted action code ⇒ reject), cross-checked with `sqlite3_stmt_readonly` (read claims must be readonly; note `stmt_readonly` alone is insufficient — it returns true for transaction control, which the authorizer rejects first).
+  - **SQLite = the SQLite engine itself via `modernc.org/sqlite/lib`** (same stack as the driver; no second parser).
+    - Check for one statement through `sqlite3_prepare_v2`'s unparsed tail; reject non-empty content beyond trailing `;`/whitespace.
+    - Classify the **authorizer callback's action codes** during prepare: `SQLITE_READ`/`SQLITE_SELECT` ⇒ read; `SQLITE_INSERT`/`UPDATE`/`DELETE` ⇒ write; `SQLITE_CREATE_*`/`DROP_*`/`ALTER_TABLE` ⇒ ddl.
+    - Reject `SQLITE_ATTACH`/`DETACH`/`PRAGMA`/`TRANSACTION`/`SAVEPOINT` and every unlisted action code.
+    - Cross-check with `sqlite3_stmt_readonly`: read claims must be readonly. That check alone is insufficient because it returns true for transaction control, which the authorizer rejects first.
     Prepare-for-classification runs against the target file read-only and the statement is never stepped.
 
 - **Minimum engine versions (managed targets):**
@@ -94,4 +98,5 @@ Two directions:
 
 ## Version-window amendment (2026-10-03)
 
-[ADR-0030](0030-database-version-qualification-window.md) supersedes the open-ended PostgreSQL ≥14 / MySQL ≥8.0 support floor with PostgreSQL 16/17/18/19 compatibility maintenance without version-specific feature expansion. PostgreSQL 19 remains preview until GA qualification, and MySQL 8.4/9.7 LTS plus 26.7 Innovation are candidates. Existing driver/parser choices and fail-closed behavior remain binding; this policy does not certify pending versions or the unimplemented MySQL executor.
+[ADR-0030](0030-database-version-qualification-window.md) supersedes the open-ended PostgreSQL ≥14 / MySQL ≥8.0 support floor with PostgreSQL 16/17/18/19 compatibility maintenance without version-specific feature expansion. PostgreSQL 19 remains preview until GA qualification, and MySQL 8.4/9.7 LTS plus 26.7 Innovation are candidates.
+Existing driver/parser choices and fail-closed behavior remain binding; this policy does not certify pending versions or the unimplemented MySQL executor.

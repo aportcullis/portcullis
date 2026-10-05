@@ -55,7 +55,8 @@ This is production deployment guidance ([ADR-0042](../adr/0042-private-network-d
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The diagram shows one remote-access layer with a choice of provider. Deploy the selected provider’s private ingress: a `cloudflared` connector for Cloudflare WARP, or a Tailscale node/subnet router for Tailscale. Provider-specific setup is compared below. Arrows show application traffic, not connection initiation: `cloudflared` initiates its tunnel outward, while Tailscale carries encrypted peer traffic directly or through a relay. The selected path reaches the private HTTPS proxy. Restrict its upstream application connection to the local host/private network, or encrypt and authenticate that hop when crossing a trust boundary.
+The diagram shows one remote-access layer with a choice of provider. Deploy the selected provider’s private ingress: a `cloudflared` connector for Cloudflare WARP, or a Tailscale node/subnet router for Tailscale. Provider-specific setup is compared below.
+Arrows show application traffic, not connection initiation: `cloudflared` initiates its tunnel outward, while Tailscale carries encrypted peer traffic directly or through a relay. The selected path reaches the private HTTPS proxy. Restrict its upstream application connection to the local host/private network, or encrypt and authenticate that hop when crossing a trust boundary.
 
 The developer path stops at HTTPS. Portcullis separately connects to metadata and governed targets; users do not need direct DB network access to execute approved SQL in the web UI. PostgreSQL is the currently shipped target; see the [database feature matrix](../product/database-support.md) for MySQL implementation and qualification status.
 
@@ -69,9 +70,11 @@ The developer path stops at HTTPS. Portcullis separately connects to metadata an
 | DNS | Private hostname resolution plus the required WARP routes/split-tunnel configuration | Tailnet host naming for a direct node, or private DNS/split DNS for a routed hostname |
 | Exposure | Private-network routing without publishing a public application hostname | Tailnet/private routing; do not enable Funnel for this topology |
 
-Consumer WARP does not grant access to an organization's private routes. Enroll devices in the organization's Zero Trust configuration and configure routing, DNS and network policy together. A configured Tunnel alone is not the user/device authorization boundary. See [Cloudflare private networks](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/) and [connecting with cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/cloudflared/).
+Consumer WARP does not grant access to an organization's private routes. Enroll devices in the organization's Zero Trust configuration and configure routing, DNS and network policy together. A configured Tunnel alone is not the user/device authorization boundary.
+See [Cloudflare private networks](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/) and [connecting with cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/cloudflared/).
 
-Install a Tailscale node on the ingress host when feasible; use a [subnet router](https://tailscale.com/docs/features/subnet-routers) for private destinations that cannot run Tailscale. Advertise only the needed destination, approve its route and configure access independently. Use grants for new access policies as recommended in [Tailscale's policy guidance](https://tailscale.com/docs/reference/examples/acls). Remove broad default access that would expose unrelated subnets or DB ports.
+Install a Tailscale node on the ingress host when feasible; use a [subnet router](https://tailscale.com/docs/features/subnet-routers) for private destinations that cannot run Tailscale. Advertise only the needed destination, approve its route and configure access independently.
+Use grants for new access policies as recommended in [Tailscale's policy guidance](https://tailscale.com/docs/reference/examples/acls). Remove broad default access that would expose unrelated subnets or DB ports.
 
 ## Enforce the boundary
 
@@ -85,23 +88,28 @@ Install a Tailscale node on the ingress host when feasible; use a [subnet router
 | Remote users → metadata or target DB ports | Deny through provider policy and host/VPC firewall; separate DBA access requires its own policy |
 | Migration process → metadata PostgreSQL | Separate owner credential/process from runtime; allow controlled schema migrations only |
 
-Keep application login, session/CSRF checks, RBAC, distinct review, single-use execution leases and auditing enabled. Network enrollment permits connectivity and does not log a user into Portcullis. Browser HTTPS still requires a trusted certificate and the correct application origin; an encrypted overlay does not remove those requirements. Provider identity is not automatically mapped to an application account.
+Keep application login, session/CSRF checks, RBAC, distinct review, single-use execution leases and auditing enabled. Network enrollment permits connectivity and does not log a user into Portcullis. Browser HTTPS still requires a trusted certificate and the correct application origin; an encrypted overlay does not remove those requirements.
+Provider identity is not automatically mapped to an application account.
 
-Set `PORTCULLIS_PUBLIC_ORIGINS` to the exact browser origin users open, such as `https://portcullis.internal.example`. Portcullis refuses requests whose `Host` names no configured origin with `421 Misdirected Request`, which defeats DNS rebinding from a page on another domain, and it refuses cross-origin browser writes (ADR-0052). Unset, only loopback hosts are admitted; that suits the local demo but returns 421 behind a proxy or on a LAN address. The reverse proxy must forward the original `Host` header (for example, nginx `proxy_set_header Host $host`; Caddy forwards it by default). Health probes on `/livez` and `/readyz` are exempt so probes addressing a pod IP keep working.
+Set `PORTCULLIS_PUBLIC_ORIGINS` to the exact browser origin users open, such as `https://portcullis.internal.example`. Portcullis refuses requests whose `Host` names no configured origin with `421 Misdirected Request`, which defeats DNS rebinding from a page on another domain, and it refuses cross-origin browser writes (ADR-0052).
+Unset, only loopback hosts are admitted; that suits the local demo but returns 421 behind a proxy or on a LAN address. The reverse proxy must forward the original `Host` header (for example, nginx `proxy_set_header Host $host`; Caddy forwards it by default). Health probes on `/livez` and `/readyz` are exempt so probes addressing a pod IP keep working.
 
-Trust only actual reverse-proxy source CIDRs and sanitize forwarding headers at that proxy. A Tailscale subnet router uses SNAT by default, so the application may see the router instead of the original device IP. Preserve attribution through authenticated users and audit records, and validate the actual proxy/routing chain before relying on source-IP rate limits. See [Tailscale SNAT behavior](https://tailscale.com/docs/features/subnet-routers#disable-snat) and [runtime configuration](../../internal/platform/config/config.go).
+Trust only actual reverse-proxy source CIDRs and sanitize forwarding headers at that proxy. A Tailscale subnet router uses SNAT by default, so the application may see the router instead of the original device IP. Preserve attribution through authenticated users and audit records, and validate the actual proxy/routing chain before relying on source-IP rate limits.
+See [Tailscale SNAT behavior](https://tailscale.com/docs/features/subnet-routers#disable-snat) and [runtime configuration](../../internal/platform/config/config.go).
 
 Cloudflare private-network `cloudflared` traffic likewise reaches internal services with the connector host's local source IP, as described in [the connector guide](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/cloudflared/). Do not assume either remote-access path preserves individual device IPs at the application.
 
 ## Deployment and operating scope
 
-Start with one Portcullis instance on a private host or container network. The [Compose quickstart](pg-alpha-quickstart.md) is a local demonstration: its `127.0.0.1:8080:8080` port publishing now limits host access to IPv4 loopback. This is a safer local default, not complete production isolation. Place the private HTTPS proxy in front and enforce host/network firewall controls; do not override the bind with a wildcard public address. Operators must also account for Docker routing and daemon configuration.
+Start with one Portcullis instance on a private host or container network. The [Compose quickstart](pg-alpha-quickstart.md) is a local demonstration: its `127.0.0.1:8080:8080` port publishing now limits host access to IPv4 loopback. This is a safer local default, not complete production isolation.
+Place the private HTTPS proxy in front and enforce host/network firewall controls; do not override the bind with a wildcard public address. Operators must also account for Docker routing and daemon configuration.
 
 Preserve metadata storage, the master key and recoverable backups separately from application containers. Use managed or mounted runtime secrets, keep migration-owner credentials out of runtime and test restoration with the preserved key. Result storage currently uses PostgreSQL; this recommendation does not require or provide Valkey.
 
 Helm/Kustomize and CNPG are planned in M2 ([ADR-0035](../adr/0035-kubernetes-cnpg-after-mysql.md)); they are not installed by this diagram. Their deployment should retain the same private ingress and restricted network paths. CNPG database HA does not establish application HA; network connectors do not share local execution cancellation state across application replicas.
 
-Before relying on a deployment, verify login, review, execution and CSV export from an enrolled device. Check from an unenrolled device that app/DB access is denied; verify that the allowed group cannot bypass the proxy or reach DB ports. Test revoked device access and DNS/certificate behavior after connector or application restart. Keep infrastructure access logs and business audit records separately attributable. Provider-specific deployment has not been integration-tested in this repository; operators must verify their policies and routes.
+Before relying on a deployment, verify login, review, execution and CSV export from an enrolled device. Check from an unenrolled device that app/DB access is denied; verify that the allowed group cannot bypass the proxy or reach DB ports. Test revoked device access and DNS/certificate behavior after connector or application restart.
+Keep infrastructure access logs and business audit records separately attributable. Provider-specific deployment has not been integration-tested in this repository; operators must verify their policies and routes.
 
 ## Related documents
 

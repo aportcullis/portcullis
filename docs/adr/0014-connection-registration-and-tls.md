@@ -46,13 +46,15 @@ So `verify-full` works out of the box for publicly-trusted server certificates; 
 `require` with no root cert is `InsecureSkipVerify`; with one it upgrades to verify-ca behavior (libpq-compatible) — irrelevant here until CA upload lands.
 
 *Amended 2026-07-13/-15 (external review):* the tester is **environment-independent**.
-The connection string wins pgx's settings merge over both `PG*` environment variables and a `PGSERVICE` file, so every result-affecting key is pinned there to an explicit safe default — TLS material (`sslrootcert`/`sslcert`/`sslkey`/`sslpassword` empty, `sslsni`, `sslnegotiation`) **and** the authentication-negotiation parameters (`channel_binding`, `require_auth`, `target_session_attrs`, `min`/`max_protocol_version`); the parsed struct then clears runtime parameters, fallbacks, and validators.
+The connection string takes precedence over both `PG*` environment variables and a `PGSERVICE` file in pgx's settings merge. Pin each result-affecting key to an explicit safe default.
+TLS settings include empty `sslrootcert`/`sslcert`/`sslkey`/`sslpassword`, `sslsni` and `sslnegotiation`. Authentication negotiation pins `channel_binding`, `require_auth`, `target_session_attrs` and `min`/`max_protocol_version`; the parsed struct clears runtime parameters, fallbacks and validators.
 Without this, a lone `PGCHANNELBINDING=require` or a dangling `PGSSLROOTCERT` path flips a healthy target to a failure (both reproduced).
 This also keeps the deferred-custom-CA decision honest: no CA can sneak in via the environment.
 
 *Amended 2026-07-18 (external review):* the parse step itself is isolated too.
 `connect_timeout` is pinned in the connection string (an invalid `PGCONNECT_TIMEOUT` would otherwise fail `ParseConfig`).
-`PGSERVICE` cannot be pinned by value — pgx triggers the service-file lookup whenever the merged settings *contain* the key (presence check, v5 source), and hand-building the config is impossible (`ConnectConfig` accepts only a `ParseConfig` product) — so when `PGSERVICE` is set the tester generates a throwaway service file holding just an empty section for that name and pins `servicefile` to it (the connection string wins over `PGSERVICEFILE`): the lookup resolves and contributes nothing.
+`PGSERVICE` cannot be pinned by value: pgx looks up the service file whenever merged settings contain the key (presence check, v5 source). Hand-building the config is impossible because `ConnectConfig` accepts only a `ParseConfig` product.
+When `PGSERVICE` is set, the tester generates a temporary service file with an empty section for that name and pins `servicefile` to it. The connection string takes precedence over `PGSERVICEFILE`, so lookup resolves without contributing settings.
 Documented limitation: a service name an INI section cannot express (`[`/`]`/newline) is not neutralizable and fails closed.
 `passfile` is pinned to `os.DevNull`: ParseConfig OPENS the passfile unconditionally (the password checks only gate use of the result), config assembly runs before any timeout context, and the credential is injected directly — so neither a blocking `PGPASSFILE` (a FIFO reproduces an unbounded hang) nor the `~/.pgpass` default may ever be touched.
 
@@ -116,7 +118,8 @@ The `audit_events.connection_id` snapshot column stays reserved for execution-pa
 `CONNECTION_ARCHIVED` metadata is assembled from the archive statement's `RETURNING` row inside that transaction: `display_name`, `db_type`, and `fingerprint`.
 This both satisfies the PRD's self-contained historical snapshot and prevents a concurrent config update from making the audit record describe an older descriptor.
 
-*Amended 2026-07-13 (external review):* inside Create/Update a successful dial is normally implied by the transactional `CONNECTION_CREATED`/`UPDATED` — but when the mutation itself fails (name conflict, seal failure, metadata-DB error) that implication rolls back with it, so the service records a best-effort `CONNECTION_TEST SUCCEEDED` with `persisted: false`: the target was accessed even though nothing was saved.
+*Amended 2026-07-13 (external review):* a successful dial inside Create/Update is normally implied by transactional `CONNECTION_CREATED`/`UPDATED`.
+If the mutation fails because of a name conflict, seal failure or metadata DB error, that event rolls back. A best-effort `CONNECTION_TEST SUCCEEDED` with `persisted: false` records that the target was accessed even though nothing was saved.
 
 *Amended 2026-07-18 (external review):* every `CONNECTION_TEST` event carries `tls_mode` in its metadata.
 `CONNECTION_TLS_RELAXED` stays bound to the create/update transaction, so explicit tests and failed-save dials would otherwise leave no audit-visible record that the target was reached with `require`/`disable` — §8.1 requires relaxed-TLS use to be auditable on every path that actually connects.

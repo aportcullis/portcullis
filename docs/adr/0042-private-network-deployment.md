@@ -9,13 +9,16 @@ The owner requests a separate recommended deployment document using box-and-arro
 
 ## Decision
 
-Recommend a private HTTPS reverse proxy and one Portcullis instance, with private metadata and target databases. Remote access uses either organization-enrolled Cloudflare WARP plus a private-network cloudflared connector, or a Tailscale node/subnet router with explicit grants. Restrict the remote group to the application's HTTPS destination and deny direct metadata/target DB access. Retain Portcullis authentication, authorization, approval and audit controls independently of network membership.
+Recommend a private HTTPS reverse proxy and one Portcullis instance, with private metadata and target databases. Remote access uses either organization-enrolled Cloudflare WARP plus a private-network cloudflared connector, or a Tailscale node/subnet router with explicit grants. Restrict the remote group to the application's HTTPS destination and deny direct metadata/target DB access.
+Retain Portcullis authentication, authorization, approval and audit controls independently of network membership.
 
-Describe private DNS, browser-trusted TLS, source/proxy attribution and the host/network firewall as operator responsibilities. Keep public app publishing and Tailscale Funnel outside this recommended topology. Show one remote-access layer in the diagram, labeled Cloudflare WARP OR Tailscale, and one selected private ingress. Keep provider-specific setup in the comparison table; separate network access from server-to-database traffic. Document currently shipped Compose/single-process behavior and planned Helm/Kustomize/CNPG deployment without implying application HA or tested provider integration.
+Describe private DNS, browser-trusted TLS, source/proxy attribution and the host/network firewall as operator responsibilities. Keep public app publishing and Tailscale Funnel outside this recommended topology. Show one remote-access layer in the diagram, labeled Cloudflare WARP OR Tailscale, and one selected private ingress.
+Keep provider-specific setup in the comparison table; separate network access from server-to-database traffic. Document currently shipped Compose/single-process behavior and planned Helm/Kustomize/CNPG deployment without implying application HA or tested provider integration.
 
 ## Consequences
 
-The recommendation requires provider enrollment, route/access policies and reachable private DNS to be configured by operators. A private tunnel still uses external connectivity; private-only describes application and database exposure. The 2026-10-03 review correction pins demo Compose host publishing to IPv4 loopback (`127.0.0.1:8080:8080`); container-network access, routing and firewalls remain separate operator boundaries. The application listener and authentication model are unchanged. Both PRD translations record the production deployment recommendation.
+The recommendation requires provider enrollment, route/access policies and reachable private DNS to be configured by operators. A private tunnel still uses external connectivity; private-only describes application and database exposure.
+The 2026-10-03 review correction pins demo Compose host publishing to IPv4 loopback (`127.0.0.1:8080:8080`); container-network access, routing and firewalls remain separate operator boundaries. The application listener and authentication model are unchanged. Both PRD translations record the production deployment recommendation.
 
 ## Sources
 

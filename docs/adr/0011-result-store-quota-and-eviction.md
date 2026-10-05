@@ -1,6 +1,7 @@
 # ADR-0011: Result store quota & eviction
 
-- **Status:** Accepted — model fixed; numeric values are **provisional until the Core 2 load test** (they gate Core 2 per the PRD §12.2 and are re-confirmed, not re-designed, by it).
+- **Status:** Accepted
+- **Decision scope:** model fixed; numeric values are **provisional until the Core 2 load test** (they gate Core 2 per the PRD §12.2 and are re-confirmed, not re-designed, by it).
 - **Date:** 2026-07-04 (amended 2026-10-03: preserve live snapshots on admission refusal; amended 2026-10-04: authenticated snapshot metadata)
 
 ## Context
@@ -23,7 +24,8 @@ Reject invalid or individually oversized incoming snapshots before accounting. F
 2. If the writer's **per-user** usage + incoming size exceeds the user quota → plan eviction of that user's own snapshots, **least-recently-accessed first**, until it fits.
 3. If **global** usage + incoming size exceeds 512 MiB → plan eviction of global LRU (by `last_accessed_at`, oldest first) — but never below a **per-user floor of one snapshot** for other users (a single heavy user must not flush everyone).
 4. If it still doesn't fit because other users' one-snapshot floors prevent enough reclamation → **reject** the snapshot write with `result_store_full`; the execution itself still completes and `query_executions` records the outcome with no result handle; the UI shows the existing `result_unavailable` state with a "store full, retry later" reason.
-   Expiry is unconditional, but live evictions are only a plan until admission is proven possible. On refusal, discard all planned live evictions: do not delete live ciphertext or emit live-eviction events. If admission is possible, apply the planned live evictions and insert the new snapshot atomically under the existing transaction-scoped advisory lock. This replaces the original eviction-then-reject policy: a failed incoming write must not destroy useful live results without gaining a replacement.
+   Expiry is unconditional, but live evictions are only a plan until admission is proven possible. On refusal, discard all planned live evictions: do not delete live ciphertext or emit live-eviction events. If admission is possible, apply the planned live evictions and insert the new snapshot atomically under the existing transaction-scoped advisory lock.
+   This replaces the original eviction-then-reject policy: a failed incoming write must not destroy useful live results without gaining a replacement.
 5. Every eviction of a non-expired snapshot leaves an audit event (`RESULT_EVICTED`, actor `system:result-store`, metadata: cause `user_quota|global_cap`).
 
 **Concurrency (amended 2026-10-04):** admission is serialized **per organization** by a two-key transaction advisory lock (class 4 in the ADR-0010 keyspace, object = hash of the organization id) instead of one install-wide key, so organizations admit concurrently; the "global" cap is accounted over the organization's rows, which in the single-org MVP is the whole install.

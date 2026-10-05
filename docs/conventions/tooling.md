@@ -5,7 +5,8 @@
   - `make build` produces the optimized static binary; `make run` starts the dev server.
   - `make web` builds the SPA into `internal/platform/assets/dist` for embedding.
 - **Backend verification**
-  - `make test` runs uncached shuffled tests; `make test-race` adds the race detector and runs as its own CI job. Both require the test databases, so a database-backed test fails instead of skipping when its container cannot start; `GO_TEST_PACKAGES` narrows the package set. Both schedule package processes sequentially (`-p 1`) to avoid the reproduced shared Testcontainers reaper startup race (ADR-0045), while retaining within-package parallel tests and competing-caller scenarios.
+  - `make test` runs uncached shuffled tests; `make test-race` adds the race detector and runs as its own CI job. Both require the test databases, so a database-backed test fails instead of skipping when its container cannot start; `GO_TEST_PACKAGES` narrows the package set.
+    Both schedule package processes sequentially (`-p 1`) to avoid the reproduced shared Testcontainers reaper startup race (ADR-0045), while retaining within-package parallel tests and competing-caller scenarios.
   - `make clean` removes build outputs only and never deletes committed generated sources; `make clean-check`, part of `make verify`, proves it in a disposable clone.
   - `make lint` checks gofmt on every tracked Go file and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also run `GOOS=linux GOARCH=amd64 make lint` to check Linux-specific source before relying on Linux CI (ADR-0029).
 - **Frontend verification**
@@ -31,7 +32,8 @@ Regenerate by editing `proto/*.proto` and the `*.sql` queries, then `make genera
 The protobuf plugins are pinned through the runtimes themselves: `protoc-gen-go` and `protoc-gen-connect-go` are `go tool` entries resolved from the same modules as the Go runtime, and `@bufbuild/protoc-gen-es` is an exact web devDependency matching `@bufbuild/protobuf`; update the runtime, plugin and generated output together.
 
 ## Dependencies
-**Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification. Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.
+**Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification.
+Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.
 
 ## Branches and versions
 
@@ -47,15 +49,19 @@ See the [release procedure](../operations/container-releases.md).
 
 ## Commit messages
 Use a Conventional Commit subject and keep each commit focused on one concern.
-Until the owner releases `v0.1.0`, `fix`, `refactor` and `perf` are prohibited; use the applicable `feat`, `docs`, `test`, `build`, `ci` or other permitted type. Write the body as topic bullets without a trailing colon, each with one-sentence sub-bullets, and finish with a `Verification` topic listing the observed red, the passing gates, the staged-diff review and any remaining item; keep each sentence on one line. **Do not add a `Co-Authored-By` or other AI attribution trailer**; this applies to coding agents, which commit each completed concern themselves.
+Until the owner releases `v0.1.0`, `fix`, `refactor` and `perf` are prohibited; use the applicable `feat`, `docs`, `test`, `build`, `ci` or other permitted type.
+Write the body as topic bullets without a trailing colon, each with one-sentence sub-bullets, and finish with a `Verification` topic listing the observed red, the passing gates, the staged-diff review and any remaining item; keep each sentence on one line.
+**Do not add a `Co-Authored-By` or other AI attribution trailer**; this applies to coding agents, which commit each completed concern themselves.
 
-Immediately before each commit, review the staged diff for scope, correctness, dependency direction, security and scenario coverage. Check the staged snapshot rather than relying on unstaged dependencies in the working tree, and pass the complete `make verify` gate before each commit, including uncached Go tests with required databases, web tests, load-check and browser E2E. Fix findings, repeat the review after changing the staged content, and record any remaining failed gate explicitly. Commit related tests with the behavior they verify; do not reconstruct an unobserved TDD history after implementation.
+Immediately before each commit, review the staged diff for scope, correctness, dependency direction, security and scenario coverage. Check the staged snapshot rather than relying on unstaged dependencies in the working tree, and pass the complete `make verify` gate before each commit, including uncached Go tests with required databases, web tests, load-check and browser E2E.
+Fix findings, repeat the review after changing the staged content, and record any remaining failed gate explicitly. Commit related tests with the behavior they verify; do not reconstruct an unobserved TDD history after implementation.
 
 Commit a completed red→green, checked and reviewed concern immediately, before starting another concern. Queue incoming requests until the current commit is complete. Never carry completed uncommitted changes into the next task; an explicit stop request or destructive action takes precedence.
 
 ## Definition of done
 `make verify` builds the SPA, browser and load bundle once, then runs three groups concurrently — static checks, Go tests and browser E2E — each in its own order, keeping each group's log in a per-run `$TMPDIR/portcullis-verify.XXXXXX` directory and printing it only when the group fails (ADR-0045).
-Milestone completion requires `make verify` (Go build/vet/lint/tests, web typecheck/lint/tests, load-check and browser E2E) plus `make supply-chain`, matching the functional CI gate. CI also builds and smoke-tests image packaging on native AMD64 and ARM64 runners; tagged publication requires those jobs. Every test passes before each small commit; any remaining failed non-test gate must be explicit.
+Milestone completion requires `make verify` (Go build/vet/lint/tests, web typecheck/lint/tests, load-check and browser E2E) plus `make supply-chain`, matching the functional CI gate. CI also builds and smoke-tests image packaging on native AMD64 and ARM64 runners; tagged publication requires those jobs.
+Every test passes before each small commit; any remaining failed non-test gate must be explicit.
 The browser harness builds the real embedded application and uses the [Testcontainers PostgreSQL module](https://golang.testcontainers.org/modules/postgres/) with its readiness strategy.
 `web/playwright.config.ts` reserves free loopback ports once and passes them as `E2E_APP_PORT` and `E2E_TARGET_PORT`, so concurrent browser runs never share a port.
 The harness serves its fixture coordinates on the target port, removes its own databases and server at shutdown, and removes only containers whose owning harness process has exited.

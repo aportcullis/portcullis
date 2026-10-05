@@ -1,6 +1,7 @@
 # ADR-0012: Schema governance operations — Atlas pin, artifact store, apply safety
 
-- **Status:** Accepted — model and formats fixed; the exact Atlas patch version and the timeout numbers are **provisional until the Schema-milestone (M5) integration work**, which re-confirms them against the compatibility suite.
+- **Status:** Accepted
+- **Decision scope:** model and formats fixed; the exact Atlas patch version and the timeout numbers are **provisional until the Schema-milestone (M5) integration work**, which re-confirms them against the compatibility suite.
 - **Date:** 2026-07-04
 
 ## Context

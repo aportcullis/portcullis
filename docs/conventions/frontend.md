@@ -46,7 +46,8 @@ When shared logic needs a caller-specific piece (an error formatter, a label), *
   Keep their internal import fixed to `@/shared/lib/utils`.
 - Add a component only when a feature needs it; prefer extending an existing one over vendoring a near-duplicate.
 
-Each component family lives in its own directory with an explicit `index.ts`, implementation, `example.tsx` and README. Import from the directory (existing paths are preserved); do not add a root barrel or wildcard exports. Keep examples out of production entry points and implementations independent of their own index to avoid cycles. See the [UI kit catalog and reuse guide](../../web/src/shared/ui/README.md) for behavior, dependencies, CSS and licensing.
+Each component family lives in its own directory with an explicit `index.ts`, implementation, `example.tsx` and README. Import from the directory (existing paths are preserved); do not add a root barrel or wildcard exports. Keep examples out of production entry points and implementations independent of their own index to avoid cycles.
+See the [UI kit catalog and reuse guide](../../web/src/shared/ui/README.md) for behavior, dependencies, CSS and licensing.
 
 ## Server interaction
 - All RPC goes through `shared/api` clients (Connect-ES v2, `createClient`); no raw fetch to API routes.
@@ -80,9 +81,11 @@ Routine create/edit/detail/review/settings/results workflows use pages with dire
 
 ## Changing the UI
 
-Design values live in [`web/src/app/theme.css`](../../web/src/app/theme.css): light/dark semantic colors, `--ui-font`, `--code-font`, `--radius`, `--content-width`, `--page-padding`, `--section-gap` and `--header-padding`. The defaults define the current application appearance. Global Tailwind mappings stay in `index.css`; use semantic utilities such as `bg-background`, `text-muted-foreground` and `font-mono` so overrides reach components.
+Design values live in [`web/src/app/theme.css`](../../web/src/app/theme.css): light/dark semantic colors, `--ui-font`, `--code-font`, `--radius`, `--content-width`, `--page-padding`, `--section-gap` and `--header-padding`. The defaults define the current application appearance.
+Global Tailwind mappings stay in `index.css`; use semantic utilities such as `bg-background`, `text-muted-foreground` and `font-mono` so overrides reach components.
 
-Change application layout in [`layout.css`](../../web/src/app/layout.css) and [`ApplicationFrame`](../../web/src/shared/ui/ApplicationFrame/ApplicationFrame.tsx). The frame accepts brand/navigation/account/content slots and has no session, permission or RPC knowledge. AppShell owns those decisions and supplies the slots. For a sidebar layout, rearrange the frame rather than duplicating authorization or navigation logic.
+Change application layout in [`layout.css`](../../web/src/app/layout.css) and [`ApplicationFrame`](../../web/src/shared/ui/ApplicationFrame/ApplicationFrame.tsx). The frame accepts brand/navigation/account/content slots and has no session, permission or RPC knowledge. AppShell owns those decisions and supplies the slots.
+For a sidebar layout, rearrange the frame rather than duplicating authorization or navigation logic.
 
 Restyle owned primitives in `shared/ui`; assemble features in `pages`. Branding is centralized through `BrandLogo` and `web/public/brand/` assets. UI asset changes should update README media when they alter the documented appearance. This is a source customization guide; a runtime theme picker and organization branding are separate product work (ADR-0036).
 

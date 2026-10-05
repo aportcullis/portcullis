@@ -1,6 +1,7 @@
 # ADR-0007: Social login via Google (OIDC)
 
-- **Status:** Accepted (amended 2026-07-04: PKCE method, redirect target, and the pending cookie's exact TTL pinned)
+- **Status:** Accepted
+- **Amendment history:** amended 2026-07-04: PKCE method, redirect target, and the pending cookie's exact TTL pinned
 - **Date:** 2026-06-28 (amended 2026-07-04)
 
 ## Context
@@ -42,14 +43,18 @@ Standards verified 2026-06-28 (Google, OpenID Connect, OWASP):
 
 ### Current email ownership (amended 2026-10-03)
 
-The Google adapter derives `EmailAuthoritative` only after ID-token verification, with a valid normalized address and `email_verified=true`, from Gmail's exact domain or a nonempty signed Workspace `hd` claim. The application requires both verification and authority before any first-time email lookup/link. Neither an email suffix resembling Gmail nor an authorization-request `hd` hint supplies authority. Keep issuer/subject resolution first, so an existing linked account remains independent of changed email claims. Deny other first-time email links with the same generic login rejection, without creating a user, link or session; record only the existing safe login-failure evidence. An explicit reauthenticated third-party-email linking flow is future work, not an automatic bypass.
+The Google adapter derives `EmailAuthoritative` only after ID-token verification, with a valid normalized address and `email_verified=true`, from Gmail's exact domain or a nonempty signed Workspace `hd` claim. The application requires both verification and authority before any first-time email lookup/link.
+Neither an email suffix resembling Gmail nor an authorization-request `hd` hint supplies authority. Keep issuer/subject resolution first, so an existing linked account remains independent of changed email claims. Deny other first-time email links with the same generic login rejection, without creating a user, link or session; record only the existing safe login-failure evidence.
+An explicit reauthenticated third-party-email linking flow is future work, not an automatic bypass.
 
 This follows [Google's ID-token ownership guidance](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token), checked 2026-10-03: a third-party email may have changed owner since its historical verification. `hd` is provider-verified ownership evidence here, not authorization to any Portcullis organization or role.
 
 ### Config (Google login is optional)
 - `PORTCULLIS_GOOGLE_CLIENT_ID`, `PORTCULLIS_GOOGLE_CLIENT_SECRET`, `PORTCULLIS_GOOGLE_REDIRECT_URL`.
   When unset, Google login is disabled and password login still works.
-- **Redirect URL validation (amended 2026-07-13):** boot refuses a `google_redirect_url` that Google would reject at registration or that this server could never answer — the rules mirror Google's redirect-URI validation: **HTTPS required** (plain HTTP only for localhost/loopback), **no query, fragment, or userinfo**, **no raw non-loopback IP host**, and the **path must be exactly `/auth/google/callback`** (the only mounted callback route; `config.GoogleCallbackPath`, pinned to `connectapi.OIDCCallbackPattern` by a transport test).
+- **Redirect URL validation (amended 2026-07-13):** boot refuses a `google_redirect_url` that Google rejects at registration or that the server cannot answer. The rules mirror Google's redirect-URI validation.
+  - **HTTPS is required**, with plain HTTP allowed only for localhost/loopback; reject query, fragment, userinfo and raw non-loopback IP hosts.
+  - The path must be exactly `/auth/google/callback`, the only mounted callback route. A transport test pins `config.GoogleCallbackPath` to `connectapi.OIDCCallbackPattern`.
   Previously only "absolute http(s) URL" was checked, so a URL that could never complete a login still booted.
 
 ## Consequences

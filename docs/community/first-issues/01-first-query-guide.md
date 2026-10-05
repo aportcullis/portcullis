@@ -8,7 +8,8 @@ The [PostgreSQL quickstart](../../operations/pg-alpha-quickstart.md) tells users
 
 ## Scope and starting points
 
-Update the quickstart only: show a synthetic title and optional explanation before submitting the first query; state MySQL/saved queries as planned and SQLite as excluded. Use the existing [request narrative fields](../../../web/src/features/request/RequestNarrativeFields.tsx) and [request browser scenario](../../../web/e2e/requests.spec.ts) as behavior references. No product code, database scope, or credentials change is needed.
+Update the quickstart only: show a synthetic title and optional explanation before submitting the first query; state MySQL/saved queries as planned and SQLite as excluded. Use the existing [request narrative fields](../../../web/src/features/request/RequestNarrativeFields.tsx) and [request browser scenario](../../../web/e2e/requests.spec.ts) as behavior references.
+No product code, database scope, or credentials change is needed.
 
 ## Completion criteria
 

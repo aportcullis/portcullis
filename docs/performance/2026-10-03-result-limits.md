@@ -7,7 +7,7 @@ This is a bounded functional smoke, not a concurrency, soak or production sizing
 - Application SHA-256: `c11dd6fb56c3d9472b91784d4a731120d9ffa69e2c5d089d023957ae6952cb16`.
 - PostgreSQL image: `postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873`.
 - Runtime: `linux/arm64`; application and databases ran through Docker on the development machine.
-- Suite: `tests/load/dist/result-limits.js`, built by `make load-check`.
+- Suite: [result-limit scenarios](../../tests/load/result-limits.ts), bundled by `make load-check`.
 
 ## Scenarios and results
 
@@ -19,15 +19,20 @@ This is a bounded functional smoke, not a concurrency, soak or production sizing
 
 All three journeys completed, with 24/24 checks passing, zero HTTP failures and every configured threshold green. Control-plane p95 was **38.35 ms** and cancellation settlement was **2.03 s**. Execution latency is a separate metric and is excluded from the control-plane p95 threshold.
 
-The standalone async execution bundle also passed all 12 checks using the shared cancellation helper. The harness subsequently exited successfully, removed its private session fixture and terminated its owned databases. These scenarios preserve conservative SQL outcome handling; they do not establish correct circuit-breaker classification for repeated cancellation, which remains a separate review finding. Summary artifacts are retained locally under `tests/load/results/` and excluded from version control.
+The standalone async execution bundle also passed all 12 checks using the shared cancellation helper. The harness subsequently exited successfully, removed its private session fixture and terminated its owned databases. These scenarios preserve conservative SQL outcome handling and establish only the contracts exercised by the recorded smoke.
+Aggregate summaries remain local and are excluded from version control.
 
 ## Reproduce
 
-Start a fresh isolated fixture with `make load-server`, then run:
+Start a fresh isolated fixture with `make load-server`, export its private fixture path as `LOAD_FIXTURES`, and locate the bundles produced by `make load-check`, then run:
 
 ```sh
-BASE_URL=http://127.0.0.1:18082 LOAD_FIXTURES="$PWD/tests/load/fixtures.local.json" JOURNEY=execute VUS=1 k6 run tests/load/dist/result-limits.js
-BASE_URL=http://127.0.0.1:18082 LOAD_FIXTURES="$PWD/tests/load/fixtures.local.json" JOURNEY=execute VUS=1 k6 run tests/load/dist/async-execution.js
+: "${LOAD_FIXTURES:?Set the private fixture absolute path}"
+export LOAD_FIXTURES
+: "${RESULT_LIMITS_BUNDLE:?Set the generated result-limit bundle path}"
+: "${ASYNC_EXECUTION_BUNDLE:?Set the generated async-execution bundle path}"
+BASE_URL=http://127.0.0.1:18082 JOURNEY=execute VUS=1 k6 run "$RESULT_LIMITS_BUNDLE"
+BASE_URL=http://127.0.0.1:18082 JOURNEY=execute VUS=1 k6 run "$ASYNC_EXECUTION_BUNDLE"
 ```
 
 Use a new fixture for comparable measurements. The recorded Docker run placed k6 in the fixture container's network namespace so the application's loopback listener remained private. Clean up the harness and its databases after the run.

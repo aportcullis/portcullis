@@ -1,6 +1,6 @@
 # ADR-0002: Statement classification table & test fixtures
 
-- **Status:** Accepted — classification table and fixtures fixed.
+- **Status:** Accepted
   (Amended 2026-07-04: parsers are settled in ADR-0001, fixtures are now literal SQL, and the CTE-DML / `SELECT … INTO` structural question is closed. Amended 2026-07-19: PG reject fixtures #28/#29 added with the PG adapter implementation.)
 - **Date:** 2026-06-27 (amended 2026-07-04, 2026-07-19)
 
@@ -55,9 +55,11 @@ The full-tree function/operator sweep still checks expressions in every admitted
 
 PostgreSQL `CREATE TABLE AS`, materialized-view creation through that node, and `CREATE VIEW` require their query body to pass the complete read-expression vocabulary, including unknown-node and locking checks. The independent whole-tree function/operator sweep still applies afterward. `SELECT INTO` is DDL only when it contains no data-modifying CTE or row locking.
 
-For M1, refuse a single statement combining object creation with nested DML instead of silently selecting DDL alone. Read/write/DDL have independently configured permission/quorum, so one class cannot represent both requirements safely. Separate the changes into independently approved requests until an explicit multi-effect policy is designed. This does not change M5 migration classification across separate statements.
+For M1, refuse a single statement combining object creation with nested DML instead of silently selecting DDL alone. Read/write/DDL have independently configured permission/quorum, so one class cannot represent both requirements safely. Separate the changes into independently approved requests until an explicit multi-effect policy is designed.
+This does not change M5 migration classification across separate statements.
 
-Regression scenarios reject CTAS with a DELETE CTE, SELECT INTO with an UPDATE CTE, views with a DELETE CTE, CTAS with FOR UPDATE, and CTAS/views with XMLPARSE (an expression outside the admitted vocabulary). Ordinary read-only CTAS/CTEs, views and SELECT INTO remain DDL. These are classification boundary tests; acceptance by the parser does not prove that PostgreSQL permits every rejected form to execute.
+Regression scenarios reject CTAS with a DELETE CTE, SELECT INTO with an UPDATE CTE, views with a DELETE CTE, CTAS with FOR UPDATE, and CTAS/views with XMLPARSE (an expression outside the admitted vocabulary). Ordinary read-only CTAS/CTEs, views and SELECT INTO remain DDL.
+These are classification boundary tests; acceptance by the parser does not prove that PostgreSQL permits every rejected form to execute.
 
 Sources checked 2026-10-03: [PostgreSQL data-modifying CTEs](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-MODIFYING), [CREATE TABLE AS](https://www.postgresql.org/docs/current/sql-createtableas.html).
 
@@ -104,7 +106,9 @@ A `ddl` approval is scoped to the schema objects Portcullis lets a request creat
 | 117 | `ALTER TABLE t ADD COLUMN c int, DISABLE ROW LEVEL SECURITY` | PG | reject (not_allowlisted) |
 | 118 | `ALTER TYPE ty ADD ATTRIBUTE a int` | PG | reject (not_allowlisted) |
 
-Sources checked 2026-10-04: [PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/current/sql-altertable.html) (a disabled trigger "is not executed when its triggering event occurs"; row-security, rule, replica-identity and access-method actions), [PostgreSQL SQL commands](https://www.postgresql.org/docs/current/sql-commands.html) (the `ALTER … RENAME`, `DROP` and `COMMENT` families each span cluster-level and schema-level object kinds).
+Sources checked 2026-10-04:
+- [PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/current/sql-altertable.html) (a disabled trigger "is not executed when its triggering event occurs"; row-security, rule, replica-identity and access-method actions)
+- [PostgreSQL SQL commands](https://www.postgresql.org/docs/current/sql-commands.html) (the `ALTER … RENAME`, `DROP` and `COMMENT` families each span cluster-level and schema-level object kinds).
 
 ### PostgreSQL exclusion operators, operator classes and access methods (2026-10-04)
 
@@ -136,7 +140,11 @@ DDL can name catalog code outside `FuncCall`/`A_Expr`: `EXCLUDE … WITH op` sto
 
 A governed real-database scenario creates user operators `public.&&`, `public.<@` and `public.@>` on `(int, int)` and proves exclusion constraints using them are refused before execution while built-in methods and operators still create objects; an operator that a pg_catalog operator with the same signature shadows is never visible and is correctly admitted.
 
-Sources checked 2026-10-04: [PostgreSQL CREATE INDEX](https://www.postgresql.org/docs/current/sql-createindex.html) (built-in methods "B-tree, hash, GiST, SP-GiST, GIN, and BRIN"; per-column operator classes), [CREATE ACCESS METHOD](https://www.postgresql.org/docs/current/sql-create-access-method.html), [CREATE OPERATOR CLASS](https://www.postgresql.org/docs/current/sql-createopclass.html), [CREATE TABLE exclusion constraints](https://www.postgresql.org/docs/current/sql-createtable.html).
+Sources checked 2026-10-04:
+- [PostgreSQL CREATE INDEX](https://www.postgresql.org/docs/current/sql-createindex.html) (built-in methods "B-tree, hash, GiST, SP-GiST, GIN, and BRIN"; per-column operator classes)
+- [CREATE ACCESS METHOD](https://www.postgresql.org/docs/current/sql-create-access-method.html)
+- [CREATE OPERATOR CLASS](https://www.postgresql.org/docs/current/sql-createopclass.html)
+- [CREATE TABLE exclusion constraints](https://www.postgresql.org/docs/current/sql-createtable.html).
 
 ### Pinned edge-case fixtures (literal; must hold on every engine where the syntax exists)
 The suite assumes a table `t(id integer, v text)`.
@@ -191,7 +199,8 @@ A statement not explicitly expected in the suite defaults to **reject** — new 
 | 92 | `SELECT id FROM t WHERE id IN (SELECT id FROM t)` | PG | `read` |
 
 ### Function effects (revised 2026-07-24 — the earlier premise was wrong)
-The original text here said a `SELECT` that merely *calls functions* stays `read` because "volatile functions are backstopped at execution time by the server-enforced read-only transaction". **That premise is false.** PostgreSQL's `READ ONLY` mode is explicitly *"a high-level notion of read-only that does not prevent all writes to disk"*; it disallows a fixed list of **commands** (`INSERT`/`UPDATE`/`DELETE`/`MERGE`/`COPY FROM` to non-temp tables, all `CREATE`/`ALTER`/`DROP`, `COMMENT`, `GRANT`, `REVOKE`, `TRUNCATE`, and `EXPLAIN ANALYZE`/`EXECUTE` of those) — not function side effects.
+The original text here said a `SELECT` that merely *calls functions* stays `read` because "volatile functions are backstopped at execution time by the server-enforced read-only transaction". **That premise is false.**
+PostgreSQL's `READ ONLY` mode is explicitly *"a high-level notion of read-only that does not prevent all writes to disk"*; it disallows a fixed list of **commands** (`INSERT`/`UPDATE`/`DELETE`/`MERGE`/`COPY FROM` to non-temp tables, all `CREATE`/`ALTER`/`DROP`, `COMMENT`, `GRANT`, `REVOKE`, `TRUNCATE`, and `EXPLAIN ANALYZE`/`EXECUTE` of those) — not function side effects.
 So `SELECT dblink_exec('…','insert …')`, `SELECT pg_notify(…)`, `SELECT set_config(…)`, advisory-lock and server-file/admin functions all pass a read-only transaction, and an approved **read** could write (PRD §4.3/§8.2 promise the class gate is real).
 
 **Revised again 2026-07-25 (external review round 4).** The two-layer text below previously named the executor's `provolatile` check as the second *boundary*.
@@ -224,7 +233,10 @@ A name-based filter is blind to all three because they are decided by the catalo
 
 ### Grammar-rewritten pg_catalog calls (2026-10-04)
 
-The PostgreSQL grammar replaces several SQL-standard constructs with a call whose name it qualifies itself: `EXTRACT(f FROM x)` → `pg_catalog.extract`, `SUBSTRING(… FROM … FOR …)` → `pg_catalog.substring`, `POSITION(a IN b)` → `pg_catalog.position`, `OVERLAY(… PLACING …)` → `pg_catalog.overlay`, every `TRIM(…)` form → `pg_catalog.btrim`/`ltrim`/`rtrim`, `x AT TIME ZONE z`/`AT LOCAL` → `pg_catalog.timezone`, and `LIKE … ESCAPE`/`SIMILAR TO` → `pg_catalog.like_escape`/`similar_to_escape`.
+The PostgreSQL grammar qualifies several SQL-standard constructs as function calls:
+- `EXTRACT(f FROM x)` → `pg_catalog.extract`; `SUBSTRING(… FROM … FOR …)` → `pg_catalog.substring`; `POSITION(a IN b)` → `pg_catalog.position`.
+- `OVERLAY(… PLACING …)` → `pg_catalog.overlay`; every `TRIM(…)` form → `pg_catalog.btrim`/`ltrim`/`rtrim`.
+- `x AT TIME ZONE z`/`AT LOCAL` → `pg_catalog.timezone`; `LIKE … ESCAPE`/`SIMILAR TO` → `pg_catalog.like_escape`/`similar_to_escape`.
 The qualified-name rule therefore refused `SELECT extract(year from now())`, `TRIM(x)` and every `SIMILAR TO`, although the user wrote no qualified name.
 Verified against pgplex/pgparser v0.2.0 by parsing each construct; the names and call forms match PostgreSQL's gram.y.
 

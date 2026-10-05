@@ -1,6 +1,6 @@
 # ADR-0003: Key management
 
-- **Status:** Accepted — key hierarchy, algorithms, provisioning, and rotation model fixed.
+- **Status:** Accepted
   (Amended 2026-07-04: on-disk envelope format, HKDF labels, canonical AAD layout, master-key file format, rotation execution, and the full Argon2 parameter set are pinned.)
 - **Date:** 2026-06-27 (amended 2026-07-04)
 
@@ -77,8 +77,10 @@ portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]
 ### Rotation
 - Multiple KEK versions coexist; the **highest version is active** for new writes, older versions remain available for decrypt/unwrap during transition.
 - A `key rotate` CLI re-wraps DEKs and re-encrypts request payloads to the new version as an **eager batch** (decided 2026-07-04; no lazy-on-read path).
-  Eager keeps completion observable — the CLI reports "0 rows on old encryption versions" only after a database-wide count verifies every credential, request payload and result wrapper uses the active encryption version. The completion check includes all organizations and versions newer than the loaded active key; unresolved rows or a failed count refuse completion (2026-10-03 review correction). Historical KEKs remain necessary for immutable approval/audit HMAC verification, so M1 does not support destroying them solely on that count.
-  The batch selects one organization with eligible old envelopes, then locks at most 100 records of each kind with explicit organization predicates. Repeat organization discovery until none remains; credentials precede request payloads and result wrappers, and updates plus the selected organization's audit evidence commit atomically. The administrative identity-selection exception is documented in ADR-0004; there is no customer cross-org read API. A corrupt batch still rolls back and refuses progress; bounded recovery beyond corrupt records requires separate work. The batch is resumable (keyed by `key_version < active`) and throttled; reads during rotation work throughout because all versions stay loaded.
+  Eager keeps completion observable — the CLI reports "0 rows on old encryption versions" only after a database-wide count verifies every credential, request payload and result wrapper uses the active encryption version. The completion check includes all organizations and versions newer than the loaded active key; unresolved rows or a failed count refuse completion (2026-10-03 review correction).
+  Historical KEKs remain necessary for immutable approval/audit HMAC verification, so M1 does not support destroying them solely on that count.
+  The batch selects one organization with eligible old envelopes, then locks at most 100 records of each kind with explicit organization predicates. Repeat organization discovery until none remains; credentials precede request payloads and result wrappers, and updates plus the selected organization's audit evidence commit atomically.
+  The administrative identity-selection exception is documented in ADR-0004; there is no customer cross-org read API. A corrupt batch still rolls back and refuses progress; bounded recovery beyond corrupt records requires separate work. The batch is resumable (keyed by `key_version < active`) and throttled; reads during rotation work throughout because all versions stay loaded.
 - `payload_digest` carries its `key_version`; verification uses the version recorded on the row.
 - **Implementation status:** M1 implements the multi-version keyring and resumable `key rotate` CLI. Credential/request envelopes are re-encrypted and result DEKs rewrapped in locked, audited batches. Stop serving writers during the operational key switch; see [rotation runbook](../operations/key-rotation.md).
 - **Operational note (CSRF, amended 2026-10-04):** the session CSRF token (ADR-0006) leads with the `key_version` whose payload-integrity key produced its HMAC and is verified under that version, so rotating the master key keeps outstanding sessions usable while historical versions stay loaded.
@@ -101,7 +103,8 @@ portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]
 
 ### Compose demo key provisioning (2026-10-03)
 
-The one-shot initializer uses a private temporary file and atomic no-replace hard-link publication. Concurrent initializers must preserve the winning key. An existing empty, malformed or symlink key is refused, never regenerated. Set the key to mode `0400` and its directory to `0700`, owned by UID/GID `65532` to match the distroless nonroot runtime; do not log key material. Apply ownership/permission repair to valid existing demo keys without changing their bytes. Mount the persistent volume read-only in the serving process. Production remains responsible for protected secret provisioning and backups.
+The one-shot initializer uses a private temporary file and atomic no-replace hard-link publication. Concurrent initializers must preserve the winning key. An existing empty, malformed or symlink key is refused, never regenerated. Set the key to mode `0400` and its directory to `0700`, owned by UID/GID `65532` to match the distroless nonroot runtime; do not log key material.
+Apply ownership/permission repair to valid existing demo keys without changing their bytes. Mount the persistent volume read-only in the serving process. Production remains responsible for protected secret provisioning and backups.
 
 `make keygen-check` exercises concurrent initialization, nonroot readability, unrelated-user denial, repeated byte preservation, corrupt/empty key refusal and symlink refusal in a disposable tmpfs using the exact Compose keygen image. Never execute this test on an operator secrets volume. See [Docker secret injection](https://docs.docker.com/compose/how-tos/use-secrets/) (checked 2026-10-03).
 

@@ -68,9 +68,11 @@ A build that is red mid-cycle is expected; finish the loop before `make verify`.
 
 ## Concurrent state changes
 
-Shared workflow state is protected by database transactions, conditional state/version updates and unique constraints; a process-local mutex does not coordinate separate application instances. When both rows are required, acquire the connection before the request, and the request before its execution record (ADR-0021). Review membership locks, cascade updates and implicit foreign-key locks alongside explicit locks before adding a path.
+Shared workflow state is protected by database transactions, conditional state/version updates and unique constraints; a process-local mutex does not coordinate separate application instances. When both rows are required, acquire the connection before the request, and the request before its execution record (ADR-0021).
+Review membership locks, cascade updates and implicit foreign-key locks alongside explicit locks before adding a path.
 
-Keep metadata transactions short: commit lease acquisition before target SQL or other external I/O. Propagate cancellation/deadlines through lock waits and roll back refused operations. Fence heartbeat and completion by owner and attempt; a competing or late report must preserve the committed terminal outcome and its audit evidence. Never retry target SQL merely because metadata locking or completion reporting failed.
+Keep metadata transactions short: commit lease acquisition before target SQL or other external I/O. Propagate cancellation/deadlines through lock waits and roll back refused operations. Fence heartbeat and completion by owner and attempt; a competing or late report must preserve the committed terminal outcome and its audit evidence.
+Never retry target SQL merely because metadata locking or completion reporting failed.
 
 Verify observable contention scenarios with Testcontainers and `-race`: competing approval/execute calls, owner cancellation, stale ownership and simultaneous terminal reports. Coordinate competing callers explicitly and bound their contexts; a passing race detector alone does not establish database transaction correctness.
 
@@ -112,7 +114,8 @@ Never name, link or quote a file matched by `.gitignore` in a committed file, ev
 Keep paired translations consistent according to the [documentation policy](../README.md#language-policy).
 
 ## Minimize hardcoding
-Read application and test-harness settings through isolated Viper loaders and typed structs, then validate before use. Reuse `config.NewEnvironmentLoader` for struct binding, environment key replacement and decode hooks; keep consumer-specific defaults and validation with the consumer. Direct process-environment inspection is reserved for low-level driver-environment isolation, not configuration reads.
+Read application and test-harness settings through isolated Viper loaders and typed structs, then validate before use. Reuse `config.NewEnvironmentLoader` for struct binding, environment key replacement and decode hooks; keep consumer-specific defaults and validation with the consumer.
+Direct process-environment inspection is reserved for low-level driver-environment isolation, not configuration reads.
 
 Select resources by their domain role or identity, not a fixed collection position. Use named fields/variables for fixed roles (such as metadata and target databases) and typed keyed collections for identity-based assignments. Keep indices when order is the actual contract, such as result paging, and translate external positional formats once at the boundary.
 

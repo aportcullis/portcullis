@@ -1,6 +1,6 @@
 # ADR-0004: Metadata RLS — apply or not
 
-- **Status:** Accepted — no RLS in the MVP.
+- **Status:** Accepted
   Self-host is single-org, so there is no cross-org boundary to enforce yet; schema stays RLS-ready and RLS is revisited at multi-tenant.
 - **Date:** 2026-06-27
 
@@ -26,8 +26,10 @@ In a single-org MVP the isolation benefit is low; the benefit grows only when tr
 **(A)+(C): no RLS policies in the MVP, but keep the schema RLS-ready.**
 
 - Org scope is enforced in the **repository layer**: every query is parameterized by the caller's organization and there is a single choke point that injects the org predicate, so it cannot be forgotten per-call.
-- **Administrative rotation exception (2026-10-03):** The operational key-rotation CLI may select the next organization identity with old encryption envelopes and count nonactive envelopes across organizations (ADR-0003). These administrative discovery/completion queries return only one organization ID or an aggregate, never payloads or credentials, and are not exposed through a customer RPC. Each selected organization then uses explicitly org-scoped locked reads, updates and audit events. No default-organization assumption may omit remaining envelopes.
-- **Per-organization maintenance (2026-10-04):** Background maintenance enumerates organization identities (`ListOrganizationIDs`, identity-only) and runs each pass with an explicit organization; result-cache purge visits every organization and continues past a failing one instead of processing only the default organization. Audit reads and writes take the caller's organization explicitly; an empty organization is refused rather than defaulted (ADR-0009).
+- **Administrative rotation exception (2026-10-03):** The operational key-rotation CLI may select the next organization identity with old encryption envelopes and count nonactive envelopes across organizations (ADR-0003). These administrative discovery/completion queries return only one organization ID or an aggregate, never payloads or credentials, and are not exposed through a customer RPC.
+  Each selected organization then uses explicitly org-scoped locked reads, updates and audit events. No default-organization assumption may omit remaining envelopes.
+- **Per-organization maintenance (2026-10-04):** Background maintenance enumerates organization identities (`ListOrganizationIDs`, identity-only) and runs each pass with an explicit organization; result-cache purge visits every organization and continues past a failing one instead of processing only the default organization.
+  Audit reads and writes take the caller's organization explicitly; an empty organization is refused rather than defaulted (ADR-0009).
 - **Cross-org endpoint integration tests are mandatory** and independent of this choice: for each endpoint, a request that swaps only an id must not reach another org's data.
 - The schema stays RLS-ready: `organization_id` on every core table, and the runtime role is already separated from the migration/owner role (the audit-table grant split needs this too).
 - **Revisit RLS when multi-tenant SaaS is on the table.** At that point RLS becomes worthwhile defense-in-depth and the `SET LOCAL` org-context plumbing is justified.

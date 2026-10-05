@@ -22,7 +22,9 @@ Ecosystem verified 2026-07-11 (GitHub activity, Docker-independent):
   Vendored code is OURS: reviewed on copy-in, restyled freely, never blindly re-synced. shadcn-solid remains a source to crib single components from if useful.
 - **Tailwind v4** via `@tailwindcss/vite`; theme tokens as CSS variables in `src/index.css` (solid-ui's convention), dark mode by media query for now.
 - **Routing: `@solidjs/router`** from day one — M1 adds connections/requests/approvals screens, so a hand-rolled view switch would be immediately rewritten.
-  Route-level code splitting (amended 2026-10-04): the sign-in, first-run and not-found pages stay in the entry chunk, while the authenticated workflow pages are loaded with Solid's [`lazy`](https://docs.solidjs.com/reference/component-apis/lazy) under a `Suspense` fallback inside the application frame, so the sign-in page no longer downloads the SQL editor, result grid and connection forms (entry chunk 443.84 kB to 232.52 kB minified). A failed chunk load reaches the application error boundary.
+  Route-level code splitting (amended 2026-10-04) keeps sign-in, first-run and not-found pages in the entry chunk. Authenticated workflow pages use Solid's [`lazy`](https://docs.solidjs.com/reference/component-apis/lazy) with a `Suspense` fallback inside the application frame.
+  Sign-in no longer downloads the SQL editor, result grid and connection forms; the entry chunk fell from 443.84 kB to 232.52 kB minified.
+  A failed chunk load reaches the application error boundary.
 - **Pre-session config: `Auth.GetConfig`** public RPC (`google_enabled`, `needs_bootstrap`) so the SPA can hide the Google button on servers without OIDC and route a fresh install straight to the first-run form.
   Bootstrap state is install-level, not per-account — no enumeration oracle.
   The RPC shares the public rate-limit bucket (ADR-0010) and needs no CSRF (read-only, no session).

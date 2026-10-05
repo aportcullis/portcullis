@@ -5,21 +5,25 @@
 
 ## Context
 
-The owner requested Kubernetes and CloudNativePG (CNPG) support immediately after MySQL. The previous deployment plan deferred Helm/CNPG to M6, while M2 moved straight from MySQL parity to SQL review. Earlier requests already selected both Helm and Kustomize. CNPG application guidance recommends stable Service DNS and exposes generated credentials for the database owner; the latter cannot replace Portcullis's restricted metadata runtime role.
+The owner requested Kubernetes and CloudNativePG (CNPG) support immediately after MySQL. The previous deployment plan deferred Helm/CNPG to M6, while M2 moved straight from MySQL parity to SQL review. Earlier requests already selected both Helm and Kustomize.
+CNPG application guidance recommends stable Service DNS and exposes generated credentials for the database owner; the latter cannot replace Portcullis's restricted metadata runtime role.
 
 ## Decision
 
 Keep milestone identifiers and the M3 MVP boundary. Sequence M2 as MySQL governance parity → Kubernetes/CNPG deployment acceptance → SQL review/basic EXPLAIN. Amend both PRDs, the public roadmap and support matrix together. This records future scope, not delivered support.
 
-Provide a Helm chart and Kustomize base/overlays with equivalent application settings. Initially deploy one Portcullis replica with external or CNPG-managed metadata PostgreSQL 18. Connect governed CNPG PostgreSQL targets through primary read-write Service DNS, verified TLS and existing database-version qualifications. Keep the operator independently installed and managed by the operator's administrator; no operator lifecycle controller or new Portcullis CRD is required.
+Provide a Helm chart and Kustomize base/overlays with equivalent application settings. Initially deploy one Portcullis replica with external or CNPG-managed metadata PostgreSQL 18. Connect governed CNPG PostgreSQL targets through primary read-write Service DNS, verified TLS and existing database-version qualifications.
+Keep the operator independently installed and managed by the operator's administrator; no operator lifecycle controller or new Portcullis CRD is required.
 
 Use existing Secrets and mounted master keys, and separate an owner-role migration Job from the restricted application runtime role. Do not inject CNPG's generated database-owner or superuser credentials into runtime. Include probes, resource/security settings and least privilege without granting Kubernetes API discovery access by default.
 
-Require installation, upgrade/restart, credential/certificate rotation, key preservation, backup/restore and failover scenarios on pinned, published Kubernetes/CNPG/tool versions before claiming support. Preserve execution leases and unknown outcomes across connection loss; never retry target SQL automatically. Document UNLOGGED result-cache loss as `result_unavailable`, without rerunning approved SQL. CNPG HA alone does not qualify Portcullis for multiple replicas.
+Require installation, upgrade/restart, credential/certificate rotation, key preservation, backup/restore and failover scenarios on pinned, published Kubernetes/CNPG/tool versions before claiming support. Preserve execution leases and unknown outcomes across connection loss; never retry target SQL automatically.
+Document UNLOGGED result-cache loss as `result_unavailable`, without rerunning approved SQL. CNPG HA alone does not qualify Portcullis for multiple replicas.
 
 ## Consequences
 
-Deployment becomes an M2/MVP acceptance gate and increases its scope. Select precise supported Kubernetes/CNPG versions and migration delivery details through follow-up implementation decisions and real-cluster evidence. CNPG automatic discovery remains M7. Terraform/OpenTofu remains M6 after API stability; Gateway-specific deployment additions, masking prerequisites and registered-agent MCP ordering remain unchanged.
+Deployment becomes an M2/MVP acceptance gate and increases its scope. Select precise supported Kubernetes/CNPG versions and migration delivery details through follow-up implementation decisions and real-cluster evidence. CNPG automatic discovery remains M7.
+Terraform/OpenTofu remains M6 after API stability; Gateway-specific deployment additions, masking prerequisites and registered-agent MCP ordering remain unchanged.
 
 ## Primary sources (verified 2026-10-03)
 

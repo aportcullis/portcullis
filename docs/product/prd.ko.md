@@ -101,7 +101,8 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - 승인되지 않은 요청, 만료·반려된 요청, 승인 후 payload가 달라진 요청은 실행 API에서 항상 거부된다.
 - `required_approvals=N` 요청은 requester를 제외한 서로 다른 활성 approver N명의 승인이 있어야 실행 가능하고, 한 명의 반려로 terminal `rejected`가 된다.
   `N=0`은 system 자동 승인 event를 남긴다.
-- 승인 payload는 `payload_version + organization_id + requester_id + connection_id + connection_config_version + connection_policy_version + statement_class + normalized SQL + typed parameter values`의 canonical JSON을 **`payload_digest`(keyed HMAC-SHA-256)**로 고정하며 실행 직전에 다시 검증한다. digest key는 master key에서 HKDF로 파생한 payload-integrity 전용 key이고, digest에 key version을 함께 저장한다(평문 hash는 audit 장기 보존 시 저엔트로피 literal brute-force에 취약하므로 keyed HMAC 사용).
+- 승인 payload는 `payload_version + organization_id + requester_id + connection_id + connection_config_version + connection_policy_version + statement_class + normalized SQL + typed parameter values`의 canonical JSON을 **`payload_digest`(keyed HMAC-SHA-256)**로 고정하며 실행 직전에 다시 검증한다.
+  digest key는 master key에서 HKDF로 파생한 payload-integrity 전용 key이고, digest에 key version을 함께 저장한다(평문 hash는 audit 장기 보존 시 저엔트로피 literal brute-force에 취약하므로 keyed HMAC 사용).
   SQL 정규화는 UTF-8과 줄바꿈만 통일하고 의미·공백을 재작성하지 않는다.
 - connection policy 변경이나 connection archive 이후에는 변경 전에 생성된 미실행 요청을 실행할 수 없다.
 - 동일한 승인 완료 요청에 대해 실행 lease를 원자적으로 한 번만 획득한다(`request_id` unique + lease owner/deadline/heartbeat). lease 획득과 `EXECUTION_STARTED` audit는 같은 metadata transaction에 기록한다.
@@ -190,7 +191,8 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   자기 승인 허용 토글은 governance 약화 우려로 채택하지 않는다.
 - **유효기간:** N번째 승인이 기록되거나 system 자동 승인이 발생한 시점부터 기본 24시간. organization 설정으로 15분~7일 범위에서 변경 가능.
   두 경로 모두 **행 잠금을 잡은 트랜잭션 안에서** `expires_at`을 찍는다: 자동 승인이 잠금 밖에서 시각을 계산하면 정책 갱신·archive와의 잠금 대기 동안 요청이 저장되기도 전에 유효기간이 소모된다.
-- **statement 정책:** DB dialect별 SQL parser로 단일 statement와 종류를 판별. parser가 확실히 분류하지 못하면 거부. connection별 `read`, `write`, `ddl` 허용 여부를 적용. PostgreSQL DDL의 query 본문에도 전체 read 표현식 검사를 적용해 잠금·알 수 없는 표현식을 거부한다. M1은 독립적인 write 정책을 면제하지 않도록 DDL과 중첩 DML이 섞인 단일 문장을 거부한다(ADR-0002). PostgreSQL RENAME/DROP/COMMENT는 CREATE가 허용하는 객체 종류(table, view, materialized view, index, sequence, schema)에만 적용되고, ALTER TABLE은 명시적 하위 명령 목록만 허용한다. role, database, 함수·프로시저, trigger, policy, extension, 소유자 변경과 trigger/rule/row-security 토글은 거부한다(ADR-0002).
+- **statement 정책:** DB dialect별 SQL parser로 단일 statement와 종류를 판별. parser가 확실히 분류하지 못하면 거부. connection별 `read`, `write`, `ddl` 허용 여부를 적용. PostgreSQL DDL의 query 본문에도 전체 read 표현식 검사를 적용해 잠금·알 수 없는 표현식을 거부한다. M1은 독립적인 write 정책을 면제하지 않도록 DDL과 중첩 DML이 섞인 단일 문장을 거부한다(ADR-0002).
+  PostgreSQL RENAME/DROP/COMMENT는 CREATE가 허용하는 객체 종류(table, view, materialized view, index, sequence, schema)에만 적용되고, ALTER TABLE은 명시적 하위 명령 목록만 허용한다. role, database, 함수·프로시저, trigger, policy, extension, 소유자 변경과 trigger/rule/row-security 토글은 거부한다(ADR-0002).
 - **read-only 기본값:** 새 connection은 `read=true`, `write=false`, `ddl=false`. write/DDL 활성화는 admin audit event를 남김.
 - **재사용 마찰 (결정됨):** saved query는 승인을 상속하지 않으므로(4.2) 매 실행이 새 access request→approval을 거친다.
   이를 **connection·statement 종류별 승인 정책**으로 조절한다(kviklet `numTotalRequired` 모델 검증·확장).
@@ -384,7 +386,8 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 
 ### 4.11 SQL 검토와 스키마 미리보기 조기 제공 (M2–M3)
 
-ADR-0026으로 에이전트 연동보다 검토 도구를 앞당긴다. M2는 MySQL parity와 Kubernetes/CNPG 배포 인수(ADR-0035) 이후 statement 종류, 식별 가능한 참조 object, 적용 policy·limit을 결정론적으로 표시하고 미확인 항목은 unknown으로 둔다. 지원 Read 문장만 typed parameter와 서버 고정 옵션으로 기본 native EXPLAIN을 제공하며 ANALYZE, 위험 함수·연산자, 미분류 구문은 거부한다. 조직·connection 인가, archive 검사, target/config/policy 검증, 제한된 planning timeout·출력, 취소, 요청자만의 plan 접근과 audit가 필수다. 계획 조회는 승인이나 요청 실행이 아니다. SQL·parameter digest, target/config, 엔진 버전, 관측 시각을 근거에 연결하고 입력 변경 시 무효화하며 cost·row 수는 추정으로 표시한다. 두 DB 모두 parser 거절, 부작용 방어, 권한 거부·타 조직 접근, 오래된 입력, 민감 plan 출력 및 실제 엔진 시나리오 통과 후 제공한다.
+ADR-0026으로 에이전트 연동보다 검토 도구를 앞당긴다. M2는 MySQL parity와 Kubernetes/CNPG 배포 인수(ADR-0035) 이후 statement 종류, 식별 가능한 참조 object, 적용 policy·limit을 결정론적으로 표시하고 미확인 항목은 unknown으로 둔다. 지원 Read 문장만 typed parameter와 서버 고정 옵션으로 기본 native EXPLAIN을 제공하며 ANALYZE, 위험 함수·연산자, 미분류 구문은 거부한다. 조직·connection 인가, archive 검사, target/config/policy 검증, 제한된 planning timeout·출력, 취소, 요청자만의 plan 접근과 audit가 필수다.
+계획 조회는 승인이나 요청 실행이 아니다. SQL·parameter digest, target/config, 엔진 버전, 관측 시각을 근거에 연결하고 입력 변경 시 무효화하며 cost·row 수는 추정으로 표시한다. 두 DB 모두 parser 거절, 부작용 방어, 권한 거부·타 조직 접근, 오래된 입력, 민감 plan 출력 및 실제 엔진 시나리오 통과 후 제공한다.
 
 M3는 4.5/ADR-0012의 고정된 불변 Git/Atlas artifact로 schema status → dry-run → 결정론 review만 제공한다. DB별 object matrix, 인가, audit, 제한된 subprocess·catalog 작업을 강제한다. fact 산출원·관측 시각·추정·unknown을 표시한다. M5 전에는 migration apply endpoint를 제공하지 않으며 미리보기는 변경 시뮬레이션이나 rollback·lock 안전성 보장이 아니다. 실제 apply 전 artifact와 target 상태를 재검증한다.
 
@@ -394,7 +397,8 @@ EXPLAIN ANALYZE, 실행 후 rollback하는 일반 쿼리 dry-run, AI review, 인
 
 M4에서 서버 마스킹·출력 보류를 먼저 제공하고 M6에서 에이전트 등록 후 연동한다(ADR-0027). 기존 SQL audit redaction은 결과 데이터 마스킹이 아니다. admin이 버전별 조직·connection 공개 규칙을 관리하고 API·cell·CSV·SQL/catalog/plan/review metadata·후속 tool 출력 직렬화 전에 적용한다. 처음에는 값 전체 가리기·필드 제외부터 제공한다. 요청자 소유권은 마스킹을 우회하지 않으며 사람의 원문 예외는 별도 명시 권한과 audit가 필요하다. 초기 에이전트에는 원문 예외가 없다. 승인 SQL·parameter, 실행 의미, 암호화 원본과 기존 보존 정책은 유지한다.
 
-에이전트 출력은 기본 거부하며 명시 허용된 보호 필드만 제공한다. secret·credential·원문 SQL/parameter·민감 cell 원문은 보내지 않는다. 출처 불명·alias·expression, 검증되지 않은 free-text/JSON·미지원 encoding은 보류하고 마스킹 오류는 안전하게 거부한다. 매 조회·export·응답에서 현재 정책을 재검증하고 규칙 변경 시 준비된 export·오래된 변환 cache를 무효화한다. 숨긴 값을 유추할 수 있는 sort/filter/search는 제한한다. audit에는 정책 버전·판단만 남기고 민감 값은 남기지 않는다. 자동 탐지는 정책 설정 보조이며 인가 근거가 아니다. UI/API/CSV/full-cell 일치, metadata/plan/error 누출, 파생 값, 오래된 cache, 실패, 조직 격리와 두 DB의 canary-secret 시나리오를 인수 조건으로 둔다.
+에이전트 출력은 기본 거부하며 명시 허용된 보호 필드만 제공한다. secret·credential·원문 SQL/parameter·민감 cell 원문은 보내지 않는다. 출처 불명·alias·expression, 검증되지 않은 free-text/JSON·미지원 encoding은 보류하고 마스킹 오류는 안전하게 거부한다. 매 조회·export·응답에서 현재 정책을 재검증하고 규칙 변경 시 준비된 export·오래된 변환 cache를 무효화한다. 숨긴 값을 유추할 수 있는 sort/filter/search는 제한한다. audit에는 정책 버전·판단만 남기고 민감 값은 남기지 않는다. 자동 탐지는 정책 설정 보조이며 인가 근거가 아니다.
+UI/API/CSV/full-cell 일치, metadata/plan/error 누출, 파생 값, 오래된 cache, 실패, 조직 격리와 두 DB의 canary-secret 시나리오를 인수 조건으로 둔다.
 
 마스킹 통과 후 조직 admin이 stable ID·owner·연동 종류·pending/disabled/active/revoked 상태·허용 tool/connection·보호 출력 정책·만료가 있는 사용자 위임을 가진 에이전트를 등록한다. 등록 시 권한은 없고 활성화는 명시적이다. 변경·사용을 audit한다. 실제 권한은 인증 사용자·검증된 agent grant·조직/connection·마스킹 정책의 교집합이다. 제출한 이름/ID는 신뢰하지 않는다. 회수·만료·로그아웃 시 후속 호출을 거부하고 진행 응답도 fence한다. 명시적 사용자 실행 요청·별도 검토·quorum·payload 무결성·1회 실행을 유지하며 자동 승인/반려 tool은 제공하지 않는다.
 
@@ -402,11 +406,14 @@ M4에서 서버 마스킹·출력 보류를 먼저 제공하고 M6에서 에이�
 
 ### 4.13 에이전트 중립 MCP Gateway와 배포 (M6)
 
-M4 마스킹과 M6 등록·권한 인수 통과 후 Streamable HTTP 표준 MCP Gateway와 같은 인증 endpoint로 연결하는 로컬 stdio bridge를 opt-in 제공한다(ADR-0028). vendor SDK 종속 없이 로컬 일반 client·Claude Code·Codex를 대상으로 한다. 기록된 client 버전·협상 protocol·인가·실제 거버넌스 tool 과업 통과 후에만 지원으로 표시한다. 브라우저 WebMCP는 선택 후속이며 초기 Gateway 인수 조건이 아니다. Go 단일 binary의 선택 adapter/subcommand와 기존 app port를 유지한다. agent/model 실행·hosting, 임의 MCP server proxy, bridge의 대상 DB 직접 연결은 제공하지 않는다.
+M4 마스킹과 M6 등록·권한 인수 통과 후 Streamable HTTP 표준 MCP Gateway와 같은 인증 endpoint로 연결하는 로컬 stdio bridge를 opt-in 제공한다(ADR-0028). vendor SDK 종속 없이 로컬 일반 client·Claude Code·Codex를 대상으로 한다. 기록된 client 버전·협상 protocol·인가·실제 거버넌스 tool 과업 통과 후에만 지원으로 표시한다. 브라우저 WebMCP는 선택 후속이며 초기 Gateway 인수 조건이 아니다. Go 단일 binary의 선택 adapter/subcommand와 기존 app port를 유지한다.
+agent/model 실행·hosting, 임의 MCP server proxy, bridge의 대상 DB 직접 연결은 제공하지 않는다.
 
-Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만료가 있는 위임을 검증하고 사용자/조직/connection/tool/마스킹 권한의 교집합을 적용한다. 표준 HTTP 인가·resource discovery는 검증된 호환 provider를 사용하며 외부 배포할 수 있다. 등록은 OAuth client 등록과 다르며 암묵 권한을 부여하지 않는다. 비인증 local 모드, cookie/token 전달, agent 이름 header 신뢰는 금지한다. stdio stdout은 protocol 전용, stderr는 정제하며 credential은 제한된 범위로 예제·로그에서 제외한다. local HTTP는 기본 loopback, 배포 시 TLS/origin 제어가 필요하다. 명시적 사용자 의도·별도 승인·불변 payload·1회 lease·제한된 보호 출력·취소·audit를 유지한다.
+Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만료가 있는 위임을 검증하고 사용자/조직/connection/tool/마스킹 권한의 교집합을 적용한다. 표준 HTTP 인가·resource discovery는 검증된 호환 provider를 사용하며 외부 배포할 수 있다. 등록은 OAuth client 등록과 다르며 암묵 권한을 부여하지 않는다. 비인증 local 모드, cookie/token 전달, agent 이름 header 신뢰는 금지한다. stdio stdout은 protocol 전용, stderr는 정제하며 credential은 제한된 범위로 예제·로그에서 제외한다. local HTTP는 기본 loopback, 배포 시 TLS/origin 제어가 필요하다.
+명시적 사용자 의도·별도 승인·불변 payload·1회 lease·제한된 보호 출력·취소·audit를 유지한다.
 
-인프라는 TLS/ingress·provider hosting·Secret 전달/rotation·network policy·관측 배포를 맡고 Portcullis는 신원과 업무 정책 검증을 유지한다. endpoint·인가 discovery routing, Secret 참조, probe, resource/body/stream limit과 네트워크 제한의 Helm/Kustomize 예제를 제공한다. NetworkPolicy에는 적용 plugin이, Secret에는 보호된 저장·접근이 필요하다. Kubernetes routing/discovery·rotation·proxy buffering/timeout·재시작/종료·우회 차단을 검증한다. multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와 1회 실행 테스트 통과 후 가능하다.
+인프라는 TLS/ingress·provider hosting·Secret 전달/rotation·network policy·관측 배포를 맡고 Portcullis는 신원과 업무 정책 검증을 유지한다. endpoint·인가 discovery routing, Secret 참조, probe, resource/body/stream limit과 네트워크 제한의 Helm/Kustomize 예제를 제공한다. NetworkPolicy에는 적용 plugin이, Secret에는 보호된 저장·접근이 필요하다. Kubernetes routing/discovery·rotation·proxy buffering/timeout·재시작/종료·우회 차단을 검증한다.
+multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와 1회 실행 테스트 통과 후 가능하다.
 
 실제 로컬/Claude Code/Codex client matrix, protocol 호환, auth discovery, 거부/위조/타 조직/만료/회수 접근, masking canary, 연결 끊김/취소·재실행 거부를 인수 조건으로 둔다. 정확한 auth provider와 protocol 구현은 착수 전 후속 ADR로 정한다. 계획된 M6이며 MVP 범위 밖이다.
 
@@ -556,7 +563,8 @@ Per [ADR-0055](../adr/0055-result-exploration-layout.md), 결과 컨트롤은 �
 
 - **브라우저 응답 보강(ADR-0010):** script는 embedded SPA와 같은 origin으로 제한하고 inline/eval script와 plugin content를 거부한다. inline style 호환성과 독립적으로 frame/base/form 제한을 유지한다. 실제 브라우저에서 빌드된 SPA의 정상 흐름과 inline·외부 script 거부를 검증하며 출력 인코딩이나 서버 인가를 대체하지 않는다.
 - connection credential과 access request parameter values는 versioned envelope format의 AES-256-GCM으로 암호화해 저장한다. record마다 CSPRNG nonce를 생성하고 **canonical AAD `portcullis/aad/v1|<record_type>|<organization_id>|<record_id>[|<chunk_index>]`**(ADR-0003)를 associated data로 인증해 ciphertext 교체를 막는다. key version은 AAD에 넣지 않고 HKDF 파생 wrap key 선택으로 묶인다(버전 변조 = 복호 실패). 32-byte master key가 없거나 형식이 잘못되면 서버 시작을 거부.
-- production에서는 master key를 환경변수 평문보다 mounted secret으로 주입하도록 문서와 Compose 예제를 제공. key ID를 함께 저장해 재암호화 기반 rotation이 가능해야 함. 로컬 initializer는 동시 시작에도 기존 유효 키를 보존하고 잘못된 기존 키를 교체 없이 거부하며, 키 파일 접근을 비루트 runtime으로 제한한다(ADR-0003). 키 회전은 오래된 envelope가 있는 조직을 순회하되 조직별 잠금 조회·갱신·audit를 유지하며 관리용 발견 쿼리는 조직 식별자만 반환한다. 키 회전 완료는 모든 조직에서 비활성 버전의 암호화 envelope가 남지 않았다는 성공한 집계를 요구한다. 미처리 행이 있으면 완료를 거부하고 기존 무결성 검증 키는 계속 보존한다(ADR-0003/0004).
+- production에서는 master key를 환경변수 평문보다 mounted secret으로 주입하도록 문서와 Compose 예제를 제공. key ID를 함께 저장해 재암호화 기반 rotation이 가능해야 함. 로컬 initializer는 동시 시작에도 기존 유효 키를 보존하고 잘못된 기존 키를 교체 없이 거부하며, 키 파일 접근을 비루트 runtime으로 제한한다(ADR-0003). 키 회전은 오래된 envelope가 있는 조직을 순회하되 조직별 잠금 조회·갱신·audit를 유지하며 관리용 발견 쿼리는 조직 식별자만 반환한다. 키 회전 완료는 모든 조직에서 비활성 버전의 암호화 envelope가 남지 않았다는 성공한 집계를 요구한다.
+  미처리 행이 있으면 완료를 거부하고 기존 무결성 검증 키는 계속 보존한다(ADR-0003/0004).
 - 새 PostgreSQL/MySQL connection은 인증서를 검증하는 TLS mode가 기본.
   완화된 TLS 설정은 admin의 명시적 선택과 audit event가 필요.
 - API·로그·audit에서 password, 원문 DSN, session token, 암호화 전 parameter values, result row를 노출하지 않음.
@@ -736,7 +744,12 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
 다음 공식 자료를 2026-06-27 기준으로 확인했다.
 기능·라이선스 전제는 구현 착수와 릴리스 때 다시 검증한다.
 
-- Kviklet은 **2026-09-30 재검증**: [최신 릴리스 API](https://api.github.com/repos/kviklet/kviklet/releases/latest), [0.9.2 보안 릴리스](https://github.com/kviklet/kviklet/releases/tag/0.9.2), [0.9.0 기능·proxy edition 변경](https://github.com/kviklet/kviklet/releases/tag/0.9.0), [0.8.0 UX·실행 권한 변경](https://github.com/kviklet/kviklet/releases/tag/0.8.0), [태그 고정 README](https://github.com/kviklet/kviklet/blob/0.9.2/Readme.md).
+- Kviklet은 **2026-09-30 재검증**:
+  - [최신 릴리스 API](https://api.github.com/repos/kviklet/kviklet/releases/latest)
+  - [0.9.2 보안 릴리스](https://github.com/kviklet/kviklet/releases/tag/0.9.2)
+  - [0.9.0 기능·proxy edition 변경](https://github.com/kviklet/kviklet/releases/tag/0.9.0)
+  - [0.8.0 UX·실행 권한 변경](https://github.com/kviklet/kviklet/releases/tag/0.8.0)
+  - [태그 고정 README](https://github.com/kviklet/kviklet/blob/0.9.2/Readme.md).
   세부 근거·영향은 ADR-0019.
 - [Bytebase High Availability 문서](https://docs.bytebase.com/get-started/self-host/high-availability): self-host HA 요건과 HA-enabled license 요구.
 - [Atlas Community Edition 문서](https://atlasgo.io/community-edition): Apache 2.0 Community 범위와 declarative plan, lint, pre-check, Go SDK 등 제외 기능.

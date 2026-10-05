@@ -1,6 +1,7 @@
 # Code architecture
 
-Portcullis ships as one Go binary with the SolidJS SPA embedded through `go:embed`. The diagrams below map the current repository: source dependencies, frontend layers and runtime calls have separate views because their arrows mean different things. For the recommended private-network production topology and remote access through Cloudflare WARP or Tailscale, see [Deployment architecture](operations/recommended-architecture.md).
+Portcullis ships as one Go binary with the SolidJS SPA embedded through `go:embed`. The diagrams below map the current repository: source dependencies, frontend layers and runtime calls have separate views because their arrows mean different things.
+For the recommended private-network production topology and remote access through Cloudflare WARP or Tailscale, see [Deployment architecture](operations/recommended-architecture.md).
 
 ## Go source dependencies
 
@@ -97,7 +98,8 @@ Reusable components live in individual `shared/ui/<component>/` directories with
 
 ## Governed query runtime
 
-Here arrows mean runtime calls, not source imports. The metadata database and the governed target are different roles: the former stores Portcullis state, while the latter receives approved user SQL. This view focuses on execution and result exploration; other RPCs reuse the same transport and application boundaries. The HTTPS entry follows the recommended deployment; the binary's internal listener is configured separately.
+Here arrows mean runtime calls, not source imports. The metadata database and the governed target are different roles: the former stores Portcullis state, while the latter receives approved user SQL. This view focuses on execution and result exploration; other RPCs reuse the same transport and application boundaries.
+The HTTPS entry follows the recommended deployment; the binary's internal listener is configured separately.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
@@ -134,9 +136,11 @@ Here arrows mean runtime calls, not source imports. The metadata database and th
 └──────────────────────────────────────────┘    └──────────────────────────────────────────┘
 ```
 
-Submission and approval run through `app/accessrequest` before execution. `app/execution` checks the stored approval unit and acquires a database-backed execution lease before target I/O. Lease acquisition commits before the target query; completion is fenced by owner and attempt, and late reports preserve the committed terminal outcome. These boundaries coordinate shared workflow state across callers; a process-local mutex alone cannot provide that protection.
+Submission and approval run through `app/accessrequest` before execution. `app/execution` checks the stored approval unit and acquires a database-backed execution lease before target I/O. Lease acquisition commits before the target query; completion is fenced by owner and attempt, and late reports preserve the committed terminal outcome.
+These boundaries coordinate shared workflow state across callers; a process-local mutex alone cannot provide that protection.
 
-`app/result` encrypts bounded snapshots for persistence and serves paging, sorting, filtering and CSV export from the stored result, without rerunning the target SQL. Result processing has a bounded worker pool. Startup and periodic maintenance reconcile execution leases and purge expired snapshots. See [ADR-0021](adr/0021-governed-query-execution.md) and the [concurrency conventions](conventions/code.md#concurrent-state-changes).
+`app/result` encrypts bounded snapshots for persistence and serves paging, sorting, filtering and CSV export from the stored result, without rerunning the target SQL. Result processing has a bounded worker pool. Startup and periodic maintenance reconcile execution leases and purge expired snapshots.
+See [ADR-0021](adr/0021-governed-query-execution.md) and the [concurrency conventions](conventions/code.md#concurrent-state-changes).
 
 The production composition root currently registers PostgreSQL as the target adapter. MySQL adapter code is absent from the current tree and will be introduced in M2; the engine-selection boundary currently serves PostgreSQL execution. Saved query assets, BI charts, dashboards, schema governance and agent integration follow the [PRD roadmap](product/prd.en.md).
 

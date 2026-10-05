@@ -1,6 +1,7 @@
 # Release procedure
 
-The [container release workflow](../../.github/workflows/container-release.yml) publishes the repository's single embedded-SPA server image to `ghcr.io/aportcullis/portcullis`. It runs on pushed `v*` tags, validates the name, and reuses CI from the tagged commit. Publication requires all `make verify` and `make supply-chain` gates to pass. The publication job checks out full Git history and records current-tag git-cliff release notes in its Actions summary before registry login. It does not deploy the application or create a GitHub Release.
+The [container release workflow](../../.github/workflows/container-release.yml) publishes the repository's single embedded-SPA server image to `ghcr.io/aportcullis/portcullis`. It runs on pushed `v*` tags, validates the name, and reuses CI from the tagged commit. Publication requires all `make verify` and `make supply-chain` gates to pass.
+The publication job checks out full Git history and records current-tag git-cliff release notes in its Actions summary before registry login. It does not deploy the application or create a GitHub Release.
 
 ## Prepare and publish
 
@@ -37,7 +38,8 @@ Per [M1 scope](../milestones/m1/scope.md), these are release criteria; this proc
 | `v0.1.0` | `0.1.0`, `0.1`, `sha-<full commit SHA>` |
 | `v0.2.0-rc.1` | `0.2.0-rc.1`, `sha-<full commit SHA>` |
 
-There is no implicit `latest` or major-only alias. Each tag selects `linux/amd64` (AMD/Intel x86-64) or `linux/arm64` (AArch64) through one image index. Apple Silicon uses the ARM64 Linux variant in Docker; native macOS/Windows executables and other CPU architectures are outside this container scope. Minor aliases are mutable; reruns and retagging can overwrite other tags too. Different-version releases can complete out of order and move a minor alias backwards. Pin the returned `ghcr.io/aportcullis/portcullis@sha256:...` digest in production.
+There is no implicit `latest` or major-only alias. Each tag selects `linux/amd64` (AMD/Intel x86-64) or `linux/arm64` (AArch64) through one image index. Apple Silicon uses the ARM64 Linux variant in Docker; native macOS/Windows executables and other CPU architectures are outside this container scope. Minor aliases are mutable; reruns and retagging can overwrite other tags too.
+Different-version releases can complete out of order and move a minor alias backwards. Pin the returned `ghcr.io/aportcullis/portcullis@sha256:...` digest in production.
 
 The publication job alone receives `packages: write`, authenticating with `GITHUB_TOKEN`. For an existing package, grant the repository Actions access if needed. New GHCR packages start private: a package administrator must explicitly set visibility to public for anonymous OSS pulls. No personal access token is required by this workflow.
 
@@ -45,9 +47,12 @@ BuildKit publishes OCI SBOM and maximum provenance attestations with the image. 
 
 ## Verification
 
-`make release-check` exercises valid stable/prerelease tags and refusal of malformed, unsafe, ambiguous and oversized names; `make verify` includes it. `make changelog-check` tests real stable/prerelease history, grouping, breaking notes and current-tag boundaries in a disposable Git repository. `make verify` includes both scenario targets. The entire history/writer fixture runs on disposable container tmpfs with a read-only source mount. Its test image extends the pinned generator with Git/Python from signed distribution repositories; scenario execution has networking disabled. Fixture and owned container/image cleanup must pass before success is reported. The Docker generator is digest-pinned, reads only the mounted repository and runs without network or external template commands.
+`make release-check` exercises valid stable/prerelease tags and refusal of malformed, unsafe, ambiguous and oversized names; `make verify` includes it. `make changelog-check` tests real stable/prerelease history, grouping, breaking notes and current-tag boundaries in a disposable Git repository. `make verify` includes both scenario targets.
+The entire history/writer fixture runs on disposable container tmpfs with a read-only source mount. Its test image extends the pinned generator with Git/Python from signed distribution repositories; scenario execution has networking disabled. Fixture and owned container/image cleanup must pass before success is reported.
+The Docker generator is digest-pinned, reads only the mounted repository and runs without network or external template commands.
 
-`make image-check` builds both real images, checks OS/architecture and non-root runtime, then verifies the actual entrypoint rejects deliberately invalid configuration. Local non-native execution needs existing emulation; set `IMAGE_PLATFORMS=linux/arm64` or `linux/amd64` to select a native variant. CI runs each variant on its native Ubuntu runner and release publication requires both jobs. These are image/startup smoke checks; the full database/browser gate remains on AMD64.
+`make image-check` builds both real images, checks OS/architecture and non-root runtime, then verifies the actual entrypoint rejects deliberately invalid configuration. Local non-native execution needs existing emulation; set `IMAGE_PLATFORMS=linux/arm64` or `linux/amd64` to select a native variant. CI runs each variant on its native Ubuntu runner and release publication requires both jobs.
+These are image/startup smoke checks; the full database/browser gate remains on AMD64.
 
 Workflow validation uses actionlint. A local check does not prove registry permissions, hosted build success or package visibility: confirm these on the first authorized release run.
 

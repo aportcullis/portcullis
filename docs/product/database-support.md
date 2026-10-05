@@ -1,6 +1,7 @@
 # Database feature support
 
-**Updated: 2026-10-05.** This table describes Portcullis product support, not whether an engine can run in Docker. PostgreSQL governance has recorded passing evidence; M1 administration and release safeguards are still in progress. MySQL is the next committed target; it is not selectable or supported yet. [ADR-0025](../adr/0025-sql-database-first-expansion.md) limits committed targets to PostgreSQL/MySQL and removes SQLite from support scope.
+**Updated: 2026-10-05.** This table describes Portcullis product support, not whether an engine can run in Docker. PostgreSQL governance has recorded passing evidence; M1 administration and release safeguards are still in progress. MySQL is the next committed target; it is not selectable or supported yet.
+[ADR-0025](../adr/0025-sql-database-first-expansion.md) limits committed targets to PostgreSQL/MySQL and removes SQLite from support scope.
 
 ## Committed target feature matrix
 
@@ -45,7 +46,8 @@ Verified does not mean every SQL statement, extension or engine version is accep
 
 ## Version and evidence boundaries
 
-[ADR-0030](../adr/0030-database-version-qualification-window.md) sets PostgreSQL compatibility maintenance to **16/17/18/19**, preserving current Portcullis behavior without promising engine-specific feature expansion. PostgreSQL has an explicit four-family exception to the initial three-family proposal; MySQL retains at most three candidate families. Later expansion requires a scope decision and acceptance evidence. Candidates are not supported-version claims. The metadata deployment baseline remains PostgreSQL 18, independently of managed-target coverage.
+[ADR-0030](../adr/0030-database-version-qualification-window.md) sets PostgreSQL compatibility maintenance to **16/17/18/19**, preserving current Portcullis behavior without promising engine-specific feature expansion. PostgreSQL has an explicit four-family exception to the initial three-family proposal; MySQL retains at most three candidate families.
+Later expansion requires a scope decision and acceptance evidence. Candidates are not supported-version claims. The metadata deployment baseline remains PostgreSQL 18, independently of managed-target coverage.
 
 | Engine | Family | Product evidence / qualification status |
 | --- | --- | --- |
@@ -58,7 +60,8 @@ Verified does not mean every SQL statement, extension or engine version is accep
 | MySQL | 26.7 Innovation | Third qualification candidate; product driver and full gate pending |
 | MySQL | 8.0 | Outside target window; upstream Sustaining Support since 2026-04-21 |
 
-Use current security patches in each qualified family and pin test images by digest. Engine version, patch, test results and skips must accompany support evidence. Parser coverage remains an explicit allow-list; newer server versions do not authorize unclassified SQL. PostgreSQL 19 does not remove 16 from scope. Qualification status is separate from the maintenance window; no new syntax/extension support is promised. Family retirement or wider coverage requires an explicit scope decision and announced migration guidance.
+Use current security patches in each qualified family and pin test images by digest. Engine version, patch, test results and skips must accompany support evidence. Parser coverage remains an explicit allow-list; newer server versions do not authorize unclassified SQL. PostgreSQL 19 does not remove 16 from scope.
+Qualification status is separate from the maintenance window; no new syntax/extension support is promised. Family retirement or wider coverage requires an explicit scope decision and announced migration guidance.
 
 Primary sources checked 2026-10-03: [PostgreSQL versions](https://www.postgresql.org/support/versioning/), [19 schedule](https://wiki.postgresql.org/wiki/PostgreSQL_19_Open_Items), [MySQL release tracks](https://dev.mysql.com/doc/refman/9.7/en/mysql-releases.html), [26.7 notes](https://dev.mysql.com/doc/relnotes/mysql/26.7/en/) and [8.0 lifecycle](https://www.mysql.com/support/eol-notice.html).
 

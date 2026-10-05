@@ -38,11 +38,14 @@ The examples are source examples, not a hosted component gallery. TypeScript che
 
 ## Reuse in another SolidJS application
 
-This is source reuse rather than a separately published npm package. Copy the selected component directory and its transitive shared dependencies. Most primitives use [utils.ts](../lib/utils.ts) (`clsx` and `tailwind-merge`); buttons/badges use `class-variance-authority`, and interactive primitives use `@kobalte/core`. InlinePanel also requires the button family. Consult [package.json](../../../package.json) for the exact reviewed dependency versions and installation policy.
+This is source reuse rather than a separately published npm package. Copy the selected component directory and its transitive shared dependencies. Most primitives use [utils.ts](../lib/utils.ts) (`clsx` and `tailwind-merge`); buttons/badges use `class-variance-authority`, and interactive primitives use `@kobalte/core`. InlinePanel also requires the button family.
+Consult [package.json](../../../package.json) for the exact reviewed dependency versions and installation policy.
 
-Configure the `@/` alias to your source root or deliberately rewrite imports. Configure SolidJS JSX and Tailwind v4, load the theme variables and utility mappings, and include the copied sources in Tailwind detection. ApplicationFrame, PageHeader and LoadingSkeleton also require their named layout rules. These components are not directly compatible with React or Vue. BrandLogo needs the [brand assets](../../../public/brand/) at the documented URLs; review [branding guidance](../../../../docs/branding.md) when reusing project identity.
+Configure the `@/` alias to your source root or deliberately rewrite imports. Configure SolidJS JSX and Tailwind v4, load the theme variables and utility mappings, and include the copied sources in Tailwind detection. ApplicationFrame, PageHeader and LoadingSkeleton also require their named layout rules. These components are not directly compatible with React or Vue.
+BrandLogo needs the [brand assets](../../../public/brand/) at the documented URLs; review [branding guidance](../../../../docs/branding.md) when reusing project identity.
 
-Portcullis-owned source is [Apache-2.0](../../../../LICENSE); retain [NOTICE](../../../../NOTICE). Vendored solid-ui components and the adapted theme retain their [upstream MIT license and attribution](LICENSE.solid-ui) (see [ADR-0013](../../../../docs/adr/0013-spa-ui-foundation.md)); third-party dependency licenses remain applicable. Include `LICENSE.solid-ui` when redistributing these vendored sources or the adapted theme. Do not assume the project license replaces upstream notices.
+Portcullis-owned source is [Apache-2.0](../../../../LICENSE); retain [NOTICE](../../../../NOTICE). Vendored solid-ui components and the adapted theme retain their [upstream MIT license and attribution](LICENSE.solid-ui) (see [ADR-0013](../../../../docs/adr/0013-spa-ui-foundation.md)); third-party dependency licenses remain applicable.
+Include `LICENSE.solid-ui` when redistributing these vendored sources or the adapted theme. Do not assume the project license replaces upstream notices.
 
 ## Verification and contribution
 

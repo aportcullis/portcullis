@@ -9,9 +9,11 @@ The PostgreSQL parser, binder and redactor assume standard-conforming ordinary s
 
 ## Decision
 
-Set `standard_conforming_strings=on` as a startup parameter on every PostgreSQL execution connection, including governed execution. Check the server's reported ParameterStatus immediately after connecting; close and reject the connection before BEGIN, catalog validation or user SQL unless the reported value is exactly `on`. Never fall back to a different interpretation or retry user SQL. Existing prohibitions on session mutation remain in force.
+Set `standard_conforming_strings=on` as a startup parameter on every PostgreSQL execution connection, including governed execution. Check the server's reported ParameterStatus immediately after connecting; close and reject the connection before BEGIN, catalog validation or user SQL unless the reported value is exactly `on`. Never fall back to a different interpretation or retry user SQL.
+Existing prohibitions on session mutation remain in force.
 
-Verify the contract on PostgreSQL 16–18 with an owned database whose default is explicitly `off`. PostgreSQL 19 no longer permits `off`; assert the expected feature-not-supported SQLSTATE and a fresh connection reporting `on` instead. Determine the branch from the actual server version, not the requested test family, and fail on unexpected errors or settings. In both cases, an ordinary backslash-containing string followed by a comment must retain the classifier's one-column meaning rather than expose a hidden second expression. Use a harmless constant expression for regression coverage, not a process-control function. Other engine string modes require independent adapter decisions and qualification before product registration.
+Verify the contract on PostgreSQL 16–18 with an owned database whose default is explicitly `off`. PostgreSQL 19 no longer permits `off`; assert the expected feature-not-supported SQLSTATE and a fresh connection reporting `on` instead. Determine the branch from the actual server version, not the requested test family, and fail on unexpected errors or settings.
+In both cases, an ordinary backslash-containing string followed by a comment must retain the classifier's one-column meaning rather than expose a hidden second expression. Use a harmless constant expression for regression coverage, not a process-control function. Other engine string modes require independent adapter decisions and qualification before product registration.
 
 ## Consequences
 

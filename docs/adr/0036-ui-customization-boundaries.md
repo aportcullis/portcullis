@@ -17,14 +17,17 @@ Extract a domain-free `ApplicationFrame` into shared UI with brand, navigation, 
 
 ### Component directories and reuse (2026-10-03)
 
-Group each existing shared UI component family in its own directory with an unchanged implementation, an explicit `index.ts` public API, a README and a type-checked `example.tsx`. Preserve existing component import paths and casing so consumers need no migration. Import from the component directory; do not add a root UI barrel or wildcard exports. Implementation files must not import their own public entry point. Examples remain outside the application dependency graph and do not add production routes or domain knowledge.
+Group each existing shared UI component family in its own directory with an unchanged implementation, an explicit `index.ts` public API, a README and a type-checked `example.tsx`. Preserve existing component import paths and casing so consumers need no migration. Import from the component directory; do not add a root UI barrel or wildcard exports.
+Implementation files must not import their own public entry point. Examples remain outside the application dependency graph and do not add production routes or domain knowledge.
 
-Document behavior, accessibility, variants, theme/layout dependencies, brand assets and third-party licensing so contributors can reuse source correctly. This is repository-level source reuse, not a separately published npm package or a framework-independent UI kit. Existing PRD customization scope is sufficient; no product contract changes. Verify TypeScript, lint, the production build and existing browser scenarios; the directory refactor introduces no new domain behavior.
+Document behavior, accessibility, variants, theme/layout dependencies, brand assets and third-party licensing so contributors can reuse source correctly. This is repository-level source reuse, not a separately published npm package or a framework-independent UI kit. Existing PRD customization scope is sufficient; no product contract changes.
+Verify TypeScript, lint, the production build and existing browser scenarios; the directory refactor introduces no new domain behavior.
 
 - [FSD public APIs](https://feature-sliced.design/docs/reference/public-api) recommends explicit component-level entry points for shared UI and warns about root barrels and circular imports.
 - [SolidJS component basics](https://docs.solidjs.com/concepts/components/basics) defines component composition and typed props.
 
-Developers can restyle the product or replace its frame without moving domain behavior into presentational components. This does not introduce a runtime theme selector, tenant branding storage, arbitrary uploaded CSS/JavaScript or a plugin API. Those need separate requirements if selected. Verify the production CSS build, TypeScript, lint, existing state tests and real browser workflows; this presentation refactor has no new domain scenario.
+Developers can restyle the product or replace its frame without moving domain behavior into presentational components. This does not introduce a runtime theme selector, tenant branding storage, arbitrary uploaded CSS/JavaScript or a plugin API. Those need separate requirements if selected.
+Verify the production CSS build, TypeScript, lint, existing state tests and real browser workflows; this presentation refactor has no new domain scenario.
 
 ## Primary sources (verified 2026-10-03)
 

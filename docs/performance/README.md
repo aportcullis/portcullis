@@ -6,21 +6,28 @@ See [ADR-0020](../adr/0020-scenario-load-testing.md).
 
 ## Run the suite
 
-`make load-check` runs strict TypeScript 7 checking, generates local ESM bundles with pinned esbuild, and runs the Zod contract tests. `make load-test` then runs `tests/load/dist/governance.js` with k6. Test sources remain TypeScript; bundles are ignored build output. k6 does not resolve npm packages, so Zod is bundled locally rather than loaded from a remote CDN.
+`make load-check` runs strict TypeScript 7 checking, generates local ESM bundles with pinned esbuild, and runs the Zod contract tests. `make load-test` then runs the generated governance bundle with k6. Test sources remain TypeScript; bundles are ignored build output. k6 does not resolve npm packages, so Zod is bundled locally rather than loaded from a remote CDN.
 
-Local TypeScript modules use package-root imports such as `#load/contracts` and `#load/client`. The `imports` map in `tests/load/package.json` is shared by TypeScript, the Node contract runner and esbuild; k6 runs the resolved bundles. Relative imports and machine-specific absolute file imports are prohibited by lint. Fixture paths are runtime data paths and retain their separate absolute-path requirement. See [ADR-0043](../adr/0043-load-package-imports.md).
+Local TypeScript modules use package-root imports such as `#load/contracts` and `#load/client`. The `imports` map in `tests/load/package.json` is shared by TypeScript, the Node contract runner and esbuild; k6 runs the resolved bundles. Relative imports and machine-specific absolute file imports are prohibited by lint.
+Fixture paths are runtime data paths and retain their separate absolute-path requirement. See [ADR-0043](../adr/0043-load-package-imports.md).
 
 The suite separates workload configuration (`config.ts`), Zod RPC schemas/client (`contracts.ts`, `client.ts`), validated JSON codecs and wire routing (`json.ts`, `wire.ts`), fixture validation (`fixtures.ts`) and user journeys (`journeys.ts`).
-`governance.ts` schedules journeys and records outcomes. `rpc` and `rpcAsync` infer input/output from the method name. Unknown input fields and malformed response fields fail schema validation; protobuf-omitted default arrays and scalar values normalize at the boundary. Optional messages and timestamps remain optional where their absence has meaning. Responses project the schema-known fields and tolerate additional fields for forward compatibility. No type assertion or non-null assertion is needed. JSON syntax handling stays inside the codec, and contract errors omit payloads and credentials.
+`governance.ts` schedules journeys and records outcomes. `rpc` and `rpcAsync` infer input/output from the method name. Unknown input fields and malformed response fields fail schema validation; protobuf-omitted default arrays and scalar values normalize at the boundary. Optional messages and timestamps remain optional where their absence has meaning.
+Responses project the schema-known fields and tolerate additional fields for forward compatibility. No type assertion or non-null assertion is needed. JSON syntax handling stays inside the codec, and contract errors omit payloads and credentials.
 
-Use an absolute fixture path, such as `LOAD_FIXTURES="$PWD/tests/load/fixtures.local.json"`, when running the bundle directly; k6 otherwise resolves the default fixture next to the bundle. `make load-test` supplies that absolute default and accepts a custom `LOAD_FIXTURES`. For a request-only contract smoke, run `k6 run tests/load/dist/wire.test.js`. The `async-execution.js` bundle exercises typed async create/submit/review/execute, observes the active lease and checks the durable conservative `OUTCOME_UNKNOWN` cancellation outcome without a result snapshot. Supply `JOURNEY=execute`, a distinct approver and the same `LOAD_FIXTURES` path when running it. `result-limits.js` checks row and byte truncation, paging, CSV row count and durable cancellation through the same approval/cancellation helper. Run it with `JOURNEY=execute`, `VUS=1` and a fresh isolated fixture. See the [recorded limit smoke](2026-10-03-result-limits.md). Earlier load measurements used the prior client; a short integration smoke with Zod does not recertify capacity.
+Use an absolute fixture path, exported through `LOAD_FIXTURES`, when running the bundle directly; k6 otherwise resolves the default fixture next to the bundle. `make load-test` supplies that absolute default and accepts a custom `LOAD_FIXTURES`. For a request-only contract smoke, run the bundle produced from [wire.test.ts](../../tests/load/wire.test.ts) with k6.
+The bundle produced from [async-execution.ts](../../tests/load/async-execution.ts) exercises typed async create/submit/review/execute, observes the active lease and checks the durable conservative `OUTCOME_UNKNOWN` cancellation outcome without a result snapshot. Supply `JOURNEY=execute`, a distinct approver and the same `LOAD_FIXTURES` path when running it.
+[result-limits.ts](../../tests/load/result-limits.ts) checks row and byte truncation, paging, CSV row count and durable cancellation through the same approval/cancellation helper. Run it with `JOURNEY=execute`, `VUS=1` and a fresh isolated fixture. See the [recorded limit smoke](2026-10-03-result-limits.md).
+Earlier load measurements used the prior client; a short integration smoke with Zod does not recertify capacity.
 
 Use k6 **2.3.0**, TypeScript **7.0.2** and an isolated Portcullis installation with synthetic accounts and an active test connection.
-`make load-server` prepares two owned Testcontainers PostgreSQL databases, 100 distinct synthetic requesters, a separate approver and a read-only target account over 100,000 rows. The application listens on loopback port 18082 and uses only the least-privilege metadata runtime role, with startup migrations disabled. Synthetic sessions are issued before measurement through the existing persistence/crypto adapters. The harness writes a private fixture and aggregate resource identity manifest inside `tests/load/`, and removes the private fixture, application and its databases on SIGINT/SIGTERM. The manifest records the application file SHA-256 and immutable PostgreSQL image so runs can be matched to their artifacts; hashing streams the binary rather than retaining it in memory. Use a new harness for each comparable repeat.
+`make load-server` prepares two owned Testcontainers PostgreSQL databases, 100 distinct synthetic requesters, a separate approver and a read-only target account over 100,000 rows. The application listens on loopback port 18082 and uses only the least-privilege metadata runtime role, with startup migrations disabled.
+Synthetic sessions are issued before measurement through the existing persistence/crypto adapters. The harness writes a private fixture and aggregate resource identity manifest inside `tests/load/`, and removes the private fixture, application and its databases on SIGINT/SIGTERM.
+The manifest records the application file SHA-256 and immutable PostgreSQL image so runs can be matched to their artifacts; hashing streams the binary rather than retaining it in memory. Use a new harness for each comparable repeat.
 
 For an externally prepared installation, create one requester per VU using the existing test/admin provisioning process.
 Account-management RPC provisioning is not implemented yet.
-Obtain their session and CSRF cookie values from Login and copy the fixture shape in [fixtures.example.json](../../tests/load/fixtures.example.json) into `tests/load/fixtures.local.json`.
+Obtain their session and CSRF cookie values from Login and copy the fixture shape in [fixtures.example.json](../../tests/load/fixtures.example.json) into a private fixture selected through `LOAD_FIXTURES`.
 Keep the file private; it is gitignored.
 Log in only once per account because a new login revokes its previous session.
 
@@ -51,19 +58,26 @@ Tokens are sent explicitly as cookies with CSRF headers, including in local HTTP
 Every mode exits nonzero if a threshold fails.
 The smoke mode runs three journeys per VU.
 
-Docker alternative after `make load-check` (macOS; use a reachable host address on other platforms):
+Docker alternative after `make load-check` (macOS; use a reachable host address on other platforms): set `LOAD_FIXTURES` and `GOVERNANCE_BUNDLE` to absolute project-local paths, then mount those files as container inputs.
 
 ```sh
-docker run --rm -v "$PWD:/work:ro" -w /work \
+: "${LOAD_FIXTURES:?Set the private fixture absolute path}"
+: "${GOVERNANCE_BUNDLE:?Set the generated governance bundle absolute path}"
+docker run --rm \
+  --mount "type=bind,source=$LOAD_FIXTURES,target=/work/fixture,readonly" \
+  --mount "type=bind,source=$GOVERNANCE_BUNDLE,target=/work/bundle,readonly" \
   grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34 \
-  run -e BASE_URL=http://host.docker.internal:8080 -e JOURNEY=browse -e LOAD_FIXTURES=/work/tests/load/fixtures.local.json tests/load/dist/governance.js
+  run -e BASE_URL=http://host.docker.internal:8080 -e JOURNEY=browse -e LOAD_FIXTURES=/work/fixture /work/bundle
 ```
 
 To retain aggregate results without payloads:
 
 ```sh
-mkdir -p tests/load/results
-LOAD_FIXTURES="$PWD/tests/load/fixtures.local.json" MODE=load JOURNEY=mixed VUS=50 k6 run --summary-export=tests/load/results/summary.json tests/load/dist/governance.js
+: "${LOAD_FIXTURES:?Set the private fixture absolute path}"
+: "${GOVERNANCE_BUNDLE:?Set the generated governance bundle path}"
+: "${SUMMARY_OUTPUT:?Set a unique private summary output path}"
+export LOAD_FIXTURES
+MODE=load JOURNEY=mixed VUS=50 k6 run --summary-export="$SUMMARY_OUTPUT" "$GOVERNANCE_BUNDLE"
 ```
 
 Use a unique output filename per run.
@@ -154,6 +168,7 @@ Submit and mixed browse/distinct-reviewer approval smoke runs also passed agains
 
 ## Execution and exploration workload
 
-`JOURNEY=execute` covers a distinctly approved read and checks durable execution state, two bounded pages, exact int64 ordering/filtering and complete Connect-streamed CSV with formula escaping. `JOURNEY=full` rotates 60% browse, 20% submit/review/reopen/cancel and 20% execution/exploration. Every expected RPC must have samples, so an unexercised endpoint cannot pass a zero-latency threshold. Closed-model users stagger their first action across the think interval; admission controls stay enabled. Set `THINK_SECONDS=60` for the measured 50-user full profile behind one NAT address.
+`JOURNEY=execute` covers a distinctly approved read and checks durable execution state, two bounded pages, exact int64 ordering/filtering and complete Connect-streamed CSV with formula escaping. `JOURNEY=full` rotates 60% browse, 20% submit/review/reopen/cancel and 20% execution/exploration. Every expected RPC must have samples, so an unexercised endpoint cannot pass a zero-latency threshold.
+Closed-model users stagger their first action across the think interval; admission controls stay enabled. Set `THINK_SECONDS=60` for the measured 50-user full profile behind one NAT address.
 
 `control_plane_ms` excludes Execute; `execution_ms` measures Execute HTTP duration and `server_execution_ms` records the server-reported execution duration, including adapter/result processing. Neither is a pure target-engine query timer. This indexed 25-row read over a 100,000-row table does not qualify large-result, cap/eviction or slow-query capacity. Report those limits separately.

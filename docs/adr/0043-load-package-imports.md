@@ -9,7 +9,8 @@ The owner requests root-based imports for the TypeScript k6 suite instead of rel
 
 ## Decision
 
-Use `#load/<module>` for package-local TypeScript imports and re-exports, including contract tests. Define one `imports` map in `tests/load/package.json`: `#load/*` resolves to `./*.ts`. TypeScript's bundler resolution, Node's native package imports and esbuild resolve the same declaration without an additional runtime loader or duplicated alias configuration. Keep external imports such as `k6`, `zod` and `node:test` unchanged.
+Use `#load/<module>` for package-local TypeScript imports and re-exports, including contract tests. Define one `imports` map in `tests/load/package.json`: `#load/*` resolves to `./*.ts`. TypeScript's bundler resolution, Node's native package imports and esbuild resolve the same declaration without an additional runtime loader or duplicated alias configuration.
+Keep external imports such as `k6`, `zod` and `node:test` unchanged.
 
 Prohibit relative, filesystem-absolute and `file:` module imports with Oxlint. Runtime fixture files are data, not source modules, and continue to use configured absolute paths. k6 receives bundled ESM with local aliases resolved; it does not need to understand the package map.
 

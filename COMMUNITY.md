@@ -26,7 +26,8 @@ GitHub is our initial home for community discussion and development records. Red
 | Issues | Reproducible bugs and accepted, actionable work with completion criteria |
 | Pull requests | Reviewable implementation, documentation, and validation |
 
-**Rollout status:** This channel layout is decided, but remote Discussions activation and category setup have not been verified. Until it is live, use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions and ideas too. The [launch checklist](docs/community/launch-checklist.md) records the setup work. An Ideas discussion is not a delivery commitment; accepted work becomes an issue.
+**Rollout status:** This channel layout is decided, but remote Discussions activation and category setup have not been verified. Until it is live, use [GitHub issues](https://github.com/aportcullis/portcullis/issues) for questions and ideas too. The [launch checklist](docs/community/launch-checklist.md) records the setup work.
+An Ideas discussion is not a delivery commitment; accepted work becomes an issue.
 
 A separate Slack or Discord and recurring meetings can follow when participants need real-time discussion and someone can maintain them. Important decisions still belong in GitHub and project documents.
 
@@ -54,4 +55,5 @@ Maintain a respectful, welcoming environment. Discuss behavior and evidence, exp
 
 ## References
 
-The participation model follows [OPA's purpose-based contribution paths](https://www.openpolicyagent.org/docs/contributing), [Kubernetes first-issue preparation](https://www.kubernetes.dev/docs/guide/help-wanted/), [non-code participation](https://www.kubernetes.dev/docs/guide/non-code-contributions/), and [Prometheus's channel separation](https://prometheus.io/community/). References were checked on 2026-10-03; the choices above are Portcullis's own initial model.
+The participation model follows [OPA's purpose-based contribution paths](https://www.openpolicyagent.org/docs/contributing), [Kubernetes first-issue preparation](https://www.kubernetes.dev/docs/guide/help-wanted/), [non-code participation](https://www.kubernetes.dev/docs/guide/non-code-contributions/), and [Prometheus's channel separation](https://prometheus.io/community/).
+References were checked on 2026-10-03; the choices above are Portcullis's own initial model.
