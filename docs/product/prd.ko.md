@@ -2,8 +2,8 @@
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
 > **번역 동기화:** 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
-> **범위 변경(ADR-0025):** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
-> **배포 순서 변경(ADR-0035):** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN 순서다.
+> **지원 대상:** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
+> **배포 순서:** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN 순서다.
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -177,7 +177,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 ### 4.3 핵심 접근 정책
 
 - **승인 단위:** payload version, normalized SQL, typed parameter values, connection, **connection config version**, requester, statement class, connection policy version을 묶은 immutable payload.
-  하나라도 바뀌면 새 요청이 필요. **connection config version이 승인 단위에 들어가는 이유 (2026-07-27 개정, ADR-0014/0018):** connection id는 config를 교체해도 그대로다 — host·port·database·TLS·credential이 전부 그 id 뒤에서 바뀔 수 있다.
+  하나라도 바뀌면 새 요청이 필요. **connection config version이 승인 단위에 들어가는 이유 (ADR-0014/0018):** connection id는 config를 교체해도 그대로다 — host·port·database·TLS·credential이 전부 그 id 뒤에서 바뀔 수 있다.
   그래서 id만 고정하면 승인 후 대상을 갈아치워도 digest 재검증이 통과하고, 승인자들이 본 것과 다른 데이터베이스에서 문장이 돌 수 있다(OWASP transaction authorization: 거래 데이터가 바뀌면 승인은 무효). **config 교체는 그 connection의 미실행 pending/approved 요청을 같은 트랜잭션에서 `expired(connection_changed)`로 만료시킨다**; draft는 살아남아 새 config로 다시 제출할 수 있다.
   단순 rename은 대상 변경이 아니므로 승인을 죽이지 않는다(그래서 descriptor `version`이 아니라 별도의 `config_version`이다).
 - **역할/권한(RBAC, ADR-0008):** 권한은 Google-IAM 스타일 `resource.verb`로 세분화된 **카탈로그(SQL seed)**이고, 역할은 **DB에 저장된 권한 묶음**이다.
@@ -189,11 +189,11 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   이 경우 submit과 동시에 system actor가 자동 승인 event를 남기고 `approved`로 전이한다.
   자기 승인 허용 토글은 governance 약화 우려로 채택하지 않는다.
 - **유효기간:** N번째 승인이 기록되거나 system 자동 승인이 발생한 시점부터 기본 24시간. organization 설정으로 15분~7일 범위에서 변경 가능.
-  두 경로 모두 **행 잠금을 잡은 트랜잭션 안에서** `expires_at`을 찍는다(2026-07-26 증보): 자동 승인이 잠금 밖에서 시각을 계산하면 정책 갱신·archive와의 잠금 대기 동안 요청이 저장되기도 전에 유효기간이 소모된다.
-- **statement 정책:** DB dialect별 SQL parser로 단일 statement와 종류를 판별. parser가 확실히 분류하지 못하면 거부. connection별 `read`, `write`, `ddl` 허용 여부를 적용. PostgreSQL DDL의 query 본문에도 전체 read 표현식 검사를 적용해 잠금·알 수 없는 표현식을 거부한다. M1은 독립적인 write 정책을 면제하지 않도록 DDL과 중첩 DML이 섞인 단일 문장을 거부한다(ADR-0002). PostgreSQL RENAME/DROP/COMMENT는 CREATE가 허용하는 객체 종류(table, view, materialized view, index, sequence, schema)에만 적용되고, ALTER TABLE은 명시적 하위 명령 목록만 허용한다. role, database, 함수·프로시저, trigger, policy, extension, 소유자 변경과 trigger/rule/row-security 토글은 거부한다(ADR-0002, 2026-10-04).
+  두 경로 모두 **행 잠금을 잡은 트랜잭션 안에서** `expires_at`을 찍는다: 자동 승인이 잠금 밖에서 시각을 계산하면 정책 갱신·archive와의 잠금 대기 동안 요청이 저장되기도 전에 유효기간이 소모된다.
+- **statement 정책:** DB dialect별 SQL parser로 단일 statement와 종류를 판별. parser가 확실히 분류하지 못하면 거부. connection별 `read`, `write`, `ddl` 허용 여부를 적용. PostgreSQL DDL의 query 본문에도 전체 read 표현식 검사를 적용해 잠금·알 수 없는 표현식을 거부한다. M1은 독립적인 write 정책을 면제하지 않도록 DDL과 중첩 DML이 섞인 단일 문장을 거부한다(ADR-0002). PostgreSQL RENAME/DROP/COMMENT는 CREATE가 허용하는 객체 종류(table, view, materialized view, index, sequence, schema)에만 적용되고, ALTER TABLE은 명시적 하위 명령 목록만 허용한다. role, database, 함수·프로시저, trigger, policy, extension, 소유자 변경과 trigger/rule/row-security 토글은 거부한다(ADR-0002).
 - **read-only 기본값:** 새 connection은 `read=true`, `write=false`, `ddl=false`. write/DDL 활성화는 admin audit event를 남김.
 - **재사용 마찰 (결정됨):** saved query는 승인을 상속하지 않으므로(4.2) 매 실행이 새 access request→approval을 거친다.
-  이를 **connection·statement 종류별 승인 정책**으로 조절한다(kviklet `numTotalRequired` 모델 검증·확장, 2026-06-27).
+  이를 **connection·statement 종류별 승인 정책**으로 조절한다(kviklet `numTotalRequired` 모델 검증·확장).
   `connection_policy_versions`는 `read`/`write`/`ddl` 각각에 `required_approvals`(0~N, 기본 1)를 둔다.
   저위험 read-only connection을 `read.required_approvals=0`(자동 승인, **audit는 동일하게 기록**)으로 설정하면 재사용 마찰이 해소되고, write/DDL은 더 높은 값으로 게이트한다.
 - **정책 snapshot:** submit 전에 statement를 분류하고 현재 connection policy의 version과 적용된 `required_approvals`·limit을 request payload에 고정한다.
@@ -242,46 +242,20 @@ approved ──approval invalid────────────────�
 approved ──acquire execution lease──> executing ──> succeeded|failed|cancelled|outcome_unknown
 ```
 
-- `draft`에서만 제목·본문·SQL·파라미터를 수정할 수 있음. submit 시 payload digest를 생성하고 이후 수정 금지. **connection은 생성 시 고정된다 (2026-07-26 개정, ADR-0018):** 대상은 Create가 connection 행을 잠그고 archived를 거부하는 그 시점에 정해지고, 대상이 바뀌면 정책 pin·digest·감사 대상이 모두 달라져 사실상 새 승인 단위다.
-  다른 connection을 쓰려면 새 요청을 만든다(기존 draft는 취소).
-- **요청 설명 (ADR-0032):** 새 UI 요청은 한 줄 제목(유니코드 코드 포인트 ≤200자)을 필수로 입력하고, 목적과 검토 내용을 적는 일반 텍스트 본문(≤4,000자)은 선택으로 입력한다. 제목은 권한 범위 내 목록·상세에 표시하고, 본문은 SQL·파라미터와 함께 암호화하며 권한이 있는 상세 조회에서만 공개한다. 초안 수정은 같은 version으로 모든 필드를 저장하고 제출 후 설명까지 고정·digest 인증한다. 설명이 없는 기존/API 요청은 유효하며 제목 없음으로 표시한다. 설명도 56 KiB payload 한도를 공유하고 audit metadata에는 넣지 않는다.
-- requester는 `draft`, `pending`, `approved` 요청을 취소할 수 있음. terminal 상태는 되돌리지 않음.
-- approver는 `pending`만 승인/반려할 수 있고 사유를 남김.
-  `(request_id, approver_id)`는 unique이며 requester의 승인은 거부한다.
-  N명보다 적게 승인한 동안은 `pending`, N번째 서로 다른 활성 approver가 승인하면 `approved`, 한 명이라도 반려하면 `rejected`.
-- `required_approvals=0`은 `approvals` row를 만들거나 가상 사용자를 두지 않고, request 상태 전이와 `actor=system` audit event로 표현한다.
-- 승인 기록 시점과 실행 직전에 approver의 활성 상태·권한을 다시 검사한다.
-  `pending`에서 기존 승인이 무효가 되면 해당 승인을 count에서 제외하고 계속 `pending`으로 두며, `approved` 이후 유효 승인 수가 기준보다 작아지면 실행하지 않고 `expired(reason=approval_invalidated)`로 전이한다.
-- `approved → executing` 전이는 조건부 update로 실행 lease를 원자적으로 획득한 요청 하나만 성공.
-  `query_executions.request_id`는 unique이며 lease는 `owner`(server instance id), `deadline`, `heartbeat`를 저장한다. **lease 획득과 `EXECUTION_STARTED` audit event를 같은 metadata transaction에 기록**해, 대상 DB 실행 전에 "시작됐다"는 사실이 항상 남도록 한다(분산 트랜잭션 없이 보장하는 핵심).
-- DB 실행이 끝나면 `EXECUTION_FINISHED`와 terminal 상태(succeeded/failed)를 기록한다.
-  실행 중 heartbeat로 lease를 갱신한다.
-- **장애 복구(reconciler):** startup 및 background reconciler(주기 **30초**)가 heartbeat/deadline이 만료된 `executing`(owner가 죽었거나 응답 없음)을 감지해 `outcome_unknown`으로 전이하고 audit event를 남긴다.
-  자동 재실행은 하지 않는다. **lease 수치:** heartbeat **15초** 간격, 매 heartbeat마다 deadline을 `now + 60초`로 연장(= 4 heartbeat 유예) — query timeout(8.2)과 무관하게 heartbeat가 살아 있는 한 lease는 유지되므로 정상 실행을 조기에 뺏지 않고, deadline 경과는 owner 사망을 뜻한다. schema apply lock도 동일 수치·기제를 재사용한다(ADR-0012).
-  deadline이 오래된 시도부터 복구하며, 복구에 실패하거나 다른 transaction이 잡고 있는 시도는 다음 실행으로 넘기고 이후 시도를 막거나 startup을 중단시키지 않는다(ADR-0021).
-- **late-completion fencing:** 모든 terminal 상태 update는 `state=executing AND owner=? AND attempt_id=?` 조건부 update로만 성공한다. reconciler가 이미 `outcome_unknown`으로 전이한 뒤 원래 worker가 늦게 완료를 보고하면 조건이 불일치해 **상태를 덮어쓰지 못하고**, 대신 `LATE_COMPLETION_OBSERVED` audit event로만 기록한다.
-- `executing` 상태에서는 사용자가 cancel을 요청할 수 있으나 DB driver의 취소 성공을 보장하지 않음.
-  취소가 확인되면 `cancelled`, 결과를 확인할 수 없으면 `outcome_unknown`으로 기록.
-  COMMIT을 보내기 전의 취소는 transaction이 커밋될 수 없으므로 확인된 취소(`cancelled`)이고, 대상 DB의 statement timeout이나 COMMIT 전 로컬 deadline은 확인된 rollback인 `failed`다. COMMIT 진행 중이거나 그 뒤의 중단과 연결 유실만 `outcome_unknown`으로 남는다(ADR-0021).
-- `succeeded`, `failed`, `outcome_unknown`, `rejected`, `expired`, `cancelled`는 terminal 상태.
-- **DB 강제(2026-10-04 추가, ADR-0018):** metadata row guard가 이 그래프 밖의 runtime update, submit snapshot 수정, 승인 전이 밖의 승인 유효기간 변경, key rotation 재래핑을 제외한 terminal row 변경을 거부한다.
-- `outcome_unknown`은 자동 재시도하지 않고 운영자가 대상 DB에서 실제 반영 여부를 수동 확인한다.
-  확인 결과를 별도 audit event로 남겨 처리 종결 사실을 기록하되, 원래 실행 record의 terminal 상태(`outcome_unknown`)는 사후 변조하지 않는다(append-only 보존).
-- **가시성 스코프 (2026-07-23 증보; 2026-07-24 개정, ADR-0018):** **reviewer = `requests.approve` 또는 `requests.reject` 보유자**는 organization 전체 요청을 조회하고 payload를 복호할 수 있으며, 그 외 requester는 **자신의 요청만** 조회한다(서버측 강제). approve/reject는 custom role이 독립적으로 부여할 수 있는 별개 권한이라, 반려만 가능한 사용자도 대상 요청을 볼 수 있어야 하므로 가시성은 두 결정 권한의 합집합이다.
-  원문 SQL·파라미터 복호화도 요청자 본인 또는 reviewer에게만 허용하고, 그 외에는 redacted SQL만 제공한다(§8.4).
-  목록/집계는 **effective state**(만료 지난 approved=expired) 기준으로 필터·계산해 화면 상태와 일치시킨다.
-  승인은 표시·결정·실행 모두에서 정확히 `expires_at` 시점에 만료된다(2026-10-04 개정, ADR-0018).
-  요청 **대상 connection 선택**은 `requests.create`로 게이트된 전용 목록(활성 connection·폼 필드만)으로 제공한다 — requester/approver는 `connections.*`를 보유하지 않으므로 관리용 connection 목록에 의존하면 기본 역할이 요청 자체를 만들 수 없다(2026-07-24 증보, ADR-0008/0018).
-  SPA 내비게이션·랜딩도 권한 인지로 동작한다.
-- **submit 파이프라인·payload 고정 (2026-07-23 증보; 2026-07-24 개정, ADR-0018):** submit은 `BindNamed(:name→$N, 파라미터 검증) → parse → classify → 현재 정책 pin(class 허용 여부·required_approvals) → redact → digest → seal` 순으로 payload를 확정한다.
-  `payload_digest`는 암호화·redaction 이전에 **승인 단위 전체(§4.3)의 canonical 직렬화**를 HMAC하고(SQL만이 아니라 org·requester·connection·connection config version·policy version·class·params 결합), 정책 snapshot은 `(connection_id, policy_version)` 복합 FK로 append-only 버전 행을 참조해 고정한다(limit는 join으로 안정).
-  실행 시에는 저장된 원문에서 재바인딩하므로 승인·실행 바이트가 동일하다.
-  요청 생성(Create)은 항상 `draft`를 남기고 이후 submit만 정책 위반으로 거부되므로, 거부된 submit은 수정 가능한 draft로 남는다.
-  결정(승인/반려)은 lock 하에서 approver의 active 상태·action별 권한을 재검사한다(권한 회수 후 terminal 반려 차단). **payload 크기 예산 (2026-07-26 증보):** SQL과 파라미터 이름·값을 **합산해** 요청 크기 제한(64 KiB, ADR-0010) 안에 들어가야 한다 — §4.2의 saved query가 따르는 규칙과 동일하다.
-  도메인 한도는 56 KiB이고 나머지는 Connect envelope·id·metadata 몫이다.
-  SQL만 재는 방식은 파라미터 값을 무제한으로 남기고(값도 봉인·전송·실행된다), 전송 한도보다 큰 도메인 한도는 API로 도달할 수 없어 문서가 거짓말이 된다. **결정 시각 (2026-07-26 증보):** 수동 승인·반려도 같은 규칙을 따른다 — `approvals.decided_at`을 `clock_timestamp()`로 찍고, 그 하나의 값에서 행의 `updated_at`, 유효기간, 감사 이벤트의 `occurred_at`이 파생된다.
-  결정 트랜잭션은 요청 행 잠금에서 대기할 수 있고 `now()`는 BEGIN에 고정되므로, 기본값에 맡기면 대기 이전 시각이 기록되고 유효기간만 앱 시계에서 나와 서로 어긋난다. **자동 승인 시각 (2026-07-26 증보):** `required_approvals=0`의 승인 순간은 connection 행 잠금을 잡은 트랜잭션 안에서 DB가 찍는다.
-  행의 `expires_at`, system APPROVED 이벤트의 `occurred_at`, 그 이벤트 metadata의 `expires_at` 복사본이 **모두 그 하나의 시각에서 파생**된다 — 잠금 전에 계산한 값을 감사에 남기면 행과 감사가 서로 다른 시각을 말한다.
+- 초안에서만 수정할 수 있고 연결은 생성 시 고정한다. 제출하면 SQL, 타입이 지정된 파라미터, 제목과 본문을 고정한다.
+- 새 UI 요청의 한 줄 제목은 유니코드 코드 포인트 200자 이하이며 필수이고, 일반 텍스트 본문은 4,000자 이하이며 선택이다. 설명이 없는 기존/API 요청은 제목 없음으로 표시할 수 있다. 설명은 64 KiB 전송 한도 안의 56 KiB payload 한도를 공유하고 암호화하며 감사 메타데이터에는 넣지 않는다.
+- 승인자는 대기 중인 요청에만 한 번 결정할 수 있고 자기 승인은 금지한다. 반려는 종료 상태이며 필요 승인 수가 0이면 시스템 승인을 기록한다.
+- 결정 시점과 실행 직전에 승인자의 활성 상태와 권한을 재검증한다. 무효 승인은 대기 중인 승인 수에 포함하지 않고, 승인된 요청이 정족수에 못 미치면 `approval_invalidated`로 만료한다.
+- 요청자만 미실행 요청을 취소하거나 승인된 요청을 한 번 실행할 수 있다. 실행을 허용한 모든 시도에 시작과 결과를 기록하며 자동 재시도하지 않는다.
+- 실행 소유권이 만료되면 시작 시점과 30초 주기로 `outcome_unknown`을 감사 기록과 함께 확정한다. 늦게 도착한 완료 결과로 복구된 상태를 덮어쓰지 않는다.
+- 취소·롤백이 확인되면 cancelled/failed를 기록하고, 완료 여부를 확인할 수 없는 중단은 `outcome_unknown`으로 기록한다.
+- 승인 또는 반려 권한이 있는 검토자는 조직의 요청과 payload를 조회할 수 있다. 일반 요청자는 본인의 요청만 볼 수 있고 결과 행은 원래 요청자만 조회한다.
+- 목록과 건수는 유효기간이 지난 승인을 만료 상태로 계산한다. 탐색 메뉴와 활성 연결 선택은 현재 권한을 따른다.
+- 제출이 거부되면 수정 가능한 초안을 유지하고 종료 상태는 되돌리지 않는다. 알 수 없는 실행 결과를 수동 확인할 때도 원래 기록을 수정하지 않고 증거를 추가한다.
+
+Per [ADR-0018](../adr/0018-access-requests-and-approvals.md), 상태 전이 제한, payload 무결성, 정책 버전 고정과 결정 시각은 요청 계약에서 정의한다.
+Per [ADR-0021](../adr/0021-governed-query-execution.md), 실행 소유권, heartbeat, 복구, 취소와 늦은 완료 방지는 실행 계약에서 정의한다.
+Per [ADR-0032](../adr/0032-request-title-and-body.md), 요청 설명은 고정된 승인 payload에 포함한다.
 
 ### 4.5 Schema Change Governance (Schema 마일스톤)
 
@@ -377,19 +351,8 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
     셀프호스트가 벤더에 묶이지 않게 하고, 셀프호스트 BYO-key는 무료·hosted는 유료로 분리 가능.
     인터페이스 형태(확정):
 
-    ```go
-    type AIReviewer interface {
-        // 입력은 redactor(8.4)를 통과한 자료만: redacted SQL, statement class,
-        // fact summary(4.5), 정책 컨텍스트. 결과 row·평문 파라미터·credential 불포함.
-        ReviewAccessRequest(ctx context.Context, in AccessReviewInput) (Review, error)
-        ReviewMigration(ctx context.Context, in MigrationReviewInput) (Review, error)
-    }
-    // Review{Summary string; Risks []RiskSignal; Suggestions []string; Provider, Model string}
-    // RiskSignal{Kind string; Detail string; Confidence low|medium|high}
-    // 오류·timeout·quota 초과는 Review 없이 error 반환 → 호출측이 review_unavailable 처리.
-    ```
 
-### 4.9 임시 접근(웹 SQL console session) 위협 모델 (M4 게이트, 2026-07-04 확정)
+### 4.9 임시 접근(웹 SQL console session) 위협 모델 (M4)
 
 12.1에서 확정한 모델(웹 console session, 서버 실행 경로 재사용)의 세션 권한·만료·동시 실행·회수 규칙.
 이 절이 M4 착수 게이트였던 "별도 PRD"를 대체한다.
@@ -468,13 +431,8 @@ Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만�
 | UI 라이브러리 | Kobalte + Tailwind + TanStack Table | 데이터 그리드가 제품 핵심 |
 | Schema 엔진 | Atlas Community CLI subprocess | 버전·checksum을 고정하고 `SchemaEngine` 인터페이스로 격리 |
 
-UI 변경 기반(ADR-0036): 개발자가 세션·인가·요청·결과 로직과 독립적으로 공통 디자인 토큰(밝은/어두운 색상, 글꼴, radius, 화면 폭·간격), 브랜딩 asset과 화면 배치 slot을 변경할 수 있게 한다. 기존 기본값과 페이지 중심 흐름을 유지하며 사용자 설정 화면이나 조직별 브랜딩 저장 기능을 약속하지 않는다.
-
-UX 개선(ADR-0037): 현재 메뉴 위치를 표시하고 320 CSS pixel에서도 메뉴와 일반 요청 동작을 사용할 수 있게 재배치한다. 요청 정보·SQL·명시적 draft 저장/제출을 묶고 일관된 화면 계층과 키보드 focus 표시를 제공한다. SQL·표는 내부 스크롤을 허용하며 넓은 화면의 검토 안내는 좁은 화면에서 페이지 안에 쌓는다. 제출은 실행을 의미하지 않는다. 외형 변경 후 실제 README 캡처를 갱신한다.
-
-인라인 진행 상태(ADR-0038): 요청 제목을 누르면 해당 행 아래에 Draft → Review → Ready → Execution을 펼친다. 허용된 목록 요약 정보만 사용하고 알 수 없는 단계는 명시하며 이력을 만들어내지 않는다. 결과(ADR-0039)는 같은 제한된 서버 페이지의 Table/Text 보기, 헤더를 포함한 현재 페이지 clipboard 복사와 spreadsheet formula escaping, 찾기 쉬운 column 정렬을 제공한다. 보기 전환은 SQL을 실행하지 않고 복사 실패는 페이지 안에 표시한다. 첫 로딩은 고정된 세 줄 skeleton을 사용하고 빈 결과·오류를 구분하며 background refresh는 이미 표시된 요청 상세를 유지한다.
-
-실행 시간(ADR-0040): 결과와 원래 요청자의 종료된 요청 상세에 저장된 실행 시간·영향받은 행 수를 이름과 함께 표시한다. 기존 인가 경계의 서버 메타데이터를 사용한다. 시간은 DB 연결·실행, 결과 수집·snapshot 저장을 포함하고 승인 대기·브라우저 렌더링·이후 paging/sorting은 제외한다고 설명한다. 실행 중이거나 불확실한 결과의 측정값이 없는 경우 완료된 시간으로 표시하지 않는다.
+UI 요구사항은 §7에서 정의하며 화면 변경은 인증·권한·승인된 실행을 유지해야 한다.
+Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), 구현 세부사항은 해당 기능의 결정에서 관리한다.
 
 ### 5.2 메타데이터 저장소 원칙
 **"어디서 돌든 메타데이터는 PostgreSQL."** compose든 Helm이든 동일 스키마·쿼리·sqlc 코드가 동작.
@@ -483,42 +441,17 @@ UX 개선(ADR-0037): 현재 메뉴 위치를 표시하고 320 CSS pixel에서도
 
 ### 5.3 DB dialect 통합 경계
 
-Core 1/2의 상위 서비스가 DB별 placeholder, parser AST, transaction 차이를 직접 분기하지 않도록 adapter로 격리한다.
-
-```go
-type QueryDialect interface {
-    ParseSingle(sql string) (Statement, error)
-    Classify(stmt Statement) (StatementClass, error)
-    BindNamed(sql string, params []TypedValue) (boundSQL string, args []any, err error)
-    ValidateConnection(ctx context.Context, cfg ConnectionConfig) error
-    Execute(ctx context.Context, req ExecutionRequest) (ResultStream, error)
-}
-// postgresDialect, mysqlDialect
-```
-
-- 공통 service가 payload digest, approval, execution lease, timeout, row/byte cap, result snapshot, audit을 담당.
-- adapter는 연결 검증, 정확한 statement 분류, bind 문법, read-only/transaction 설정, cancel과 오류 redaction을 담당.
-- DB별 구현은 동일한 contract test suite를 통과해야 하며 의도적인 차이는 compatibility matrix와 UI에 노출.
-- driver와 parser 라이브러리는 ADR-0001로 확정: pgx / go-sql-driver/mysql + per-dialect parser(PG=pgplex/pgparser, MySQL=tidb pkg/parser). ADR-0025로 SQLite를 지원 범위에서 제외한다.
+PostgreSQL과 MySQL은 같은 거버넌스·결과 완료 기준을 충족하고 의도적인 SQL 방언 차이를 표시한다.
+애플리케이션 유스케이스는 엔진과 관계없이 승인, payload 무결성, 일회 실행, 한도와 감사를 유지하고, 방언 어댑터는 파싱·바인딩·실행을 담당한다.
+Per [ADR-0001](../adr/0001-db-driver-and-parser.md)과 [ADR-0025](../adr/0025-sql-database-first-expansion.md), 드라이버·파서 선택과 지원 대상 범위는 기술 결정이다.
+검증한 기능과 엔진 버전은 [DB 지원 표](database-support.md)에서 확인한다.
 
 ### 5.4 Atlas 통합 경계
 
-추상화 레이어로 Atlas를 감싼다.
-상위 코드는 도메인 타입만 알고, Atlas는 한 구현체 뒤에만 존재한다.
-
-```go
-type SchemaEngine interface {
-    Status(ctx, conn, source Source) (MigrationStatus, error)  // applied vs pending
-    DryRun(ctx, conn, plan Plan) (Preview, error)              // pending SQL preview
-    Apply(ctx, conn, plan Plan) (ApplyResult, error)
-}
-// v1: atlasSubprocessEngine (Community 바이너리 호출 — migrate status/dry-run/apply)
-```
-
-`Source`는 **remote ID + commit SHA + path + 순서 고정된 파일 목록·파일별 checksum + `atlas.sum` + Atlas version/options + immutable artifact handle**을 담는다(4.5 승인 artifact와 동일).
-`Plan`은 그 artifact에서 확정된 적용 대상 migration 집합을 가리킨다. review 스텝의 **deterministic fact summary**는 `Preview`(dry-run SQL) + DB native 분석으로 만들고, AI Review(4.8)는 이를 설명만 하며 불확실 항목은 `unknown`으로 둔다(영향 row를 단정하지 않음).
-Atlas에 자체 lint/pre-check를 의존하거나 추가하지 않는다.
-Go embedded 전환은 Community 라이선스와 공개 API 안정성을 별도 검증한 뒤 결정하며 현재 로드맵에 약속하지 않는다.
+M3 미리보기와 M5 적용은 같은 불변 migration artifact와 대상을 사용하고 검토 입력과 명시적인 unknown을 유지한다.
+Atlas Community는 migration 상태 조회·dry-run·적용을 제공하고, Portcullis는 거버넌스와 검토를 담당하며 대체 lint/pre-check 엔진을 만들지 않는다.
+Per [ADR-0012](../adr/0012-schema-governance-ops.md), subprocess 경계, 버전·checksum 고정, artifact 저장과 복구 계약은 기술 명세에서 정의한다.
+Atlas Go SDK를 내장하려면 라이선스와 공개 API에 관한 별도 결정이 필요하다.
 
 ### 5.5 라이선스 지도
 
@@ -539,7 +472,7 @@ Atlas 버전 변경 시 compatibility suite와 라이선스 지도를 함께 갱
 - 모든 핵심 테이블에 `organization_id` 컬럼.
   셀프호스트에선 `default-org` 단일.
 - 모든 쿼리는 repository 레이어에서 org 스코프를 강제 통과.
-- audit 읽기·쓰기는 organization을 명시하며 default로 대체하지 않는다. background maintenance는 모든 organization을 순회한다(2026-10-04 개정, ADR-0004/0009).
+- audit 읽기·쓰기는 organization을 명시하며 default로 대체하지 않는다. background maintenance는 모든 organization을 순회한다(ADR-0004/0009).
 - ID만 바꾼 API 요청으로 다른 org 데이터에 접근할 수 없는지 endpoint별 통합 테스트.
 - DB 격리(스키마/DB 분리)는 클라우드 전환 시 결정.
   MVP는 shared-table + org_id.
@@ -549,122 +482,50 @@ Atlas 버전 변경 시 compatibility suite와 라이선스 지도를 함께 갱
 
 ## 6. 데이터 모델 (개요)
 
-```
-organizations            (셀프호스트: default 1개)
-users                    (계정)
-organization_memberships (user-org; role_id → roles)
-permissions              (Google-IAM 스타일 resource.verb 카탈로그; SQL seed, 시작 시 로드)
-roles                    (org-scoped; name, is_system; 시드 3개 default + custom role)
-role_permissions         (role-permission 할당; permission_key → permissions)
-auth_methods             (password; user와 분리해 인증수단 확장 대비)
-oidc_identities          (user-issuer-subject 링크; Google 소셜 로그인, unique(issuer,subject))
-sessions                 (opaque token hash, idle/absolute expiry, revoked_at)
-oidc_providers           (엔터프라이즈용, 나중)
+메타데이터는 조직·사용자, 인증, 권한, 연결, 불변 요청·정책 버전, 승인 결정, 실행 결과와 감사를 영속적으로 기록한다.
+M3는 버전이 있는 쿼리 자산과 공유를 추가하고 schema 마일스톤은 불변 migration artifact와 변경 이력을 추가한다.
+결과 스냅샷은 임시 암호화 데이터다. 만료·축출·PostgreSQL 장애나 failover로 조회할 수 없게 되어도 성공한 실행 이력을 바꾸거나 SQL을 재실행하지 않는다.
 
-connections              (PostgreSQL|MySQL; encrypted config, org_id, current_policy_version, archived_at)
-connection_policy_versions (connection, version, read/write/ddl별 required_approvals + policy당 limit 1세트(timeout/rows/bytes — ADR-0015), created_by)
-access_requests          (AEAD-encrypted SQL+params payload, payload_digest, redacted_sql, statement_class, policy_version, required_approvals, 상태, expires_at)
-                         — redacted_sql의 원본은 이 행이며, audit event는 기록 시점 값을 **복사**해 적재한다
-                           (참조 아님: append-only 감사는 자기완결이어야 하고, 이후 행 상태 변화와 무관해야 함)
-approvals                (request, approver, decision, reason, decided_at; UNIQUE(request, approver))
-query_executions         (request_id unique, lease owner/deadline/heartbeat, attempt_id, outcome, result metadata)
-saved_queries            (name, tags, visibility, owner, source_request_id?; 입력 한도는 4.2)
-saved_query_versions     (immutable AEAD-encrypted sql + parameter default values, parameter definitions, created_by)
-saved_query_favorites    (user별 즐겨찾기)
-schema_change_requests   (Schema 마일스톤; commit SHA, artifact handle, plan hash, atlas.sum,
-                          Atlas version/options, effective statement class + policy version,
-                          migration lock/attempt/outcome, artifact retention class, review summary, 상태)
-audit_events             (통합 감사 타임라인; ML feature-ready 구조)
-```
-
-`result_set` 스냅샷은 in-process cache 대신 `ResultStore` 인터페이스 뒤의 PostgreSQL `result_cache` schema에 보관한다.
-`result_sets`와 `result_chunks`는 **UNLOGGED table**이며, 각 result마다 생성한 data-encryption key(DEK)로 schema/row chunk를 AES-256-GCM 암호화하고 DEK는 master key로 wrapping한다.
-각 chunk는 result ID·chunk index·owner organization ID를 associated data로 인증한다.
-평문으로 남는 필드는 result ID, owner organization/user, row·byte 수, 생성·만료·최근 접근 시각뿐이다.
-`query_executions`에는 handle, 만료 시각, row/byte 수, truncated 여부만 기록하고 UNLOGGED table을 FK로 참조하지 않는다.
-
-UNLOGGED result cache는 같은 PostgreSQL primary에 연결된 여러 Portcullis replica가 공유할 수 있지만 crash recovery와 standby 복제 대상은 아니다.
-PostgreSQL crash·failover로 cache가 사라지면 실행 결과 자체를 재실행하지 않고 UI에 `result_unavailable`을 표시하며, 영속적인 `query_executions` 성공 기록은 유지한다.
-이 손실 모델은 15분 TTL cache에 대해 의도적으로 수용한다.
+Per [ADR-0004](../adr/0004-metadata-rls.md), [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md)과 [ADR-0021](../adr/0021-governed-query-execution.md), 조직 범위 검증·원자적인 감사·스냅샷과 실행 이력의 영속성 구분은 기술 계약에서 정의한다.
+현재 테이블 정의는 [추적되는 migration](../../migrations/)에서, 향후 스키마 설계는 해당 기능의 ADR에서 관리한다.
 
 ### 6.1 Audit 이벤트 (ML-ready 설계)
-나중에 ML 이상 탐지를 붙일 수 있도록 처음부터 구조화된 필드로 적재한다.
 
-```
-audit_events
-  id, organization_id, occurred_at
-  actor_type(user|system|service), actor_user_id(nullable), actor_service(nullable)
-  action, target_type, target_id, outcome
-  previous_state, next_state, payload_digest, request_id
-  connection_id, query_type, rows_affected, duration_ms
-  risk_score(nullable)                       -- 나중에 채움(ML/AI Review 4.8)
-  metadata(jsonb)
-```
+- 행위자, 조직, 시각, 동작, 대상, 결과, 이전·다음 상태와 요청·payload 증거를 구조화된 타임라인에 기록한다.
+- 사람과 시스템·서비스 동작의 주체를 명시한다. 대상 실행을 허용한 모든 시도에는 시작 증거와 확인된 결과 또는 `outcome_unknown`이 있어야 한다.
+- payload·상태·정책 위반, 포화와 종료 등 소유권이 확인된 실행 거부는 승인을 소비하지 않고 기록한다.
+- 비식별 SQL, statement 종류, 영향 행 수와 실행 시간은 기록할 수 있다. 원본 SQL, 주석, 리터럴·파라미터 값, 자격증명, 토큰과 결과 행은 감사·로그에 남기지 않는다.
+- 연결을 보관 처리해도 요청·결정·실행·감사 이력을 유지한다. Runtime 권한으로 감사 기록을 수정·삭제할 수 없고 자동 승인의 주체는 시스템이다.
+- 향후 선택적인 AI 위험 정보는 조언으로만 사용한다. 셀프호스트 DB 소유자의 직접 변경에 대한 암호학적 보호는 MVP 범위 밖이다.
 
-- runtime DB role은 `audit_events`에 `INSERT/SELECT`만 가능하고 `UPDATE/DELETE`할 수 없음. schema migration용 owner role과 분리.
-- **actor 모델:** 사람이 아닌 행위자(자동 승인 `required_approvals=0`, reconciler, AI review, late-completion)는 `actor_type=system|service`로 기록한다.
-  `actor_user_id`는 nullable이고, system/service actor는 `actor_service`에 **안정적인 식별자**(예: `system:reconciler`, `service:ai-review`)를 남긴다.
-- **statement 단위 로깅(불변식):** 실행 경로가 무엇이든 — web 직접 실행, 향후 임시 접근 session(4.6) — **대상 실행에 진입하는 모든 시도에는 `EXECUTION_STARTED` audit event가 존재**하고, 결과 확인 시 `EXECUTION_FINISHED`(terminal), 결과 미확인 시 `outcome_unknown`이 기록된다(crash 구간에 "DB 도달" 자체는 증명할 수 없으므로 "진입한 시도에는 STARTED가 있다"가 보장 단위).
-  소유자가 확인된 요청의 실행 전 거부(무결성·상태·정책·포화·종료 중 포함)는 `EXECUTION_REJECTED`로 기록하며 lease를 소비하지 않는다(ADR-0021).
-  기록되는 쿼리 텍스트는 **comment 제거 + inline literal→typed placeholder + bind placeholder 유지로 만든 redacted SQL + payload digest**이며(원문 SQL은 8.4대로 암호화 저장, audit엔 미기록, redaction 실패 시 fail-closed로 digest+type만) 평문 파라미터 값·literal·comment·결과 row는 남기지 않고 query_type·rows_affected·duration만 남긴다.
-  임시 접근을 도입하더라도 "세션은 열어주되 실행 내역은 안 남는" 경로를 만들지 않는다.
-  (kviklet proxy `Connection.kt`가 per-execute로 `saveEvent`하는 것과 동일 보장 — 코드 검증 2026-06-27)
-- audit에는 credential, session token, query 결과 row를 저장하지 않음.
-  파라미터 값은 request payload에 암호화하고 audit에는 payload digest만 기록.
-- **내역 보존:** access_request·query_execution·audit_event는 connection archive 시 그대로 남는다(4.3).
-  MVP는 connection hard delete API를 제공하지 않고 FK는 `ON DELETE RESTRICT`로 보호한다. audit event에는 credential을 제외한 connection 식별 snapshot을 함께 적재한다.
-- self-host DB owner의 직접 변조까지 막는 cryptographic tamper evidence는 Later 범위이며, MVP는 이 한계를 문서에 명시.
-  MVP 변조 방지의 기준선은 append-only + runtime의 UPDATE/DELETE 차단이다.
-
----
+Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redaction-and-named-binding.md)과 [ADR-0021](../adr/0021-governed-query-execution.md), 이벤트 필드·비식별화·원자적인 실행 증거는 기술 계약에서 정의한다.
 
 ## 7. 핵심 UX 요구사항
 
 ### 7.1 결과 그리드 & 페이지네이션
 
-일반적인 작성·수정·요청 검토·정책 설정·결과 조회는 페이지 내부에서 제공하며, 모달 확인은 위험하거나 파괴적인 작업에 한정한다(ADR-0022). 요청 작성·상세·결과는 직접 새로고침 가능한 URL과 브라우저 이력, 명시적인 돌아가기 링크를 제공한다. 로그인이 필요한 직접 링크는 로그인 후 해당 페이지로 이어지며, 복귀 경로는 같은 origin의 상대 경로만 허용한다(ADR-0022). 백그라운드 갱신 중 입력한 SQL과 결정 사유를 보존한다. 일시적으로 실패한 갱신은 마지막으로 불러온 행을 그 사실과 함께 유지하며, 주체 변경이나 권한 상실 때만 비운다(ADR-0037). Save draft/Submit을 명시적으로 실행해야 한다. 경로 이동이 평문을 자동 저장하거나 SQL을 실행해서는 안 된다.
+- 생성·검토·정책·결과는 새로고침 가능한 페이지, 브라우저 이력과 뒤로 가기로 제공하고 위험한 동작의 확인에만 모달을 사용한다. 로그인 후에는 같은 origin의 안전한 요청 페이지로 돌아간다.
+- 새로고침 중 SQL·결정 사유·마지막 조회 데이터를 유지하고 사용자·권한 변경 시 데이터를 지운다. 초안 저장과 제출은 명시적인 동작이며 페이지 이동으로 평문을 자동 저장하거나 SQL을 실행하지 않는다.
+- 빈 화면 대신 not-found·복구 가능한 오류 화면을 제공한다. 선택적인 인스턴스 한도 조회 실패로 요청 화면이나 서버 한도 검증을 비활성화하지 않는다.
+- 편집 중 SQL은 로컬에서 blur 시 포맷하고 opt-out·수동 포맷·실행 취소를 제공한다. 실패 시 입력을 유지하며 제출된 SQL·파라미터·승인 증거·실행 입력은 변경하지 않는다.
+- 320 CSS pixel에서도 메뉴와 일반 동작을 사용할 수 있고 키보드 focus를 표시한다. SQL·표는 내부 스크롤을 허용하며 인라인 요청 진행 상태는 허용된 사실과 명시적인 unknown만 표시한다.
+- 목록은 페이지 번호·범위·안정적인 정렬을 제공한다. 페이지 크기는 10/20/50/100, 기본 20·최대 100이며 감사 목록은 무한 스크롤을 사용하지 않는다.
+- 한 번 실행한 암호화 스냅샷을 최대 15분간 탐색하며 축출될 수 있다. 10,000행/25 MiB 상한보다 낮은 정책 한도를 먼저 적용한다. 새 정책의 기본값은 16 MiB이며 메모리 한도로 더 일찍 잘릴 수 있다.
+- 잘림·조회 불가를 표시한다. 한도에 도달한 읽기는 중단하되 RETURNING을 포함한 쓰기는 승인된 statement 전체를 커밋한다. 캐시 유실 시에도 실행 이력을 유지하고 SQL을 재실행하지 않는다.
+- 정확한 숫자 값, 타입이 있는 시간의 시간순 비교, 안정적인 동률 처리와 양방향 NULL-last 정렬을 유지한다. 해석할 수 없는 시간 문자열은 타입 값 뒤에 둔다. 처음에는 쿼리 순서를 유지하고 복원할 수 있게 한다.
+- Table/Text 보기와 clipboard 복사는 헤더를 포함한 현재 서버 페이지를 사용하고 복사 실패를 표시한다. 기록된 실행 시간은 DB 연결·실행·수집·저장을 포함하며 승인 대기·화면 렌더링·이후 결과 탐색은 제외한다.
+- CSV는 페이지·필터·정렬과 관계없이 스냅샷 전체를 원래 순서로 내보내고 요청자·조직 권한을 재검증한다. 같은 한도 내에서 스트리밍하고 수식 접두어를 기본적으로 escape하며 원본 내보내기는 경고와 명시적인 선택이 필요하다.
+- 결과 저장 기본 한도는 조직별 512 MiB·사용자별 64 MiB다. 새 스냅샷을 저장할 수 없어도 기존 유효 결과를 보존하고 만료·축출을 표시한다. 임시 처리 동시성은 기본 2이며 포화 시 `429 Retry-After`를 반환한다.
+- 무제한·재실행 기반 내보내기, 메모리에 상주하는 결과 캐시와 모든 spreadsheet 재저장의 안전성 보장은 제공하지 않는다.
 
-어떤 경로도 빈 화면을 표시하지 않는다. 알 수 없는 주소는 애플리케이션 프레임 안에서 찾을 수 없음 페이지를, 예상하지 못한 렌더링 실패는 복구 가능한 오류 페이지를 표시하며, 선택적 인스턴스 한도를 읽지 못해도 요청 페이지는 계속 동작한다(한도는 서버가 계속 강제한다, ADR-0022).
-
-편집 가능한 SQL은 기본적으로 입력칸을 벗어날 때 로컬에서 자동 정렬하며, 자동 정렬 끄기·수동 정렬·되돌리기를 제공한다(ADR-0023). 대소문자와 파라미터 표기를 보존하고 정렬 실패 시 입력을 유지한다. 제출된 SQL은 저장된 원문으로 표시하며 승인 증거와 실행 입력을 포매터가 변경하지 않는다.
-
-감사 맥락에서 명시적인 탐색 위치와 동일 실행 결과의 안정적인 조회를 제공한다. kviklet도 페이지 조회·요청 필터·결과 저장·전체 cell 보기를 제공하므로, 페이지네이션 유무를 차별점으로 주장하지 않고 실제 과업으로 UX를 비교한다(ADR-0019).
-
-- **목록(요청/저장쿼리/audit):** OFFSET 페이지네이션 채택(내부 백오피스 성격에 적합).
-  - `page`, `page_size`(10/20/50/100, 기본 20, **상한 100**), `sort`(컬럼 화이트리스트 + 방향).
-  - 응답: `{ items, page, page_size, total_count, total_pages }`.
-  - **명시적 페이지 컨트롤**(번호 점프, "1–20 of 1,340").
-    무한스크롤 미사용 — 감사 맥락에서 "전체 중 몇 페이지"의 통제감이 중요.
-  - 정렬은 **tie-breaker 포함**(`ORDER BY created_at DESC, id DESC`)으로 페이지 경계 안정성 보장.
-  - audit_event 등 폭증 테이블은 추후 필요 시 keyset으로 국소 전환(공통 list 헬퍼를 인터페이스로).
-- **쿼리 결과:** 실행 1회 후 서버가 snapshot을 **PostgreSQL UNLOGGED result store(AEAD 암호화 chunk)**에 15분 TTL로 보관하고 그 위에서 페이징/정렬/필터(DB 재실행 없음).
-  - 최대 10,000행과 25MiB 중 먼저 도달한 snapshot 상한에서 중단하고 `truncated=true` 표시.
-    read는 상한에서 대상 DB 읽기를 멈추고 문장의 나머지를 취소하므로 rows affected는 전달된 행 수와 같다. returning write는 여전히 끝까지 읽고 문장 전체를 커밋한다(ADR-0021).
-    행 수·truncate 여부·chunk 수는 암호화 chunk와 함께 인증되므로 변조된 snapshot 메타데이터는 결과 없음으로 처리한다(ADR-0003/0011).
-    connection 정책의 더 낮은 상한을 우선 적용한다(신규 정책 기본 byte 상한 16MiB, ADR-0015/0021).
-    디코드 전에 셀·행 구조체 메모리를 별도로 제한하므로 값 바이트가 작은 넓은 NULL 결과도 더 일찍 truncate될 수 있다(ADR-0021).
-  - 전체 result store 상한은 기본 512MiB이며 LRU로 만료.
-    사용자별 quota(기본 64MiB)와 축출 계획→수용 가능 시 원자적 적용·불가 시 유효 결과를 보존하는 거부 정책은 ADR-0011로 확정.
-  - 수용은 organization별로 직렬화하고 전체 상한은 해당 organization의 결과로 계산한다(단일 org 배포에서는 설치 전체). 만료 purge는 사용 중인 row를 건너뛴다(2026-10-04 개정, ADR-0011).
-    TTL 만료·상한 축출 시 UI에 만료 상태 표시.
-  - 원래 순서의 페이지 조회와 CSV는 필요한 chunk만 순차 복호화한다.
-    CSV는 전체 snapshot을 메모리에 올리지 않고 stream한다.
-  - 타입별 결과 정렬(ADR-0033): 최초에는 쿼리 반환 순서를 유지하고, 컬럼을 선택하면 선언된 logical type으로 전체 snapshot을 정렬한 뒤 페이지를 반환한다. 숫자 정밀도·시간 순서·동일 값의 원래 순서를 보존하며 NULL은 양방향 모두 마지막이다. 파싱할 수 없는 시간 표기는 타입 값 뒤에서 원문 기준으로 정렬한다. 컬럼·방향 표시와 원래 순서 복원을 제공하고 CSV가 원래 snapshot 순서를 내보낸다는 점을 알린다.
-  - 정렬·필터는 암호문을 PostgreSQL에서 질의하지 않는다.
-    서버의 제한된 processing worker가 최대 25MiB snapshot을 요청 처리 동안만 복호화해 수행하고 결과 page만 반환한다. worker 동시성 기본값은 2이며 포화 시 `429 Retry-After`로 backpressure를 적용한다.
-  - **상주 in-process cache 비채택:** 전체 결과를 Go heap에 TTL 동안 보관하지 않는다.
-    정렬·필터 작업의 일시 메모리는 row/byte 상한과 worker semaphore로 제한한다.
-  - 같은 primary를 사용하는 application replica 간에는 공유되지만 PostgreSQL crash·standby failover 시 cache가 사라질 수 있다.
-    이때 재실행하지 않고 `result_unavailable`을 표시한다.
-  - CSV export도 동일한 snapshot과 상한을 사용하며 매 요청마다 원래 사용자/organization 권한을 다시 검사.
-  - **CSV injection 방어:** 헤더·cell의 선행 공백·제어문자 뒤 `=,+,-,@` 또는 전각 대응 문자를 기본 escape하고, 그 접두 구간의 tab/CR/LF도 escape한다(ADR-0005/0039). 원본 snapshot과 escape 접두어 뒤 원문은 보존하며 모든 spreadsheet의 재저장 안전성을 보장하지 않는다. raw export가 필요하면 명시적 옵션 + 경고로만 허용. bytes/JSON/newline/encoding 직렬화 규칙은 result 타입 계약(12.2)을 따른다.
-  - 무제한 export와 query 재실행 기반 export는 MVP에서 지원하지 않음.
+Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md), [ADR-0021](../adr/0021-governed-query-execution.md), [ADR-0022](../adr/0022-page-first-workflows.md), [ADR-0023](../adr/0023-local-sql-formatting.md)과 [ADR-0033](../adr/0033-type-aware-result-sorting.md), wire 타입·캐시 처리·라우팅·정렬 구현은 기술 계약에서 정의한다.
+Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/0037-page-hierarchy-and-responsive-ux.md), [ADR-0038](../adr/0038-inline-request-workflow.md), [ADR-0039](../adr/0039-result-views-and-clipboard.md)와 [ADR-0040](../adr/0040-recorded-execution-time.md), UI 변경·반응형 탐색·인라인 진행·clipboard·실행 시간 표시는 기존 권한 경계를 유지한다.
 
 ### 7.2 Connection 추가 플로우
 - 타입별 폼을 제공하고 사용하지 않는 필드는 숨김.
   - PostgreSQL: host/port/database/user/password/TLS mode.
   - MySQL: host/port/database/user/password/TLS mode.
-- 공통 descriptor 필드: **environment**(development|production — UI는 production을 명시적 배지로 표시)와 **description**(선택, ≤500자) (2026-07-18 증보).
+- 공통 descriptor 필드: **environment**(development|production — UI는 production을 명시적 배지로 표시)와 **description**(선택, ≤500자) .
 - 저장 전 연결 테스트.
 - admin만 생성·수정·테스트 가능하며 credential과 원문 DSN은 생성 후 UI/API로 다시 반환하지 않음.
 
@@ -706,39 +567,18 @@ audit_events
   허용 Git host·outbound allowlist를 강제하고 **redirect 제한과 DNS rebinding 방어**를 둔다. **clone 크기·파일 수·timeout 상한**을 적용하고, **submodule·Git LFS·symlink는 기본 금지**한다. fetch한 migration 파일은 승인 artifact(4.5)로 고정해 재읽기 없이 apply하며, artifact의 **보존 기간과 접근 권한**을 정의한다.
 
 ### 8.2 SQL 실행 안전성
-- DB dialect parser로 정확히 하나의 statement인지 검증하고 statement 종류를 connection policy와 대조.
-  단순 keyword/정규식만으로 권한을 판단하지 않음.
-- PostgreSQL 실행 연결은 시작 시 `standard_conforming_strings=on`을 고정하고 statement 실행 전에 서버 보고값을 확인한다. 값이 없거나 다르면 거부한다(ADR-0044). parser·binder·redactor·대상 DB의 일반 문자열 해석을 일치시킨다. 호환성 시나리오는 PG16–18의 기존 `off` 기본값과 PG19 preview의 `off` 거부를 구분하고, 모두 쿼리 의미가 유지되는지 검증한다.
-- 명명된 파라미터는 각 native driver의 bind parameter로 변환.
-  값은 SQL 문자열에 직접 삽입하지 않음.
-- PostgreSQL 실행은 선언된 파라미터 타입을 native OID로 전달한다(ADR-0016).
-  `timestamp`는 RFC 3339 시점이므로 `timestamptz`에 대응한다.
-  `null`에는 기반 타입이 없으므로 SQL 문맥에서 추론하고, 모호한 표현식은 명시적 cast를 요구한다.
-- 각 실행은 전용 DB connection을 사용하고 DB가 지원하는 범위에서 transaction과 read-only mode를 강제.
-  PostgreSQL/MySQL의 implicit commit, timeout, cancel 차이는 adapter contract와 승인 UI에 명시.
-- **read-only 트랜잭션은 함수 부작용을 막지 못한다 (2026-07-24 증보, ADR-0002):** PostgreSQL의 `READ ONLY`는 문서상 "a high-level notion of read-only that does not prevent all writes to disk"로, 금지 대상은 명령(INSERT/UPDATE/DELETE/MERGE/COPY FROM/DDL/GRANT/TRUNCATE)뿐이다.
-  따라서 `dblink_exec`·`pg_notify`·`set_config`·advisory lock·서버 파일 함수는 `SELECT` 안에서 통과한다.
-  방어는 ① 분류 시점 **함수·연산자 allow-list** — 목록 밖·사용자 정의·스키마 수식 이름은 fail-closed 거부이고, **클래스와 무관하게 ddl 포함 모든 문장에 적용**한다(2026-07-25 증보: ddl은 등급만 최종이고 부작용 검사를 면제하지 않는다 — CTAS·표현식 인덱스·컬럼 DEFAULT가 함수를 품는다) ② 실행 시 명시적으로 참조된 함수·연산자의 **후보 OID 전체를 검증**(고정 `search_path` + 신뢰 카탈로그 대조; 사용자 overload가 하나라도 있으면 거부하는 보수적 대안, ADR-0021) ③ 대상 DB 계정 최소권한(§8.1)이다.
-  스키마 수식 이름의 유일한 예외는 PostgreSQL 문법이 SQL 표준 구문(EXTRACT, SUBSTRING, POSITION, OVERLAY, TRIM, AT TIME ZONE, LIKE/SIMILAR … ESCAPE)을 대체해 직접 만드는 정확히 두 부분의 `pg_catalog.<이름>` 호출이다. 사용자가 직접 쓴 수식 호출은 계속 거부하고, 실행 시 해당 이름의 신뢰할 수 없는 pg_catalog 후보가 하나라도 있으면 거부한다(2026-10-04 증보, ADR-0002).
-  `pg_proc.provolatile`은 **경계가 아니다**(2026-07-25 정정): PG 문서는 volatility를 *"a promise to the optimizer"* 로 규정하고 *"not a completely bulletproof test, since such functions could still call VOLATILE functions that modify the database"* 라고 명시한다 — 서버가 강제하지 않으므로 함수 생성 권한자는 부작용 있는 본문을 STABLE로 선언할 수 있다.
-  정직하게 선언된 volatile builtin을 걸러내는 **위생 검사**로만 남긴다. read-only 트랜잭션도 경계가 아니라 보조 수단이다.
-  exclusion constraint의 `WITH` 연산자도 같은 연산자 게이트와 실행 시 카탈로그 검사를 받는다. 명시적 operator class는 거부하고, access method는 내장 index method(btree, hash, gist, spgist, gin, brin)와 heap table method로 제한한다(2026-10-04 증보, ADR-0002).
-- row 상한뿐 아니라 byte 상한을 강제해 큰 cell에 의한 메모리 고갈을 방지. cache 상한 도달 시의 처리 순서는 확정됨(ADR-0011): 만료분 삭제 → 본인 LRU 축출 계획 → 전역 LRU 축출 계획(다른 사용자별 최소 1개 보존) → 수용 가능하면 축출·신규 저장을 원자적으로 적용하고, 불가능하면 유효한 기존 결과를 모두 보존하며 신규 snapshot만 거부(`result_store_full`, 실행 자체는 완료).
-  커밋된 statement의 snapshot 저장은 query deadline이나 뒤늦은 취소의 영향을 받지 않는 별도의 제한된 context에서 수행한다. snapshot이 거부되거나 저장에 실패해도 `succeeded`를 유지하고, 오류 원문 없이 `result_store_full` 또는 `result_persistence_failed`를 `EXECUTION_FINISHED`에 기록한다(ADR-0021).
-- **대상 DB 실행 경로 circuit breaker(ADR-0010):** connection별로 연속 실패 5회 초과 시 60초 open(half-open probe 1회).
-  차단된 호출은 lease를 잡지 않고 `Unavailable`로 반환하며 자동 재시도하지 않는다.
-  사용자 취소·context deadline·서버 statement timeout·로컬 응답 크기 제한은 대상 건강 집계에서 제외하고 기존 장애 횟수를 초기화하지 않는다. 실행 결과의 불확실성은 계속 `outcome_unknown`으로 기록한다(ADR-0010).
-- 사용자 cancel과 context timeout 시 driver cancel을 시도하지만, 결과를 확인할 수 없으면 성공/실패를 추측하지 않고 `outcome_unknown`으로 기록.
-  로컬 실행 deadline은 statement timeout보다 고정 유예만큼 길어, 대상 DB의 timeout이 먼저 발동해 rollback한다(ADR-0021).
-- 대상 DB 실행에는 자동 retry를 적용하지 않음.
-  API idempotency key는 동일 실행 attempt 조회에만 사용하고 새 DB 실행을 만들지 않음.
 
-| DB | read 실행 | write/DDL 실행 시 주의사항 |
-|---|---|---|
-| PostgreSQL | read-only transaction | 가능한 statement는 transaction 안에서 commit/rollback |
-| MySQL | read-only transaction | DML은 transaction 사용, DDL implicit commit 가능성을 실행 전 경고 |
+- 현재 SQL 방언과 read/write/DDL 정책에 따라 분류된 statement 하나만 허용한다. 트랜잭션·세션 제어, 파일·네트워크 I/O와 분류할 수 없는 구문은 거부한다.
+- 타입이 지정된 파라미터는 문자열 치환 없이 native binding하고 파싱·바인딩·비식별화·대상 DB의 문자열 해석을 일치시킨다.
+- 위험한 함수·연산자, 신뢰할 수 없는 오버로드와 DDL 내부 표현식을 거부한다. DB의 read-only 모드만으로 안전성을 판단하지 않는다.
+- 실행마다 격리된 연결을 사용하고 가능한 경우 트랜잭션 롤백을 유지한다. MySQL DDL의 암묵적 커밋 가능성은 승인 전에 알린다.
+- statement timeout, 별도의 락 대기 한도, 행·바이트·임시 메모리 한도, 취소와 보수적인 unknown 결과 처리를 적용한다.
+- SQL을 다시 실행하지 않고 제한된 스냅샷을 저장·탐색한다. 스냅샷 수용·저장 실패는 커밋된 statement 결과를 유지하고 결과 조회 불가를 알린다.
+- 대상 상태 검사에 따른 실행 거부는 승인을 소비하기 전에 수행할 수 있다. 취소·deadline·로컬 한도 초과를 대상 장애로 잘못 계산하지 않는다.
+- 대상 실행은 자동 재시도하지 않는다. 멱등성 키는 새 실행을 만들지 않고 기존 시도를 조회한다.
 
-`COPY ... PROGRAM`, `SELECT ... INTO OUTFILE`, `LOAD DATA`, `ATTACH/DETACH`, 쓰기 가능한 `PRAGMA`처럼 서버 파일·네트워크·세션 상태에 영향을 주는 문장은 별도 안전 설계 전까지 거부한다.
+Per [ADR-0002](../adr/0002-statement-classification.md), 허용 구문과 함수·연산자 규칙을 명시하고 불확실하면 거부한다.
+Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr/0016-sql-redaction-and-named-binding.md), [ADR-0021](../adr/0021-governed-query-execution.md)과 [ADR-0044](../adr/0044-postgresql-string-interpretation.md), 타임아웃·바인딩·catalog 검사·프로토콜 한도·PostgreSQL 문자열 설정은 기술 명세에서 정의한다.
 
 ### 8.3 인증과 세션
 - password hash에는 versioned argon2id 파라미터를 저장하고 기준이 바뀌면 로그인 시 rehash.
@@ -756,9 +596,9 @@ audit_events
 - 기본 idle expiry 12시간, absolute expiry 7일.
   로그인 endpoint에는 IP 기준과 클라이언트별 계정(email + client IP) 기준 rate limit(토큰버킷 수치는 ADR-0010) 및 점진적 backoff(계정 연계 실패 카운터·lockout 수치는 ADR-0006 Parameters) 적용.
   다른 클라이언트는 사용자의 credential bucket을 소진시킬 수 없다. 공유 계정 backoff는 email을 아는 누구나 여전히 유발할 수 있으며, 기기별 lockout이 문서화된 후속 작업이고 이 잔여 위험은 ADR-0006에 기록한다.
-- bootstrap admin 생성은 사용자가 없는 최초 1회로 제한하고 완료 후 bootstrap 경로를 비활성화. **config 기반 부트스트랩 (2026-07-23 증보, ADR-0006):** 대화형 `/bootstrap` 폼 외에 `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` + 정확히 한 개의 비밀번호 소스(`_PASSWORD` 또는 마운트 시크릿 `_PASSWORD_FILE`; 선택 `_DISPLAY_NAME`, 기본 `Admin`)로도 최초 admin을 만들 수 있다.
+- bootstrap admin 생성은 사용자가 없는 최초 1회로 제한하고 완료 후 bootstrap 경로를 비활성화. **config 기반 부트스트랩 (ADR-0006):** 대화형 `/bootstrap` 폼 외에 `PORTCULLIS_BOOTSTRAP_ADMIN_EMAIL` + 정확히 한 개의 비밀번호 소스(`_PASSWORD` 또는 마운트 시크릿 `_PASSWORD_FILE`; 선택 `_DISPLAY_NAME`, 기본 `Admin`)로도 최초 admin을 만들 수 있다.
   서버는 사용자가 0명일 때만 부팅 중 같은 Bootstrap 유스케이스를 실행하고(락 하 재검사로 대화형과 race-safe), 사용자가 있으면 로그만 남기고 건너뛴다.
-  **setup token (2026-10-04 증보, ADR-0052):** 대화형 `/bootstrap`은 사용자가 없는 동안 기동마다 발급되는 일회용 setup token을 요구한다. hash만 저장하고, 로그 또는 소유자 전용 `PORTCULLIS_SETUP_TOKEN_FILE`로 한 번만 전달하며, 24시간 후 만료되고 재시작 시 교체되며, admin 생성과 원자적으로 소비한다. 누락·오류·만료·교체·사용된 token은 구분 없이 거부한다.
+  **setup token (ADR-0052):** 대화형 `/bootstrap`은 사용자가 없는 동안 기동마다 발급되는 일회용 setup token을 요구한다. hash만 저장하고, 로그 또는 소유자 전용 `PORTCULLIS_SETUP_TOKEN_FILE`로 한 번만 전달하며, 24시간 후 만료되고 재시작 시 교체되며, admin 생성과 원자적으로 소비한다. 누락·오류·만료·교체·사용된 token은 구분 없이 거부한다.
   부분 설정·약한 비밀번호는 **기동 거부**(master key와 동일 fail-fast).
   표시 이름(display name)은 이제 **필수**다 — 승인·요청 화면이 사람을 표시 이름으로 렌더링하므로 모든 계정이 하나를 갖는다(헤더는 표시 이름을 보이고 없으면 email fallback).
   로그인한 사용자 이름 옆에 opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하며, 외부 이미지 요청 없이 로컬에서 생성한다(ADR-0041).
@@ -783,7 +623,7 @@ audit_events
   복호화는 승인 UI에서 권한 있는 사용자에게만 허용한다.
 - **redactor 계약(audit·AI 전송 공유):** audit에 남기는 redacted SQL은 ① **SQL comment 제거** ② inline literal → typed placeholder ③ bind placeholder 유지로 만든다. **parsing/redaction 실패 시 fail-closed** — 원문을 절대 기록하지 않고 `payload_digest`와 statement type만 남긴다.
   AI Review(4.8) 전송 경로도 같은 redactor를 사용한다.
-  `payload_digest`는 암호화·redaction 이전에, **§4.3의 승인 단위 전체(payload version·org·requester·connection·connection config version·policy version·statement class·normalized SQL·typed parameter values)의 canonical 직렬화**를 기준으로 계산한다(2026-07-24 정정, ADR-0018 — 이전 "정확한 SQL 기준" 서술은 §4.3와 상충했음; digest는 SQL만이 아니라 승인된 전부를 결합해 파라미터·connection·정책 변경도 새 요청을 요구한다).
+  `payload_digest`는 암호화·redaction 이전에, **§4.3의 승인 단위 전체(payload version·org·requester·connection·connection config version·policy version·statement class·normalized SQL·typed parameter values)의 canonical 직렬화**를 기준으로 계산한다(ADR-0018).
   제출 시 민감한 literal이 감지되면 parameter 사용을 권고한다.
 - request의 암호화된 SQL·parameter payload 기본 보존 기간은 90일.
   만료 후 ciphertext를 삭제해도 payload digest와 실행 metadata는 유지.
@@ -796,33 +636,25 @@ audit_events
   shutdown timeout이 지나도 실행 중인 요청은 취소하고 metadata 연결을 닫기 전에 결과를 기록하며, `EXECUTION_FINISHED`에 `interruption_cause`(`server_shutdown`, `owner_cancel`, `lease_lost`)를 남긴다(ADR-0010, ADR-0021).
 - 구조화 로그와 metrics에는 request ID, 상태, duration, count만 포함하고 SQL·파라미터·credential은 기본 제외.
 - schema migration 전 backup과 복구 절차를 문서화하고 지원 버전 간 upgrade test를 제공.
-- metadata connection pool은 크기, 연결 획득 대기, statement·lock·idle-in-transaction 시간에 설정 가능한 상한을 둔다(2026-10-04 추가, ADR-0010).
-- metadata migration은 수정된 배포 파일과 binary가 모르는 version을 거부하고, 다른 instance의 migration lock은 제한된 시간만 기다리며, 파일별 lock 대기와 statement 시간을 제한한다(2026-10-04 추가, ADR-0009).
+- metadata connection pool은 크기, 연결 획득 대기, statement·lock·idle-in-transaction 시간에 설정 가능한 상한을 둔다(ADR-0010).
+- metadata migration은 수정된 배포 파일과 binary가 모르는 version을 거부하고, 다른 instance의 migration lock은 제한된 시간만 기다리며, 파일별 lock 대기와 statement 시간을 제한한다(ADR-0009).
+- 태그에서 얻은 빌드 버전은 시작 로그에만 남기고 Health 응답에는 넣지 않는다(ADR-0054).
 - 외부 telemetry는 기본 비활성화하며 사용자 승인 없이 query 또는 usage metadata를 전송하지 않음.
 
 ---
 
 ## 9. 배포
 
-태그 기반 이미지 게시(ADR-0047)는 태그 커밋의 CI 검증 후 `linux/amd64`·`linux/arm64`를 포함하는 단일 멀티 플랫폼 이미지(ADR-0049)를 GHCR에 올린다. build metadata 없는 `vMAJOR.MINOR.PATCH[-PRERELEASE]`를 허용하고 전체 버전·커밋 SHA 태그와 정식 버전만의 major.minor 별칭을 제공하며 암묵적 latest는 만들지 않는다. SBOM/provenance 증명을 포함하며 앱을 배포하지 않는다. 운영자는 패키지 공개 범위와 릴리스 태그를 관리하고 production에서는 digest를 고정한다. [컨테이너 릴리스 안내](../operations/container-releases.md)를 따른다.
+- M1은 SPA를 포함한 컨테이너, Docker Compose 빠른 시작과 비공개 HTTPS 운영 구성을 제공한다. 네트워크 접근 권한이 로그인·권한·승인·감사를 대신하지 않는다.
+- M2는 MySQL parity 이후 단일 인스턴스 Helm/Kustomize 배포를 추가하고 외부 또는 CloudNativePG 관리 메타데이터 PostgreSQL 18과 PostgreSQL 실행 대상을 지원한다.
+- Kubernetes 배포는 자격증명·키를 보존하고 migration 소유자와 runtime 계정을 분리하며 TLS 검증·백업·복원을 지원한다. 결과 유실 시 SQL을 재실행하지 않는다.
+- M6는 API 안정화 후 Terraform/OpenTofu를 추가하고 인증·마스킹 완료 기준 이후 Gateway 배포를 제공한다. Kubernetes/CNPG 가용성만으로 애플리케이션 HA를 주장하지 않는다.
+- 태그 기반 배포는 기능·의존성 보안 검증 후 AMD64/ARM64 이미지와 SBOM/provenance를 발행한다. 전체 버전·커밋 태그와 안정 릴리스의 minor 별칭을 사용하고 implicit latest는 제공하지 않는다. 운영자는 태그를 보호하고 운영 이미지 digest를 고정한다.
+- 릴리스 태그는 일치하는 릴리스 브랜치에서 생성하고 검증한 이미지 digest를 승격해 발행한다.
 
-권장 production 구성은 Portcullis와 DB를 내부망에 두고, 원격 사용자가 조직 등록 Cloudflare WARP와 private-network Tunnel 라우팅 또는 명시적 grants를 설정한 Tailscale을 통해 앱 HTTPS endpoint만 접근하도록 한다. 네트워크 가입은 앱 로그인·RBAC·승인·감사를 대체하지 않는다. 내부망 노출 제한·라우팅·DNS·TLS는 운영자가 적용하며, 이 권장사항은 로컬 demo 설정을 변경하지 않는다(ADR-0042; [권장 배포 아키텍처](../operations/recommended-architecture.md)).
-
-| 채널 | 내용 |
-|---|---|
-| Docker Compose (**MVP**) | server + PostgreSQL. 로컬 HTTP는 IPv4 loopback에만 공개하고 local quickstart와 mounted secret 기반 production 예제를 분리. |
-| Helm + Kustomize (**M2, MySQL parity 직후**) | Portcullis 단일 replica + 외부 또는 CNPG 관리 메타데이터 PostgreSQL 18. 기존 Secret·mounted key, 검증된 TLS, 최소 권한, probe·resource·security 설정. |
-| Terraform / OpenTofu Provider (**API 안정화 후**) | 제품 *안의 리소스*(connection/policy 등)를 CRUD. `terraform-plugin-framework` + Connect unary(HTTP) 클라이언트, 필요 시 REST gateway 경유. 양 레지스트리 등록. |
-
-**단일 진실 공급원은 컨테이너 이미지.** compose `.env` 키와 Helm `values.yaml` 키를 동일하게 맞춰 문서/지원 부담을 줄인다. provider는 API가 안정된 뒤에 만든다(먼저 만들면 계속 깨짐).
-
-M2 배포 인수(ADR-0035)는 동일 설정의 Helm chart와 Kustomize base/overlay, 설치·업그레이드·재시작, Secret·인증서 rotation, master key 보존, backup/restore와 결과 cache 유실 runbook을 요구한다. migration owner Job과 제한된 runtime role을 분리하며 CNPG가 생성하는 DB owner credential을 runtime에 사용하지 않는다. 메타데이터와 관리 대상 PostgreSQL 연결은 기존 DB 버전 matrix 안에서 primary read-write Service DNS와 인증서 검증을 사용한다. failover에서도 대상 SQL을 재실행하지 않고 unknown outcome을 유지하며 UNLOGGED 결과 유실은 `result_unavailable`로 처리한다. 구현 시 검증한 Kubernetes/CNPG·도구 버전을 pin하고 공개한다. CNPG HA는 애플리케이션 HA를 의미하지 않으며 자동 대상 발견은 M7로 유지한다. M6는 M2 배포 기반에 Gateway 전용 예제를 추가한다.
-
-**API 명세는 protobuf 단일 소스**다.
-`proto/`에서 Connect Go 핸들러 인터페이스와 SolidJS용 TS 클라이언트를 함께 생성해 end-to-end 타입을 맞춘다.
-Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Connect unary를 그대로 쓰거나 protobuf에서 OpenAPI/REST gateway를 생성해 provider 클라이언트를 만든다(provider가 "API 안정화 후"라 이 전환 비용은 수용 가능).
-
----
+Per [M2 범위](../milestones/m2/scope.md), 배포 완료 기준과 순서는 마일스톤 문서에서 정의한다.
+Per [ADR-0035](../adr/0035-kubernetes-cnpg-after-mysql.md), [ADR-0042](../adr/0042-private-network-deployment.md), [ADR-0047](../adr/0047-tagged-container-publication.md), [ADR-0049](../adr/0049-multiarchitecture-container-builds.md)와 [ADR-0054](../adr/0054-release-branches-and-documentation-policy.md), 패키징·운영 구성·릴리스 책임은 기술 결정이다.
+[릴리스 절차](../operations/container-releases.md)와 [배포 아키텍처](../operations/recommended-architecture.md)를 참조한다.
 
 ## 10. 차별점 요약
 
@@ -832,7 +664,7 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 | Bytebase | 진짜 무료 OSS 셀프호스트(HA 제한·기능 게이팅 없음), 가벼움(Core 1/2 단일 바이너리), 좁고 깊은 UX |
 | Atlas Cloud | access governance까지 포함, 외부 SaaS 종속 없는 셀프호스트, 통합 audit |
 
-**해자는 "기능 수"가 아니라 "OSS 셀프호스트 + 통합 + UX".** 기능 경쟁이 아닌 포지셔닝 싸움.
+차별화 방향은 OSS 셀프호스트, 기능 통합과 사용성이다. 동일한 사용자 과업으로 이 가설을 검증한다.
 
 ---
 
@@ -870,7 +702,7 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
   DB proxy credential은 Later 보류(native client 수요 검증 시에만).
   UI는 터미널처럼 렌더하되 **기본 stateless per-statement**(idle-in-transaction 차단), 멀티 statement 트랜잭션은 connection 정책 opt-in + 하드 idle timeout·자동 ROLLBACK·read-only로 제한된 후속 옵션(4.6).
 
-### 12.2 결정 상태 (2026-10-03 기준)
+### 12.2 결정 참조
 
 해소된 항목(각 ADR이 구속력 있는 명세):
 
@@ -886,9 +718,9 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
 | Atlas pin·배포/NOTICE/checksum·compatibility matrix | **ADR-0012** (Community v1.2 라인, 정확한 patch는 M5 착수 시 pin) |
 | migration artifact backend·크기·보존·`schema_apply_timeout`·lock 복구 | **ADR-0012** (metadata PG + AEAD, 파일 1MiB/artifact 10MiB/500파일, terminal+90일, 10분/상한 60분, lease row 복구) |
 | 운영 기본값(타임아웃·요청 상한·rate limit·부팅 순서 등) | **ADR-0010** |
-| cache 유실 runbook (Helm 전) | 모델은 §6·§12.1로 확정(재실행 없음·`result_unavailable`); Helm chart 작성 시 runbook **문서화 작업**만 남음(결정 아님) |
+| cache 유실 runbook (Helm 전) | 재실행 없음·`result_unavailable`을 유지하며, Kubernetes 배포 완료 기준에 복구 절차를 포함한다(ADR-0035) |
 
-**소유자가 결정한 라이선스(2026-10-03):** Portcullis는 Apache License 2.0을 사용한다(ADR-0034). 저장소 LICENSE에 공식 원문을, NOTICE에 프로젝트 귀속 고지를 제공한다. 프로젝트에 포함하도록 의도적으로 제출한 기여는 명시적으로 달리 밝히지 않는 한 해당 라이선스의 제5조를 따른다. 제3자 구성 요소는 각각의 라이선스와 고지를 유지한다.
+**라이선스:** Portcullis는 Apache License 2.0을 사용한다(ADR-0034). 저장소 LICENSE에 공식 원문을, NOTICE에 프로젝트 귀속 고지를 제공한다. 프로젝트에 포함하도록 의도적으로 제출한 기여는 명시적으로 달리 밝히지 않는 한 해당 라이선스의 제5조를 따른다. 제3자 구성 요소는 각각의 라이선스와 고지를 유지한다.
 
 **남은 소유자 결정:** 별도 CLA/DCO 절차 도입 여부, 상표 정책, 유료 기능 경계. 이번 라이선스 결정은 해당 정책을 도입하거나 저작권을 이전하지 않으며, 재단 소속을 약속하거나 기능 범위를 변경하지 않는다. Hosted AI Review(§4.8)는 과금 방향 후보이며 확정된 유료 기능이 아니다.
 
