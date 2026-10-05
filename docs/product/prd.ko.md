@@ -307,7 +307,8 @@ Portcullis에 telemetry를 추가하는 결정은 하지 않는다. 0.9.2의 승
 | 단일 쿼리 요청·승인·반려 | MVP | PostgreSQL/MySQL 공통 지원 |
 | connection별 RBAC·read/write/DDL 정책 | MVP | 기본 read-only, 자기 승인 금지 |
 | 통합 audit log | MVP | query asset·schema change와 같은 timeline 사용 |
-| 요청 댓글·review suggestion | post-MVP | 상태 전이와 분리된 append-only discussion으로 구현 |
+| 요청 댓글·답글 | M3 | 권한을 검증하는 추가 기록 방식의 대화, 승인·실행과 분리(ADR-0060) |
+| 구조화된 review suggestion | post-MVP | 제출된 SQL을 자동으로 바꾸지 않는 SQL 검토 제안 |
 | 임시 SQL 접근 session | post-MVP | **웹 SQL console session**으로 구현(서버 실행 경로 재사용 → dialect 무관·자동 정책·결과 그리드). **세션 중 모든 statement를 개별 audit event로 기록**(kviklet proxy가 `Connection.kt`에서 per-execute `saveEvent`하는 것과 동일 보장, 코드 검증 2026-06-27). threat model은 §4.9로 확정 |
 | 다단계·role-based review gate | post-MVP | 정책 DSL보다 명시적 quorum/role rule부터 시작 |
 | EXPLAIN | M2 (기본 Read 실행계획) | DB별 read safety와 `ANALYZE` 실행 여부를 분리 |
@@ -517,15 +518,15 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 - 빈 화면 대신 not-found·복구 가능한 오류 화면을 제공한다. 선택적인 인스턴스 한도 조회 실패로 요청 화면이나 서버 한도 검증을 비활성화하지 않는다.
 - 편집 중 SQL은 로컬에서 blur 시 포맷하고 opt-out·수동 포맷·실행 취소를 제공한다. 실패 시 입력을 유지하며 제출된 SQL·파라미터·승인 증거·실행 입력은 변경하지 않는다.
 - 320 CSS pixel에서도 메뉴와 일반 동작을 사용할 수 있고 키보드 focus를 표시한다. SQL·표는 내부 스크롤을 허용하며 인라인 요청 진행 상태는 허용된 사실과 명시적인 unknown만 표시한다.
-- 목록은 페이지 번호·범위·안정적인 정렬을 제공한다. 페이지 크기는 10/20/50/100, 기본 20·최대 100이며 감사 목록은 무한 스크롤을 사용하지 않는다.
+- 요청·관리·감사 목록은 페이지 번호·범위·안정적인 정렬을 제공한다. 페이지 크기는 10/20/50/100, 기본 20·최대 100이며 감사 목록은 무한 스크롤을 사용하지 않는다.
+- M1 결과 표는 크기가 제한된 서버 페이지를 가상 스크롤로 탐색한다. 화면 주변 행만 추가로 렌더링하고 가까운 페이지를 미리 가져오며 멀어진 페이지는 브라우저 캐시에서 제거한다. 행 범위·전체 수를 표시하고 메모리 상한·역방향 재조회·키보드 접근·오래된 응답 차단을 검증한다. SQL은 다시 실행하지 않는다(ADR-0059).
 - 한 번 실행한 암호화 스냅샷을 최대 15분간 탐색하며 축출될 수 있다. 10,000행/25 MiB 상한보다 낮은 정책 한도를 먼저 적용한다. 새 정책의 기본값은 16 MiB이며 메모리 한도로 더 일찍 잘릴 수 있다.
 - 잘림·조회 불가를 표시한다. 한도에 도달한 읽기는 중단하되 RETURNING을 포함한 쓰기는 승인된 statement 전체를 커밋한다. 캐시 유실 시에도 실행 이력을 유지하고 SQL을 재실행하지 않는다.
 - 정확한 숫자 값, 타입이 있는 시간의 시간순 비교, 안정적인 동률 처리와 양방향 NULL-last 정렬을 유지한다. 해석할 수 없는 시간 문자열은 타입 값 뒤에 둔다. 처음에는 쿼리 순서를 유지하고 복원할 수 있게 한다.
-- Table/Text 보기와 clipboard 복사는 헤더를 포함한 현재 서버 페이지를 사용하고 복사 실패를 표시한다. 기록된 실행 시간은 DB 연결·실행·수집·저장을 포함하며 승인 대기·화면 렌더링·이후 결과 탐색은 제외한다.
+- Table/Text 보기와 클립보드 복사는 헤더와 명시된 제한 행 범위를 사용하며, 화면 밖에 미리 가져온 행은 포함하지 않는다. 복사 실패를 화면에 표시한다. 기록된 실행 시간은 DB 연결·실행·수집·저장을 포함하며 승인 대기·화면 렌더링·이후 결과 탐색은 제외한다.
 - CSV는 페이지·필터·정렬과 관계없이 스냅샷 전체를 원래 순서로 내보내고 요청자·조직 권한을 재검증한다. 같은 한도 내에서 스트리밍하고 수식 접두어를 기본적으로 escape하며 원본 내보내기는 경고와 명시적인 선택이 필요하다.
 - 결과 저장 기본 한도는 조직별 512 MiB·사용자별 64 MiB다. 새 스냅샷을 저장할 수 없어도 기존 유효 결과를 보존하고 만료·축출을 표시한다. 임시 처리 동시성은 기본 2이며 포화 시 `429 Retry-After`를 반환한다.
 - 무제한·재실행 기반 내보내기, 메모리에 상주하는 결과 캐시와 모든 spreadsheet 재저장의 안전성 보장은 제공하지 않는다.
-
 - 기본은 SQL이 반환한 결과 순서다. 표의 열 제목으로 오름차순·내림차순·원래 순서를 전환하고, 선택한 열에만 화살표를 표시한다. 열 사이에 희미한 세로 구분선을 두고 별도 정렬 선택 영역은 표시하지 않는다. 표시 순서를 바꿀 때 SQL을 다시 실행하지 않는다(ADR-0058).
 
 Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md), [ADR-0021](../adr/0021-governed-query-execution.md), [ADR-0022](../adr/0022-page-first-workflows.md), [ADR-0023](../adr/0023-local-sql-formatting.md)과 [ADR-0033](../adr/0033-type-aware-result-sorting.md), wire 타입·캐시 처리·라우팅·정렬 구현은 기술 계약에서 정의한다.
@@ -533,7 +534,7 @@ Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), [ADR-0037](../adr/00
 
 Per [ADR-0055](../adr/0055-result-exploration-layout.md), 결과 컨트롤은 좁은 화면에서도 정렬과 접근성을 유지하고 Text 보기는 내용을 생략하지 않고 긴 값을 줄바꿈한다.
 
-- M1 계정 컨트롤은 프로필 이미지 메뉴에서 사용자 정보·역할·지원되는 프로필 설정·로그아웃을 제공한다. CSV 내보내기는 툴바에 다운로드 버튼을 추가하는 대신 범위·스프레드시트 안전성·진행 상태·취소·오류를 다루는 확인 모달을 사용한다(ADR-0056).
+- M1 계정 컨트롤은 프로필 이미지 메뉴에서 사용자 정보·역할·지원되는 프로필 설정·로그아웃을 제공한다. CSV 내보내기는 설정 모달에서 범위와 스프레드시트 안전성을 안내하고 클립보드 복사 또는 파일 다운로드를 제공한다. 진행 상태·취소·오류도 모달 안에서 처리한다. 복사 크기를 제한하고 한도 초과·권한 거부 시 다운로드를 유지하며 툴바에 다운로드 버튼을 추가하지 않는다(ADR-0056, ADR-0061).
 - M3는 수동으로 넘기는 미검토 요청 카드, 권한이 있는 대기 요청 수 배지와 요청자 상태 알림을 제공한다. M3 프로필 설정은 사용 가능한 Google 사진 또는 고정된 기본 생성 이미지를 사용하고 사용자 지정 이미지를 지원하며 기존 계정 권한을 유지한다.
 
 ### 7.2 Connection 추가 플로우
@@ -700,7 +701,7 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
 | M0 | 토대 | [M0](../milestones/m0/scope.md) |
 | M1 | PostgreSQL 거버넌스 + 사용자·역할 관리 | [M1](../milestones/m1/scope.md) |
 | M2 | MySQL → Kubernetes/CNPG → SQL 검토·EXPLAIN | [M2](../milestones/m2/scope.md) |
-| M3 | 쿼리 자산 + schema 미리보기 + Keycloak SSO; MVP | [M3](../milestones/m3/scope.md) |
+| M3 | 쿼리 자산 + schema 미리보기 + Keycloak SSO + 요청 대화; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | 마스킹 → 임시 console·인증 확장 | [M4](../milestones/m4/scope.md) |
 | M5 | schema 승인·apply·복구·verify | [M5](../milestones/m5/scope.md) |
 | M6 | provider + 에이전트 권한·MCP Gateway | [M6](../milestones/m6/scope.md) |

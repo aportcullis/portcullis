@@ -16,9 +16,17 @@ Administrators explicitly bind the configured issuer and subject to an existing 
 Provider tokens never enter browser storage. Keycloak logout or disabling a Keycloak account does not automatically revoke a Portcullis session; upstream revocation synchronization requires a separate decision. LDAP, SAML, SCIM, additional providers and group-role synchronization remain outside this slice.
 Per [ADR-0057](../../adr/0057-keycloak-oidc-in-mvp.md), this is M3 scope; M2 retains its database, deployment and SQL-review sequence.
 
+## Request discussion
+
+Provide request comments and replies with author, timestamp and append-only history. Discussion stays separate from approval decisions and cannot change submitted SQL or execute a query.
+
+**Acceptance:** Recheck request visibility and commenting permission; reject forged authorship, cross-request replies and revoked access. Render text safely and bound comment input and retrieval. Structured SQL review suggestions remain post-MVP.
+Per [ADR-0060](../../adr/0060-request-comments-and-replies.md), basic discussion belongs to M3.
+
 ## Review inbox and profile personalization
 
 Show the current user's actionable pending reviews as a set of request cards with manual previous/next navigation and a link to the complete review list. Each card presents the request context and approval state and opens the governed detail page for a decision.
+Keep actionable review counts distinct from unread discussion counts; a generic pending-list count is not a personal notification count.
 Display a pending-review badge and requester status notifications so users can see work waiting for them. Counts and cards follow current organization, visibility and reviewer eligibility; revoked access removes both content and counts.
 Users can configure their own profile image. Google sign-in uses the verified account's available profile photo; local accounts and unavailable photos fall back to a stable generated avatar. A chosen image remains consistent across reloads and sign-in sessions and can be reset to the generated default.
 

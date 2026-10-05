@@ -64,7 +64,7 @@ These decisions establish the Core 1 foundation.
 | [0036](0036-ui-customization-boundaries.md) | UI design values and layout independent of governance | Accepted |
 | [0037](0037-page-hierarchy-and-responsive-ux.md) | Page hierarchy and responsive request workflows | Accepted |
 | [0038](0038-inline-request-workflow.md) | Inline request workflow from authorized summary facts | Accepted |
-| [0039](0039-result-views-and-clipboard.md) | Bounded result views, clipboard export and loading | Accepted |
+| [0039](0039-result-views-and-clipboard.md) | Bounded result views, clipboard export and loading | Superseded by ADR-0059 |
 | [0040](0040-recorded-execution-time.md) | Recorded execution time in request and result views | Accepted |
 | [0041](0041-default-profile-identicons.md) | Stable local default profile images | Superseded by ADR-0056 |
 | [0042](0042-private-network-deployment.md) | Private-network deployment through WARP or Tailscale | Accepted |
@@ -81,9 +81,12 @@ These decisions establish the Core 1 foundation.
 | [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
 | [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
 | [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Superseded by ADR-0058 |
-| [0056](0056-account-menu-and-csv-dialog.md) | Avatar account menu and bounded CSV export dialog | Accepted |
+| [0056](0056-account-menu-and-csv-dialog.md) | Avatar account menu and bounded CSV export dialog | Superseded by ADR-0061 |
 | [0057](0057-keycloak-oidc-in-mvp.md) | Optional Keycloak OIDC sign-in in M3 with local authorization | Accepted |
 | [0058](0058-header-only-result-sorting.md) | Optional column-header sorting with SQL result order as default | Accepted |
+| [0059](0059-bounded-result-scrolling.md) | Bounded virtual scrolling for result tables | Accepted |
+| [0060](0060-request-comments-and-replies.md) | Request comments and replies in M3 | Accepted |
+| [0061](0061-csv-export-dialog-destinations.md) | Clipboard and file destinations in the CSV export dialog | Accepted |
 
 ## Template
 ```markdown

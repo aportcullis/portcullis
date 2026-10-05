@@ -331,7 +331,8 @@ Use the 0.9.2 fixes for approved-command replacement and result-log exposure as 
 | Single-query request/approve/reject | MVP | Common support for both databases |
 | Connection RBAC/read/write/DDL policy | MVP | Default read-only, no self-approval |
 | Unified audit | MVP | Same timeline as query assets and schema changes |
-| Comments/review suggestions | Post-MVP | Append-only discussion separate from state transitions |
+| Request comments and replies | M3 | Authorized append-only discussion separate from approval and execution, ADR-0060 |
+| Structured review suggestions | Post-MVP | SQL-specific suggestions without implicitly changing submitted SQL |
 | Temporary SQL access | Post-MVP | Web console session reusing server execution, dialect-independent policy and result grid; audit each statement, matching kviklet `Connection.kt` per-execute `saveEvent`, code checked 2026-06-27; threat model §4.9 |
 | Multistage/role review gates | Post-MVP | Start with explicit quorum/role rules before a policy DSL |
 | EXPLAIN | M2 (basic read plans) | Distinguish read safety from `ANALYZE` execution per DB |
@@ -549,15 +550,15 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 - Show not-found/recoverable error pages instead of blank routes; optional instance-limit failures do not disable request pages or server enforcement.
 - Format editable SQL locally on blur with opt-out, manual formatting and undo. Failures retain input; submitted SQL, parameters, approval evidence and execution input stay unchanged.
 - Keep navigation/ordinary controls usable at 320 CSS pixels with keyboard focus; SQL/tables may scroll locally. Inline request progress shows only authorized facts and explicit unknowns.
-- Lists have page numbers, ranges and stable order: page sizes 10/20/50/100, default 20, maximum 100; audit has no infinite scroll.
+- Request, administration and audit lists have page numbers, ranges and stable order: page sizes 10/20/50/100, default 20, maximum 100; audit has no infinite scroll.
+- M1 result tables use virtual scrolling over bounded server pages, with limited overscan, nearby prefetch and distant-page eviction. Show the row range/total and verify bounded browser retention, backward refetch, keyboard access and stale-response rejection without rerunning SQL (ADR-0059).
 - Execute once and explore the same encrypted snapshot for 15 minutes, subject to eviction. Enforce the lower policy limit before ceilings of 10,000 rows/25 MiB; new policies default to 16 MiB, and additional memory limits may truncate sooner.
 - Mark truncation and unavailability. A limited read stops at the ceiling; a returning write still commits the whole approved statement. Cache loss preserves durable execution history without rerunning SQL.
 - Preserve exact numeric values, chronological typed temporals, stable ties and NULL-last sorting in either direction; unsupported temporal text follows typed values. Initially preserve query order and allow restoring it.
-- Table/Text views and clipboard copy use the visible server page with headers; show copy failure inline. Recorded execution time includes DB connection/execution, collection and storage, excluding approval wait, rendering and later result exploration.
+- Table/Text views and clipboard copy use an explicitly labeled bounded row range with headers, excluding hidden overscan and prefetched rows; show copy failure inline. Recorded execution time includes DB connection/execution, collection and storage, excluding approval wait, rendering and later result exploration.
 - CSV exports the whole original-order snapshot, independent of page/filter/sort, rechecking owner/org access. Stream within the same caps and escape spreadsheet-formula prefixes by default; raw export needs an explicit warning and opt-in.
 - Default result storage is 512 MiB per organization and 64 MiB per user; preserve live results when a new snapshot cannot fit, show expiry/eviction, and bound temporary processing with default concurrency 2 and `429 Retry-After` on saturation.
 - No unlimited/re-execution export, resident in-process result cache or claim of universal spreadsheet re-save safety.
-
 - Preserve SQL result order by default. Table headers cycle ascending, descending and original order; only the active column shows an arrow. Use subtle vertical column separators without separate ordering selectors, and never rerun SQL for display sorting (ADR-0058).
 
 Per [ADR-0005](../adr/0005-cellvalue-wire-contract.md), [ADR-0011](../adr/0011-result-store-quota-and-eviction.md) and [ADR-0021](../adr/0021-governed-query-execution.md), wire types, cache processing and execution are technical contracts.
@@ -567,7 +568,7 @@ Per [ADR-0039](../adr/0039-result-views-and-clipboard.md) and [ADR-0040](../adr/
 
 Per [ADR-0055](../adr/0055-result-exploration-layout.md), result controls stay aligned and reachable on narrow screens; Text view wraps long values without dropping content.
 
-- M1 account controls use a profile-image menu for identity, role, supported profile actions and sign-out. CSV export uses a confirmation dialog with scope, spreadsheet safety, progress, cancellation and errors rather than adding a prepared-download toolbar action (ADR-0056).
+- M1 account controls use a profile-image menu for identity, role, supported profile actions and sign-out. CSV export opens a settings dialog with scope and spreadsheet safety, offering clipboard copy or file download with progress, cancellation and errors inside it. Bound clipboard bytes and retain download on copy denial or oversize; add no prepared-download toolbar action (ADR-0056, ADR-0061).
 - M3 adds manually navigated pending-review cards, an authorized pending-review badge and requester status notifications. M3 profile settings use a Google account photo when available or a stable generated fallback, support user-selected images and preserve current account permissions.
 
 ### 7.2 Add connection
@@ -744,7 +745,7 @@ M1 is the first releasable alpha; M3 completes MVP, subject to product validatio
 | M0 | Foundation | [M0](../milestones/m0/scope.md) |
 | M1 | PostgreSQL governance + user/role administration | [M1](../milestones/m1/scope.md) |
 | M2 | MySQL → Kubernetes/CNPG → SQL review/EXPLAIN | [M2](../milestones/m2/scope.md) |
-| M3 | Query assets + schema preview + Keycloak SSO; MVP | [M3](../milestones/m3/scope.md) |
+| M3 | Query assets + schema preview + Keycloak SSO + request discussion; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | Masking → temporary console and identity | [M4](../milestones/m4/scope.md) |
 | M5 | Schema approval/apply/recovery/verify | [M5](../milestones/m5/scope.md) |
 | M6 | Providers + agent grants/MCP Gateway | [M6](../milestones/m6/scope.md) |

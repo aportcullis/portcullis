@@ -18,7 +18,7 @@ See [M1 progress](m1/progress.md) and [validation evidence](m1/validation.md).
 | M0 · Foundation | [Identity, permissions, secrets, sessions and audit](m0/scope.md) | Baseline established | None; checked with later releases |
 | M1 · Gate | [PostgreSQL governance, administration and UI usability](m1/scope.md) | In progress | M0 |
 | M2 · Bridge | [MySQL parity → Kubernetes/CNPG → SQL review/EXPLAIN](m2/scope.md) | Not started | M1 |
-| M3 · Library | [Query assets, schema preview, Keycloak SSO, review inbox and profiles; completes MVP](m3/scope.md) | Not started | M2 |
+| M3 · Library | [Query assets, schema preview, Keycloak SSO, request discussion, review inbox and profiles; completes MVP](m3/scope.md) | Not started | M2 |
 | M4 · Watch | [Masking, temporary console, multistage review and identity](m4/scope.md) | Not started | M3; masking precedes agent grants |
 | M5 · Forge | [Schema approval, apply, recovery and verification](m5/scope.md) | Not started | M4 and M3 preview contracts |
 | M6 · Reach | [Providers and agent registration/MCP Gateway](m6/scope.md) | Not started | M5, M4 masking and stable APIs |

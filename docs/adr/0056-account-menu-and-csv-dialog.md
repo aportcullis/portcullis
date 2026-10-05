@@ -1,6 +1,6 @@
 # ADR-0056: Account menu and CSV export dialog
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0061](0061-csv-export-dialog-destinations.md) for CSV destination selection; its remaining contracts continue through that decision.
 - **Date:** 2026-10-05
 - **Supersedes:** [ADR-0041](0041-default-profile-identicons.md)
 

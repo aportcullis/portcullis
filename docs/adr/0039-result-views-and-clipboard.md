@@ -1,6 +1,6 @@
 # ADR-0039: Result views and bounded clipboard export
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0059](0059-bounded-result-scrolling.md) for result navigation; its remaining contracts continue through that decision.
 - **Date:** 2026-10-03
 
 ## Context
