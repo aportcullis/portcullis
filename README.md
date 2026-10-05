@@ -1,5 +1,7 @@
 # Portcullis
 
+English · [한국어](README.ko.md)
+
 ![Portcullis logo](docs/media/logo.png)
 
 **Self-hosted database governance. Request, review, execute once, and explore results.**
@@ -40,6 +42,7 @@ docker compose up --build
 ```
 
 Open [localhost:8080](http://localhost:8080), create the first administrator with the one-time setup token printed by `docker compose logs portcullis`, and follow the [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) to register a target and submit your first request.
+If the initial administrator email and password are configured in advance, startup creates the account and skips token issuance and the setup screen; sign in directly. See the options in [.env.example](.env.example).
 
 For production, use the [recommended private-network architecture](docs/operations/recommended-architecture.md): keep Portcullis inside your network and connect through Cloudflare WARP or Tailscale.
 
@@ -56,12 +59,11 @@ Compose preserves metadata and master keys in volumes. Sample credentials and di
 
 Submit SQL with context → get a distinct review → execute once → explore the result. These captures show the actual application with synthetic data.
 
-<details>
-<summary>Request and review — walkthrough, composition, and approval controls</summary>
+### Request and review
 
 ![A requester submits SQL, a distinct reviewer approves it, and the requester executes the statement once](docs/media/workflow.gif)
 
-Request context and SQL have separate sections. Reviewers inspect the evidence beside a dedicated approval panel.
+Request context and SQL have separate sections. Reviewers inspect the submitted SQL beside dedicated approval and rejection controls.
 
 ![Request composition grouped into context and SQL, with inline review guidance](docs/media/request.png)
 
@@ -69,30 +71,32 @@ Request context and SQL have separate sections. Reviewers inspect the evidence b
 
 The demo reviewer is fixture-provisioned; user-management screens belong to M1 scope.
 
-</details>
-
-<details>
-<summary>Request progress — expand a row to see its workflow</summary>
+### Follow request progress
 
 Click a request title to see Draft → Review → Ready → Execution below the row. Unavailable history and uncertain outcomes are labeled explicitly.
 
 ![A pending request expanded into its four-stage workflow](docs/media/requests.png)
 
-</details>
-
-<details>
-<summary>Results — sorting, Table/Text, clipboard copy, and CSV</summary>
+### Explore results
 
 ![Paging through results, sorting revenue, filtering a region, and preparing the complete snapshot as CSV](docs/media/results.gif)
 
-Execution summaries show the recorded server duration and affected rows in request details and results. The interval includes DB connection, SQL execution, result collection, and snapshot storage.
-
-Search and sorting have labeled controls, with copy and CSV actions grouped separately. Text view wraps long values without clipping them.
-Column sorting applies across the cached snapshot and preserves numeric precision. Table/Text and clipboard copy use the current filtered page; CSV exports the complete snapshot in original query order. The walkthrough ends at the prepared download link.
+Search and sorting have labeled controls, with copy and CSV actions grouped separately. Column sorting applies across the cached snapshot and preserves numeric precision. Table/Text and clipboard copy use the current filtered page; CSV exports the complete snapshot in original query order. The walkthrough ends at the prepared download link.
 
 ![Paged results with exact large integers, decimal revenue, and visible-page copy](docs/media/results.png)
 
+Text view wraps long values without clipping them. Execution summaries show the recorded server duration and affected rows; the interval includes DB connection, SQL execution, result collection, and snapshot storage.
+
 ![Tab-separated Text view of the same result page](docs/media/results-text.png)
+
+<details>
+<summary>Connection registration and policy controls</summary>
+
+Register a target connection and define allowed SQL classes, approval requirements and execution limits before submitting requests.
+
+![Target connection registration and existing connections](docs/media/connections.png)
+
+![Per-connection approval requirements and execution limits](docs/media/policy.png)
 
 </details>
 
@@ -108,7 +112,7 @@ More screenshots and workflow explanations: [product tour](docs/media/product-to
 | Explore what's next | [Roadmap](docs/milestones/README.md) · [Product requirements](docs/product/prd.en.md) |
 | Develop or customize the UI | [Development guide](docs/development.md) · [UI customization](docs/conventions/frontend.md#changing-the-ui) · [Component catalog](web/src/shared/ui/README.md) |
 
-Browse the [documentation index](docs/README.md) for the full reference.
+Browse the [documentation index](docs/README.md) for the full reference. PRDs and landing pages have Korean and English versions; other documents currently remain in English.
 
 ## Community
 

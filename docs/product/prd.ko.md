@@ -1,6 +1,6 @@
 # Portcullis — Product Requirements Document
 
-> **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.md)
+> **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.ko.md)
 > **번역 동기화:** 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
 > **지원 대상:** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
 > **배포 순서:** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN 순서다.
