@@ -11,7 +11,7 @@
 
 Portcullis brings SQL requests, approval, execution, and audit into one application. Review the exact SQL and parameters, apply connection policies, and explore an approved execution's results in your own infrastructure. One Go binary includes the web UI; PostgreSQL stores metadata.
 
-**Development alpha:** the PostgreSQL governance workflow is verified. MySQL is next; the full MVP is still ahead. Check the [database support matrix](docs/product/database-support.md) and [validation record](docs/operations/m1-validation.md) before adopting it.
+**Development alpha:** the PostgreSQL governance workflow has passing evidence; M1 user/role administration and release safeguards are still in progress. The full MVP follows later milestones. Check the [database support matrix](docs/product/database-support.md) and [validation record](docs/milestones/m1/validation.md) before adopting it.
 
 ## What you can do
 
@@ -103,8 +103,8 @@ More screenshots and workflow explanations: [product tour](docs/media/product-to
 | --- | --- |
 | Try Portcullis | [PostgreSQL quickstart](docs/operations/pg-alpha-quickstart.md) |
 | Check database support | [Features and version evidence](docs/product/database-support.md) |
-| Understand the system | [Architecture](docs/ARCHITECTURE.md) · [Operations validation](docs/operations/m1-validation.md) |
-| Explore what's next | [Roadmap](docs/roadmap.md) · [Product requirements](docs/product/prd.en.md) |
+| Understand the system | [Architecture](docs/ARCHITECTURE.md) · [Operations validation](docs/milestones/m1/validation.md) |
+| Explore what's next | [Roadmap](docs/milestones/README.md) · [Product requirements](docs/product/prd.en.md) |
 | Develop or customize the UI | [Development guide](docs/development.md) · [UI customization](docs/conventions/frontend.md#changing-the-ui) · [Component catalog](web/src/shared/ui/README.md) |
 
 Browse the [documentation index](docs/README.md) for the full reference.

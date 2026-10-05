@@ -1,6 +1,6 @@
 # Security policy
 
-Portcullis is in development alpha. Security fixes currently target the latest code on `main`; older commits and release lines do not receive guaranteed backports. A passing CI run is not a security audit or a production-readiness guarantee. See the [validation record](docs/operations/m1-validation.md) and [database support matrix](docs/product/database-support.md) for verified scope.
+Portcullis is in development alpha. Security fixes currently target the latest code on `main`; older commits and release lines do not receive guaranteed backports. A passing CI run is not a security audit or a production-readiness guarantee. See the [validation record](docs/milestones/m1/validation.md) and [database support matrix](docs/product/database-support.md) for verified scope.
 
 ## Report a vulnerability privately
 

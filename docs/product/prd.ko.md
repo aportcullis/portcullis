@@ -838,27 +838,19 @@ Terraform provider는 REST/OpenAPI를 전제하므로, provider 착수 시 Conne
 
 ## 11. 로드맵 (개략)
 
-```
-0  토대         프로젝트 골격 + 인증 + 핵심 스키마 + secret/audit/session 기반
-1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit 수직 구현 + 사용자·custom role 관리와 setup link
-2  Bridge       PostgreSQL/MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → 결정론 SQL 검토·기본 Read EXPLAIN
-3  Core 2       두 DB 쿼리 저장·유사 이력 추천·재사용 + schema status/dry-run/영향 미리보기 (apply 제외)
-   ── MVP ──
-4  access 확장  민감정보 마스킹 우선 → 임시 접근·다단계 승인·OIDC/LDAP
-5  schema       M3 미리보기 계약 기반 schema 승인·apply·복구·verify 완성
-6  Reach        API 안정화 후 Terraform/OpenTofu provider; M5·마스킹 이후 에이전트 등록·권한 → MCP Gateway (WebMCP 선택 후속)
-7  later        BI 분석·공유(차트·대시보드), declarative GitOps, CNPG 자동발견, SIEM, ML/AI Review(4.8)
-```
+마일스톤별 범위와 인수 조건의 기준은 [마일스톤 디렉터리](../milestones/README.md)다.
+M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검증(§1.4)에 따라 조정한다.
 
-**출하 경계:** 단계 1(Core 1-PG, PostgreSQL 단독 거버넌스 루프와 사용자·custom role 관리)을 **first releasable alpha 경계**로 둔다.
-문서에서 말하는 MVP는 단계 3 완료 시점이며, MySQL parity·Kubernetes/CNPG 배포·SQL 검토·EXPLAIN(2)와 schema 미리보기를 포함한 Core 2(3)를 포함하며 MCP Gateway/WebMCP는 제외한다.
-인터뷰 결과(1.4)에 따라 Core 2 범위를 조정할 여지는 남긴다.
-
-개발 원칙: 토대 이후로는 **기능 단위 수직 개발**(서버 API + SolidJS 화면을 함께).
-UX가 차별점이므로 API와 화면을 동시에 맞춘다.
-
-**로드맵 관리:** 새로운 방향은 먼저 Later 후보로 기록하고, 사용자 수요·목표·선행 조건이 확인되면 구체적인 마일스톤으로 옮긴다.
-착수 전에 PRD의 범위·인수 조건과 필요한 ADR을 갱신하며, 후보 추가만으로 구현 일정이나 지원을 확정하지 않는다.
+| 마일스톤 | 요약 | 범위 |
+| --- | --- | --- |
+| M0 | 토대 | [M0](../milestones/m0/scope.md) |
+| M1 | PostgreSQL 거버넌스 + 사용자·역할 관리 | [M1](../milestones/m1/scope.md) |
+| M2 | MySQL → Kubernetes/CNPG → SQL 검토·EXPLAIN | [M2](../milestones/m2/scope.md) |
+| M3 | 쿼리 자산 + schema 미리보기; MVP | [M3](../milestones/m3/scope.md) |
+| M4 | 마스킹 → 임시 console·인증 확장 | [M4](../milestones/m4/scope.md) |
+| M5 | schema 승인·apply·복구·verify | [M5](../milestones/m5/scope.md) |
+| M6 | provider + 에이전트 권한·MCP Gateway | [M6](../milestones/m6/scope.md) |
+| M7 | 장기 연구 후보 | [M7](../milestones/m7/scope.md) |
 
 ---
 

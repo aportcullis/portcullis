@@ -138,7 +138,7 @@ Submission and approval run through `app/accessrequest` before execution. `app/e
 
 `app/result` encrypts bounded snapshots for persistence and serves paging, sorting, filtering and CSV export from the stored result, without rerunning the target SQL. Result processing has a bounded worker pool. Startup and periodic maintenance reconcile execution leases and purge expired snapshots. See [ADR-0021](adr/0021-governed-query-execution.md) and the [concurrency conventions](conventions/code.md#concurrent-state-changes).
 
-The production composition root currently registers PostgreSQL as the target adapter. `infra/mysqldialect` exists as experimental adapter work; its presence is not a claim of MySQL product parity. Saved query assets, BI charts, dashboards, schema governance and agent integration follow the [PRD roadmap](product/prd.en.md).
+The production composition root currently registers PostgreSQL as the target adapter. MySQL adapter code is absent from the current tree and will be introduced in M2; the engine-selection boundary currently serves PostgreSQL execution. Saved query assets, BI charts, dashboards, schema governance and agent integration follow the [PRD roadmap](product/prd.en.md).
 
 ## Directory map
 

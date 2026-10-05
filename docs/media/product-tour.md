@@ -57,4 +57,4 @@ The environment labels in these captures are illustrative; both targets use an i
 
 ## Capture and validation
 
-These captures use synthetic accounts and an isolated PostgreSQL database. See the [capture guide](README.md) to refresh screenshots and GIFs, and the [validation record](../operations/m1-validation.md) for browser file-saving evidence.
+These captures use synthetic accounts and an isolated PostgreSQL database. See the [capture guide](README.md) to refresh screenshots and GIFs, and the [validation record](../milestones/m1/validation.md) for browser file-saving evidence.

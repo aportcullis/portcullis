@@ -1,10 +1,10 @@
 # Database feature support
 
-**Updated: 2026-10-03.** This table describes Portcullis product support, not whether an engine can run in Docker. PostgreSQL is the verified development alpha. MySQL is the next committed target; it is not selectable or supported yet. [ADR-0025](../adr/0025-sql-database-first-expansion.md) limits committed targets to PostgreSQL/MySQL and removes SQLite from support scope.
+**Updated: 2026-10-05.** This table describes Portcullis product support, not whether an engine can run in Docker. PostgreSQL governance has recorded passing evidence; M1 administration and release safeguards are still in progress. MySQL is the next committed target; it is not selectable or supported yet. [ADR-0025](../adr/0025-sql-database-first-expansion.md) limits committed targets to PostgreSQL/MySQL and removes SQLite from support scope.
 
 ## Committed target feature matrix
 
-**Verified** means covered by the PostgreSQL M1 gate. **Planned** identifies future milestone scope, with no product implementation claim. MySQL governance parity requires the shared acceptance gate; later review/preview features have their own gates. Engine CLI experiments do not count as Portcullis acceptance.
+**Verified** means covered by the recorded PostgreSQL governance gate, not completion of the expanded M1 scope. **Planned** identifies future milestone scope, with no product implementation claim. MySQL governance parity requires the shared acceptance gate; later review/preview features have their own gates. Engine CLI experiments do not count as Portcullis acceptance.
 
 | Feature | PostgreSQL | MySQL |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ Verified does not mean every SQL statement, extension or engine version is accep
 | --- | --- | --- |
 | PostgreSQL | 16 (current upstream patch: 16.15) | GA qualification target; full family gate pending |
 | PostgreSQL | 17 (17.11) | GA qualification target; full family gate pending |
-| PostgreSQL | 18 (18.6) | [M1 correctness evidence](../operations/m1-validation.md) on the recorded 18 stack; latest-patch requalification pending |
+| PostgreSQL | 18 (18.6) | [M1 correctness evidence](../milestones/m1/validation.md) on the recorded 18 stack; latest-patch requalification pending |
 | PostgreSQL | 19 Beta 4 | Included in the maintenance window; preview qualification until planned GA 2026-10-29, then GA requalification; full gate pending |
 | MySQL | 8.4 LTS | Priority qualification target; product driver pending. CLI experiment on 8.4.10 is not product acceptance |
 | MySQL | 9.7 LTS | Priority qualification target; product driver and full gate pending |

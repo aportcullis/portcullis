@@ -1,6 +1,6 @@
 # Development guide
 
-Product scope and acceptance criteria are maintained in the [English PRD](product/prd.en.md) and its [Korean translation](product/prd.ko.md). The public [roadmap](roadmap.md) describes milestone outcomes, dependencies, and status; this guide describes how to contribute.
+Product scope and acceptance criteria are maintained in the [English PRD](product/prd.en.md) and its [Korean translation](product/prd.ko.md). The public [roadmap](milestones/README.md) describes milestone outcomes, dependencies, and status; this guide describes how to contribute.
 
 ## Development practices
 

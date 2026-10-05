@@ -1,6 +1,6 @@
 # Changelog
 
-Generated from reviewed Git history with git-cliff. Unreleased entries describe development changes, not milestone acceptance; see the [roadmap](docs/roadmap.md) for product status.
+Generated from reviewed Git history with git-cliff. Unreleased entries describe development changes, not milestone acceptance; see the [roadmap](docs/milestones/README.md) for product status.
 
 ## Unreleased
 

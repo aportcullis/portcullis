@@ -17,7 +17,7 @@ For suspected security vulnerabilities, follow [SECURITY.md](SECURITY.md). Do no
 
 For bugs, include the database and application version or commit, reproduction steps, expected behavior, and observed behavior. Use synthetic SQL and data; remove credentials and private information from logs and screenshots.
 
-For substantial changes, discuss the use case and proposed scope first. Ideas become implementation issues after maintainers agree on acceptance criteria. The [roadmap](docs/roadmap.md) describes planned outcomes; the [English PRD](docs/product/prd.en.md) and [Korean PRD](docs/product/prd.ko.md) define the shared product contract.
+For substantial changes, discuss the use case and proposed scope first. Ideas become implementation issues after maintainers agree on acceptance criteria. The [roadmap](docs/milestones/README.md) describes planned outcomes; the [English PRD](docs/product/prd.en.md) and [Korean PRD](docs/product/prd.ko.md) define the shared product contract.
 
 Comment on an existing issue before starting so a maintainer can confirm its scope and whether someone is already working on it. A first-contribution issue should identify a reviewer, related files, completion criteria, and verification steps. Ask for help if those details are missing.
 

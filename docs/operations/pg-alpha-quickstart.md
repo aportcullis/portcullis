@@ -1,6 +1,6 @@
 # PostgreSQL alpha quickstart
 
-The M1 implementation provides local/password and Google authentication, connection policy, immutable requests and approvals, single-use PostgreSQL execution, encrypted result snapshots, and audit history. The complete M1 correctness gate has passed with Docker-hosted Chromium; the [validation record](m1-validation.md) describes the environment and separate capacity qualification. MySQL/SQLite and saved queries remain later milestones.
+The M1 implementation provides local/password and Google authentication, connection policy, immutable requests and approvals, single-use PostgreSQL execution, encrypted result snapshots, and audit history. The PostgreSQL governance correctness gate has historical passing evidence with Docker-hosted Chromium; the [validation record](../milestones/m1/validation.md) describes the environment and separate capacity qualification. M1 administration is still in progress; MySQL and saved queries are later milestones, and SQLite is excluded.
 
 For a disposable local installation, run `docker compose up --build` from the project root and open `http://127.0.0.1:8080`. The HTTP port is published on IPv4 loopback; remote access requires the private HTTPS ingress described in [recommended architecture](recommended-architecture.md). Compose initializes PostgreSQL, creates a persistent master key, runs owner migrations separately, and starts the restricted runtime server. The sample credentials and disabled database TLS are for local development. The key initializer preserves existing valid key bytes and sets runtime ownership (UID/GID 65532), file mode `0400` and directory mode `0700`. It refuses invalid or empty existing keys rather than silently replacing them.
 
@@ -12,7 +12,9 @@ For a disposable local installation, run `docker compose up --build` from the pr
 
 Results expire 15 minutes after admission and may be evicted earlier under quota pressure. Limits are the submitted connection-policy snapshot, capped at 10,000 rows/25 MiB; the existing default policy limits results to 16 MiB. The interface marks truncated snapshots; returning writes still commit the whole approved statement. Only the original requester can execute or read its result, regardless of reviewer access to request details.
 
-The request list refreshes every 30 seconds and when reconnecting or returning to the foreground. Approvers see a pending badge. For distinct-reviewer scenarios, create reviewers under Administration → Users: each new user receives a one-time password setup link that is shown once and expires after 24 hours (ADR-0053).
+The request list refreshes every 30 seconds and when reconnecting or returning to the foreground. Approvers see a pending badge. The Administration → Users UI is not yet available.
+M1 will add administrator-created users and one-time password setup links shown once with 24-hour expiry (ADR-0053).
+Until that journey ships, this quickstart uses zero required read approvals for its disposable single-user demonstration; the synthetic walkthrough provisions its reviewer in the fixture.
 
 An `outcome_unknown` means completion could not be confirmed. Check the target database and audit evidence before creating a new request: Portcullis never automatically reruns it. Stop execution sends a best-effort cancellation and is not proof of rollback. Expired owner recovery runs on startup and every 30 seconds. Cache loss after PostgreSQL crash/failover does not change durable execution history.
 

@@ -878,24 +878,19 @@ The proposed moat is OSS self-hosting, integration, and UX rather than feature c
 
 ## 11. Roadmap
 
-```text
-0  Foundation   Skeleton, authentication, core schema, secret/audit/session foundations
-1  Core 1-PG    PostgreSQL connection → request → approve → execute → audit vertical slice + user/custom-role administration with setup links
-2  Bridge       PostgreSQL/MySQL parity → Kubernetes (Helm/Kustomize) + CNPG → deterministic SQL review and basic read EXPLAIN
-3  Core 2       Saved queries + similar-history suggestions/reuse across both DBs; schema status/dry-run/impact preview (no apply)
-   ── MVP ──
-4  Access       Sensitive-data masking first; temporary web console, multistage approval, OIDC/LDAP
-5  Schema       Complete pinned schema approval/apply/recovery/verify using M3 preview contracts
-6  Reach        Terraform/OpenTofu after API stability; agent registration/grants then MCP Gateway after M5 and masking (WebMCP optional)
-7  Later        BI analysis/sharing (charts/dashboards), declarative GitOps, CNPG discovery, SIEM, ML/AI Review (§4.8)
-```
+Milestone scope and acceptance are defined in [the milestone directory](../milestones/README.md).
+M1 is the first releasable alpha; M3 completes MVP, subject to product validation (§1.4).
 
-Stage 1, PostgreSQL-only Core 1 with user and custom-role administration, is the **first releasable alpha**.
-MVP means stage 3 completion, including MySQL parity, Kubernetes/CNPG deployment, SQL review/EXPLAIN and Core 2 with schema preview, excluding MCP Gateway/WebMCP, subject to interview-driven Core 2 adjustments (§1.4).
-After foundation, develop vertical features with server APIs and SolidJS screens together, because UX is central to differentiation.
-
-**Roadmap management:** Record new directions as Later candidates first, then promote them to concrete milestones after validating demand, goals, and prerequisites.
-Before implementation, update PRD scope, acceptance criteria, and required ADRs; adding a candidate does not establish a delivery date or supported capability.
+| Milestone | Summary | Scope |
+| --- | --- | --- |
+| M0 | Foundation | [M0](../milestones/m0/scope.md) |
+| M1 | PostgreSQL governance + user/role administration | [M1](../milestones/m1/scope.md) |
+| M2 | MySQL → Kubernetes/CNPG → SQL review/EXPLAIN | [M2](../milestones/m2/scope.md) |
+| M3 | Query assets + schema preview; MVP | [M3](../milestones/m3/scope.md) |
+| M4 | Masking → temporary console and identity | [M4](../milestones/m4/scope.md) |
+| M5 | Schema approval/apply/recovery/verify | [M5](../milestones/m5/scope.md) |
+| M6 | Providers + agent grants/MCP Gateway | [M6](../milestones/m6/scope.md) |
+| M7 | Research candidates | [M7](../milestones/m7/scope.md) |
 
 ---
 
