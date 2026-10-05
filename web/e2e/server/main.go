@@ -35,14 +35,23 @@ func main() {
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	listener, err := net.Listen("tcp", "127.0.0.1:18080")
+	applicationPort, err := portFromEnvironment(applicationPortVariable)
+	if err != nil {
+		return err
+	}
+	targetPort, err := portFromEnvironment(targetPortVariable)
+	if err != nil {
+		return err
+	}
+	applicationAddress := net.JoinHostPort("127.0.0.1", strconv.Itoa(applicationPort))
+	listener, err := net.Listen("tcp", applicationAddress)
 	if err != nil {
 		return errors.New("test server port is occupied")
 	}
 	if err := listener.Close(); err != nil {
 		return err
 	}
-	targetListener, err := net.Listen("tcp", "127.0.0.1:18081")
+	targetListener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(targetPort)))
 	if err != nil {
 		return errors.New("test target port is occupied")
 	}
@@ -69,7 +78,7 @@ func run() error {
 	startDatabase := func(image string) (*tcpostgres.PostgresContainer, error) {
 		database, err := tcpostgres.Run(startupCtx, image,
 			tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("portcullis"), tcpostgres.WithPassword("portcullis"),
-			testcontainers.WithLabels(map[string]string{browserContainerLabelKey: browserContainerLabelValue}), tcpostgres.BasicWaitStrategies())
+			testcontainers.WithLabels(map[string]string{browserContainerLabelKey: browserContainerLabelValue, browserOwnerLabelKey: harnessOwnerLabel()}), tcpostgres.BasicWaitStrategies())
 		if err != nil {
 			return nil, err
 		}
@@ -133,7 +142,7 @@ func run() error {
 	server.Env = append(server.Env,
 		"PORTCULLIS_DATABASE_URL="+dsn, "PORTCULLIS_MASTER_KEY="+base64.StdEncoding.EncodeToString(key),
 		"PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true", "PORTCULLIS_STARTUP_MIGRATE=true",
-		"PORTCULLIS_ADDR=127.0.0.1:18080", "PORTCULLIS_SHUTDOWN_TIMEOUT=5s", "PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT=2s",
+		"PORTCULLIS_ADDR="+applicationAddress, "PORTCULLIS_SHUTDOWN_TIMEOUT=5s", "PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT=2s",
 		"PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","),
 		"PORTCULLIS_SETUP_TOKEN_FILE="+setupTokenFile)
 	applicationLog, err := os.Create(applicationLogPath)

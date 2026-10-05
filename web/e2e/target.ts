@@ -18,7 +18,9 @@ function isTarget(value: unknown): value is Target {
 }
 
 export const loadTarget = async (): Promise<Target> => {
-  const response = await fetch("http://127.0.0.1:18081/target", { signal: AbortSignal.timeout(5_000) });
+  const targetPort = process.env.E2E_TARGET_PORT;
+  if (targetPort === undefined) throw new Error("E2E_TARGET_PORT is not set; run the suite through playwright.config.ts");
+  const response = await fetch(`http://127.0.0.1:${targetPort}/target`, { signal: AbortSignal.timeout(5_000) });
   if (!response.ok) throw new Error("Testcontainers target unavailable");
   const decoded: unknown = await response.json();
   if (!isTarget(decoded)) throw new Error("Testcontainers target response is malformed");

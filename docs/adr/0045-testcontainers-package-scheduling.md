@@ -18,7 +18,8 @@ It then runs three groups concurrently: static checks, the Go test target (still
 
 The browser harness is a separate process tree with its own containers, so it runs with `TESTCONTAINERS_RYUK_DISABLED=true` and never joins the reaper startup race.
 Its cleanup does not depend on Ryuk: the runner terminates both containers on exit or signal.
-Containers labelled `portcullis.test=browser` that a killed runner left behind are removed by the next runner, and only after it holds the target port, so a second concurrent run fails on the port instead of deleting the first run's databases.
+Each runner labels its containers with its own process ID, and a starting runner removes only labelled containers whose owner process has exited, so concurrent runs keep their databases.
+Playwright reserves free loopback ports for each run instead of fixed ports, so concurrent browser runs never collide.
 Testcontainers documents disabling Ryuk when the environment performs its own cleanup.
 
 Each group keeps its steps in order and writes `<group>.log` to a fresh per-run temporary directory outside the checkout (`$TMPDIR/portcullis-verify.XXXXXX`, prefix overridable with `VERIFY_LOG_DIR`).
