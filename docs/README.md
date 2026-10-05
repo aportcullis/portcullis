@@ -39,7 +39,8 @@ Product requirements are maintained in Korean and English; other documents adopt
   - Add each translated pair to this index and link both versions to each other.
   - Preserve ADR numbers and existing filenames so decision references remain stable.
 - **Keep prose easy to maintain.**
-  - Group prose into paragraphs by topic and keep comments concise; do not automatically break after every sentence.
+  - Keep related sentences in one paragraph and start a new line after the sentence where the topic changes.
+  - Prefer ordinary development terms and preserve technical identifiers and evidence versions.
   - Use a short parent bullet for a rule and sub-bullets for its conditions, examples, and exceptions.
   - Prefer section references over line numbers and keep relative links valid when moving documents.
 
@@ -54,9 +55,19 @@ docs/
   ARCHITECTURE.md
   adr/
   conventions/
+  milestones/
+    README.md
+    overview.svg
+    m0/scope.md
+    m1/scope.md
+    m1/progress.md
+    m1/validation.md
+    m2/ … m7/
   performance/
     README.md
     benchmarks/
 ```
 
-PRD files are repository documents; private working notes stay gitignored and are never referenced from committed files.
+PRD files are repository documents; execution task lists, review findings and follow-up notes stay local and are never referenced from committed files.
+
+Per [ADR-0054](adr/0054-release-branches-and-documentation-policy.md), accepted decisions change through a superseding ADR; requirements and section numbers stay synchronized across PRD translations.

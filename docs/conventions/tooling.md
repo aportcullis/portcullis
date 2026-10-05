@@ -33,10 +33,23 @@ The protobuf plugins are pinned through the runtimes themselves: `protoc-gen-go`
 ## Dependencies
 **Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification. Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.
 
-## Commit messages
-Use a conventional-commit subject and keep each commit focused on one concern. Write the body as topic bullets without a trailing colon, each with one-sentence sub-bullets, and finish with a `Verification` topic listing the observed red, the passing gates, the staged-diff review and any remaining item; keep each sentence on one line. **Do not add a `Co-Authored-By` or other AI attribution trailer**; this applies to coding agents, which commit each completed concern themselves.
+## Branches and versions
 
-Immediately before each commit, review the staged diff for scope, correctness, dependency direction, security and scenario coverage. Check the staged snapshot rather than relying on unstaged dependencies in the working tree, and make every test pass before committing: uncached Go tests with required databases, web tests, load-check and browser E2E. Fix findings, repeat the review after changing the staged content, and record any remaining failed gate explicitly. Commit related tests with the behavior they verify; do not reconstruct an unobserved TDD history after implementation.
+`main` develops the next release.
+After the current milestone meets all completion criteria, cut `release/vX.Y` from main; the first release branch is `release/v0.1`.
+The owner creates and pushes `vX.Y.Z` tags on that branch and maintains its patch releases there; agents never tag or push.
+Develop the next milestone on `feat/<feature>` branches from main for owner review and merge, and obtain approval before starting work outside the current milestone.
+
+Only Git tags assign product versions; documents, source files and CHANGELOG have no independent revision number.
+Keep dependency/tool versions as evidence and use `Unreleased` before an actual release tag exists.
+Per [ADR-0054](../adr/0054-release-branches-and-documentation-policy.md), milestone scope, progress and release versions have separate ownership.
+See the [release procedure](../operations/container-releases.md).
+
+## Commit messages
+Use a Conventional Commit subject and keep each commit focused on one concern.
+Until the owner releases `v0.1.0`, `fix`, `refactor` and `perf` are prohibited; use the applicable `feat`, `docs`, `test`, `build`, `ci` or other permitted type. Write the body as topic bullets without a trailing colon, each with one-sentence sub-bullets, and finish with a `Verification` topic listing the observed red, the passing gates, the staged-diff review and any remaining item; keep each sentence on one line. **Do not add a `Co-Authored-By` or other AI attribution trailer**; this applies to coding agents, which commit each completed concern themselves.
+
+Immediately before each commit, review the staged diff for scope, correctness, dependency direction, security and scenario coverage. Check the staged snapshot rather than relying on unstaged dependencies in the working tree, and pass the complete `make verify` gate before each commit, including uncached Go tests with required databases, web tests, load-check and browser E2E. Fix findings, repeat the review after changing the staged content, and record any remaining failed gate explicitly. Commit related tests with the behavior they verify; do not reconstruct an unobserved TDD history after implementation.
 
 Commit a completed red→green, checked and reviewed concern immediately, before starting another concern. Queue incoming requests until the current commit is complete. Never carry completed uncommitted changes into the next task; an explicit stop request or destructive action takes precedence.
 

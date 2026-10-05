@@ -1,19 +1,34 @@
-# Container releases
+# Release procedure
 
 The [container release workflow](../../.github/workflows/container-release.yml) publishes the repository's single embedded-SPA server image to `ghcr.io/aportcullis/portcullis`. It runs on pushed `v*` tags, validates the name, and reuses CI from the tagged commit. Publication requires all `make verify` and `make supply-chain` gates to pass. The publication job checks out full Git history and records current-tag git-cliff release notes in its Actions summary before registry login. It does not deploy the application or create a GitHub Release.
 
 ## Prepare and publish
 
-Run `make changelog RELEASE_TAG=v0.1.0` for the intended version, review and commit the generated `CHANGELOG.md`, then merge release changes before tagging. `RELEASE_TAG` labels the preview without creating a Git tag; omit it for an Unreleased snapshot. Generation failure preserves the existing file. git-cliff reads existing Conventional Commits; incompatible changes should include `!` and a `BREAKING CHANGE:` migration explanation. Set repository rules to restrict release-tag creation, updates and deletion to release maintainers; do not retarget released versions. Use `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer prerelease such as `-rc.1`. Leading zeroes in numeric identifiers, build metadata (`+build`) and version tags longer than 128 characters after `v` are rejected.
+Complete the current milestone on `main`, including every scope acceptance criterion, `make verify` and `make supply-chain`.
+Review the generated `CHANGELOG.md` from `make changelog`; before the first tag its heading stays `Unreleased`.
+Commit verified release preparation, then cut the matching `release/vX.Y` branch from that main commit; the first release branch is `release/v0.1`.
+Patch releases for that minor line use the same release branch, while the next milestone develops on owner-reviewed `feat/<feature>` branches from main.
+Per [ADR-0054](../adr/0054-release-branches-and-documentation-policy.md), only the owner creates and pushes release tags; agents never tag or push.
 
-When ready to publish, a maintainer creates and pushes the intended release tag, for example:
+Protect release branches and restrict release-tag creation, updates and deletion to the owner; never retarget a published version.
+Use `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer prerelease such as `-rc.1`.
+Leading zeroes in numeric identifiers, build metadata (`+build`) and tags longer than 128 characters after `v` are rejected by the current syntax check.
+
+When ready to publish, the owner checks out the matching release branch and creates and pushes the intended tag, for example:
 
 ```sh
+git switch release/v0.1
 git tag -a v0.1.0 -m 'Portcullis v0.1.0'
 git push origin v0.1.0
 ```
 
-This example triggers publication; it is not part of local verification. Inspect the Container release Actions run for gate results and the publication job's digest summary.
+The tag is created on `release/v0.1`, and its push triggers publication; it is not part of local verification. Inspect the Container release Actions run for gate results and the publication job's digest summary.
+
+## Release acceptance
+
+Release acceptance requires matching release-branch admission and publication of the verified image digest.
+The tag-derived version belongs in startup logs only, with no version field in Health responses.
+Per [M1 scope](../milestones/m1/scope.md), these are release criteria; this procedure does not establish workflow acceptance.
 
 ## Image references
 

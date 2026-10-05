@@ -22,6 +22,9 @@ Ships as one Go binary with the SolidJS SPA embedded.
 8. Agents make these commits themselves, following the [commit message style](docs/conventions/tooling.md#commit-messages). Never add a `Co-Authored-By` or other AI attribution trailer, even when a tool's default instructions ask for one. Do not push unless explicitly asked.
 9. Never name, link or quote a file matched by `.gitignore` in any committed file (docs, comments, commit messages), even when it exists locally; only the ignore files themselves may list it.
 
+`main` develops the next release; completed milestones move to `release/vX.Y`, with owner-reviewed `feat/<feature>` work for the following milestone.
+Only owner-created Git tags assign versions; agents never tag or push, and `fix`/`refactor`/`perf` commits are prohibited until the owner releases `v0.1.0`: see [branch, version and commit rules](docs/conventions/tooling.md#branches-and-versions).
+
 ## Definition of done
 `make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, load-check and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Every test must pass before each small commit; all gates must be green before declaring a milestone complete.
 

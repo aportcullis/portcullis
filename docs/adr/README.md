@@ -6,6 +6,17 @@ Each ADR states its own context and constraints so it can be read on its own.
 ## Status values
 `Proposed` → `Accepted` → (when replaced) `Superseded by ADR-XXXX`
 
+Status describes whether a decision is proposed, in force or replaced; it does not describe implementation or test completion.
+Track implementation and validation in the relevant milestone records.
+Per [MADR guidance](https://adr.github.io/madr/), status metadata is optional; Portcullis retains these three values to identify the currently applicable decision.
+
+## Changing an accepted decision
+
+Accepted decision bodies remain unchanged; a new ADR supersedes a changed decision and explains the transition.
+Update the old record only with its replacement status/link, except for narrow factual corrections and prose formatting.
+Preserve existing amendment history rather than rewriting it in bulk.
+Per [ADR-0054](0054-release-branches-and-documentation-policy.md), PRDs define product requirements, milestone scopes define completion criteria and ADRs define technical decisions.
+
 ## Pre-implementation gate
 These must be `Accepted` before Core 1 coding begins.
 
@@ -68,6 +79,7 @@ These must be `Accepted` before Core 1 coding begins.
 | [0051](0051-connection-destination-policy.md) | Operator destination policy for connection dials | Accepted |
 | [0052](0052-pre-session-origin-and-setup-boundary.md) | Pre-session Host, origin and setup-token boundary | Accepted |
 | [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
+| [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
 
 ## Template
 ```markdown
