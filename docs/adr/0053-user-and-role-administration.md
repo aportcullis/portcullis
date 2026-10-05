@@ -59,7 +59,9 @@ The decision must keep authorization permission-based (ADR-0008), organization-s
 
 ### Roadmap
 
-PRD §11 schedules this slice at the start of M2, before MySQL parity: it closes the M1 multi-user gap that distinct-reviewer quorum and Google sign-in depend on. The SPA gains an Administration section with Users and Roles pages shown only to holders of `users.list` or `roles.list`.
+PRD §11 places this slice in M1 (amended 2026-10-05; it was first scheduled at the start of M2).
+It closes the multi-user gap that distinct-reviewer quorum and Google sign-in depend on, so the first releasable alpha includes it.
+The SPA gains an Administration section with Users and Roles pages shown only to holders of `users.list` or `roles.list`.
 
 ## Consequences
 

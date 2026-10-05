@@ -180,8 +180,9 @@ No window either way.
   Four facts about one moment, two clocks, no way to tell which is right.
 - **The under-lock approver re-check has a boundary** (amended 2026-07-26): it guarantees that a permission revoked **before** the check cannot decide.
   It does not serialize against a revocation that commits *after* it — the request row lock does not cover the identity tables, and Read Committed gives each statement its own snapshot.
-  Serializing needs both sides to lock the same row, and the revoking side does not exist yet (role management is M4).
-  The decision path therefore takes its half now (`LockApproverMembership`, `for share`), so the M4 revoke path only has to take `for update` on the same row; until then that lock is a no-op by design.
+  Serializing needs both sides to lock the same row; the decision path takes its half (`LockApproverMembership`, `for share`).
+  Since ADR-0053 (M1), disabling a user or assigning a role locks the user and membership `for update`, so those revocations serialize with the check.
+  Removing a permission from a role does not lock memberships and stays outside this guarantee.
   Stating this is the point: the earlier "race-free" wording promised a guarantee the code cannot deliver alone.
 - **Auto-approval timestamps** (amended 2026-07-26): the quorum-0 approval instant is stamped by the DB inside the transaction that holds the connection row lock, and the row's `expires_at`, the system APPROVED event's `occurred_at`, and that event's metadata copy of `expires_at` are **all derived from it** (`SubmitAccessRequest` stamps `clock_timestamp() + validity`; the store recovers the instant as `expires_at - validity`).
   The application cannot know the instant — it builds the event before the lock is taken — so it deliberately omits `expires_at` from the metadata and the store fills it.
