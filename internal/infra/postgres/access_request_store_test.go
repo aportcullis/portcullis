@@ -430,49 +430,48 @@ func TestAccessRequestInvalidatedApprover(t *testing.T) {
 	}
 }
 
-// setRolePermissionDeleted soft-deletes or revives one role permission the way a role update does (ADR-0053).
-func (f reqFixture) setRolePermissionDeleted(t *testing.T, user identity.UserID, permission string, deleted bool) {
-	t.Helper()
-	tag, err := f.pool.Exec(context.Background(), `
-		update role_permissions rp
-		set deleted_at = case when $3 then clock_timestamp() end
-		from organization_memberships m
-		where m.user_id = $1::uuid and m.organization_id = $4::uuid and rp.role_id = m.role_id and rp.permission_key = $2`,
-		string(user), permission, deleted, string(f.org))
-	if err != nil || tag.RowsAffected() != 1 {
-		t.Fatalf("set %s deleted=%t: %v (%d rows)", permission, deleted, err, tag.RowsAffected())
-	}
-}
-
 func TestSoftDeletedRolePermissionStopsGrantingApproval(t *testing.T) {
 	f := newReqFixture(t)
 	ctx := context.Background()
+	identities := pg.NewIdentityStore(f.pool)
+	admin := f.userWithRole(t, "admin")
+	roleEvent := audit.Event{ActorType: audit.ActorUser, ActorUserID: &admin, Action: audit.ActionRoleUpdated, TargetType: audit.TargetTypeRole, Outcome: audit.OutcomeSucceeded}
+	reviewerRole, err := identities.CreateRole(ctx, f.org, identity.Delegation{Actor: admin, Gate: identity.PermissionRolesCreate}, identity.RoleDefinition{Name: unique("reviewer"), Permissions: []identity.Permission{identity.PermissionRequestsApprove, identity.PermissionRequestsReject}}, roleEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer, _, err := identities.CreateMember(ctx, f.org, identity.Delegation{Actor: admin, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: unique("reviewer") + "@example.com", DisplayName: "Reviewer", RoleID: reviewerRole.ID}, identity.PasswordSetupIssue{TokenHash: make([]byte, 32), Validity: time.Hour}, roleEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	demoted := reviewer.User.ID
+	updateReviewerRole := func(version int64, permissions ...identity.Permission) {
+		t.Helper()
+		if _, err := identities.UpdateRole(ctx, f.org, identity.Delegation{Actor: admin, Gate: identity.PermissionRolesUpdate}, reviewerRole.ID, version, identity.RoleDefinition{Name: reviewerRole.Name, Permissions: permissions}, roleEvent); err != nil {
+			t.Fatalf("UpdateRole(version %d): %v", version, err)
+		}
+	}
 	connID := f.liveConn(t, 2)
-	demoted := f.userWithCustomRole(t, "custom-approver", "requests.approve", "requests.reject")
 	steady := f.userWithRole(t, "approver")
 	pending := f.submitted(t, connID, 2)
 	if _, err := f.requests.Approve(ctx, f.org, pending.ID, demoted, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, pending.ID)); err != nil {
 		t.Fatalf("approve before demotion: %v", err)
 	}
-	f.setRolePermissionDeleted(t, demoted, "requests.approve", true)
+	updateReviewerRole(1, identity.PermissionRequestsReject)
 
-	// Refusal: the removed permission no longer admits a new approval (ApproverEligible).
 	other := f.submitted(t, connID, 2)
 	if _, err := f.requests.Approve(ctx, f.org, other.ID, demoted, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, other.ID)); !errors.Is(err, access.ErrApproverIneligible) {
 		t.Errorf("approve after soft-deleted permission = %v, want ErrApproverIneligible", err)
 	}
-	// Refusal: the earlier approval stops counting toward quorum (CountValidApprovals).
 	view, err := f.requests.Approve(ctx, f.org, pending.ID, steady, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, pending.ID))
 	if err != nil || view.Request.State != access.StatePending || view.ValidApprovals != 1 {
 		t.Fatalf("second approval = state %q valid %d (%v), want pending with 1 valid approval", view.Request.State, view.ValidApprovals, err)
 	}
-	// Refusal: the decision list marks it invalid (ListApprovalsForRequest).
 	for _, decision := range view.Approvals {
 		if decision.Approval.ApproverID == demoted && decision.Valid {
 			t.Error("an approval whose permission was soft-deleted must not read as valid")
 		}
 	}
-	// Refusal: the request view and list count the same way (GetAccessRequestView, ListAccessRequests*).
 	fetched, _, err := f.requests.Get(ctx, f.org, pending.ID)
 	if err != nil || fetched.ValidApprovals != 1 {
 		t.Errorf("Get valid approvals = %d (%v), want 1", fetched.ValidApprovals, err)
@@ -488,14 +487,12 @@ func TestSoftDeletedRolePermissionStopsGrantingApproval(t *testing.T) {
 			}
 		}
 	}
-	// Refusal: the permission lookup every RPC gate uses no longer grants it (PermissionsForUser).
 	permissions, err := pg.NewIdentityStore(f.pool).PermissionsForUser(ctx, f.org, demoted)
 	if err != nil || slices.Contains(permissions, identity.PermissionRequestsApprove) || !slices.Contains(permissions, identity.Permission("requests.reject")) {
 		t.Errorf("permissions after soft delete = %v (%v), want requests.reject without requests.approve", permissions, err)
 	}
 
-	// Success: reviving the row restores eligibility, and the approval reaches quorum.
-	f.setRolePermissionDeleted(t, demoted, "requests.approve", false)
+	updateReviewerRole(2, identity.PermissionRequestsApprove, identity.PermissionRequestsReject)
 	revived, err := f.requests.Approve(ctx, f.org, other.ID, demoted, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, other.ID))
 	if err != nil || revived.ValidApprovals != 1 {
 		t.Errorf("approve after revival = valid %d (%v), want 1", revived.ValidApprovals, err)
