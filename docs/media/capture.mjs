@@ -1,6 +1,6 @@
 import { spawn, execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { chromium, expect } from "../../web/node_modules/@playwright/test/index.mjs";
@@ -11,6 +11,7 @@ const media = fileURLToPath(new URL("./", import.meta.url));
 const work = root + ".test-docker/readme-media/";
 const baseURL = "http://127.0.0.1:18080";
 const password = "readme-demo-password-only";
+const setupTokenFile = work + randomBytes(16).toString("hex");
 const image = "postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
 const run = (command, args) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "inherit"] }).trim();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -41,7 +42,9 @@ try {
     PORTCULLIS_DATABASE_URL: "postgres://portcullis:portcullis@127.0.0.1:15432/portcullis?sslmode=disable",
     PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME: "true", PORTCULLIS_STARTUP_MIGRATE: "true",
     PORTCULLIS_MASTER_KEY: randomBytes(32).toString("base64"), PORTCULLIS_ADDR: "127.0.0.1:18080",
-  }, stdio: ["ignore", "ignore", "inherit"] });
+    PORTCULLIS_SETUP_TOKEN_FILE: setupTokenFile,
+    PORTCULLIS_CONNECTION_ALLOWED_CIDRS: "127.0.0.0/8,::1/128",
+  }, stdio: ["ignore", "inherit", "inherit"] });
   ready = false;
   for (let i = 0; i < 90; i++) {
     if (server.exitCode !== null) throw new Error("Demo server exited before readiness");
@@ -80,6 +83,7 @@ try {
   await expect(page).toHaveURL(/\/bootstrap$/);
   await expect(page.getByRole("img", { name: "Portcullis" })).toBeVisible();
   await shot("bootstrap");
+  await page.getByLabel("Setup token", { exact: true }).fill((await readFile(setupTokenFile, "utf8")).trim());
   await page.getByLabel("Email").fill("alex@example.test");
   await page.getByLabel("Display name").fill("Alex · Platform");
   await page.getByLabel(/^Password/).fill(password);
@@ -202,10 +206,16 @@ FROM generate_series(1, 30) AS g`;
   await dialog.getByRole("button", { name: "Export CSV", exact: true }).click();
   const download = dialog.getByRole("link", { name: "Download CSV", exact: true });
   await expect(download).toBeVisible();
-  const csv = await download.evaluate(async link => (await fetch(link.href)).text());
+  const savedCSV = page.waitForEvent("download");
+  await download.click();
+  const csvDownload = await savedCSV;
+  if (await csvDownload.failure()) throw new Error("CSV download failed");
+  const csvStream = await csvDownload.createReadStream();
+  const csvChunks = [];
+  for await (const chunk of csvStream) csvChunks.push(chunk);
+  const csv = Buffer.concat(csvChunks).toString("utf8");
   if (csv.trim().split(/\r?\n/).length !== 31) throw new Error("CSV must contain all 30 rows plus its header");
   await frame("results", "5 / 5  ·  Prepare CSV for the whole snapshot, including other regions", 2600);
-  // Deliberately do not claim native file saving: the release gate records its environment failure.
   await writeFile(work + "frames.json", JSON.stringify(frames, null, 2));
   console.log("Captured 9 screenshots and 2 walkthrough frame sequences from the real application.");
 } finally {

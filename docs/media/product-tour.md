@@ -44,13 +44,14 @@ Register and test targets, label their environment, and archive connections. Pol
 
 ### Review and authentication
 
-Reviewers inspect the request context, SQL, target snapshot, and approval status before deciding. Requests and results support direct links, reload, and browser history. First-run setup creates the initial administrator; Google sign-in appears when configured.
+Reviewers inspect the request context, SQL, target snapshot, and approval status before deciding. Requests and results support direct links, reload, and browser history.
+First-run setup requires the one-time setup token delivered through the server log or configured token file before creating the initial administrator. Google sign-in appears when configured.
 
 ![A distinct reviewer inspecting submitted SQL and choosing approval or rejection](review.png)
 
 ![Portcullis-branded email and password sign-in screen](login.png)
 
-![Portcullis-branded first-administrator setup screen](bootstrap.png)
+![First-administrator setup requiring a one-time setup token, email, display name and password](bootstrap.png)
 
 The environment labels in these captures are illustrative; both targets use an isolated demo database.
 

@@ -67,7 +67,7 @@ Request context and SQL have separate sections. Reviewers inspect the evidence b
 
 ![A distinct reviewer inspecting SQL beside approval and rejection controls](docs/media/review.png)
 
-The demo reviewer is fixture-provisioned; user-management screens are planned.
+The demo reviewer is fixture-provisioned; user-management screens belong to M1 scope.
 
 </details>
 

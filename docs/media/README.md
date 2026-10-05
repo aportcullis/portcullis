@@ -6,7 +6,7 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 
 | File | Contents |
 | --- | --- |
-| `bootstrap.png` | Branded first-administrator setup screen |
+| `bootstrap.png` | First-administrator setup with the one-time setup token |
 | `login.png` | Branded local sign-in screen |
 | `connections.png` | Two demo connections with development/production labels |
 | `policy.png` | Default read-only policy and one distinct required reviewer |
@@ -18,7 +18,8 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 | `workflow.gif` | Request → distinct approval → single-use execution |
 | `results.gif` | Page → sort → filter → prepare the whole-snapshot CSV |
 
-The `production` label is illustrative: both targets connect to the disposable database. The reviewer is provisioned directly in that fixture because the user-management UI is not yet implemented and remains M1 work. The CSV sequence checks the generated content includes all 30 synthetic rows, despite filtering down to 10, and stops at the download link. It does not claim native file saving succeeded; see the [M1 validation record](../milestones/m1/validation.md).
+The `production` label is illustrative: both targets connect to the disposable database. The reviewer is provisioned directly in that fixture because the user-management UI is not yet implemented and remains M1 scope.
+The CSV sequence checks the downloaded file contains all 30 synthetic rows despite filtering down to 10. The final frame shows the prepared download link; see the [M1 validation record](../milestones/m1/validation.md) for browser download verification.
 
 ## Reproduce
 
@@ -33,8 +34,8 @@ node docs/media/capture.mjs
 python3 docs/media/make_gifs.py
 ```
 
-`capture.mjs` builds the SPA and real binary, starts a fresh database, bootstraps a demo administrator, provisions a distinct reviewer, then operates the real browser UI.
-It checks request transitions, single-use execution, approval button layout, exact results, sorting, filtering and whole-snapshot CSV contents.
+`capture.mjs` builds the SPA and real binary, starts a fresh database, reads its one-time setup token, bootstraps a demo administrator, provisions a distinct reviewer, then operates the real browser UI.
+It checks request transitions, single-use execution, approval button layout, exact results, sorting, filtering and the downloaded whole-snapshot CSV contents.
 Temporary frames stay in the ignored working directory selected by the capture tool; only final PNGs and GIFs belong in Git.
 The synthetic password and randomly generated master key are confined to this throwaway installation.
 
