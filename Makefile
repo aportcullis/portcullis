@@ -1,4 +1,4 @@
-.PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e e2e-browser e2e-run e2e-sweep build release run devkey test test-race lint vuln audit verify hooks tidy clean
+.PHONY: generate web web-install web-dev web-typecheck web-lint web-test web-audit e2e e2e-browser e2e-run build release run devkey test test-race lint vuln audit verify hooks tidy clean
 .PHONY: verify-prepare verify-static verify-go verify-browser
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
 .PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check generate-check proto-breaking
@@ -102,11 +102,7 @@ e2e-browser:
 	pnpm -C web exec playwright install --with-deps chromium
 
 e2e-run:
-	@$(MAKE) --no-print-directory e2e-sweep
-	pnpm -C web e2e; status=$$?; $(MAKE) --no-print-directory e2e-sweep; exit $$status
-
-e2e-sweep:
-	@docker ps -aq --filter label=portcullis.test=browser | xargs docker rm -f >/dev/null 2>&1 || true
+	pnpm -C web e2e
 
 
 build:
@@ -169,8 +165,8 @@ release-check:
 VERIFY_LOG_DIR ?= $(or $(TMPDIR),/tmp)/portcullis-verify
 
 verify: verify-prepare
-	@mkdir -p $(VERIFY_LOG_DIR)
-	@$(MAKE) --no-print-directory -j3 verify-group-static verify-group-go verify-group-browser
+	@log_dir="$$(mktemp -d "$(VERIFY_LOG_DIR).XXXXXX")" && \
+		$(MAKE) --no-print-directory -j3 VERIFY_LOG_DIR="$$log_dir" verify-group-static verify-group-go verify-group-browser
 
 verify-prepare: web e2e-browser load-bundle
 

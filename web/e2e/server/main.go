@@ -49,6 +49,9 @@ func run() error {
 	defer func() { _ = targetListener.Close() }()
 	startupCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	if err := removeStaleBrowserContainers(startupCtx); err != nil {
+		return fmt.Errorf("remove stale browser containers: %w", err)
+	}
 	targetImage, err := dbtest.PostgresTestImage()
 	if err != nil {
 		return err
@@ -66,7 +69,7 @@ func run() error {
 	startDatabase := func(image string) (*tcpostgres.PostgresContainer, error) {
 		database, err := tcpostgres.Run(startupCtx, image,
 			tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("portcullis"), tcpostgres.WithPassword("portcullis"),
-			testcontainers.WithLabels(map[string]string{"portcullis.test": "browser"}), tcpostgres.BasicWaitStrategies())
+			testcontainers.WithLabels(map[string]string{browserContainerLabelKey: browserContainerLabelValue}), tcpostgres.BasicWaitStrategies())
 		if err != nil {
 			return nil, err
 		}

@@ -17,10 +17,11 @@ Run the canonical Go test and race targets and the PostgreSQL compatibility pack
 It then runs three groups concurrently: static checks, the Go test target (still `-p 1`) and the browser suite.
 
 The browser harness is a separate process tree with its own containers, so it runs with `TESTCONTAINERS_RYUK_DISABLED=true` and never joins the reaper startup race.
-Its cleanup does not depend on Ryuk: the runner terminates both containers on exit or signal, and `make e2e-run` removes any container labelled `portcullis.test=browser` before and after the suite.
+Its cleanup does not depend on Ryuk: the runner terminates both containers on exit or signal.
+Containers labelled `portcullis.test=browser` that a killed runner left behind are removed by the next runner, and only after it holds the target port, so a second concurrent run fails on the port instead of deleting the first run's databases.
 Testcontainers documents disabling Ryuk when the environment performs its own cleanup.
 
-Each group keeps its steps in order and writes `<group>.log` to a temporary directory outside the checkout (`$TMPDIR/portcullis-verify`, overridable with `VERIFY_LOG_DIR`).
+Each group keeps its steps in order and writes `<group>.log` to a fresh per-run temporary directory outside the checkout (`$TMPDIR/portcullis-verify.XXXXXX`, prefix overridable with `VERIFY_LOG_DIR`).
 Endpoint protection on the working tree therefore cannot refuse a rewrite of the previous log.
 Only a failed group's log is printed, because GNU Make 3.81 on macOS cannot synchronize concurrent output.
 
