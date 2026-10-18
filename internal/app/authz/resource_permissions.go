@@ -2,7 +2,7 @@ package authz
 
 import "github.com/aportcullis/portcullis/internal/domain/identity"
 
-// resourcePermissionTypes declares concrete enforcement targets; collection verbs apply per candidate.
+// resourcePermissionTypes declares enforcement targets for individual resources and organization collections.
 var resourcePermissionTypes = map[identity.Permission][]identity.ResourceType{
 	identity.PermissionConnectionsList:   {identity.ResourceConnection},
 	identity.PermissionConnectionsGet:    {identity.ResourceConnection},
@@ -28,6 +28,11 @@ var resourcePermissionTypes = map[identity.Permission][]identity.ResourceType{
 	identity.PermissionRolesGet:          {identity.ResourceRole},
 	identity.PermissionRolesUpdate:       {identity.ResourceRole},
 	identity.PermissionRolesDelete:       {identity.ResourceRole},
+	identity.PermissionBindingsList:      {identity.ResourceOrganization},
+	identity.PermissionBindingsGet:       {identity.ResourceBinding},
+	identity.PermissionBindingsCreate:    {identity.ResourceOrganization},
+	identity.PermissionBindingsUpdate:    {identity.ResourceBinding},
+	identity.PermissionBindingsDelete:    {identity.ResourceBinding},
 	identity.PermissionAuditList:         {identity.ResourceAudit},
 	identity.PermissionAuditGet:          {identity.ResourceAudit},
 }
@@ -45,7 +50,7 @@ func supportsResourcePermission(permission identity.Permission, resource identit
 // requiresUnconditionalManagement identifies authorization-policy writes with unrestricted authority.
 func requiresUnconditionalManagement(permission identity.Permission) bool {
 	switch permission {
-	case identity.PermissionUsersCreate, identity.PermissionUsersUpdate, identity.PermissionUsersDisable, identity.PermissionRolesCreate, identity.PermissionRolesUpdate, identity.PermissionRolesDelete:
+	case identity.PermissionUsersCreate, identity.PermissionUsersUpdate, identity.PermissionUsersDisable, identity.PermissionRolesCreate, identity.PermissionRolesUpdate, identity.PermissionRolesDelete, identity.PermissionBindingsCreate, identity.PermissionBindingsUpdate, identity.PermissionBindingsDelete:
 		return true
 	default:
 		return false

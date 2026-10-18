@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package portcullis.v1;
+
+import "google/protobuf/timestamp.proto";
+import "portcullis/v1/auth.proto";
+
+option go_package = "github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1";
+
+// Users manages independent organization membership; grants use Bindings.
+service Users {
+  rpc List(ListUsersRequest) returns (ListUsersResponse) {}
+  rpc Get(GetUserRequest) returns (GetUserResponse) {}
+  rpc Create(CreateUserRequest) returns (CreateUserResponse) {}
+  rpc Disable(DisableUserRequest) returns (DisableUserResponse) {}
+  rpc Enable(EnableUserRequest) returns (EnableUserResponse) {}
+  rpc IssueSetupLink(IssueUserSetupLinkRequest) returns (IssueUserSetupLinkResponse) {}
+}
+
+// Roles manages reusable permission bundles independently from membership.
+service Roles {
+  rpc List(ListRolesRequest) returns (ListRolesResponse) {}
+  rpc Get(GetRoleRequest) returns (GetRoleResponse) {}
+  rpc ListPermissions(ListRolePermissionsRequest) returns (ListRolePermissionsResponse) {}
+  rpc Create(CreateRoleRequest) returns (CreateRoleResponse) {}
+  rpc Update(UpdateRoleRequest) returns (UpdateRoleResponse) {}
+  rpc Delete(DeleteRoleRequest) returns (DeleteRoleResponse) {}
+}
+
+// Bindings manages versioned grants and validates the same CEL accepted by writes.
+service Bindings {
+  rpc List(ListBindingsRequest) returns (ListBindingsResponse) {}
+  rpc Get(GetBindingRequest) returns (GetBindingResponse) {}
+  rpc Create(CreateBindingRequest) returns (CreateBindingResponse) {}
+  rpc Update(UpdateBindingRequest) returns (UpdateBindingResponse) {}
+  rpc Revoke(RevokeBindingRequest) returns (RevokeBindingResponse) {}
+  rpc ValidateCondition(ValidateBindingConditionRequest) returns (ValidateBindingConditionResponse) {}
+}
+
+// AdministrationPage uses numbered pages and fences subsequent pages to a policy revision.
+message AdministrationPage {
+  uint32 page = 1;
+  uint32 page_size = 2;
+  // Required for page > 1; a changed policy requires a fresh first page.
+  int64 expected_revision = 3;
+}
+message AdministrationPageInfo {
+  uint32 page = 1;
+  uint32 page_size = 2;
+  uint64 total_count = 3;
+  int64 authorization_revision = 4;
+  google.protobuf.Timestamp evaluated_at = 5;
+}
+// AccountStatus acknowledges only the resulting account identity and state.
+message AccountStatus { string id = 1; string status = 2; }
+// PolicyVersion acknowledges only the committed identity and optimistic version.
+message PolicyVersion { string id = 1; int64 version = 2; }
+message ManagedUser {
+  User user = 1;
+  bool has_password = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+message UserSetupLink {
+  // Returned once; only a digest is persisted. Responses must not be cached.
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+message ListUsersRequest { AdministrationPage pagination = 1; }
+message ListUsersResponse { repeated User users = 1; AdministrationPageInfo pagination = 2; }
+message GetUserRequest { string id = 1; }
+message GetUserResponse { ManagedUser user = 1; int64 authorization_revision = 2; }
+message CreateUserRequest { string email = 1; string display_name = 2; }
+message CreateUserResponse { AccountStatus user = 1; UserSetupLink setup_link = 2; }
+message DisableUserRequest { string id = 1; }
+message DisableUserResponse { AccountStatus user = 1; }
+message EnableUserRequest { string id = 1; }
+message EnableUserResponse { AccountStatus user = 1; }
+message IssueUserSetupLinkRequest { string id = 1; }
+message IssueUserSetupLinkResponse { UserSetupLink setup_link = 1; }
+
+message RoleSummary {
+  string id = 1;
+  string name = 2;
+  bool is_system = 3;
+  int64 version = 4;
+  int64 binding_count = 5;
+}
+message ManagedRole { RoleSummary summary = 1; repeated string permissions = 2; }
+message ListRolesRequest { AdministrationPage pagination = 1; }
+message ListRolesResponse { repeated RoleSummary roles = 1; AdministrationPageInfo pagination = 2; }
+message GetRoleRequest { string id = 1; }
+message GetRoleResponse { ManagedRole role = 1; int64 authorization_revision = 2; }
+message ListRolePermissionsRequest {}
+message ListRolePermissionsResponse { repeated string permissions = 1; int64 authorization_revision = 2; }
+message CreateRoleRequest { string name = 1; repeated string permissions = 2; }
+message CreateRoleResponse { PolicyVersion role = 1; }
+message UpdateRoleRequest { string id = 1; int64 expected_version = 2; string name = 3; repeated string permissions = 4; }
+message UpdateRoleResponse { PolicyVersion role = 1; }
+message DeleteRoleRequest { string id = 1; int64 expected_version = 2; }
+message DeleteRoleResponse {}
+
+message BindingScope {
+  // "organization" or "connection"; connection_id is required only for connection scope.
+  string type = 1;
+  string connection_id = 2;
+}
+message BindingCondition {
+  string title = 1;
+  string description = 2;
+  string expression = 3;
+  string language_version = 4;
+  string environment_version = 5;
+}
+message BindingSummary {
+  string id = 1;
+  string user_id = 2;
+  string role_id = 3;
+  int64 version = 4;
+  BindingScope scope = 5;
+  bool has_condition = 6;
+  bool revoked = 7;
+}
+message ManagedBinding { BindingSummary summary = 1; BindingCondition condition = 2; }
+message ListBindingsRequest { AdministrationPage pagination = 1; }
+message ListBindingsResponse { repeated BindingSummary bindings = 1; AdministrationPageInfo pagination = 2; }
+message GetBindingRequest { string id = 1; }
+message GetBindingResponse { ManagedBinding binding = 1; int64 authorization_revision = 2; }
+message CreateBindingRequest { string user_id = 1; string role_id = 2; BindingScope scope = 3; BindingCondition condition = 4; }
+message CreateBindingResponse { PolicyVersion binding = 1; int64 authorization_revision = 2; }
+message UpdateBindingRequest {
+  string id = 1;
+  int64 expected_version = 2;
+  // An absent role/scope preserves the stored value; an explicitly empty role is invalid.
+  optional string role_id = 3;
+  BindingScope scope = 4;
+  // Absent edit preserves the condition; replacement and removal must be explicit.
+  oneof condition_edit {
+    BindingCondition replace_condition = 5;
+    bool clear_condition = 6;
+  }
+}
+message UpdateBindingResponse { PolicyVersion binding = 1; int64 authorization_revision = 2; }
+message RevokeBindingRequest { string id = 1; int64 expected_version = 2; }
+message RevokeBindingResponse { PolicyVersion binding = 1; int64 authorization_revision = 2; }
+message ValidateBindingConditionRequest { BindingCondition condition = 1; }
+message ValidateBindingConditionResponse {}

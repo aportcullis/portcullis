@@ -9,8 +9,15 @@ import (
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
 
+// policyAuthorityReader is the admission-only slice used by condition validation and policy mutations.
+type policyAuthorityReader interface {
+	LoadPermissionCatalog(context.Context) ([]identity.Permission, error)
+	LockMemberStatus(context.Context, identity.UserID) (identity.UserStatus, error)
+	LoadUnconditionalPermissions(context.Context, identity.UserID) ([]identity.Permission, error)
+}
+
 // loadPolicyAuthority resolves current catalog and unrestricted authority under the organization lock.
-func loadPolicyAuthority(ctx context.Context, transaction PolicyAuthorityTransaction, actor identity.UserID, gate identity.Permission) ([]identity.Permission, []identity.Permission, error) {
+func loadPolicyAuthority(ctx context.Context, transaction policyAuthorityReader, actor identity.UserID, gate identity.Permission) ([]identity.Permission, []identity.Permission, error) {
 	catalog, err := transaction.LoadPermissionCatalog(ctx)
 	if err != nil {
 		return nil, nil, err

@@ -3,6 +3,7 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
 import { AccessRequests } from "@/gen/portcullis/v1/access_requests_pb";
+import { Bindings, Roles, Users } from "@/gen/portcullis/v1/administration_pb";
 import { Auth } from "@/gen/portcullis/v1/auth_pb";
 import { ConnectionPolicies } from "@/gen/portcullis/v1/connection_policies_pb";
 import { Connections } from "@/gen/portcullis/v1/connections_pb";
@@ -26,3 +27,7 @@ export const connectionsClient = createClient(Connections, transport);
 export const policiesClient = createClient(ConnectionPolicies, transport);
 export const requestsClient = createClient(AccessRequests, transport);
 export const executionsClient = createClient(QueryExecutions, transport);
+
+export const usersClient = createClient(Users, transport);
+export const rolesClient = createClient(Roles, transport);
+export const bindingsClient = createClient(Bindings, transport);

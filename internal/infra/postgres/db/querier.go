@@ -32,6 +32,7 @@ type Querier interface {
 	CountActiveAdministrators(ctx context.Context, arg CountActiveAdministratorsParams) (int64, error)
 	// The empty-page fallback: the total normally rides the list rows (the window count above), but an empty page has no row to carry it. Only ever run inside the same read snapshot as the list, never as a standalone statement. O(n) on a large table — PRD §7.1 accepts this and defers keyset pagination to "later".
 	CountAuditEvents(ctx context.Context, organizationID pgtype.UUID) (int64, error)
+	CountManagementRows(ctx context.Context, arg CountManagementRowsParams) (int64, error)
 	// Administrative rotation completion check: count envelopes across every org
 	// without exposing their contents (ADR-0003/0004). Not a customer read endpoint.
 	CountRemainingEncryptionRows(ctx context.Context, activeVersion int32) (int64, error)
@@ -74,6 +75,8 @@ type Querier interface {
 	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
 	GetManagedBinding(ctx context.Context, arg GetManagedBindingParams) (RoleBindingVersion, error)
+	GetManagementAccount(ctx context.Context, arg GetManagementAccountParams) (GetManagementAccountRow, error)
+	GetManagementBinding(ctx context.Context, arg GetManagementBindingParams) (RoleBindingVersion, error)
 	GetMember(ctx context.Context, arg GetMemberParams) (GetMemberRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	// Administrative identity-only discovery; locked envelope reads remain org-scoped.
@@ -136,6 +139,7 @@ type Querier interface {
 	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
+	ListManagementIDs(ctx context.Context, arg ListManagementIDsParams) ([]pgtype.UUID, error)
 	// Users seen through their membership in one organization (ADR-0004/0053), with the single assigned role and whether a password credential exists.
 	ListMembers(ctx context.Context, organizationID pgtype.UUID) ([]ListMembersRow, error)
 	// Administrative identity-only enumeration for per-organization maintenance; every org-scoped read still filters by one organization (ADR-0004).

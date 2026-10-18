@@ -329,6 +329,13 @@ func run() error {
 		{Pattern: executionsPath, Handler: http.MaxBytesHandler(connectapi.BoundCSVWrites(executionsHandler), server.MaxRequestBytes)},
 	}
 
+	administrationMounts, err := preparedAdministrationMounts(startupCtx, pool, store, recoverAndChain)
+	if err != nil {
+		logger.Error("administration API init failed", "err", err)
+		return err
+	}
+	mounts = append(mounts, administrationMounts...)
+
 	// Google login (ADR-0007) mounts only when configured: provider discovery must succeed at boot (fail-fast, like the keyring), and when disabled the routes simply don't exist. The redirect flow is plain HTTP, not Connect.
 	if cfg.GoogleEnabled() {
 		secret, err := cfg.ResolveGoogleClientSecret()

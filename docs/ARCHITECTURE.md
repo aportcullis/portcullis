@@ -17,6 +17,8 @@ The current authorization code resolves one membership role into organization-wi
 
 [ADR-0068](adr/0068-binding-authority-account-and-role-management.md) adds independent account creation/status/setup and shared-role mutation services using the same locked Binding authority. Qualification covers all affected binding permissions, bounded subject session fanout and recovery protection across Role/Binding writers. These services remain inactive until the atomic API/session/governance and migration cutover.
 
+[ADR-0069](adr/0069-prepared-administration-rpc-contracts.md) connects generated Users/Roles/Bindings RPCs to the qualified management services and a coherent read-only administration snapshot. Production mounts the actual adapters behind a mandatory post-authentication pending interceptor returning Unavailable; there is no partial activation switch or replacement of legacy grants.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.

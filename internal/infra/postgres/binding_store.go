@@ -23,6 +23,26 @@ func (s *BindingStore) LoadAuthorizationSnapshot(ctx context.Context, principal 
 	if maxBindings <= 0 || maxBindings > authz.MaxResourceBindings {
 		return authz.AuthorizationSnapshot{}, authz.ErrInvalidSnapshot
 	}
+	transaction, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return authz.AuthorizationSnapshot{}, bindingReadError(ctx)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	snapshot, err := loadBindingSnapshot(ctx, db.New(transaction), principal, permission, target, maxBindings)
+	if err != nil {
+		return authz.AuthorizationSnapshot{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return authz.AuthorizationSnapshot{}, bindingReadError(ctx)
+	}
+	return snapshot, nil
+}
+
+// loadBindingSnapshot resolves one permission inside its caller-owned read transaction.
+func loadBindingSnapshot(ctx context.Context, queries *db.Queries, principal identity.UserID, permission identity.Permission, target authz.ResourceTarget, maxBindings int) (authz.AuthorizationSnapshot, error) {
+	if maxBindings <= 0 || maxBindings > authz.MaxResourceBindings {
+		return authz.AuthorizationSnapshot{}, authz.ErrInvalidSnapshot
+	}
 	organization, err := stringToUUID(string(target.OrganizationID))
 	if err != nil || !organization.Valid {
 		return authz.AuthorizationSnapshot{}, authz.ErrPermissionDenied
@@ -35,12 +55,6 @@ func (s *BindingStore) LoadAuthorizationSnapshot(ctx context.Context, principal 
 	if err != nil || !resourceID.Valid {
 		return authz.AuthorizationSnapshot{}, authz.ErrPermissionDenied
 	}
-	transaction, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return authz.AuthorizationSnapshot{}, bindingReadError(ctx)
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-	queries := db.New(transaction)
 	authority, err := queries.GetBindingAuthorizationContext(ctx, db.GetBindingAuthorizationContextParams{OrganizationID: organization, UserID: user})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return authz.AuthorizationSnapshot{}, authz.ErrPermissionDenied
@@ -82,9 +96,6 @@ func (s *BindingStore) LoadAuthorizationSnapshot(ctx context.Context, principal 
 			return authz.AuthorizationSnapshot{}, decodeErr
 		}
 		snapshot.Grants = append(snapshot.Grants, grant)
-	}
-	if err := transaction.Commit(ctx); err != nil {
-		return authz.AuthorizationSnapshot{}, bindingReadError(ctx)
 	}
 	return snapshot, nil
 }

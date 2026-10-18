@@ -154,10 +154,7 @@ func (s *BindingService) applyBindingCommand(ctx context.Context, transaction Bi
 	}
 	if command.action != audit.ActionBindingRevoked && definition.HasCondition {
 		if _, err := s.conditions.Prepare(ctx, definition.Condition); err != nil {
-			if failure := bindingContextError(ctx); failure != nil {
-				return BindingMutation{}, failure
-			}
-			return BindingMutation{}, identity.ErrInvalidCondition
+			return BindingMutation{}, bindingPreparationError(ctx, err)
 		}
 	}
 	at, err := transaction.ObserveBindingMutationTime(ctx, definition.UserID)

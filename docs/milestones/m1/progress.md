@@ -31,6 +31,8 @@ Per [administration use cases](../../../internal/app/administration/users.go) an
 
 [ADR-0068](../../adr/0068-binding-authority-account-and-role-management.md) adds [independent account mutations](../../../internal/app/administration/policy_accounts.go) and [shared-role mutations](../../../internal/app/administration/policy_roles.go) through Binding authority. Qualification covers grantless membership/setup creation, complete live-binding delegation, disable/enable/setup reissue, old/new role permissions, bounded binding-subject session fanout, recovery protection against concurrent Role/Binding changes, rollback and fresh admission after lock waits. Production remains on existing grants; bootstrap/session and password-setup completion conversion, authorized list/get contracts, workflow/collection/output admission, transport/UI, backfill and atomic activation remain pending.
 
+[ADR-0069](../../adr/0069-prepared-administration-rpc-contracts.md) adds generated user/role/binding RPC contracts, actual management handlers, shared TypeScript clients and organization-pinned read snapshots with bounded pages and revision checks. Raw TLS/Connect scenarios qualify sessions/CSRF, conditions, complete delegation, recovery races, session revocation, source preservation and rollback. Production routes remain unavailable after normal authentication until atomic activation; API qualification does not deliver management screens, migrated bootstrap/session admission, governance/output cutover or production backfill.
+
 ## Verification status
 
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.
