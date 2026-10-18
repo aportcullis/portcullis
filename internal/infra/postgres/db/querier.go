@@ -22,6 +22,7 @@ type Querier interface {
 	CancelDraftsForConnection(ctx context.Context, arg CancelDraftsForConnectionParams) ([]AccessRequest, error)
 	// Retention under soft-delete: an expired session keeps its row and gets revoked_at set to the instant it ended, so the active-session partial indexes stay small; rows another transaction holds are skipped until the next sweep (ADR-0006).
 	CloseExpiredSessions(ctx context.Context, batchSize int32) (int64, error)
+	ConsumePasswordSetup(ctx context.Context, arg ConsumePasswordSetupParams) (int64, error)
 	// Consume only the outstanding, unexpired token; zero rows means wrong, expired, rotated or already used (ADR-0052).
 	ConsumeSetupToken(ctx context.Context, tokenHash []byte) (int64, error)
 	// Counts on the EFFECTIVE state too, so the total matches the filtered rows.
@@ -115,6 +116,7 @@ type Querier interface {
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
 	// The activation schema removes the required legacy assignment; no role is inferred here.
 	InsertIndependentMembership(ctx context.Context, arg InsertIndependentMembershipParams) error
+	InsertInitialPassword(ctx context.Context, arg InsertInitialPasswordParams) (int64, error)
 	InsertManagedBindingHead(ctx context.Context, arg InsertManagedBindingHeadParams) (pgtype.UUID, error)
 	InsertManagedBindingVersion(ctx context.Context, arg InsertManagedBindingVersionParams) error
 	// The expiry is measured from the observed instant on the database clock.
@@ -209,9 +211,11 @@ type Querier interface {
 	// Read identifiers only; execution identity is request_id and results inherit ancestry through execution metadata.
 	ResolveBindingResource(ctx context.Context, arg ResolveBindingResourceParams) ([]ResolveBindingResourceRow, error)
 	ResolveExecutionResultIdentity(ctx context.Context, arg ResolveExecutionResultIdentityParams) (pgtype.UUID, error)
+	ResolvePasswordSetup(ctx context.Context, arg ResolvePasswordSetupParams) (ResolvePasswordSetupRow, error)
 	RevokeOpenPasswordSetups(ctx context.Context, arg RevokeOpenPasswordSetupsParams) error
 	// Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).
 	RevokeOutstandingSetupTokens(ctx context.Context) error
+	RevokePasswordSetupSessions(ctx context.Context, arg RevokePasswordSetupSessionsParams) (int64, error)
 	// Revoke every active session of the organization's members holding a role whose permissions changed.
 	RevokeRoleMemberSessionsAt(ctx context.Context, arg RevokeRoleMemberSessionsAtParams) (int64, error)
 	// Only an ACTIVE session revokes: re-revoking (a concurrent double logout) must not overwrite the original revoked_at — forensic evidence of WHEN the session actually died — and the caller skips the audit event when no row changed, so the trail records only real state changes (ADR-0009).

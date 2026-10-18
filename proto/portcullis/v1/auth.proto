@@ -10,6 +10,8 @@ service Auth {
   rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse) {}
   // Login verifies the password and starts a session (sets the session + CSRF cookies).
   rpc Login(LoginRequest) returns (LoginResponse) {}
+  // CompletePasswordSetup consumes an initial-password token atomically; no session or account data is returned.
+  rpc CompletePasswordSetup(CompletePasswordSetupRequest) returns (CompletePasswordSetupResponse) {}
   // Logout revokes the current session and clears the cookies.
   rpc Logout(LogoutRequest) returns (LogoutResponse) {}
   // Me returns the currently authenticated user.
@@ -64,6 +66,11 @@ message SessionBinding {
 }
 
 message LogoutRequest {}
+message CompletePasswordSetupRequest {
+  string token = 1;
+  string password = 2;
+}
+message CompletePasswordSetupResponse {}
 message LogoutResponse {}
 
 message MeRequest {}

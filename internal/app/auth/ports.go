@@ -10,6 +10,7 @@ import (
 
 // Repository mutations commit audit events atomically and observe expiry under the request lock before deciding (ADR-0009/0018).
 type Repository interface {
+	PasswordSetupRepository
 	// DefaultOrganizationID resolves the single self-hosted organization audit events are scoped to (single-org MVP).
 	DefaultOrganizationID(ctx context.Context) (identity.OrganizationID, error)
 

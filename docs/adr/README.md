@@ -97,6 +97,7 @@ These decisions establish the Core 1 foundation.
 | [0069](0069-prepared-administration-rpc-contracts.md) | Prepared user, role and binding RPCs with coherent authorized reads | Accepted |
 | [0070](0070-prepared-administration-ui.md) | Prepared administration pages, condition choices and scoped UI request lifetimes | Accepted |
 | [0071](0071-binding-authorization-activation.md) | Atomic Binding authorization across bootstrap, sessions, governance and protected output | Accepted |
+| [0072](0072-password-setup-consumption.md) | Atomic initial-password setup consumption and public registration page | Accepted |
 
 ## Template
 ```markdown

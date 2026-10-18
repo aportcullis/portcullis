@@ -48,15 +48,17 @@ func sessionAndCSRFCookies(h http.Header) (session, csrf string) {
 
 // publicProcedures need no session — they run before one exists.
 var publicProcedures = map[string]bool{
-	portcullisv1connect.AuthBootstrapProcedure: true,
-	portcullisv1connect.AuthLoginProcedure:     true,
-	portcullisv1connect.AuthGetConfigProcedure: true,
+	portcullisv1connect.AuthCompletePasswordSetupProcedure: true,
+	portcullisv1connect.AuthBootstrapProcedure:             true,
+	portcullisv1connect.AuthLoginProcedure:                 true,
+	portcullisv1connect.AuthGetConfigProcedure:             true,
 }
 
 // Credential procedures use tight limits before Argon2 hashing; the cheap public GetConfig read shares the broader non-credential bucket.
 var credentialProcedures = map[string]bool{
-	portcullisv1connect.AuthBootstrapProcedure: true,
-	portcullisv1connect.AuthLoginProcedure:     true,
+	portcullisv1connect.AuthCompletePasswordSetupProcedure: true,
+	portcullisv1connect.AuthBootstrapProcedure:             true,
+	portcullisv1connect.AuthLoginProcedure:                 true,
 }
 
 // BrowserOriginRequiredProcedures returns, sorted, the pre-session credential procedures whose unsafe requests must carry browser origin evidence at the HTTP boundary (ADR-0052).

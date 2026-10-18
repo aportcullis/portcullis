@@ -20,7 +20,7 @@ func TestGoogleCallbackPathMatchesConfigConstant(t *testing.T) {
 
 func TestBrowserOriginRequiredProceduresCoverPreSessionCredentialsOnly(t *testing.T) {
 	t.Parallel()
-	want := []string{portcullisv1connect.AuthBootstrapProcedure, portcullisv1connect.AuthLoginProcedure}
+	want := []string{portcullisv1connect.AuthBootstrapProcedure, portcullisv1connect.AuthCompletePasswordSetupProcedure, portcullisv1connect.AuthLoginProcedure}
 	if got := connectapi.BrowserOriginRequiredProcedures(); !slices.Equal(got, want) {
 		t.Fatalf("BrowserOriginRequiredProcedures = %q, want %q (GetConfig is a read and authenticated RPCs carry CSRF tokens)", got, want)
 	}

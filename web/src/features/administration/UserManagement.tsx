@@ -5,10 +5,11 @@ import { hasPermission } from "@/entities/session/store";
 import type { UserSetupLink } from "@/gen/portcullis/v1/administration_pb";
 import { ConfirmManagementAction, ManagementFeedback, ManagementField, ManagementIDReceipt, createManagementAction } from "@/features/administration/controls";
 import { Button } from "@/shared/ui/button";
+import { passwordSetupLink } from "@/shared/lib/passwordSetupLink";
 
 /** Presents a fresh token only in volatile route state with explicit dismissal. */
 export function SetupTokenReceipt(props: { link: UserSetupLink; onDismiss: () => void }) {
-  return <section aria-label="One-time setup delivery" class="flex flex-col gap-3 rounded-md border p-4"><p>Store this setup token now and deliver it privately to the account owner. It is shown only for this issuance.</p><label class="flex flex-col gap-1">Setup token<input class="w-full rounded border bg-background p-2 font-mono text-sm" readOnly value={props.link.token} /></label><Show when={props.link.expiresAt}>{expiry => <p>Expires: {new Date(Number(expiry().seconds) * 1000).toISOString()}</p>}</Show><Button variant="outline" onClick={props.onDismiss}>Dismiss setup token</Button></section>;
+  return <section aria-label="One-time setup delivery" class="flex flex-col gap-3 rounded-md border p-4"><p>Deliver this setup link privately to the account owner. It is shown only for this issuance.</p><label class="flex flex-col gap-1">Setup link<input class="w-full rounded border bg-background p-2 font-mono text-sm" readOnly value={passwordSetupLink(window.location.origin, props.link.token)} /></label><label class="flex flex-col gap-1">Setup token<input class="w-full rounded border bg-background p-2 font-mono text-sm" readOnly value={props.link.token} /></label><Show when={props.link.expiresAt}>{expiry => <p>Expires: {new Date(Number(expiry().seconds) * 1000).toISOString()}</p>}</Show><Button variant="outline" onClick={props.onDismiss}>Dismiss setup token</Button></section>;
 }
 
 /** Creates independent membership without assigning an implicit Role. */

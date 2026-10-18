@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portcullis/v1/auth.proto.
  */
 export const file_portcullis_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIl4KEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhMKC3NldHVwX3Rva2VuGAQgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIsEBCg1Mb2dpblJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXISEwoLcGVybWlzc2lvbnMYAiADKAkSEQoJcm9sZV9uYW1lGAMgASgJEhQKDGNhcGFiaWxpdGllcxgEIAMoCRIvCghiaW5kaW5ncxgFIAMoCzIdLnBvcnRjdWxsaXMudjEuU2Vzc2lvbkJpbmRpbmcSHgoWYXV0aG9yaXphdGlvbl9yZXZpc2lvbhgGIAEoAyKCAQoOU2Vzc2lvbkJpbmRpbmcSCgoCaWQYASABKAkSDwoHcm9sZV9pZBgCIAEoCRIRCglyb2xlX25hbWUYAyABKAkSEgoKc2NvcGVfdHlwZRgEIAEoCRIVCg1jb25uZWN0aW9uX2lkGAUgASgJEhUKDWhhc19jb25kaXRpb24YBiABKAgiDwoNTG9nb3V0UmVxdWVzdCIQCg5Mb2dvdXRSZXNwb25zZSILCglNZVJlcXVlc3QivgEKCk1lUmVzcG9uc2USIQoEdXNlchgBIAEoCzITLnBvcnRjdWxsaXMudjEuVXNlchITCgtwZXJtaXNzaW9ucxgCIAMoCRIRCglyb2xlX25hbWUYAyABKAkSFAoMY2FwYWJpbGl0aWVzGAQgAygJEi8KCGJpbmRpbmdzGAUgAygLMh0ucG9ydGN1bGxpcy52MS5TZXNzaW9uQmluZGluZxIeChZhdXRob3JpemF0aW9uX3JldmlzaW9uGAYgASgDIhIKEEdldENvbmZpZ1JlcXVlc3QiqAEKEUdldENvbmZpZ1Jlc3BvbnNlEhYKDmdvb2dsZV9lbmFibGVkGAEgASgIEhcKD25lZWRzX2Jvb3RzdHJhcBgCIAEoCBIhChltYXhfYXBwcm92YWxfcmVhc29uX2NoYXJzGAMgASgFEh8KF21heF9yZXF1ZXN0X3RpdGxlX2NoYXJzGAQgASgFEh4KFm1heF9yZXF1ZXN0X2JvZHlfY2hhcnMYBSABKAUy9gIKBEF1dGgSUAoJQm9vdHN0cmFwEh8ucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXF1ZXN0GiAucG9ydGN1bGxpcy52MS5Cb290c3RyYXBSZXNwb25zZSIAEkQKBUxvZ2luEhsucG9ydGN1bGxpcy52MS5Mb2dpblJlcXVlc3QaHC5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAElAKCUdldENvbmZpZxIfLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM");
+  fileDesc("Chhwb3J0Y3VsbGlzL3YxL2F1dGgucHJvdG8SDXBvcnRjdWxsaXMudjEiRwoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSDgoGc3RhdHVzGAQgASgJIl4KEEJvb3RzdHJhcFJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhMKC3NldHVwX3Rva2VuGAQgASgJIjYKEUJvb3RzdHJhcFJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXIiLwoMTG9naW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIsEBCg1Mb2dpblJlc3BvbnNlEiEKBHVzZXIYASABKAsyEy5wb3J0Y3VsbGlzLnYxLlVzZXISEwoLcGVybWlzc2lvbnMYAiADKAkSEQoJcm9sZV9uYW1lGAMgASgJEhQKDGNhcGFiaWxpdGllcxgEIAMoCRIvCghiaW5kaW5ncxgFIAMoCzIdLnBvcnRjdWxsaXMudjEuU2Vzc2lvbkJpbmRpbmcSHgoWYXV0aG9yaXphdGlvbl9yZXZpc2lvbhgGIAEoAyKCAQoOU2Vzc2lvbkJpbmRpbmcSCgoCaWQYASABKAkSDwoHcm9sZV9pZBgCIAEoCRIRCglyb2xlX25hbWUYAyABKAkSEgoKc2NvcGVfdHlwZRgEIAEoCRIVCg1jb25uZWN0aW9uX2lkGAUgASgJEhUKDWhhc19jb25kaXRpb24YBiABKAgiDwoNTG9nb3V0UmVxdWVzdCI/ChxDb21wbGV0ZVBhc3N3b3JkU2V0dXBSZXF1ZXN0Eg0KBXRva2VuGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIh8KHUNvbXBsZXRlUGFzc3dvcmRTZXR1cFJlc3BvbnNlIhAKDkxvZ291dFJlc3BvbnNlIgsKCU1lUmVxdWVzdCK+AQoKTWVSZXNwb25zZRIhCgR1c2VyGAEgASgLMhMucG9ydGN1bGxpcy52MS5Vc2VyEhMKC3Blcm1pc3Npb25zGAIgAygJEhEKCXJvbGVfbmFtZRgDIAEoCRIUCgxjYXBhYmlsaXRpZXMYBCADKAkSLwoIYmluZGluZ3MYBSADKAsyHS5wb3J0Y3VsbGlzLnYxLlNlc3Npb25CaW5kaW5nEh4KFmF1dGhvcml6YXRpb25fcmV2aXNpb24YBiABKAMiEgoQR2V0Q29uZmlnUmVxdWVzdCKoAQoRR2V0Q29uZmlnUmVzcG9uc2USFgoOZ29vZ2xlX2VuYWJsZWQYASABKAgSFwoPbmVlZHNfYm9vdHN0cmFwGAIgASgIEiEKGW1heF9hcHByb3ZhbF9yZWFzb25fY2hhcnMYAyABKAUSHwoXbWF4X3JlcXVlc3RfdGl0bGVfY2hhcnMYBCABKAUSHgoWbWF4X3JlcXVlc3RfYm9keV9jaGFycxgFIAEoBTLsAwoEQXV0aBJQCglCb290c3RyYXASHy5wb3J0Y3VsbGlzLnYxLkJvb3RzdHJhcFJlcXVlc3QaIC5wb3J0Y3VsbGlzLnYxLkJvb3RzdHJhcFJlc3BvbnNlIgASRAoFTG9naW4SGy5wb3J0Y3VsbGlzLnYxLkxvZ2luUmVxdWVzdBocLnBvcnRjdWxsaXMudjEuTG9naW5SZXNwb25zZSIAEnQKFUNvbXBsZXRlUGFzc3dvcmRTZXR1cBIrLnBvcnRjdWxsaXMudjEuQ29tcGxldGVQYXNzd29yZFNldHVwUmVxdWVzdBosLnBvcnRjdWxsaXMudjEuQ29tcGxldGVQYXNzd29yZFNldHVwUmVzcG9uc2UiABJHCgZMb2dvdXQSHC5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlcXVlc3QaHS5wb3J0Y3VsbGlzLnYxLkxvZ291dFJlc3BvbnNlIgASOwoCTWUSGC5wb3J0Y3VsbGlzLnYxLk1lUmVxdWVzdBoZLnBvcnRjdWxsaXMudjEuTWVSZXNwb25zZSIAElAKCUdldENvbmZpZxIfLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVxdWVzdBogLnBvcnRjdWxsaXMudjEuR2V0Q29uZmlnUmVzcG9uc2UiAEJCWkBnaXRodWIuY29tL2Fwb3J0Y3VsbGlzL3BvcnRjdWxsaXMvZ2VuL3BvcnRjdWxsaXMvdjE7cG9ydGN1bGxpc3YxYgZwcm90bzM");
 
 /**
  * @generated from message portcullis.v1.User
@@ -225,6 +225,41 @@ export const LogoutRequestSchema: GenMessage<LogoutRequest> = /*@__PURE__*/
   messageDesc(file_portcullis_v1_auth, 6);
 
 /**
+ * @generated from message portcullis.v1.CompletePasswordSetupRequest
+ */
+export type CompletePasswordSetupRequest = Message<"portcullis.v1.CompletePasswordSetupRequest"> & {
+  /**
+   * @generated from field: string token = 1;
+   */
+  token: string;
+
+  /**
+   * @generated from field: string password = 2;
+   */
+  password: string;
+};
+
+/**
+ * Describes the message portcullis.v1.CompletePasswordSetupRequest.
+ * Use `create(CompletePasswordSetupRequestSchema)` to create a new message.
+ */
+export const CompletePasswordSetupRequestSchema: GenMessage<CompletePasswordSetupRequest> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_auth, 7);
+
+/**
+ * @generated from message portcullis.v1.CompletePasswordSetupResponse
+ */
+export type CompletePasswordSetupResponse = Message<"portcullis.v1.CompletePasswordSetupResponse"> & {
+};
+
+/**
+ * Describes the message portcullis.v1.CompletePasswordSetupResponse.
+ * Use `create(CompletePasswordSetupResponseSchema)` to create a new message.
+ */
+export const CompletePasswordSetupResponseSchema: GenMessage<CompletePasswordSetupResponse> = /*@__PURE__*/
+  messageDesc(file_portcullis_v1_auth, 8);
+
+/**
  * @generated from message portcullis.v1.LogoutResponse
  */
 export type LogoutResponse = Message<"portcullis.v1.LogoutResponse"> & {
@@ -235,7 +270,7 @@ export type LogoutResponse = Message<"portcullis.v1.LogoutResponse"> & {
  * Use `create(LogoutResponseSchema)` to create a new message.
  */
 export const LogoutResponseSchema: GenMessage<LogoutResponse> = /*@__PURE__*/
-  messageDesc(file_portcullis_v1_auth, 7);
+  messageDesc(file_portcullis_v1_auth, 9);
 
 /**
  * @generated from message portcullis.v1.MeRequest
@@ -248,7 +283,7 @@ export type MeRequest = Message<"portcullis.v1.MeRequest"> & {
  * Use `create(MeRequestSchema)` to create a new message.
  */
 export const MeRequestSchema: GenMessage<MeRequest> = /*@__PURE__*/
-  messageDesc(file_portcullis_v1_auth, 8);
+  messageDesc(file_portcullis_v1_auth, 10);
 
 /**
  * @generated from message portcullis.v1.MeResponse
@@ -294,7 +329,7 @@ export type MeResponse = Message<"portcullis.v1.MeResponse"> & {
  * Use `create(MeResponseSchema)` to create a new message.
  */
 export const MeResponseSchema: GenMessage<MeResponse> = /*@__PURE__*/
-  messageDesc(file_portcullis_v1_auth, 9);
+  messageDesc(file_portcullis_v1_auth, 11);
 
 /**
  * @generated from message portcullis.v1.GetConfigRequest
@@ -307,7 +342,7 @@ export type GetConfigRequest = Message<"portcullis.v1.GetConfigRequest"> & {
  * Use `create(GetConfigRequestSchema)` to create a new message.
  */
 export const GetConfigRequestSchema: GenMessage<GetConfigRequest> = /*@__PURE__*/
-  messageDesc(file_portcullis_v1_auth, 10);
+  messageDesc(file_portcullis_v1_auth, 12);
 
 /**
  * @generated from message portcullis.v1.GetConfigResponse
@@ -350,7 +385,7 @@ export type GetConfigResponse = Message<"portcullis.v1.GetConfigResponse"> & {
  * Use `create(GetConfigResponseSchema)` to create a new message.
  */
 export const GetConfigResponseSchema: GenMessage<GetConfigResponse> = /*@__PURE__*/
-  messageDesc(file_portcullis_v1_auth, 11);
+  messageDesc(file_portcullis_v1_auth, 13);
 
 /**
  * Auth is the authentication surface: first-run bootstrap, password login, and the current-session endpoints. The opaque session token and the CSRF token are carried in __Host- cookies (set by Login, cleared by Logout), never in these messages (ADR-0006).
@@ -377,6 +412,16 @@ export const Auth: GenService<{
     methodKind: "unary";
     input: typeof LoginRequestSchema;
     output: typeof LoginResponseSchema;
+  },
+  /**
+   * CompletePasswordSetup consumes an initial-password token atomically; no session or account data is returned.
+   *
+   * @generated from rpc portcullis.v1.Auth.CompletePasswordSetup
+   */
+  completePasswordSetup: {
+    methodKind: "unary";
+    input: typeof CompletePasswordSetupRequestSchema;
+    output: typeof CompletePasswordSetupResponseSchema;
   },
   /**
    * Logout revokes the current session and clears the cookies.

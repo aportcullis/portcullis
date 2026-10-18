@@ -463,6 +463,94 @@ func (*LogoutRequest) Descriptor() ([]byte, []int) {
 	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{6}
 }
 
+type CompletePasswordSetupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompletePasswordSetupRequest) Reset() {
+	*x = CompletePasswordSetupRequest{}
+	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompletePasswordSetupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompletePasswordSetupRequest) ProtoMessage() {}
+
+func (x *CompletePasswordSetupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompletePasswordSetupRequest.ProtoReflect.Descriptor instead.
+func (*CompletePasswordSetupRequest) Descriptor() ([]byte, []int) {
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CompletePasswordSetupRequest) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *CompletePasswordSetupRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+type CompletePasswordSetupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompletePasswordSetupResponse) Reset() {
+	*x = CompletePasswordSetupResponse{}
+	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompletePasswordSetupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompletePasswordSetupResponse) ProtoMessage() {}
+
+func (x *CompletePasswordSetupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompletePasswordSetupResponse.ProtoReflect.Descriptor instead.
+func (*CompletePasswordSetupResponse) Descriptor() ([]byte, []int) {
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{8}
+}
+
 type LogoutResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -471,7 +559,7 @@ type LogoutResponse struct {
 
 func (x *LogoutResponse) Reset() {
 	*x = LogoutResponse{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -483,7 +571,7 @@ func (x *LogoutResponse) String() string {
 func (*LogoutResponse) ProtoMessage() {}
 
 func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -496,7 +584,7 @@ func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutResponse.ProtoReflect.Descriptor instead.
 func (*LogoutResponse) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{7}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{9}
 }
 
 type MeRequest struct {
@@ -507,7 +595,7 @@ type MeRequest struct {
 
 func (x *MeRequest) Reset() {
 	*x = MeRequest{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -519,7 +607,7 @@ func (x *MeRequest) String() string {
 func (*MeRequest) ProtoMessage() {}
 
 func (x *MeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -532,7 +620,7 @@ func (x *MeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeRequest.ProtoReflect.Descriptor instead.
 func (*MeRequest) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{8}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{10}
 }
 
 type MeResponse struct {
@@ -551,7 +639,7 @@ type MeResponse struct {
 
 func (x *MeResponse) Reset() {
 	*x = MeResponse{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -563,7 +651,7 @@ func (x *MeResponse) String() string {
 func (*MeResponse) ProtoMessage() {}
 
 func (x *MeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -576,7 +664,7 @@ func (x *MeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeResponse.ProtoReflect.Descriptor instead.
 func (*MeResponse) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{9}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *MeResponse) GetUser() *User {
@@ -629,7 +717,7 @@ type GetConfigRequest struct {
 
 func (x *GetConfigRequest) Reset() {
 	*x = GetConfigRequest{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -641,7 +729,7 @@ func (x *GetConfigRequest) String() string {
 func (*GetConfigRequest) ProtoMessage() {}
 
 func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -654,7 +742,7 @@ func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigRequest) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{10}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{12}
 }
 
 type GetConfigResponse struct {
@@ -673,7 +761,7 @@ type GetConfigResponse struct {
 
 func (x *GetConfigResponse) Reset() {
 	*x = GetConfigResponse{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[11]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +773,7 @@ func (x *GetConfigResponse) String() string {
 func (*GetConfigResponse) ProtoMessage() {}
 
 func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[11]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +786,7 @@ func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigResponse) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{11}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetConfigResponse) GetGoogleEnabled() bool {
@@ -772,7 +860,11 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"scope_type\x18\x04 \x01(\tR\tscopeType\x12#\n" +
 	"\rconnection_id\x18\x05 \x01(\tR\fconnectionId\x12#\n" +
 	"\rhas_condition\x18\x06 \x01(\bR\fhasCondition\"\x0f\n" +
-	"\rLogoutRequest\"\x10\n" +
+	"\rLogoutRequest\"P\n" +
+	"\x1cCompletePasswordSetupRequest\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1a\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x1f\n" +
+	"\x1dCompletePasswordSetupResponse\"\x10\n" +
 	"\x0eLogoutResponse\"\v\n" +
 	"\tMeRequest\"\x8a\x02\n" +
 	"\n" +
@@ -789,10 +881,11 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x0fneeds_bootstrap\x18\x02 \x01(\bR\x0eneedsBootstrap\x129\n" +
 	"\x19max_approval_reason_chars\x18\x03 \x01(\x05R\x16maxApprovalReasonChars\x125\n" +
 	"\x17max_request_title_chars\x18\x04 \x01(\x05R\x14maxRequestTitleChars\x123\n" +
-	"\x16max_request_body_chars\x18\x05 \x01(\x05R\x13maxRequestBodyChars2\xf6\x02\n" +
+	"\x16max_request_body_chars\x18\x05 \x01(\x05R\x13maxRequestBodyChars2\xec\x03\n" +
 	"\x04Auth\x12P\n" +
 	"\tBootstrap\x12\x1f.portcullis.v1.BootstrapRequest\x1a .portcullis.v1.BootstrapResponse\"\x00\x12D\n" +
-	"\x05Login\x12\x1b.portcullis.v1.LoginRequest\x1a\x1c.portcullis.v1.LoginResponse\"\x00\x12G\n" +
+	"\x05Login\x12\x1b.portcullis.v1.LoginRequest\x1a\x1c.portcullis.v1.LoginResponse\"\x00\x12t\n" +
+	"\x15CompletePasswordSetup\x12+.portcullis.v1.CompletePasswordSetupRequest\x1a,.portcullis.v1.CompletePasswordSetupResponse\"\x00\x12G\n" +
 	"\x06Logout\x12\x1c.portcullis.v1.LogoutRequest\x1a\x1d.portcullis.v1.LogoutResponse\"\x00\x12;\n" +
 	"\x02Me\x12\x18.portcullis.v1.MeRequest\x1a\x19.portcullis.v1.MeResponse\"\x00\x12P\n" +
 	"\tGetConfig\x12\x1f.portcullis.v1.GetConfigRequest\x1a .portcullis.v1.GetConfigResponse\"\x00BBZ@github.com/aportcullis/portcullis/gen/portcullis/v1;portcullisv1b\x06proto3"
@@ -809,20 +902,22 @@ func file_portcullis_v1_auth_proto_rawDescGZIP() []byte {
 	return file_portcullis_v1_auth_proto_rawDescData
 }
 
-var file_portcullis_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_portcullis_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_portcullis_v1_auth_proto_goTypes = []any{
-	(*User)(nil),              // 0: portcullis.v1.User
-	(*BootstrapRequest)(nil),  // 1: portcullis.v1.BootstrapRequest
-	(*BootstrapResponse)(nil), // 2: portcullis.v1.BootstrapResponse
-	(*LoginRequest)(nil),      // 3: portcullis.v1.LoginRequest
-	(*LoginResponse)(nil),     // 4: portcullis.v1.LoginResponse
-	(*SessionBinding)(nil),    // 5: portcullis.v1.SessionBinding
-	(*LogoutRequest)(nil),     // 6: portcullis.v1.LogoutRequest
-	(*LogoutResponse)(nil),    // 7: portcullis.v1.LogoutResponse
-	(*MeRequest)(nil),         // 8: portcullis.v1.MeRequest
-	(*MeResponse)(nil),        // 9: portcullis.v1.MeResponse
-	(*GetConfigRequest)(nil),  // 10: portcullis.v1.GetConfigRequest
-	(*GetConfigResponse)(nil), // 11: portcullis.v1.GetConfigResponse
+	(*User)(nil),                          // 0: portcullis.v1.User
+	(*BootstrapRequest)(nil),              // 1: portcullis.v1.BootstrapRequest
+	(*BootstrapResponse)(nil),             // 2: portcullis.v1.BootstrapResponse
+	(*LoginRequest)(nil),                  // 3: portcullis.v1.LoginRequest
+	(*LoginResponse)(nil),                 // 4: portcullis.v1.LoginResponse
+	(*SessionBinding)(nil),                // 5: portcullis.v1.SessionBinding
+	(*LogoutRequest)(nil),                 // 6: portcullis.v1.LogoutRequest
+	(*CompletePasswordSetupRequest)(nil),  // 7: portcullis.v1.CompletePasswordSetupRequest
+	(*CompletePasswordSetupResponse)(nil), // 8: portcullis.v1.CompletePasswordSetupResponse
+	(*LogoutResponse)(nil),                // 9: portcullis.v1.LogoutResponse
+	(*MeRequest)(nil),                     // 10: portcullis.v1.MeRequest
+	(*MeResponse)(nil),                    // 11: portcullis.v1.MeResponse
+	(*GetConfigRequest)(nil),              // 12: portcullis.v1.GetConfigRequest
+	(*GetConfigResponse)(nil),             // 13: portcullis.v1.GetConfigResponse
 }
 var file_portcullis_v1_auth_proto_depIdxs = []int32{
 	0,  // 0: portcullis.v1.BootstrapResponse.user:type_name -> portcullis.v1.User
@@ -832,16 +927,18 @@ var file_portcullis_v1_auth_proto_depIdxs = []int32{
 	5,  // 4: portcullis.v1.MeResponse.bindings:type_name -> portcullis.v1.SessionBinding
 	1,  // 5: portcullis.v1.Auth.Bootstrap:input_type -> portcullis.v1.BootstrapRequest
 	3,  // 6: portcullis.v1.Auth.Login:input_type -> portcullis.v1.LoginRequest
-	6,  // 7: portcullis.v1.Auth.Logout:input_type -> portcullis.v1.LogoutRequest
-	8,  // 8: portcullis.v1.Auth.Me:input_type -> portcullis.v1.MeRequest
-	10, // 9: portcullis.v1.Auth.GetConfig:input_type -> portcullis.v1.GetConfigRequest
-	2,  // 10: portcullis.v1.Auth.Bootstrap:output_type -> portcullis.v1.BootstrapResponse
-	4,  // 11: portcullis.v1.Auth.Login:output_type -> portcullis.v1.LoginResponse
-	7,  // 12: portcullis.v1.Auth.Logout:output_type -> portcullis.v1.LogoutResponse
-	9,  // 13: portcullis.v1.Auth.Me:output_type -> portcullis.v1.MeResponse
-	11, // 14: portcullis.v1.Auth.GetConfig:output_type -> portcullis.v1.GetConfigResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
+	7,  // 7: portcullis.v1.Auth.CompletePasswordSetup:input_type -> portcullis.v1.CompletePasswordSetupRequest
+	6,  // 8: portcullis.v1.Auth.Logout:input_type -> portcullis.v1.LogoutRequest
+	10, // 9: portcullis.v1.Auth.Me:input_type -> portcullis.v1.MeRequest
+	12, // 10: portcullis.v1.Auth.GetConfig:input_type -> portcullis.v1.GetConfigRequest
+	2,  // 11: portcullis.v1.Auth.Bootstrap:output_type -> portcullis.v1.BootstrapResponse
+	4,  // 12: portcullis.v1.Auth.Login:output_type -> portcullis.v1.LoginResponse
+	8,  // 13: portcullis.v1.Auth.CompletePasswordSetup:output_type -> portcullis.v1.CompletePasswordSetupResponse
+	9,  // 14: portcullis.v1.Auth.Logout:output_type -> portcullis.v1.LogoutResponse
+	11, // 15: portcullis.v1.Auth.Me:output_type -> portcullis.v1.MeResponse
+	13, // 16: portcullis.v1.Auth.GetConfig:output_type -> portcullis.v1.GetConfigResponse
+	11, // [11:17] is the sub-list for method output_type
+	5,  // [5:11] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -858,7 +955,7 @@ func file_portcullis_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portcullis_v1_auth_proto_rawDesc), len(file_portcullis_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

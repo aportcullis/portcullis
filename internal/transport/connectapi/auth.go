@@ -18,6 +18,7 @@ import (
 
 // authApp is the slice of the auth application service this handler consumes (DIP/ISP — the handler depends on the methods it calls, not the concrete *auth.Service; tests substitute fakes without a database).
 type authApp interface {
+	CompletePasswordSetup(context.Context, string, string) error
 	BootstrapWithSetupToken(ctx context.Context, setupToken, email, password, displayName string) (identity.User, error)
 	Login(ctx context.Context, email, password string) (auth.Session, error)
 	Logout(ctx context.Context, token string) error

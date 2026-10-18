@@ -191,7 +191,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   - 해당 권한을 가진 활성 Binding의 범위가 맞고 조건이 없거나 참이어야 허용한다. 여러 부여는 합산하므로 조건부 Binding이 다른 넓은 부여를 제한하지 않는다. 적용 가능한 부여가 없으면 거부하고, 속성 누락·조건 오류는 권한을 부여하지 않는다.
   - 목록·개수·선택 목록·검토 자격·실행·크기가 제한된 결과/CSV 출력을 포함한 모든 보호 작업에서 현재 리소스와 조건을 검사한다. 세션의 평면 권한 목록을 리소스 인가 근거로 쓰거나 접근 불가 행·필터 전 전체 개수를 공개하지 않는다.
   - 조직 격리·자기 승인 금지·요청자/결과 소유권·정족수·승인 불변성·1회 실행은 부여와 별개로 강제한다. M1에는 사용자 정의 deny 정책·그룹/서비스 주체·일반적인 위임 정책 관리를 추가하지 않는다.
-  - 코드가 검사하는 키가 카탈로그에 없으면 서버는 기동을 거부한다. 시드 `requester`·`approver`·`admin`은 기본 역할이며 custom role을 지원하고 실제 권한은 Binding으로만 부여한다. 구현·마이그레이션은 계획된 M1 작업이며 기존 검증 기록은 이전 모델에 대한 것이다.
+  - 코드가 검사하는 키가 카탈로그에 없으면 서버는 기동을 거부한다. 시드 `requester`·`approver`·`admin`은 기본 역할이며 custom role을 지원하고 실제 권한은 Binding으로만 부여한다. ADR-0071에 구현된 마이그레이션과 일괄 활성화를 기록하며 M1 전체 인수 조건 충족은 별도로 판단한다.
 - **실행 권한:** 요청자만 자신의 승인된 요청을 실행할 수 있음. admin 대리 실행은 MVP에서 허용하지 않음. kviklet은 0.8.0부터 단일 실행 요청에 타 execute 권한자의 실행을 허용하지만, Portcullis는 requester를 승인 단위와 결과 권한에 포함하는 기존 계약을 유지한다(ADR-0019).
 - **소규모 팀 데드락 (결정됨):** 자기 승인 금지(admin 포함) 정책상, 권한자가 1명뿐인 셀프호스트는 자기 요청을 승인할 주체가 없어 실행이 막힌다. connection·종류별 `required_approvals=0` 설정으로 이 데드락을 해소한다.
   이 경우 submit과 동시에 system actor가 자동 승인 event를 남기고 `approved`로 전이한다.
@@ -442,7 +442,7 @@ multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와
 | 메타데이터 DB 접근 | `sqlc` on `pgx` | raw SQL + 타입 안전. ORM 미사용 |
 | 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL 차이를 명시적으로 격리 |
 | 인증 | password(argon2id) + Google OIDC + M3 Keycloak OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 추가 인증 연동은 이후 |
-| Authz | 리소스 기반 Role·Binding·Condition | 계획된 M1 전환(ADR-0062). repository 조직 격리·cross-org 테스트 유지. metadata RLS는 MVP 미적용(ADR-0004, 스키마는 RLS-ready) |
+| Authz | 리소스 기반 Role·Binding·Condition | ADR-0062에 따라 ADR-0071로 활성화. repository 조직 격리·cross-org 테스트 유지. metadata RLS는 MVP 미적용(ADR-0004, 스키마는 RLS-ready) |
 | 프론트엔드 | SolidJS SPA + Vite | CSR. `go:embed`로 바이너리에 포함 |
 | UI 라이브러리 | Kobalte + Tailwind + TanStack Table | 데이터 그리드가 제품 핵심 |
 | Schema 엔진 | Atlas Community CLI subprocess | 버전·checksum을 고정하고 `SchemaEngine` 인터페이스로 격리 |
@@ -628,6 +628,7 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하고 메뉴에서 계정 정보를 제공하며, 기본 이미지는 외부 요청 없이 로컬에서 생성한다(ADR-0056).
 - 공개 회원가입은 제공하지 않음. admin이 사용자를 생성하면 24시간 유효한 일회용 password setup link를 발급하며 MVP에서는 이메일 발송 없이 한 번만 표시.
   - token은 digest만 저장하고 사용자당 열린 link는 하나이며 원자적으로 소비한다. 완료 시 해당 사용자의 session을 revoke하고 이후 일반 로그인을 요구한다. 재사용·만료·revoke된 link는 하나의 일반 거부로 응답한다. link는 password가 없는 active 사용자에게만 발급하며 admin의 password 재설정은 후속 작업이다(ADR-0053).
+  - ADR-0072는 `/setup-password#token=...`과 공개 `Auth.CompletePasswordSetup`으로 등록을 구현한다. fragment를 즉시 제거하고 비밀번호 확인을 요구하며 자동 로그인이나 credential 쓰기의 자동 재시도는 하지 않는다.
   - admin은 사용자 목록·생성·비활성화/재활성화, 독립적인 역할 정의와 선택적 조건을 가진 여러 범위별 Binding을 관리한다. 사용자 생성 시 초기 Binding을 원자적으로 포함할 수 있다. system role은 읽기 전용이며 회수되지 않은 Binding이 참조하는 역할은 삭제할 수 없다(ADR-0062).
   - 정책 쓰기는 무조건부 조직 전체 관리 권한과 같은 무제한 범위의 변경 전후 관련 권한을 모두 요구한다. 조건부·connection 전용 부여의 권한 키만 복사해 더 넓은 권한을 만들 수 없으며 자기 활성화/비활성화·자기 Binding 변경은 거부한다. 범위별 위임 관리는 후속 범위다(ADR-0062).
 - **Google 소셜 로그인(OIDC):** Authorization Code + PKCE, `state`(CSRF)·`nonce`(replay) 필수, ID token 검증(서명·iss·aud·exp)과 `email_verified` 확인.

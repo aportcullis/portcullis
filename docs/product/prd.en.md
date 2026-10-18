@@ -202,7 +202,7 @@ Turn approved, executed queries into assets.
   - Access requires a matching live binding with the required permission and an absent or true condition. Grants are additive: a conditional binding does not narrow another broader grant. No applicable grant means denial; missing attributes and condition errors grant nothing.
   - Check the current resource and conditions on every protected operation, including list/count/picker results, review eligibility, execution and bounded result/CSV output. Never treat a session's flat permission list as resource authority; do not disclose inaccessible rows or unfiltered totals.
   - Organization isolation, no self-approval, requester/result ownership, quorum, immutable approval and single-use execution remain mandatory regardless of grants. M1 adds no custom deny policies, group/service principals or general delegated policy administration.
-  - Startup refuses to serve when an enforced permission key is absent from the catalog. Seed `requester`, `approver` and `admin` roles remain defaults; custom roles are supported. Only bindings grant their permissions. Implementation and migration remain planned M1 work; existing evidence covers the previous model.
+  - Startup refuses to serve when an enforced permission key is absent from the catalog. Seed `requester`, `approver` and `admin` roles remain defaults; custom roles are supported. Only bindings grant their permissions. ADR-0071 records the implemented migration and coordinated activation; full M1 acceptance remains separate.
 - **Execution permission:** Only the requester can execute their approved request; no admin proxy execution in MVP.
   - kviklet 0.8.0 permits other execute-permission holders to run single-execution requests; Portcullis keeps its requester-bound approval/result contract, ADR-0019.
 - **Single-person deadlock:** Keep no-self-approval even for admins; resolve solo self-hosting through per-connection/class `required_approvals=0`.
@@ -472,7 +472,7 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | Metadata access | `sqlc` on `pgx` | Raw SQL with type safety, no ORM |
 | Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL differences |
 | Authentication | argon2id passwords, Google OIDC, M3 Keycloak OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; broader federation later |
-| Authorization | Resource-aware Role/Binding/Condition | Planned M1 replacement, ADR-0062; repository org isolation and cross-org tests remain mandatory; no MVP metadata RLS, ADR-0004 |
+| Authorization | Resource-aware Role/Binding/Condition | Activated per ADR-0071, following ADR-0062; repository org isolation and cross-org tests remain mandatory; no MVP metadata RLS, ADR-0004 |
 | Frontend | SolidJS SPA/Vite | CSR, embedded using `go:embed` |
 | UI | Kobalte/Tailwind/TanStack Table | Data grid is central to the product |
 | Schema engine | Atlas Community CLI subprocess | Pin version/checksum and isolate behind `SchemaEngine` |
@@ -667,6 +667,7 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   - Show a stable, locally generated geometric profile image derived from the opaque user ID; reveal account identity through its menu without external fallback-image requests (ADR-0056).
 - No public signup; admin-created users get a 24-hour one-time password-setup link, displayed once without MVP email delivery.
   - Store only the token digest, keep one open link per user, consume it atomically, revoke the user's sessions on completion and require a normal login afterwards; replayed, expired or revoked links get one generic refusal. Links are issued only to active users without a password; admin-initiated password reset is deferred (ADR-0053).
+  - ADR-0072 implements public completion through `/setup-password#token=...` and `Auth.CompletePasswordSetup`, with immediate fragment removal, password confirmation and no automatic sign-in or credential-write retry.
   - Admins list, create and disable/enable users; manage independent role definitions and multiple scoped bindings with optional conditions. User creation may atomically include initial bindings. System roles remain read-only; roles referenced by non-revoked bindings cannot be deleted (ADR-0062).
   - Policy writes require unconditional organization-wide management authority and all old/new affected permissions at that same unrestricted scope. Conditional or connection-only grants cannot be copied into broader authority; self enable/disable and self-binding changes are refused. Scoped delegation is deferred (ADR-0062).
 - **Google OIDC:** Authorization Code + PKCE, mandatory state/nonce, ID-token signature/issuer/audience/expiry and `email_verified` validation.

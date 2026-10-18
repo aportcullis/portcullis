@@ -37,6 +37,9 @@ const (
 	AuthBootstrapProcedure = "/portcullis.v1.Auth/Bootstrap"
 	// AuthLoginProcedure is the fully-qualified name of the Auth's Login RPC.
 	AuthLoginProcedure = "/portcullis.v1.Auth/Login"
+	// AuthCompletePasswordSetupProcedure is the fully-qualified name of the Auth's
+	// CompletePasswordSetup RPC.
+	AuthCompletePasswordSetupProcedure = "/portcullis.v1.Auth/CompletePasswordSetup"
 	// AuthLogoutProcedure is the fully-qualified name of the Auth's Logout RPC.
 	AuthLogoutProcedure = "/portcullis.v1.Auth/Logout"
 	// AuthMeProcedure is the fully-qualified name of the Auth's Me RPC.
@@ -51,6 +54,8 @@ type AuthClient interface {
 	Bootstrap(context.Context, *connect.Request[v1.BootstrapRequest]) (*connect.Response[v1.BootstrapResponse], error)
 	// Login verifies the password and starts a session (sets the session + CSRF cookies).
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+	// CompletePasswordSetup consumes an initial-password token atomically; no session or account data is returned.
+	CompletePasswordSetup(context.Context, *connect.Request[v1.CompletePasswordSetupRequest]) (*connect.Response[v1.CompletePasswordSetupResponse], error)
 	// Logout revokes the current session and clears the cookies.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// Me returns the currently authenticated user.
@@ -82,6 +87,12 @@ func NewAuthClient(httpClient connect.HTTPClient, baseURL string, opts ...connec
 			connect.WithSchema(authMethods.ByName("Login")),
 			connect.WithClientOptions(opts...),
 		),
+		completePasswordSetup: connect.NewClient[v1.CompletePasswordSetupRequest, v1.CompletePasswordSetupResponse](
+			httpClient,
+			baseURL+AuthCompletePasswordSetupProcedure,
+			connect.WithSchema(authMethods.ByName("CompletePasswordSetup")),
+			connect.WithClientOptions(opts...),
+		),
 		logout: connect.NewClient[v1.LogoutRequest, v1.LogoutResponse](
 			httpClient,
 			baseURL+AuthLogoutProcedure,
@@ -105,11 +116,12 @@ func NewAuthClient(httpClient connect.HTTPClient, baseURL string, opts ...connec
 
 // authClient implements AuthClient.
 type authClient struct {
-	bootstrap *connect.Client[v1.BootstrapRequest, v1.BootstrapResponse]
-	login     *connect.Client[v1.LoginRequest, v1.LoginResponse]
-	logout    *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
-	me        *connect.Client[v1.MeRequest, v1.MeResponse]
-	getConfig *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
+	bootstrap             *connect.Client[v1.BootstrapRequest, v1.BootstrapResponse]
+	login                 *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	completePasswordSetup *connect.Client[v1.CompletePasswordSetupRequest, v1.CompletePasswordSetupResponse]
+	logout                *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
+	me                    *connect.Client[v1.MeRequest, v1.MeResponse]
+	getConfig             *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
 }
 
 // Bootstrap calls portcullis.v1.Auth.Bootstrap.
@@ -120,6 +132,11 @@ func (c *authClient) Bootstrap(ctx context.Context, req *connect.Request[v1.Boot
 // Login calls portcullis.v1.Auth.Login.
 func (c *authClient) Login(ctx context.Context, req *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
 	return c.login.CallUnary(ctx, req)
+}
+
+// CompletePasswordSetup calls portcullis.v1.Auth.CompletePasswordSetup.
+func (c *authClient) CompletePasswordSetup(ctx context.Context, req *connect.Request[v1.CompletePasswordSetupRequest]) (*connect.Response[v1.CompletePasswordSetupResponse], error) {
+	return c.completePasswordSetup.CallUnary(ctx, req)
 }
 
 // Logout calls portcullis.v1.Auth.Logout.
@@ -143,6 +160,8 @@ type AuthHandler interface {
 	Bootstrap(context.Context, *connect.Request[v1.BootstrapRequest]) (*connect.Response[v1.BootstrapResponse], error)
 	// Login verifies the password and starts a session (sets the session + CSRF cookies).
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+	// CompletePasswordSetup consumes an initial-password token atomically; no session or account data is returned.
+	CompletePasswordSetup(context.Context, *connect.Request[v1.CompletePasswordSetupRequest]) (*connect.Response[v1.CompletePasswordSetupResponse], error)
 	// Logout revokes the current session and clears the cookies.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// Me returns the currently authenticated user.
@@ -170,6 +189,12 @@ func NewAuthHandler(svc AuthHandler, opts ...connect.HandlerOption) (string, htt
 		connect.WithSchema(authMethods.ByName("Login")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authCompletePasswordSetupHandler := connect.NewUnaryHandler(
+		AuthCompletePasswordSetupProcedure,
+		svc.CompletePasswordSetup,
+		connect.WithSchema(authMethods.ByName("CompletePasswordSetup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authLogoutHandler := connect.NewUnaryHandler(
 		AuthLogoutProcedure,
 		svc.Logout,
@@ -194,6 +219,8 @@ func NewAuthHandler(svc AuthHandler, opts ...connect.HandlerOption) (string, htt
 			authBootstrapHandler.ServeHTTP(w, r)
 		case AuthLoginProcedure:
 			authLoginHandler.ServeHTTP(w, r)
+		case AuthCompletePasswordSetupProcedure:
+			authCompletePasswordSetupHandler.ServeHTTP(w, r)
 		case AuthLogoutProcedure:
 			authLogoutHandler.ServeHTTP(w, r)
 		case AuthMeProcedure:
@@ -215,6 +242,10 @@ func (UnimplementedAuthHandler) Bootstrap(context.Context, *connect.Request[v1.B
 
 func (UnimplementedAuthHandler) Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portcullis.v1.Auth.Login is not implemented"))
+}
+
+func (UnimplementedAuthHandler) CompletePasswordSetup(context.Context, *connect.Request[v1.CompletePasswordSetupRequest]) (*connect.Response[v1.CompletePasswordSetupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portcullis.v1.Auth.CompletePasswordSetup is not implemented"))
 }
 
 func (UnimplementedAuthHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {

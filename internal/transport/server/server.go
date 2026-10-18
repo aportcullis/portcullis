@@ -92,6 +92,10 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if r.URL.Path == "/setup-password" {
+			h.Set("Referrer-Policy", "no-referrer")
+			h.Set("Cache-Control", "no-store")
+		}
 		h.Set("Content-Security-Policy", contentSecurityPolicy)
 		next.ServeHTTP(w, r)
 	})

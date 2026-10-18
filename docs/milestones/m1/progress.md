@@ -1,6 +1,6 @@
 # M1 progress
 
-**Status: In progress · scope reviewed 2026-10-16 · verification reviewed 2026-10-18.**
+**Status: In progress · scope reviewed 2026-10-18 · verification reviewed 2026-10-18.**
 Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in [validation.md](validation.md).
 
 ## Established implementation
@@ -8,7 +8,8 @@ Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in 
 - PostgreSQL connection/policy → immutable request → distinct approval → single-use execution → bounded encrypted results/CSV → audit is implemented.
 - Historical `make verify` evidence includes real-browser native CSV saving/readback in the recorded Docker-hosted Chromium environment.
 - User/role domain, application services and PostgreSQL administration persistence are present.
-- Password setup token issuance and persistence are implemented.
+- Password setup token issuance, atomic consumption and the public registration page are implemented per [ADR-0072](../../adr/0072-password-setup-consumption.md), with normal login afterwards.
+- Resource-aware Role/Binding/Condition authorization is active across bootstrap, sessions, administration, governance and protected reads/output per [ADR-0071](../../adr/0071-binding-authorization-activation.md).
 - Result controls have aligned search, copy/export and paging controls; Text values wrap without dropping content at tested viewport widths in both themes.
 - Result tables use subtle dashed column separators and show a sorting arrow only on the active column. Table headers cycle sorting without a separate ordering selector.
 
@@ -16,6 +17,8 @@ Per [ADR-0053](../../adr/0053-user-and-role-administration.md), user and role ad
 Per [administration use cases](../../../internal/app/administration/users.go) and [administration persistence](../../../internal/infra/postgres/administration_store.go), backend components exist without establishing a complete administration UI.
 
 ## Accepted authorization replacement
+
+The following entries record the historical preparation sequence through ADR-0070; ADR-0071 supersedes their inactive production boundaries. ADR-0072 supplies the subsequently completed initial-password flow. Current authority comes only from Bindings; pending result/export/account UX and release acceptance remain in [scope.md](scope.md).
 
 [ADR-0062](../../adr/0062-role-bindings-and-conditions.md) separates membership, roles, scoped bindings and conditions within M1. The current code still resolves one membership role into flat organization permissions; no binding schema, condition evaluator or resource-aware replacement is delivered by the documentation decision. The existing administration services and historical governance evidence therefore do not qualify the new boundary. Scope and both PRD translations now require grant-preserving migration, resource-aware list/action checks, conservative policy management and concurrent revocation/expiry scenarios.
 
@@ -38,6 +41,6 @@ Per [administration use cases](../../../internal/app/administration/users.go) an
 ## Verification status
 
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.
-The [2026-10-18 verification](validation.md#verification--2026-10-18) passed both required gates after the dependency security update, including all 38 real-binary browser scenarios. The resource-aware Role/Binding/Condition replacement remains inactive and is not qualified by those existing scenarios; ADR-0065 records separate predicate-slice evidence.
+The [2026-10-18 dependency verification](validation.md#verification--2026-10-18) passed both required gates, including all 38 then-existing real-binary browser scenarios. The later [atomic activation qualification](validation.md#atomic-binding-authorization-activation-qualification--2026-10-18) records the active replacement, 345 frontend unit tests and 51 real-binary browser scenarios; its separate race evidence covers the changed authorization packages.
 This evidence covers the tested journey and does not establish completion of the entire M1 scope or capacity qualification.
 Per [scope.md](scope.md), release readiness requires all milestone completion criteria and both verification gates.
