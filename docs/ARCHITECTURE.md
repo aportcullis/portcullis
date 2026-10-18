@@ -15,6 +15,8 @@ The current authorization code resolves one membership role into organization-wi
 
 [ADR-0067](adr/0067-binding-management-transactions.md) adds Binding creation, versioned updates and terminal revocation through a locked administration transaction port. PostgreSQL qualification covers unrestricted delegation, complete-catalog recovery protection, session/revision/audit atomicity and post-lock time. Prepared runtime tables remain read-only and production routes remain on legacy authority until atomic activation.
 
+[ADR-0068](adr/0068-binding-authority-account-and-role-management.md) adds independent account creation/status/setup and shared-role mutation services using the same locked Binding authority. Qualification covers all affected binding permissions, bounded subject session fanout and recovery protection across Role/Binding writers. These services remain inactive until the atomic API/session/governance and migration cutover.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.

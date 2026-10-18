@@ -93,6 +93,7 @@ These decisions establish the Core 1 foundation.
 | [0065](0065-restricted-cel-condition-evaluation.md) | Versioned condition models and restricted pure CEL evaluation | Accepted |
 | [0066](0066-resource-binding-authorization-snapshots.md) | Bounded binding repositories and resource authorization snapshots | Accepted |
 | [0067](0067-binding-management-transactions.md) | Transactional binding management, delegation and recovery protection | Accepted |
+| [0068](0068-binding-authority-account-and-role-management.md) | Binding-authorized account and shared-role mutations with atomic recovery protection | Accepted |
 
 ## Template
 ```markdown

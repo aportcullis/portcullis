@@ -49,7 +49,7 @@ func (transaction *bindingManagementTransaction) LoadRole(ctx context.Context, r
 	if err != nil {
 		return identity.Role{}, notFound(err, identity.ErrRoleNotFound)
 	}
-	return identity.Role{ID: identity.RoleID(uuidToString(definition.ID)), Name: definition.Name, IsSystem: definition.IsSystem, Version: definition.Version, Permissions: toPermissions(definition.Permissions)}, nil
+	return identity.Role{ID: identity.RoleID(uuidToString(definition.ID)), Name: definition.Name, IsSystem: definition.IsSystem, Version: definition.Version, Permissions: toPermissions(definition.Permissions), BindingCount: definition.BindingCount}, nil
 }
 
 // LockBindingVersion locks the head and loads its immutable current version without hiding revocation.
@@ -85,19 +85,7 @@ func (transaction *bindingManagementTransaction) LockBindingScope(ctx context.Co
 
 // ObserveBindingMutationTime serializes session issuance and locks affected rows before observing wall time.
 func (transaction *bindingManagementTransaction) ObserveBindingMutationTime(ctx context.Context, user identity.UserID) (time.Time, error) {
-	userID, valid := parseBindingPolicyUUID(string(user))
-	if !valid {
-		return time.Time{}, identity.ErrUserNotFound
-	}
-	if err := transaction.queries.LockBindingSubjectSession(ctx, db.LockBindingSubjectSessionParams{LockClass: lockClassSession, LockObject: userLockObject(user)}); err != nil {
-		return time.Time{}, err
-	}
-	if err := transaction.queries.LockBindingSessionRows(ctx, userID); err != nil {
-		return time.Time{}, err
-	}
-	at, err := observeInstant(ctx, transaction.queries)
-	transaction.at = at
-	return at, err
+	return transaction.ObservePolicyMutationTime(ctx, []identity.UserID{user})
 }
 
 // HasRecoveryAdministrator tests all catalog administration keys across the bindings of each active member.
@@ -110,29 +98,5 @@ func (transaction *bindingManagementTransaction) HasRecoveryAdministrator(ctx co
 
 // FinalizeBindingChange revokes sessions and commits revision and audit with the grant mutation.
 func (transaction *bindingManagementTransaction) FinalizeBindingChange(ctx context.Context, user identity.UserID, event audit.Event) (int64, error) {
-	if transaction.at.IsZero() || !event.OccurredAt.Equal(transaction.at) || event.OrganizationID != transaction.organization {
-		return 0, administration.ErrBindingManagementUnavailable
-	}
-	userID, valid := parseBindingPolicyUUID(string(user))
-	if !valid {
-		return 0, identity.ErrUserNotFound
-	}
-	revoked, err := transaction.queries.RevokeUserSessionsAt(ctx, db.RevokeUserSessionsAtParams{UserID: userID, At: timeToTS(transaction.at)})
-	if err != nil {
-		return 0, err
-	}
-	revision, err := transaction.queries.AdvanceBindingPolicyRevision(ctx, db.AdvanceBindingPolicyRevisionParams{OrganizationID: transaction.organizationID, ExpectedRevision: transaction.revision})
-	if err != nil {
-		return 0, err
-	}
-	if event.Metadata == nil {
-		event.Metadata = make(map[string]any)
-	}
-	event.Metadata["authorization_revision"] = revision
-	event.Metadata["revoked_sessions"] = revoked
-	if err := insertAuditTx(ctx, transaction.queries, event); err != nil {
-		return 0, err
-	}
-	transaction.revision = revision
-	return revision, nil
+	return transaction.FinalizePolicyChange(ctx, []identity.UserID{user}, event)
 }

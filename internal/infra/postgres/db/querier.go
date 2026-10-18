@@ -59,6 +59,8 @@ type Querier interface {
 	GetAccessRequestForUpdate(ctx context.Context, arg GetAccessRequestForUpdateParams) (AccessRequest, error)
 	// Return requester, target, and current valid-approval count together. Keep detail and list projections aligned for their shared Go row type.
 	GetAccessRequestView(ctx context.Context, arg GetAccessRequestViewParams) (GetAccessRequestViewRow, error)
+	// Include inactive predicates and every scope because account changes affect all live grants.
+	GetAccountBindingPermissions(ctx context.Context, arg GetAccountBindingPermissionsParams) ([]string, error)
 	// Actor status and live permissions, read under the administration lock (ADR-0053).
 	GetActorAuthority(ctx context.Context, arg GetActorAuthorityParams) (GetActorAuthorityRow, error)
 	// Detail remains organization-scoped; audit.get must never become an IDOR path. total_count is literally 1 here and goes unused — it keeps the row shape structurally identical to the list rows, so one mapper serves all three.
@@ -80,6 +82,8 @@ type Querier interface {
 	GetQueryExecution(ctx context.Context, arg GetQueryExecutionParams) (QueryExecution, error)
 	GetResultChunk(ctx context.Context, arg GetResultChunkParams) (ResultCacheResultChunk, error)
 	GetResultSet(ctx context.Context, arg GetResultSetParams) (ResultCacheResultSet, error)
+	// Each affected account occurs once, including disabled subjects and currently false or expired conditions.
+	GetRoleBindingSubjects(ctx context.Context, arg GetRoleBindingSubjectsParams) ([]pgtype.UUID, error)
 	// Disambiguates a refused role update or delete, including soft-deleted rows.
 	GetRoleState(ctx context.Context, arg GetRoleStateParams) (GetRoleStateRow, error)
 	GetRoleWithPermissions(ctx context.Context, arg GetRoleWithPermissionsParams) (GetRoleWithPermissionsRow, error)
@@ -107,10 +111,13 @@ type Querier interface {
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
+	// The activation schema removes the required legacy assignment; no role is inferred here.
+	InsertIndependentMembership(ctx context.Context, arg InsertIndependentMembershipParams) error
 	InsertManagedBindingHead(ctx context.Context, arg InsertManagedBindingHeadParams) (pgtype.UUID, error)
 	InsertManagedBindingVersion(ctx context.Context, arg InsertManagedBindingVersionParams) error
 	// The expiry is measured from the observed instant on the database clock.
 	InsertPasswordSetupToken(ctx context.Context, arg InsertPasswordSetupTokenParams) (pgtype.Timestamptz, error)
+	InsertPolicyUser(ctx context.Context, arg InsertPolicyUserParams) (pgtype.UUID, error)
 	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
 	InsertResultChunks(ctx context.Context, arg []InsertResultChunksParams) (int64, error)
 	InsertResultSet(ctx context.Context, arg InsertResultSetParams) error
@@ -168,6 +175,7 @@ type Querier interface {
 	LockLiveRequestsForConnection(ctx context.Context, arg LockLiveRequestsForConnectionParams) ([]pgtype.UUID, error)
 	// Lock the account and its membership for a status, role or setup-link change; a user without a membership in the organization is not found.
 	LockMember(ctx context.Context, arg LockMemberParams) (LockMemberRow, error)
+	LockPolicyAccount(ctx context.Context, arg LockPolicyAccountParams) (LockPolicyAccountRow, error)
 	LockQueryExecution(ctx context.Context, arg LockQueryExecutionParams) (QueryExecution, error)
 	// Serialize admissions per organization with the registered lock class (const.go); other organizations admit concurrently (ADR-0011).
 	LockResultAdmission(ctx context.Context, arg LockResultAdmissionParams) error
@@ -207,6 +215,7 @@ type Querier interface {
 	SetMembershipRole(ctx context.Context, arg SetMembershipRoleParams) error
 	SetUserStatus(ctx context.Context, arg SetUserStatusParams) error
 	SoftDeleteCustomRole(ctx context.Context, arg SoftDeleteCustomRoleParams) (int64, error)
+	SoftDeletePolicyRole(ctx context.Context, arg SoftDeletePolicyRoleParams) (int64, error)
 	// Soft-delete the role's live permissions missing from the new set; rows are never erased (ADR-0053).
 	SoftDeleteRemovedRolePermissions(ctx context.Context, arg SoftDeleteRemovedRolePermissionsParams) error
 	// Stamp submission, updated_at, and quorum-zero approval expiry from one post-lock database instant; reuse it in derived audit evidence.

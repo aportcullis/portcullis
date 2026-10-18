@@ -24,6 +24,11 @@ func NewBindingManagementStore(pool *pgxpool.Pool) *BindingManagementStore {
 
 // WithBindingTransaction coordinates current policy reads and atomic grant writes under one organization lock.
 func (s *BindingManagementStore) WithBindingTransaction(ctx context.Context, organization identity.OrganizationID, mutate func(administration.BindingTransaction) error) error {
+	return s.withPolicyTransaction(ctx, organization, func(transaction *bindingManagementTransaction) error { return mutate(transaction) })
+}
+
+// withPolicyTransaction shares policy lock, revision and commit ownership across management consumers.
+func (s *BindingManagementStore) withPolicyTransaction(ctx context.Context, organization identity.OrganizationID, mutate func(*bindingManagementTransaction) error) error {
 	if err := bindingPolicyContextError(ctx); err != nil {
 		return err
 	}

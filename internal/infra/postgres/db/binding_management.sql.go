@@ -60,7 +60,11 @@ func (q *Queries) AdvanceManagedBindingHead(ctx context.Context, arg AdvanceMana
 const getBindingPolicyRole = `-- name: GetBindingPolicyRole :one
 select role.id, role.name, role.is_system, role.version,
        coalesce(array_agg(permission.permission_key order by permission.permission_key)
-         filter (where permission.permission_key is not null), '{}')::text[] as permissions
+         filter (where permission.permission_key is not null), '{}')::text[] as permissions,
+       (select count(*) from public.role_bindings binding
+        join public.role_binding_versions version on version.binding_id=binding.id
+          and version.organization_id=binding.organization_id and version.user_id=binding.user_id and version.version=binding.current_version
+        where binding.organization_id=role.organization_id and version.role_id=role.id and version.revoked_at is null) as binding_count
 from public.roles role
 left join public.role_permissions permission on permission.role_id = role.id and permission.deleted_at is null
 where role.organization_id = $1::uuid and role.id = $2::uuid
@@ -74,11 +78,12 @@ type GetBindingPolicyRoleParams struct {
 }
 
 type GetBindingPolicyRoleRow struct {
-	ID          pgtype.UUID
-	Name        string
-	IsSystem    bool
-	Version     int64
-	Permissions []string
+	ID           pgtype.UUID
+	Name         string
+	IsSystem     bool
+	Version      int64
+	Permissions  []string
+	BindingCount int64
 }
 
 // Reusable definitions have no dependency on the legacy membership role assignment.
@@ -91,6 +96,7 @@ func (q *Queries) GetBindingPolicyRole(ctx context.Context, arg GetBindingPolicy
 		&i.IsSystem,
 		&i.Version,
 		&i.Permissions,
+		&i.BindingCount,
 	)
 	return i, err
 }

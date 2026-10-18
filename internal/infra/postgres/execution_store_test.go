@@ -15,7 +15,7 @@ import (
 )
 
 func TestExecutionLeaseExecutesOnceAndFencesLateCompletion(t *testing.T) {
-	f := newReqFixture(t)
+	f := newReqFixtureFresh(t)
 	r := approvedExecutionRequest(t, f)
 	ctx := context.Background()
 	var wg sync.WaitGroup

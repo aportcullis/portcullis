@@ -42,6 +42,8 @@ type Role struct {
 	Version int64
 	// MemberCount is the number of memberships assigned this role, reported for administration views.
 	MemberCount int64
+	// BindingCount reports current non-revoked references in binding-based administration.
+	BindingCount int64
 }
 
 // RoleDefinition is a validated custom-role name and its sorted, de-duplicated permission keys.
