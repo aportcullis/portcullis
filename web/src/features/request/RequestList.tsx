@@ -1,9 +1,9 @@
 import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createSignal, on, onMount, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onMount, onCleanup } from "solid-js";
 
 import { actorLabel, requestStateFilterOptions, shouldPollRequestList, stateBadge, stateLabel } from "@/entities/request/model";
-import { hasPermission, session } from "@/entities/session/store";
+import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { filterSelectClass } from "@/features/request/selectStyles";
 import { rangeEnd, rangeStart } from "@/entities/request/pagination";
@@ -43,7 +43,8 @@ export const RequestList: Component = () => {
   const [expandedId, setExpandedId] = createSignal<string>();
   // Row action state lives at list level, keyed by request ID: a refresh replaces row objects, and <For> recreates their components.
   const rowActions = createRowActionRegistry();
-  createEffect(on(session, () => rowActions.clear(), { defer: true }));
+  const authorizationKey = createMemo(sessionAuthorizationKey);
+  createEffect(on(authorizationKey, () => rowActions.clear(), { defer: true }));
   onMount(() => {
     void loadAccessRequests();
     const refresh = () => { if (!document.hidden) void loadAccessRequests(); };

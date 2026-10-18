@@ -161,7 +161,10 @@ test.describe("application resilience", () => {
     await listRefreshed;
     await expect(row.getByRole("alert")).toHaveText("simulated failure");
     await expect(row.getByRole("button", { name: "Execute" })).toBeEnabled();
+    const sessionRefreshed = page.waitForResponse("**/portcullis.v1.Auth/Me");
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await sessionRefreshed;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
     await expect(row.getByRole("alert")).toHaveText("simulated failure");
     await restore();
   });

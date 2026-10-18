@@ -11,7 +11,7 @@ import { errorMessage } from "@/shared/api/errors";
 import { isExecutionOutcomeState } from "@/entities/request/model";
 import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
-import { hasPermission, session } from "@/entities/session/store";
+import { hasPermission, session, sessionAuthorizationKey } from "@/entities/session/store";
 import { mayCancel, maySubmitDraft } from "@/features/request/actions";
 import type { RowActionRegistry } from "@/features/request/rowActionState";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
@@ -43,24 +43,24 @@ export const RequestRowActions: Component<{
   const showStop = () => isOwner() && hasPermission("requests.execute") && props.request.effectiveState === AccessRequestState.EXECUTING;
   const showResult = () => isOwner() && hasPermission("requests.get") && isExecutionOutcomeState(props.request.effectiveState);
 
-  // Settles against the request ID rather than this component, which a list refresh may already have replaced; a principal change discards the outcome.
+  // Settles against the request ID rather than this component, which a list refresh may already have replaced; a changed authorization snapshot discards the outcome.
   const act = async (work: () => Promise<unknown>) => {
     const requestId = props.request.id;
-    const principal = session();
+    const authorizationKey = sessionAuthorizationKey();
     const attempt = rowActions.begin(requestId);
     try {
       await work();
-      if (session() === principal) rowActions.settle(requestId, attempt, "");
+      if (sessionAuthorizationKey() === authorizationKey) rowActions.settle(requestId, attempt, "");
     } catch (error: unknown) {
-      if (session() === principal) rowActions.settle(requestId, attempt, errorMessage(error));
+      if (sessionAuthorizationKey() === authorizationKey) rowActions.settle(requestId, attempt, errorMessage(error));
     }
   };
 
   // Reports the change to the owning page while it is still shown, after the list refresh that may recreate this row.
-  const refreshAfterExecution = async (principal: ReturnType<typeof session>) => {
-    if (session() !== principal) return;
+  const refreshAfterExecution = async (authorizationKey: string) => {
+    if (sessionAuthorizationKey() !== authorizationKey) return;
     if (hasPermission("requests.list")) await loadAccessRequests();
-    if (mounted && session() === principal) props.onChanged?.();
+    if (mounted && sessionAuthorizationKey() === authorizationKey) props.onChanged?.();
   };
 
   return (
@@ -68,16 +68,16 @@ export const RequestRowActions: Component<{
       <span class="inline-flex items-center gap-2">
         <Show when={showExecute()}>
           <Button size="sm" disabled={actionState().busy} onClick={() => void act(async () => {
-            const principal = session();
+            const authorizationKey = sessionAuthorizationKey();
             try { await executionsClient.execute({ requestId: props.request.id }); }
-            finally { await refreshAfterExecution(principal); }
+            finally { await refreshAfterExecution(authorizationKey); }
           })}>Execute</Button>
         </Show>
         <Show when={showStop()}>
           <Button size="sm" variant="outline" disabled={actionState().busy} onClick={() => void act(async () => {
-            const principal = session();
+            const authorizationKey = sessionAuthorizationKey();
             await executionsClient.cancel({ requestId: props.request.id });
-            if (mounted && session() === principal) props.onChanged?.();
+            if (mounted && sessionAuthorizationKey() === authorizationKey) props.onChanged?.();
           })}>Stop execution</Button>
         </Show>
         <Show when={showResult()}>
