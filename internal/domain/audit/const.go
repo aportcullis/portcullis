@@ -55,6 +55,11 @@ const (
 	ActionRoleCreated         Action = "ROLE_CREATED"
 	ActionRoleUpdated         Action = "ROLE_UPDATED"
 	ActionRoleDeleted         Action = "ROLE_DELETED"
+
+	// Binding changes commit with revision, session revocation and immutable history.
+	ActionBindingCreated Action = "BINDING_CREATED"
+	ActionBindingUpdated Action = "BINDING_UPDATED"
+	ActionBindingRevoked Action = "BINDING_REVOKED"
 )
 
 // outcome values — the terminal result of an action.
@@ -79,4 +84,6 @@ const (
 	TargetTypeEncryption = "encryption"
 	// TargetTypeRole is the target_type for ROLE_* events; target_id carries the role UUID (ADR-0053).
 	TargetTypeRole = "role"
+	// TargetTypeBinding identifies versioned role assignments.
+	TargetTypeBinding = "binding"
 )

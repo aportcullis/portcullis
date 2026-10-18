@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	AdvanceBindingPolicyRevision(ctx context.Context, arg AdvanceBindingPolicyRevisionParams) (int64, error)
+	AdvanceManagedBindingHead(ctx context.Context, arg AdvanceManagedBindingHeadParams) (int64, error)
 	// Recheck active status and the action’s live permission inside the decision transaction; see LockApproverMembership for the revocation-lock boundary.
 	ApproverEligible(ctx context.Context, arg ApproverEligibleParams) (bool, error)
 	// Archive and credential discard are ONE statement (PRD §4.3 "한 작업으로 처리"). The executions slice adds the in-flight-execution guard predicate here (ADR-0014). The stamp is the caller's observed instant — the same one its request cascade uses — never now(), which is this transaction's start time and may predate the lock wait entirely (ADR-0009).
@@ -63,10 +65,13 @@ type Querier interface {
 	GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error)
 	// Read membership independently of its legacy role, plus revision and explicit database time.
 	GetBindingAuthorizationContext(ctx context.Context, arg GetBindingAuthorizationContextParams) (GetBindingAuthorizationContextRow, error)
+	// Reusable definitions have no dependency on the legacy membership role assignment.
+	GetBindingPolicyRole(ctx context.Context, arg GetBindingPolicyRoleParams) (GetBindingPolicyRoleRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
 	// The connection's current policy snapshot, resolved through the pointer. Works for archived connections too: the policy is part of the historical snapshot (ADR-0015).
 	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
 	GetDefaultOrganization(ctx context.Context) (Organization, error)
+	GetManagedBinding(ctx context.Context, arg GetManagedBindingParams) (RoleBindingVersion, error)
 	GetMember(ctx context.Context, arg GetMemberParams) (GetMemberRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (OrganizationMembership, error)
 	// Administrative identity-only discovery; locked envelope reads remain org-scoped.
@@ -79,12 +84,16 @@ type Querier interface {
 	GetRoleState(ctx context.Context, arg GetRoleStateParams) (GetRoleStateRow, error)
 	GetRoleWithPermissions(ctx context.Context, arg GetRoleWithPermissionsParams) (GetRoleWithPermissionsRow, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error)
+	// Authority for delegation never evaluates or flattens conditional or connection grants.
+	GetUnconditionalBindingPermissions(ctx context.Context, arg GetUnconditionalBindingPermissionsParams) ([]string, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	// Read identity, password hash, and lockout together so known and unknown accounts use one lookup. Evaluate lockout on the same database clock as failure writes.
 	GetUserForLogin(ctx context.Context, lower string) (GetUserForLoginRow, error)
 	// Insert the role's permissions, reviving any soft-deleted row of the same key instead of adding a second one (ADR-0053).
 	GrantRolePermissions(ctx context.Context, arg GrantRolePermissionsParams) error
+	// Every required key may come from a different unconditional organization binding of the same active member.
+	HasBindingRecoveryAdministrator(ctx context.Context, arg HasBindingRecoveryAdministratorParams) (bool, error)
 	HeartbeatQueryExecution(ctx context.Context, arg HeartbeatQueryExecutionParams) (int64, error)
 	// created_at/updated_at are given explicitly rather than left to the column DEFAULT: this insert runs after a FOR SHARE wait on the connection, and the default is now() — the transaction's start time, which predates the wait (ADR-0009).
 	InsertAccessRequest(ctx context.Context, arg InsertAccessRequestParams) error
@@ -98,6 +107,8 @@ type Querier interface {
 	InsertConnection(ctx context.Context, arg InsertConnectionParams) error
 	// Append-only: a policy update inserts version N+1 (the (connection_id, version) PK is the structural guard against duplicates); rows are never updated (runtime UPDATE is revoked — ADR-0015).
 	InsertConnectionPolicyVersion(ctx context.Context, arg InsertConnectionPolicyVersionParams) error
+	InsertManagedBindingHead(ctx context.Context, arg InsertManagedBindingHeadParams) (pgtype.UUID, error)
+	InsertManagedBindingVersion(ctx context.Context, arg InsertManagedBindingVersionParams) error
 	// The expiry is measured from the observed instant on the database clock.
 	InsertPasswordSetupToken(ctx context.Context, arg InsertPasswordSetupTokenParams) (pgtype.Timestamptz, error)
 	InsertQueryExecution(ctx context.Context, arg InsertQueryExecutionParams) (QueryExecution, error)
@@ -136,6 +147,16 @@ type Querier interface {
 	LockAccessRequestSkipLocked(ctx context.Context, arg LockAccessRequestSkipLockedParams) (AccessRequest, error)
 	// Lock membership FOR SHARE before checking eligibility. Concurrent revocation serializes only once the future role-management path takes FOR UPDATE on the same row (ADR-0018).
 	LockApproverMembership(ctx context.Context, arg LockApproverMembershipParams) ([]int32, error)
+	LockBindingMember(ctx context.Context, arg LockBindingMemberParams) (string, error)
+	// Share the administration lock class with policy writers; governance adopts it at atomic activation.
+	LockBindingOrganization(ctx context.Context, arg LockBindingOrganizationParams) error
+	LockBindingRevision(ctx context.Context, organizationID pgtype.UUID) (int64, error)
+	LockBindingRole(ctx context.Context, arg LockBindingRoleParams) (pgtype.UUID, error)
+	LockBindingScopeConnection(ctx context.Context, arg LockBindingScopeConnectionParams) (pgtype.UUID, error)
+	// Lock existing affected rows before the mutation clock observation; session rotation cannot add rows while its advisory lock is held.
+	LockBindingSessionRows(ctx context.Context, userID pgtype.UUID) error
+	// Coordinate affected-session revocation with the existing per-user login rotation lock.
+	LockBindingSubjectSession(ctx context.Context, arg LockBindingSubjectSessionParams) error
 	// Guard state transitions and draft versions. Keep the active, permitted, non-requester approval predicate aligned across counts and views (ADR-0018).
 	// FOR SHARE allows concurrent request writers while serializing archive/policy changes and their cascades against request creation (ADR-0018).
 	LockConnectionForRequest(ctx context.Context, arg LockConnectionForRequestParams) (LockConnectionForRequestRow, error)

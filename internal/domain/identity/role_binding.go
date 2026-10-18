@@ -29,17 +29,10 @@ type RoleBinding struct {
 
 // Validate checks complete binding data without granting access or running an expression.
 func (binding RoleBinding) Validate() error {
-	if binding.ID == "" || binding.OrganizationID == "" || binding.UserID == "" || binding.RoleID == "" || binding.Version <= 0 || binding.Scope.Validate() != nil {
+	if binding.ID == "" || binding.OrganizationID == "" || binding.Version <= 0 {
 		return ErrInvalidRoleBinding
 	}
-	if binding.HasCondition {
-		if err := binding.Condition.Validate(); err != nil {
-			return err
-		}
-	} else if binding.Condition != (Condition{}) {
-		return ErrInvalidCondition
-	}
-	return nil
+	return binding.Definition().Validate()
 }
 
 // AppliesTo checks the principal, organization, live state and typed resource scope only.

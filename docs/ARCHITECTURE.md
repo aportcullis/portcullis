@@ -13,6 +13,8 @@ The current authorization code resolves one membership role into organization-wi
 
 [ADR-0066](adr/0066-resource-binding-authorization-snapshots.md) connects a read-only PostgreSQL binding repository to the resource authorization service and bounded CEL wrapper through consumer-owned ports. It resolves trusted ancestry, time, revision and grants in one repeatable-read snapshot and returns a bounded permission checkpoint. Database scenarios qualify this path independently; production composition, all workflow guards and atomic activation remain pending.
 
+[ADR-0067](adr/0067-binding-management-transactions.md) adds Binding creation, versioned updates and terminal revocation through a locked administration transaction port. PostgreSQL qualification covers unrestricted delegation, complete-catalog recovery protection, session/revision/audit atomicity and post-lock time. Prepared runtime tables remain read-only and production routes remain on legacy authority until atomic activation.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.

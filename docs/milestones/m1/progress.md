@@ -27,6 +27,8 @@ Per [administration use cases](../../../internal/app/administration/users.go) an
 
 [ADR-0066](../../adr/0066-resource-binding-authorization-snapshots.md) adds the read-only [Binding repository](../../../internal/infra/postgres/binding_store.go) and [resource permission service](../../../internal/app/authz/resource_service.go), connected to real CEL through consumer-owned ports. Qualification covers server-resolved ancestry, bounded additive grants, current role/head changes, coherent revision snapshots and disposable grant-equivalence copies for default/custom/empty roles. Production membership authority is preserved. Binding administration, authorized collections/output, transaction-bound workflow admission and atomic backfill/cutover remain pending; a read-only permission checkpoint is not a workflow lease.
 
+[ADR-0067](../../adr/0067-binding-management-transactions.md) adds the [Binding management use cases](../../../internal/app/administration/bindings.go) and [transactional repository](../../../internal/infra/postgres/binding_management_store.go). Qualification covers create/update/revoke, explicit condition edits, old/new unrestricted delegation, full-catalog recovery protection across roles, immutable history, atomic session/revision/audit changes and real lock contention. Disposable databases demonstrate independence from the legacy role column and unchanged legacy grants, with new grant changes immediately reflected by the qualified resource reader. Runtime binding writes, production catalog/backfill, account/shared-role conversion, workflow/collection/output admission and API/UI cutover remain pending.
+
 ## Verification status
 
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.

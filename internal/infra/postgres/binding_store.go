@@ -100,16 +100,9 @@ func bindingReadError(ctx context.Context) error {
 // decodeBindingGrant preserves explicit condition absence and immutable version evidence.
 func decodeBindingGrant(row db.ListResourceBindingGrantsRow, permission identity.Permission) (authz.BindingGrant, error) {
 	binding := identity.RoleBinding{ID: identity.BindingID(uuidToString(row.BindingID)), OrganizationID: identity.OrganizationID(uuidToString(row.OrganizationID)), UserID: identity.UserID(uuidToString(row.UserID)), RoleID: identity.RoleID(uuidToString(row.RoleID)), Version: row.Version, Scope: identity.ResourceScope{Type: identity.ScopeType(row.ScopeType), ConnectionID: uuidToString(row.ConnectionID)}, Revoked: row.RevokedAt.Valid}
-	if row.ConditionExpression != nil {
-		if row.ConditionTitle == nil || row.ConditionLanguageVersion == nil || row.ConditionEnvironmentVersion == nil {
-			return authz.BindingGrant{}, authz.ErrInvalidSnapshot
-		}
-		binding.HasCondition = true
-		binding.Condition = identity.Condition{Title: *row.ConditionTitle, Expression: *row.ConditionExpression, LanguageVersion: *row.ConditionLanguageVersion, EnvironmentVersion: *row.ConditionEnvironmentVersion}
-		if row.ConditionDescription != nil {
-			binding.Condition.Description = *row.ConditionDescription
-		}
-	} else if row.ConditionTitle != nil || row.ConditionDescription != nil || row.ConditionLanguageVersion != nil || row.ConditionEnvironmentVersion != nil {
+	var err error
+	binding.Condition, binding.HasCondition, err = decodeBindingCondition(row.ConditionTitle, row.ConditionDescription, row.ConditionExpression, row.ConditionLanguageVersion, row.ConditionEnvironmentVersion)
+	if err != nil {
 		return authz.BindingGrant{}, authz.ErrInvalidSnapshot
 	}
 	return authz.BindingGrant{Binding: binding, Permission: permission, RoleVersion: row.RoleVersion}, nil
