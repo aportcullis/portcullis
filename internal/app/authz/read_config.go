@@ -6,7 +6,7 @@ import (
 	platformconfig "github.com/aportcullis/portcullis/internal/platform/config"
 )
 
-// ReadConfig bounds coherent authorization work; audit/request history uses MaxCandidates per batch.
+// ReadConfig bounds coherent authorization work; history and capability targets use MaxCandidates per batch.
 type ReadConfig struct {
 	MaxCandidates int           `mapstructure:"max_candidates"`
 	Timeout       time.Duration `mapstructure:"timeout"`

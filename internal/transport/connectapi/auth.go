@@ -41,31 +41,6 @@ type sessionCapabilityProvider interface {
 	Capabilities(context.Context, identity.User) (authz.SessionCapabilities, error)
 }
 
-// sessionView maps one coherent advisory snapshot; failures expose no stale capabilities.
-func (a *AuthService) sessionView(ctx context.Context, user identity.User) *portcullisv1.LoginResponse {
-	result := &portcullisv1.LoginResponse{User: toProtoUser(user)}
-	provider, exists := a.session.(sessionCapabilityProvider)
-	if !exists {
-		result.Permissions, result.RoleName = a.sessionInfo(ctx, user)
-		return result
-	}
-	snapshot, err := provider.Capabilities(ctx, user)
-	if err != nil {
-		return result
-	}
-	for _, key := range snapshot.Permissions {
-		result.Permissions = append(result.Permissions, string(key))
-	}
-	for _, key := range snapshot.Capabilities {
-		result.Capabilities = append(result.Capabilities, string(key))
-	}
-	for _, binding := range snapshot.Bindings {
-		result.Bindings = append(result.Bindings, &portcullisv1.SessionBinding{Id: binding.ID, RoleId: binding.RoleID, RoleName: binding.RoleName, ScopeType: binding.ScopeType, ConnectionId: binding.ConnectionID, HasCondition: binding.HasCondition})
-	}
-	result.AuthorizationRevision = snapshot.Revision
-	return result
-}
-
 // NewAuthService builds the Auth RPC handler. The session-info provider is a REQUIRED collaborator: an optional builder was a silent footgun — forgotten wiring rendered an authenticated UI with every affordance hidden and no signal.
 func NewAuthService(svc authApp, session sessionInfoProvider) *AuthService {
 	return &AuthService{svc: svc, session: session, logger: slog.Default()}
@@ -73,20 +48,6 @@ func NewAuthService(svc authApp, session sessionInfoProvider) *AuthService {
 
 // WithLogger routes the service's own warnings (degraded session-info listing).
 func (a *AuthService) WithLogger(l *slog.Logger) *AuthService { a.logger = l; return a }
-
-// Permission keys and role labels are advisory UI data. Resolution failure returns empty metadata with a warning, preserving a successfully established session.
-func (a *AuthService) sessionInfo(ctx context.Context, u identity.User) ([]string, string) {
-	perms, role, err := a.session.SessionInfo(ctx, u)
-	if err != nil {
-		a.logger.Warn("session info resolution failed — responding with no affordances (UI only; server-side authorization is unaffected)", "err", err)
-		return nil, ""
-	}
-	keys := make([]string, len(perms))
-	for idx, p := range perms {
-		keys[idx] = string(p)
-	}
-	return keys, role
-}
 
 func (a *AuthService) Bootstrap(
 	ctx context.Context,
@@ -137,7 +98,7 @@ func (a *AuthService) Me(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 	view := a.sessionView(ctx, u)
-	response := connect.NewResponse(&portcullisv1.MeResponse{User: view.User, Permissions: view.Permissions, RoleName: view.RoleName, Capabilities: view.Capabilities, Bindings: view.Bindings, AuthorizationRevision: view.AuthorizationRevision})
+	response := connect.NewResponse(&portcullisv1.MeResponse{User: view.User, Permissions: view.Permissions, RoleName: view.RoleName, Capabilities: view.Capabilities, Bindings: view.Bindings, AuthorizationRevision: view.AuthorizationRevision, AuthorizationUnavailable: view.AuthorizationUnavailable})
 	noStore(response.Header())
 	return response, nil
 }

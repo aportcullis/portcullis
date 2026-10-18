@@ -10,7 +10,8 @@ Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in 
 - User/role domain, application services and PostgreSQL administration persistence are present.
 - Password setup token issuance, atomic consumption and the public registration page are implemented per [ADR-0072](../../adr/0072-password-setup-consumption.md), with normal login afterwards.
 - Resource-aware Role/Binding/Condition authorization is active across bootstrap, sessions, administration, governance and protected reads/output per [ADR-0071](../../adr/0071-binding-authorization-activation.md).
-- Audit/request pagination uses complete batched snapshots beyond 1,024 candidates, with exact authorized totals and fresh off-page count witnesses per [ADR-0073](../../adr/0073-authorized-history-pagination.md). Other collection/capability candidate limits and remaining M1 acceptance are separate.
+- Audit/request pagination uses complete batched snapshots beyond 1,024 candidates, with exact authorized totals and fresh off-page count witnesses per [ADR-0073](../../adr/0073-authorized-history-pagination.md). Other collection limits and remaining M1 acceptance are separate.
+- Session capability discovery uses scope-filtered keyset batches beyond 1,024 resources; metadata failures preserve authentication and show explicit Me-based recovery per [ADR-0074](../../adr/0074-session-capability-discovery-and-recovery.md). Binding-summary budgets and management-form lifetime remain separate.
 - Result controls have aligned search, copy/export and paging controls; Text values wrap without dropping content at tested viewport widths in both themes.
 - Result tables use subtle dashed column separators and show a sorting arrow only on the active column. Table headers cycle sorting without a separate ordering selector.
 

@@ -1,6 +1,6 @@
 # ADR-0073: Authorized history pagination beyond candidate limits
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0074](0074-session-capability-discovery-and-recovery.md) for the retained session capability target ceiling
 - **Date:** 2026-10-18
 - **Partly supersedes:** [ADR-0071](0071-binding-authorization-activation.md)'s total-candidate ceiling for audit and request lists; its other authorization boundaries remain binding.
 

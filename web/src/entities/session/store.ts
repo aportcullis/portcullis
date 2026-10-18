@@ -6,11 +6,11 @@ import type { SessionBinding, User } from "@/gen/portcullis/v1/auth_pb";
 import { authClient } from "@/shared/api/client";
 import { retryOnThrottle } from "@/shared/api/retry";
 
-// SessionState distinguishes pending authentication, invalid sessions, and server outages. Permissions and role labels are advisory UI data.
+/** SessionState distinguishes invalid sessions, transport outages and unavailable authorization metadata. */
 export type SessionState =
   | { status: "loading" }
   | { status: "anonymous"; cause: AnonymousCause }
-  | { status: "unreachable" }
+  | { status: "unreachable"; cause?: "authorization" }
   | { status: "authenticated"; user: User; permissions: readonly string[]; capabilities: readonly string[]; bindings: readonly SessionBinding[]; authorizationRevision: bigint; roleName: string };
 
 // AnonymousCause separates an explicit sign-out from finding no valid session, so only the latter offers to continue where the caller was.
@@ -59,6 +59,7 @@ const store = createRoot(() => {
       const res = await retryOnThrottle(() => authClient.me({}));
       const user = res.user;
       if (seq !== latest) return;
+      if (res.authorizationUnavailable) { setSession({ status: "unreachable", cause: "authorization" }); return; }
       setSession(
         user
           ? { status: "authenticated", user, permissions: res.permissions, capabilities: res.capabilities, bindings: res.bindings, authorizationRevision: res.authorizationRevision, roleName: res.roleName }
@@ -81,6 +82,7 @@ const store = createRoot(() => {
     const seq = ++latest;
     const res = await authClient.login({ email, password });
     if (seq !== latest) return;
+    if (res.authorizationUnavailable) { setSession({ status: "unreachable", cause: "authorization" }); return; }
     const user = res.user;
     if (user) {
       setSession({ status: "authenticated", user, permissions: res.permissions, capabilities: res.capabilities, bindings: res.bindings, authorizationRevision: res.authorizationRevision, roleName: res.roleName });

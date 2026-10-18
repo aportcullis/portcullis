@@ -63,6 +63,9 @@ func TestLoginAndMeSurvivePermissionResolverFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login must succeed despite the permission resolver failing: %v", err)
 	}
+	if !login.Msg.GetAuthorizationUnavailable() {
+		t.Error("Login concealed legacy metadata failure")
+	}
 	if got := login.Msg.GetPermissions(); len(got) != 0 {
 		t.Errorf("Login.permissions = %v, want empty on resolver failure", got)
 	}
@@ -78,6 +81,9 @@ func TestLoginAndMeSurvivePermissionResolverFailure(t *testing.T) {
 	me, err := authC.Me(ctx, withCSRF(connect.NewRequest(&portcullisv1.MeRequest{}), csrf))
 	if err != nil {
 		t.Fatalf("Me must succeed despite the permission resolver failing: %v", err)
+	}
+	if !me.Msg.GetAuthorizationUnavailable() {
+		t.Error("Me concealed legacy metadata failure")
 	}
 	if got := me.Msg.GetPermissions(); len(got) != 0 {
 		t.Errorf("Me.permissions = %v, want empty on resolver failure", got)

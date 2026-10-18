@@ -52,21 +52,38 @@ where binding.organization_id=sqlc.arg(organization_id)::uuid and binding.user_i
 order by binding.id limit sqlc.arg(candidate_limit)::integer;
 
 -- name: ListCapabilityTargets :many
--- Identity-only bounded scan; every candidate still passes resource authorization before becoming a hint.
-with targets as (
-select 'organization'::text as kind,organization.id from public.organizations organization where organization.id=sqlc.arg(organization_id)::uuid
-union all select 'connection'::text,connection.id from public.connections connection where connection.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'policy'::text,connection.id from public.connections connection where connection.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'request'::text,request.id from public.access_requests request where request.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'user'::text,member.user_id from public.organization_memberships member where member.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'role'::text,role.id from public.roles role where role.organization_id=sqlc.arg(organization_id)::uuid and role.deleted_at is null
-union all select 'binding'::text,binding.id from public.role_bindings binding where binding.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'audit'::text,event.id from public.audit_events event where event.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'execution'::text,execution.request_id from public.query_executions execution where execution.organization_id=sqlc.arg(organization_id)::uuid
-union all select 'result'::text,result.id from result_cache.result_sets result where result.organization_id=sqlc.arg(organization_id)::uuid and result.expires_at>sqlc.arg(evaluated_at)::timestamptz
+-- Scope-filtered keyset batches discover existence; CEL and per-resource grant limits remain authoritative.
+with scopes as materialized (
+ select distinct version.scope_type,version.connection_id
+ from public.role_bindings binding
+ join public.role_binding_versions version on version.binding_id=binding.id and version.organization_id=binding.organization_id and version.version=binding.current_version
+ join public.roles role on role.id=version.role_id and role.organization_id=version.organization_id and role.deleted_at is null
+ join public.role_permissions permission on permission.role_id=role.id and permission.deleted_at is null
+ where binding.organization_id=sqlc.arg(organization_id)::uuid and binding.user_id=sqlc.arg(user_id)::uuid
+  and version.revoked_at is null and permission.permission_key=sqlc.arg(permission_key)::text
+), targets as (
+ select 'organization'::text as kind,organization.id,null::uuid as connection_id from public.organizations organization where organization.id=sqlc.arg(organization_id)::uuid
+ union all select 'connection'::text,connection.id,connection.id from public.connections connection where connection.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'policy'::text,connection.id,connection.id from public.connections connection where connection.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'request'::text,request.id,request.connection_id from public.access_requests request where request.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'user'::text,member.user_id,null::uuid from public.organization_memberships member where member.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'role'::text,role.id,null::uuid from public.roles role where role.organization_id=sqlc.arg(organization_id)::uuid and role.deleted_at is null
+ union all select 'binding'::text,binding.id,null::uuid from public.role_bindings binding where binding.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'audit'::text,event.id,null::uuid from public.audit_events event where event.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'execution'::text,execution.request_id,request.connection_id from public.query_executions execution join public.access_requests request on request.id=execution.request_id and request.organization_id=execution.organization_id where execution.organization_id=sqlc.arg(organization_id)::uuid
+ union all select 'result'::text,result.id,request.connection_id from result_cache.result_sets result join public.query_executions execution on execution.result_id=result.id and execution.organization_id=result.organization_id join public.access_requests request on request.id=execution.request_id and request.organization_id=execution.organization_id where result.organization_id=sqlc.arg(organization_id)::uuid and result.expires_at>sqlc.arg(evaluated_at)::timestamptz
 )
-select kind,id from targets where kind=any(sqlc.arg(resource_types)::text[])
-order by kind,id limit sqlc.arg(candidate_limit)::integer;
+select targets.id,targets.connection_id,
+ (case when targets.kind='result' then not exists(
+  select 1 from public.query_executions ancestry
+  where ancestry.organization_id=sqlc.arg(organization_id)::uuid and ancestry.result_id=targets.id
+  offset 1 limit 1
+ ) else true end)::boolean as ancestry_unambiguous
+from targets
+where targets.kind=sqlc.arg(resource_type)::text
+ and (sqlc.narg(after_id)::uuid is null or targets.id>sqlc.narg(after_id)::uuid)
+ and exists(select 1 from scopes where scopes.scope_type='organization' or scopes.connection_id=targets.connection_id)
+order by targets.id limit sqlc.arg(candidate_limit)::integer;
 
 -- name: ListSessionPermissionCandidates :many
 -- Potential keys narrow advisory scans; they do not authorize any resource.

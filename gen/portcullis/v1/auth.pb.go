@@ -266,8 +266,10 @@ type LoginResponse struct {
 	Capabilities          []string          `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	Bindings              []*SessionBinding `protobuf:"bytes,5,rep,name=bindings,proto3" json:"bindings,omitempty"`
 	AuthorizationRevision int64             `protobuf:"varint,6,opt,name=authorization_revision,json=authorizationRevision,proto3" json:"authorization_revision,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Authentication succeeded, but advisory authorization metadata could not be resolved; retry Me without replaying Login.
+	AuthorizationUnavailable bool `protobuf:"varint,7,opt,name=authorization_unavailable,json=authorizationUnavailable,proto3" json:"authorization_unavailable,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *LoginResponse) Reset() {
@@ -340,6 +342,13 @@ func (x *LoginResponse) GetAuthorizationRevision() int64 {
 		return x.AuthorizationRevision
 	}
 	return 0
+}
+
+func (x *LoginResponse) GetAuthorizationUnavailable() bool {
+	if x != nil {
+		return x.AuthorizationUnavailable
+	}
+	return false
 }
 
 // SessionBinding summarizes one caller-owned current grant without exposing CEL source.
@@ -633,8 +642,10 @@ type MeResponse struct {
 	Capabilities          []string          `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	Bindings              []*SessionBinding `protobuf:"bytes,5,rep,name=bindings,proto3" json:"bindings,omitempty"`
 	AuthorizationRevision int64             `protobuf:"varint,6,opt,name=authorization_revision,json=authorizationRevision,proto3" json:"authorization_revision,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// No permission, capability, binding or revision data is usable when true; this is distinct from a grantless account.
+	AuthorizationUnavailable bool `protobuf:"varint,7,opt,name=authorization_unavailable,json=authorizationUnavailable,proto3" json:"authorization_unavailable,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *MeResponse) Reset() {
@@ -707,6 +718,13 @@ func (x *MeResponse) GetAuthorizationRevision() int64 {
 		return x.AuthorizationRevision
 	}
 	return 0
+}
+
+func (x *MeResponse) GetAuthorizationUnavailable() bool {
+	if x != nil {
+		return x.AuthorizationUnavailable
+	}
+	return false
 }
 
 type GetConfigRequest struct {
@@ -844,14 +862,15 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x8d\x02\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xca\x02\n" +
 	"\rLoginResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x1b\n" +
 	"\trole_name\x18\x03 \x01(\tR\broleName\x12\"\n" +
 	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x129\n" +
 	"\bbindings\x18\x05 \x03(\v2\x1d.portcullis.v1.SessionBindingR\bbindings\x125\n" +
-	"\x16authorization_revision\x18\x06 \x01(\x03R\x15authorizationRevision\"\xbf\x01\n" +
+	"\x16authorization_revision\x18\x06 \x01(\x03R\x15authorizationRevision\x12;\n" +
+	"\x19authorization_unavailable\x18\a \x01(\bR\x18authorizationUnavailable\"\xbf\x01\n" +
 	"\x0eSessionBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\arole_id\x18\x02 \x01(\tR\x06roleId\x12\x1b\n" +
@@ -866,7 +885,7 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x1f\n" +
 	"\x1dCompletePasswordSetupResponse\"\x10\n" +
 	"\x0eLogoutResponse\"\v\n" +
-	"\tMeRequest\"\x8a\x02\n" +
+	"\tMeRequest\"\xc7\x02\n" +
 	"\n" +
 	"MeResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
@@ -874,7 +893,8 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\trole_name\x18\x03 \x01(\tR\broleName\x12\"\n" +
 	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x129\n" +
 	"\bbindings\x18\x05 \x03(\v2\x1d.portcullis.v1.SessionBindingR\bbindings\x125\n" +
-	"\x16authorization_revision\x18\x06 \x01(\x03R\x15authorizationRevision\"\x12\n" +
+	"\x16authorization_revision\x18\x06 \x01(\x03R\x15authorizationRevision\x12;\n" +
+	"\x19authorization_unavailable\x18\a \x01(\bR\x18authorizationUnavailable\"\x12\n" +
 	"\x10GetConfigRequest\"\x8a\x02\n" +
 	"\x11GetConfigResponse\x12%\n" +
 	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\x12'\n" +

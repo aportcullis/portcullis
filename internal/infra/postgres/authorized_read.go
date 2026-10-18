@@ -23,7 +23,7 @@ type policyReadScope struct {
 	operation    authz.Operation
 	at           time.Time
 	decisions    []readCheckpoint
-	history      *historyAuthorization
+	history      *resourceGrantCache
 }
 
 // candidate evaluates one current resource before it can enter a list, total or decrypted response.
@@ -56,7 +56,7 @@ func (store *ConnectionStore) withAuthorizedReadIsolation(ctx context.Context, o
 		return authz.ErrPermissionDenied
 	}
 	var decisions []readCheckpoint
-	var history *historyAuthorization
+	var history *resourceGrantCache
 	err := store.policy.withPolicyReadIsolation(ctx, store.pool, organization, isolation, func(ctx context.Context, queries *db.Queries, at time.Time) error {
 		scope := &policyReadScope{policy: store.policy, queries: queries, organization: organization, operation: operation, at: at}
 		if operation.Collection {
@@ -85,7 +85,7 @@ func (store *ConnectionStore) withAuthorizedReadIsolation(ctx context.Context, o
 		}
 		if isolation == pgx.RepeatableRead {
 			var err error
-			history, err = newHistoryAuthorization(ctx, scope)
+			history, err = newResourceGrantCache(ctx, scope)
 			if err != nil {
 				return err
 			}
@@ -103,7 +103,7 @@ func (store *ConnectionStore) withAuthorizedReadIsolation(ctx context.Context, o
 	authz.RegisterOutputCheck(ctx, func(checkContext context.Context) error {
 		return store.policy.withPolicyRead(checkContext, store.pool, organization, func(checkContext context.Context, queries *db.Queries, at time.Time) error {
 			if history != nil {
-				return history.checkOutput(checkContext, queries, at, decisions)
+				return history.checkHistoryOutput(checkContext, queries, at, decisions)
 			}
 			for _, previous := range decisions {
 				current, err := store.policy.authorize(checkContext, queries, operation.Principal, previous.permission, authz.ResourceTarget{OrganizationID: organization, Type: previous.decision.Resource.Type, ID: previous.decision.Resource.ID}, at)

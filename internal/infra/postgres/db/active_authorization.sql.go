@@ -131,40 +131,64 @@ func (q *Queries) ListAuthorizationConnectionCandidates(ctx context.Context, arg
 }
 
 const listCapabilityTargets = `-- name: ListCapabilityTargets :many
-with targets as (
-select 'organization'::text as kind,organization.id from public.organizations organization where organization.id=$3::uuid
-union all select 'connection'::text,connection.id from public.connections connection where connection.organization_id=$3::uuid
-union all select 'policy'::text,connection.id from public.connections connection where connection.organization_id=$3::uuid
-union all select 'request'::text,request.id from public.access_requests request where request.organization_id=$3::uuid
-union all select 'user'::text,member.user_id from public.organization_memberships member where member.organization_id=$3::uuid
-union all select 'role'::text,role.id from public.roles role where role.organization_id=$3::uuid and role.deleted_at is null
-union all select 'binding'::text,binding.id from public.role_bindings binding where binding.organization_id=$3::uuid
-union all select 'audit'::text,event.id from public.audit_events event where event.organization_id=$3::uuid
-union all select 'execution'::text,execution.request_id from public.query_executions execution where execution.organization_id=$3::uuid
-union all select 'result'::text,result.id from result_cache.result_sets result where result.organization_id=$3::uuid and result.expires_at>$4::timestamptz
+with scopes as materialized (
+ select distinct version.scope_type,version.connection_id
+ from public.role_bindings binding
+ join public.role_binding_versions version on version.binding_id=binding.id and version.organization_id=binding.organization_id and version.version=binding.current_version
+ join public.roles role on role.id=version.role_id and role.organization_id=version.organization_id and role.deleted_at is null
+ join public.role_permissions permission on permission.role_id=role.id and permission.deleted_at is null
+ where binding.organization_id=$1::uuid and binding.user_id=$5::uuid
+  and version.revoked_at is null and permission.permission_key=$6::text
+), targets as (
+ select 'organization'::text as kind,organization.id,null::uuid as connection_id from public.organizations organization where organization.id=$1::uuid
+ union all select 'connection'::text,connection.id,connection.id from public.connections connection where connection.organization_id=$1::uuid
+ union all select 'policy'::text,connection.id,connection.id from public.connections connection where connection.organization_id=$1::uuid
+ union all select 'request'::text,request.id,request.connection_id from public.access_requests request where request.organization_id=$1::uuid
+ union all select 'user'::text,member.user_id,null::uuid from public.organization_memberships member where member.organization_id=$1::uuid
+ union all select 'role'::text,role.id,null::uuid from public.roles role where role.organization_id=$1::uuid and role.deleted_at is null
+ union all select 'binding'::text,binding.id,null::uuid from public.role_bindings binding where binding.organization_id=$1::uuid
+ union all select 'audit'::text,event.id,null::uuid from public.audit_events event where event.organization_id=$1::uuid
+ union all select 'execution'::text,execution.request_id,request.connection_id from public.query_executions execution join public.access_requests request on request.id=execution.request_id and request.organization_id=execution.organization_id where execution.organization_id=$1::uuid
+ union all select 'result'::text,result.id,request.connection_id from result_cache.result_sets result join public.query_executions execution on execution.result_id=result.id and execution.organization_id=result.organization_id join public.access_requests request on request.id=execution.request_id and request.organization_id=execution.organization_id where result.organization_id=$1::uuid and result.expires_at>$7::timestamptz
 )
-select kind,id from targets where kind=any($1::text[])
-order by kind,id limit $2::integer
+select targets.id,targets.connection_id,
+ (case when targets.kind='result' then not exists(
+  select 1 from public.query_executions ancestry
+  where ancestry.organization_id=$1::uuid and ancestry.result_id=targets.id
+  offset 1 limit 1
+ ) else true end)::boolean as ancestry_unambiguous
+from targets
+where targets.kind=$2::text
+ and ($3::uuid is null or targets.id>$3::uuid)
+ and exists(select 1 from scopes where scopes.scope_type='organization' or scopes.connection_id=targets.connection_id)
+order by targets.id limit $4::integer
 `
 
 type ListCapabilityTargetsParams struct {
-	ResourceTypes  []string
-	CandidateLimit int32
 	OrganizationID pgtype.UUID
+	ResourceType   string
+	AfterID        pgtype.UUID
+	CandidateLimit int32
+	UserID         pgtype.UUID
+	PermissionKey  string
 	EvaluatedAt    pgtype.Timestamptz
 }
 
 type ListCapabilityTargetsRow struct {
-	Kind string
-	ID   pgtype.UUID
+	ID                  pgtype.UUID
+	ConnectionID        pgtype.UUID
+	AncestryUnambiguous bool
 }
 
-// Identity-only bounded scan; every candidate still passes resource authorization before becoming a hint.
+// Scope-filtered keyset batches discover existence; CEL and per-resource grant limits remain authoritative.
 func (q *Queries) ListCapabilityTargets(ctx context.Context, arg ListCapabilityTargetsParams) ([]ListCapabilityTargetsRow, error) {
 	rows, err := q.db.Query(ctx, listCapabilityTargets,
-		arg.ResourceTypes,
-		arg.CandidateLimit,
 		arg.OrganizationID,
+		arg.ResourceType,
+		arg.AfterID,
+		arg.CandidateLimit,
+		arg.UserID,
+		arg.PermissionKey,
 		arg.EvaluatedAt,
 	)
 	if err != nil {
@@ -174,7 +198,7 @@ func (q *Queries) ListCapabilityTargets(ctx context.Context, arg ListCapabilityT
 	items := []ListCapabilityTargetsRow{}
 	for rows.Next() {
 		var i ListCapabilityTargetsRow
-		if err := rows.Scan(&i.Kind, &i.ID); err != nil {
+		if err := rows.Scan(&i.ID, &i.ConnectionID, &i.AncestryUnambiguous); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

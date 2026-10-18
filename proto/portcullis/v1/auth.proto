@@ -53,6 +53,8 @@ message LoginResponse {
   repeated string capabilities = 4;
   repeated SessionBinding bindings = 5;
   int64 authorization_revision = 6;
+  // Authentication succeeded, but advisory authorization metadata could not be resolved; retry Me without replaying Login.
+  bool authorization_unavailable = 7;
 }
 
 // SessionBinding summarizes one caller-owned current grant without exposing CEL source.
@@ -83,6 +85,8 @@ message MeResponse {
   repeated string capabilities = 4;
   repeated SessionBinding bindings = 5;
   int64 authorization_revision = 6;
+  // No permission, capability, binding or revision data is usable when true; this is distinct from a grantless account.
+  bool authorization_unavailable = 7;
 }
 
 message GetConfigRequest {}

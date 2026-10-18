@@ -141,7 +141,7 @@ type Querier interface {
 	// Newest first, org-scoped; ordered by (occurred_at desc, id desc) to match the audit_events_org_time_idx covering index (forward scan) and give OFFSET pagination a stable tie-breaker (PRD §7.1). The state/execution/digest columns are populated from the access-request slice on (ADR-0018).
 	ListAuditEventsDesc(ctx context.Context, arg ListAuditEventsDescParams) ([]ListAuditEventsDescRow, error)
 	ListAuthorizationConnectionCandidates(ctx context.Context, arg ListAuthorizationConnectionCandidatesParams) ([]Connection, error)
-	// Identity-only bounded scan; every candidate still passes resource authorization before becoming a hint.
+	// Scope-filtered keyset batches discover existence; CEL and per-resource grant limits remain authoritative.
 	ListCapabilityTargets(ctx context.Context, arg ListCapabilityTargetsParams) ([]ListCapabilityTargetsRow, error)
 	ListConnections(ctx context.Context, arg ListConnectionsParams) ([]Connection, error)
 	ListManagementIDs(ctx context.Context, arg ListManagementIDsParams) ([]pgtype.UUID, error)

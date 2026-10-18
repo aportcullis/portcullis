@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/aportcullis/portcullis/internal/app/authz"
@@ -66,7 +65,7 @@ func (store *BindingPolicyStore) AuthorizeOperation(ctx context.Context, actor i
 	})
 }
 
-// SessionCapabilities builds one bounded current advisory view; no predicate result is used as server authority.
+// SessionCapabilities resolves bounded scope-aware existence proofs without treating navigation hints as authority.
 func (store *BindingPolicyStore) SessionCapabilities(ctx context.Context, actor identity.UserID) (authz.SessionCapabilities, error) {
 	var result authz.SessionCapabilities
 	err := store.policy.withPolicyRead(ctx, store.pool, store.organization, func(ctx context.Context, queries *db.Queries, at time.Time) error {
@@ -110,41 +109,25 @@ func (store *BindingPolicyStore) SessionCapabilities(ctx context.Context, actor 
 		if err != nil {
 			return err
 		}
-		var pending []identity.Permission
-		var kinds []string
-		seenKinds := map[identity.ResourceType]bool{}
+		scope := &policyReadScope{policy: store.policy, queries: queries, organization: store.organization, operation: authz.Operation{Principal: actor}, at: at}
+		grants, err := newResourceGrantCache(ctx, scope)
+		if err != nil {
+			return err
+		}
+		if grants.revision != result.Revision {
+			return authz.ErrInvalidSnapshot
+		}
 		for _, key := range potential {
 			permission := identity.Permission(key)
 			if granted[permission] {
 				continue
 			}
-			pending = append(pending, permission)
-			for _, kind := range authz.ResourceTypesForPermission(permission) {
-				if !seenKinds[kind] {
-					seenKinds[kind] = true
-					kinds = append(kinds, string(kind))
-				}
+			allowed, err := store.discoverCapability(ctx, queries, grants, permission)
+			if err != nil {
+				return err
 			}
-		}
-		if len(pending) == 0 {
-			return nil
-		}
-		candidates, err := queries.ListCapabilityTargets(ctx, db.ListCapabilityTargetsParams{OrganizationID: organizationID, CandidateLimit: store.policy.candidateQueryLimit(), ResourceTypes: kinds, EvaluatedAt: timeToTS(at)})
-		if err != nil {
-			return err
-		}
-		if len(candidates) > store.policy.readSettings.MaxCandidates {
-			return authz.ErrBindingLimitExceeded
-		}
-		for _, permission := range pending {
-			for _, candidate := range candidates {
-				target := authz.ResourceTarget{OrganizationID: store.organization, Type: identity.ResourceType(candidate.Kind), ID: uuidToString(candidate.ID)}
-				if _, err := store.policy.authorize(ctx, queries, actor, permission, target, at); err == nil {
-					result.Capabilities = append(result.Capabilities, permission)
-					break
-				} else if !errors.Is(err, authz.ErrPermissionDenied) && !errors.Is(err, authz.ErrUnknownPermission) {
-					return err
-				}
+			if allowed {
+				result.Capabilities = append(result.Capabilities, permission)
 			}
 		}
 		return nil
