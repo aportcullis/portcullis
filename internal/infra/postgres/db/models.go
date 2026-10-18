@@ -145,6 +145,11 @@ type Organization struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type OrganizationAuthorizationRevision struct {
+	OrganizationID pgtype.UUID
+	Revision       int64
+}
+
 type OrganizationMembership struct {
 	ID             pgtype.UUID
 	OrganizationID pgtype.UUID
@@ -219,6 +224,31 @@ type Role struct {
 	CreatedAt          pgtype.Timestamptz
 	DeletedAt          pgtype.Timestamptz
 	Version            int64
+}
+
+type RoleBinding struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	CurrentVersion int64
+	CreatedAt      pgtype.Timestamptz
+}
+
+type RoleBindingVersion struct {
+	BindingID                   pgtype.UUID
+	OrganizationID              pgtype.UUID
+	UserID                      pgtype.UUID
+	Version                     int64
+	RoleID                      pgtype.UUID
+	ScopeType                   string
+	ConnectionID                pgtype.UUID
+	ConditionTitle              *string
+	ConditionDescription        *string
+	ConditionExpression         *string
+	ConditionLanguageVersion    *string
+	ConditionEnvironmentVersion *string
+	CreatedAt                   pgtype.Timestamptz
+	RevokedAt                   pgtype.Timestamptz
 }
 
 type RolePermission struct {

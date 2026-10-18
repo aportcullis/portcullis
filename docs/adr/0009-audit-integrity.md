@@ -98,6 +98,8 @@ Standards verified 2026-07-03: OWASP Logging Cheat Sheet (log all authentication
   revoke update on public.connection_policy_versions from <new>;
   -- append-only approval evidence (0013, ADR-0018) — same boundary
   revoke update on public.approvals from <new>;
+  -- Prepared authorization storage remains read-only (0023, ADR-0064).
+  revoke insert, update on public.role_bindings, public.role_binding_versions, public.organization_authorization_revisions from <new>;
   revoke all on public.schema_migrations from <new>;
   alter default privileges in schema public grant select, insert, update on tables to <new>;
   alter default privileges in schema public grant usage on sequences to <new>;

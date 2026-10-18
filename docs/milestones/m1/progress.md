@@ -21,6 +21,8 @@ Per [administration use cases](../../../internal/app/administration/users.go) an
 
 [ADR-0063](../../adr/0063-condition-dsl-and-pure-evaluation.md) clarifies Role/Binding as data, Condition as a restricted CEL DSL, and evaluation as a pure function over checked programs and trusted immutable inputs. Preparation, attribute/time resolution, auditing and condition forms remain separate responsibilities; this clarification adds no runtime implementation or qualification evidence.
 
+[ADR-0064](../../adr/0064-binding-schema-preparation-and-activation.md) starts implementation with [migration 0023](../../../migrations/0023_binding_schema_preparation.sql): organization-pinned binding heads, binding-owned condition/version history and authorization revision storage. These tables stay empty and read-only to runtime during preparation; current membership grants remain authoritative. Backfill and catalog grants wait for the atomic reader/writer cutover so ongoing legacy administration cannot leave stale copied bindings. CEL evaluation, binding use cases, scoped authorization and activation remain pending.
+
 ## Verification status
 
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.

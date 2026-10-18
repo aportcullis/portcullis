@@ -7,6 +7,8 @@ The current authorization code resolves one membership role into organization-wi
 
 [ADR-0063](adr/0063-condition-dsl-and-pure-evaluation.md) separates structured Role/Binding data, checked CEL conditions and pure predicate evaluation. The planned outer services resolve attributes and authoritative time, prepare immutable inputs and handle transactions/audit; the evaluator performs no I/O or clock reads. Condition forms generate the same server-validated CEL used by API clients.
 
+[ADR-0064](adr/0064-binding-schema-preparation-and-activation.md) introduces inactive binding/version/revision tables with runtime reads only. Backfill and replacement authorization are deferred to an atomic reader/writer activation; the runtime diagrams still describe the membership-based implementation.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.
