@@ -27,3 +27,9 @@ Cache loss after PostgreSQL crash/failover does not change durable execution his
 Back up metadata and master keys together; follow [key rotation](key-rotation.md) for key changes. The alpha runs as one serving process; multi-instance cancellation routing is not provided. Capacity and hardware recommendations remain subject to the [performance qualification plan](../performance/README.md).
 
 To verify key initialization separately, run `make keygen-check`. This uses a disposable container/tmpfs and never mounts the persistent demo secrets volume.
+
+## Authorization read budgets
+
+[ADR-0073](../adr/0073-authorized-history-pagination.md) separates accumulated audit/request history from database batch size. `PORTCULLIS_AUTHORIZATION_READ_MAX_CANDIDATES` defaults to 1024 (range 1–65536): audit and request lists scan the complete history in batches of that size, preserving authorized totals and page clamping. Other collections and session capability discovery still apply this setting to their total candidate set.
+
+`PORTCULLIS_AUTHORIZATION_READ_TIMEOUT` defaults to `5s` and must be positive and at most `30s`. It bounds lock waits, all scan batches and condition evaluation; the fresh output check has its own bounded read. Cancellation, timeout and authorization failures return no partial list or total. Raising a budget is not production-capacity qualification; exact counting still requires scanning history, and off-page authorization witnesses are retained until output. Per-decision Binding and CEL limits remain unchanged.

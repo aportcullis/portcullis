@@ -66,10 +66,25 @@ func (store *AccessRequestStore) authorizedRequest(ctx context.Context, organiza
 	return result, sealed, nil
 }
 
-// authorizedRequestPage filters a complete finite scan before counting and clamping pages.
+// historyRequestVisible preserves ownership and current reviewer privacy for every candidate row.
+func (scope *policyReadScope) historyRequestVisible(ctx context.Context, request access.Request) (bool, error) {
+	if request.RequesterID == scope.operation.Principal {
+		return true, nil
+	}
+	resource := identity.ResourceReference{OrganizationID: scope.organization, Type: identity.ResourceRequest, ID: string(request.ID), ConnectionID: string(request.ConnectionID)}
+	for _, permission := range []identity.Permission{identity.PermissionRequestsApprove, identity.PermissionRequestsReject} {
+		allowed, err := scope.historyCandidate(ctx, resource, permission)
+		if err != nil || allowed {
+			return allowed, err
+		}
+	}
+	return false, nil
+}
+
+// authorizedRequestPage filters all history batches before counting and clamping pages.
 func (store *AccessRequestStore) authorizedRequestPage(ctx context.Context, organization identity.OrganizationID, query access.ListQuery) (access.RequestPage, error) {
 	var result access.RequestPage
-	err := store.readStore().withAuthorizedRead(ctx, organization, func(ctx context.Context, scope *policyReadScope) error {
+	err := store.readStore().withAuthorizedHistoryRead(ctx, organization, func(ctx context.Context, scope *policyReadScope) error {
 		organizationID, err := policyOrganizationUUID(organization)
 		if err != nil {
 			return err
@@ -80,58 +95,71 @@ func (store *AccessRequestStore) authorizedRequestPage(ctx context.Context, orga
 		} else if err != nil {
 			return err
 		}
-		var rows []requestViewRow
-		if query.SortDescending {
-			candidates, err := scope.queries.ListAccessRequestsDesc(ctx, db.ListAccessRequestsDescParams{OrganizationID: organizationID, RequesterID: requester, PageLimit: int64(scope.policy.candidateQueryLimit())})
-			if err != nil {
-				return err
+		page := authorizedHistoryPage[requestViewRow]{requested: query.Page, size: query.PageSize}
+		batchSize := int64(scope.policy.readSettings.MaxCandidates)
+		for offset := int64(0); ; offset += batchSize {
+			var rows []requestViewRow
+			if query.SortDescending {
+				candidates, err := scope.queries.ListAccessRequestsDesc(ctx, db.ListAccessRequestsDescParams{OrganizationID: organizationID, RequesterID: requester, PageLimit: batchSize, RowOffset: offset})
+				if err != nil {
+					return err
+				}
+				rows = make([]requestViewRow, 0, len(candidates))
+				for _, candidate := range candidates {
+					rows = append(rows, requestViewRow(candidate))
+				}
+			} else {
+				candidates, err := scope.queries.ListAccessRequestsAsc(ctx, db.ListAccessRequestsAscParams{OrganizationID: organizationID, RequesterID: requester, PageLimit: batchSize, RowOffset: offset})
+				if err != nil {
+					return err
+				}
+				rows = make([]requestViewRow, 0, len(candidates))
+				for _, candidate := range candidates {
+					rows = append(rows, requestViewRow(candidate))
+				}
 			}
-			for _, candidate := range candidates {
-				rows = append(rows, requestViewRow(candidate))
+			for _, row := range rows {
+				view := viewFromRow(row)
+				view.StampEffective(scope.at)
+				if query.State != "" && view.EffectiveState != query.State {
+					continue
+				}
+				checkpointStart := len(scope.decisions)
+				resource := identity.ResourceReference{OrganizationID: organization, Type: identity.ResourceRequest, ID: uuidToString(row.ID), ConnectionID: uuidToString(row.ConnectionID)}
+				allowed, err := scope.historyCandidate(ctx, resource, identity.PermissionRequestsList)
+				if err != nil {
+					return err
+				}
+				if !allowed {
+					continue
+				}
+				allowed, err = scope.historyRequestVisible(ctx, view.Request)
+				if err != nil {
+					return err
+				}
+				if !allowed {
+					scope.decisions = scope.decisions[:checkpointStart]
+					continue
+				}
+				page.appendVisible(row)
 			}
-		} else {
-			candidates, err := scope.queries.ListAccessRequestsAsc(ctx, db.ListAccessRequestsAscParams{OrganizationID: organizationID, RequesterID: requester, PageLimit: int64(scope.policy.candidateQueryLimit())})
-			if err != nil {
-				return err
-			}
-			for _, candidate := range candidates {
-				rows = append(rows, requestViewRow(candidate))
+			if int64(len(rows)) < batchSize {
+				break
 			}
 		}
-		if len(rows) > scope.policy.readSettings.MaxCandidates {
-			return authz.ErrBindingLimitExceeded
-		}
-		visible := make([]access.RequestView, 0, len(rows))
+		rows, number := page.result()
+		items := make([]access.RequestView, 0, len(rows))
 		for _, row := range rows {
-			allowed, err := scope.candidate(ctx, identity.ResourceRequest, uuidToString(row.ID), identity.PermissionRequestsList)
-			if err != nil {
-				return err
-			}
-			if !allowed {
-				continue
-			}
-			view := viewFromRow(row)
-			view.StampEffective(scope.at)
-			if query.State != "" && view.EffectiveState != query.State {
-				continue
-			}
-			allowed, err = scope.requestVisible(ctx, view.Request)
-			if err != nil {
-				return err
-			}
-			if !allowed {
-				continue
-			}
 			count, err := store.countCurrentApprovals(ctx, scope.queries, organizationID, row.ID, row.RequesterID, scope.at)
 			if err != nil {
 				return err
 			}
+			view := viewFromRow(row)
 			view.ValidApprovals = int(count)
 			view.StampEffective(scope.at)
-			visible = append(visible, view)
+			items = append(items, view)
 		}
-		page, start, end := authorizedPageBounds(query.Page, query.PageSize, len(visible))
-		result = access.RequestPage{Items: visible[start:end], Page: page, PageSize: query.PageSize, TotalCount: int64(len(visible)), TotalPages: (len(visible) + query.PageSize - 1) / query.PageSize}
+		result = access.RequestPage{Items: items, Page: number, PageSize: query.PageSize, TotalCount: int64(page.count), TotalPages: (page.count + query.PageSize - 1) / query.PageSize}
 		return nil
 	})
 	if err != nil {

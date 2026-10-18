@@ -1653,17 +1653,24 @@ func TestAutoApprovalTTLStampedUnderLock(t *testing.T) {
 	ctx := context.Background()
 	connID := f.liveConn(t, 0)
 	r := f.draft(t, connID)
-	sub, err := r.Submitted(submitSnapshot(f.pin(t, connID), 0), time.Now().UTC().Truncate(time.Microsecond))
+	observeDatabaseTime := func() time.Time {
+		var observed time.Time
+		if err := f.pool.QueryRow(ctx, `select clock_timestamp()`).Scan(&observed); err != nil {
+			t.Fatal(err)
+		}
+		return observed.UTC()
+	}
+	before := observeDatabaseTime()
+	sub, err := r.Submitted(submitSnapshot(f.pin(t, connID), 0), before.Truncate(time.Microsecond))
 	if err != nil {
 		t.Fatal(err)
 	}
 	const validity = time.Hour
 
-	stale, err := sub.Approved(time.Now().UTC().Add(-2*validity), validity)
+	stale, err := sub.Approved(before.Add(-2*validity), validity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := time.Now().UTC()
 
 	view, err := f.requests.Submit(ctx, stale, 1, validity, reqEvent(audit.ActionAccessRequestSubmitted, r.ID))
 	if err != nil {
@@ -1672,15 +1679,17 @@ func TestAutoApprovalTTLStampedUnderLock(t *testing.T) {
 	if view.Request.State != access.StateApproved {
 		t.Fatalf("state = %s, want approved", view.Request.State)
 	}
-	if view.Request.ExpiresAt == nil || !view.Request.ExpiresAt.After(before.Add(validity-time.Minute)) {
-		t.Errorf("expires_at = %v, want ~%s of validity left from the commit, not the stale instant", view.Request.ExpiresAt, validity)
+	after := observeDatabaseTime()
+	if view.Request.ExpiresAt == nil {
+		t.Fatal("automatic approval has no expiry")
 	}
-	// The window opens at the approval, so it cannot start before the request was even submitted, and it must not run past the validity from this moment.
+	approvedAt := view.Request.ExpiresAt.Add(-validity)
+	if approvedAt.Before(before) || approvedAt.After(after) {
+		t.Errorf("approval instant %s outside database-observed submission window [%s,%s]", approvedAt, before, after)
+	}
+	// The database-stamped validity window must open after submission.
 	if view.Request.SubmittedAt == nil || !view.Request.ExpiresAt.After(*view.Request.SubmittedAt) {
 		t.Errorf("expires_at %v is not after submitted_at %v", view.Request.ExpiresAt, view.Request.SubmittedAt)
-	}
-	if view.Request.ExpiresAt.After(time.Now().UTC().Add(validity)) {
-		t.Errorf("expires_at = %v, want no later than now+%s — the window may not be extended", view.Request.ExpiresAt, validity)
 	}
 }
 

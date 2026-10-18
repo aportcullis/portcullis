@@ -61,6 +61,11 @@ func (policy *BindingPolicyEvaluator) authorize(ctx context.Context, queries *db
 
 // withPolicyRead owns bounded coherent metadata reads under the shared organization policy lock.
 func (policy *BindingPolicyEvaluator) withPolicyRead(ctx context.Context, pool *pgxpool.Pool, organization identity.OrganizationID, read func(context.Context, *db.Queries, time.Time) error) (readError error) {
+	return policy.withPolicyReadIsolation(ctx, pool, organization, pgx.ReadCommitted, read)
+}
+
+// withPolicyReadIsolation keeps paged history batches on one metadata snapshot.
+func (policy *BindingPolicyEvaluator) withPolicyReadIsolation(ctx context.Context, pool *pgxpool.Pool, organization identity.OrganizationID, isolation pgx.TxIsoLevel, read func(context.Context, *db.Queries, time.Time) error) (readError error) {
 	if policy == nil {
 		return authz.ErrAuthorizationInactive
 	}
@@ -74,7 +79,7 @@ func (policy *BindingPolicyEvaluator) withPolicyRead(ctx context.Context, pool *
 			readError = errors.Join(authz.ErrSnapshotUnavailable, readError)
 		}
 	}()
-	transaction, err := pool.BeginTx(bounded, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	transaction, err := pool.BeginTx(bounded, pgx.TxOptions{IsoLevel: isolation})
 	if err != nil {
 		return authz.ErrSnapshotUnavailable
 	}

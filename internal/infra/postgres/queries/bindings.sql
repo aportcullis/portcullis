@@ -80,3 +80,15 @@ where binding.organization_id = sqlc.arg(organization_id)::uuid and binding.user
   and (version.scope_type = 'organization' or (version.scope_type = 'connection' and version.connection_id = sqlc.narg(connection_id)::uuid))
 order by binding.id
 limit sqlc.arg(candidate_limit)::integer;
+
+-- name: ResolveHistoryResources :many
+-- Revalidate all disclosed history/count identities and ancestry in bounded output batches.
+select resource.id as resource_id, null::uuid as connection_id
+from public.audit_events resource
+where sqlc.arg(resource_type)::text = 'audit' and resource.organization_id = sqlc.arg(organization_id)::uuid
+  and resource.id = any(sqlc.arg(resource_ids)::uuid[])
+union all
+select resource.id as resource_id, resource.connection_id as connection_id
+from public.access_requests resource
+where sqlc.arg(resource_type)::text = 'request' and resource.organization_id = sqlc.arg(organization_id)::uuid
+  and resource.id = any(sqlc.arg(resource_ids)::uuid[]);

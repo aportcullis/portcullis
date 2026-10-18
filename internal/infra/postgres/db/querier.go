@@ -211,6 +211,8 @@ type Querier interface {
 	// Read identifiers only; execution identity is request_id and results inherit ancestry through execution metadata.
 	ResolveBindingResource(ctx context.Context, arg ResolveBindingResourceParams) ([]ResolveBindingResourceRow, error)
 	ResolveExecutionResultIdentity(ctx context.Context, arg ResolveExecutionResultIdentityParams) (pgtype.UUID, error)
+	// Revalidate all disclosed history/count identities and ancestry in bounded output batches.
+	ResolveHistoryResources(ctx context.Context, arg ResolveHistoryResourcesParams) ([]ResolveHistoryResourcesRow, error)
 	ResolvePasswordSetup(ctx context.Context, arg ResolvePasswordSetupParams) (ResolvePasswordSetupRow, error)
 	RevokeOpenPasswordSetups(ctx context.Context, arg RevokeOpenPasswordSetupsParams) error
 	// Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).

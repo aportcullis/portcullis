@@ -8,6 +8,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
+	"github.com/jackc/pgx/v5"
 )
 
 type readCheckpoint struct {
@@ -22,6 +23,7 @@ type policyReadScope struct {
 	operation    authz.Operation
 	at           time.Time
 	decisions    []readCheckpoint
+	history      *historyAuthorization
 }
 
 // candidate evaluates one current resource before it can enter a list, total or decrypted response.
@@ -39,12 +41,23 @@ func (scope *policyReadScope) candidate(ctx context.Context, kind identity.Resou
 
 // withAuthorizedRead resolves server-selected purpose and registers fresh checks for every disclosed resource.
 func (store *ConnectionStore) withAuthorizedRead(ctx context.Context, organization identity.OrganizationID, read func(context.Context, *policyReadScope) error) error {
+	return store.withAuthorizedReadIsolation(ctx, organization, pgx.ReadCommitted, read)
+}
+
+// withAuthorizedHistoryRead holds one snapshot across all history batches and page clamps.
+func (store *ConnectionStore) withAuthorizedHistoryRead(ctx context.Context, organization identity.OrganizationID, read func(context.Context, *policyReadScope) error) error {
+	return store.withAuthorizedReadIsolation(ctx, organization, pgx.RepeatableRead, read)
+}
+
+// withAuthorizedReadIsolation retains current policy fences for both snapshot and ordinary reads.
+func (store *ConnectionStore) withAuthorizedReadIsolation(ctx context.Context, organization identity.OrganizationID, isolation pgx.TxIsoLevel, read func(context.Context, *policyReadScope) error) error {
 	operation, exists := authz.OperationFromContext(ctx)
 	if !exists || operation.Permission == "" || store.organization != organization {
 		return authz.ErrPermissionDenied
 	}
 	var decisions []readCheckpoint
-	err := store.policy.withPolicyRead(ctx, store.pool, organization, func(ctx context.Context, queries *db.Queries, at time.Time) error {
+	var history *historyAuthorization
+	err := store.policy.withPolicyReadIsolation(ctx, store.pool, organization, isolation, func(ctx context.Context, queries *db.Queries, at time.Time) error {
 		scope := &policyReadScope{policy: store.policy, queries: queries, organization: organization, operation: operation, at: at}
 		if operation.Collection {
 			organizationID, err := policyOrganizationUUID(organization)
@@ -70,6 +83,14 @@ func (store *ConnectionStore) withAuthorizedRead(ctx context.Context, organizati
 			}
 			scope.decisions = append(scope.decisions, readCheckpoint{decision: decision, permission: operation.Permission})
 		}
+		if isolation == pgx.RepeatableRead {
+			var err error
+			history, err = newHistoryAuthorization(ctx, scope)
+			if err != nil {
+				return err
+			}
+			scope.history = history
+		}
 		if err := read(ctx, scope); err != nil {
 			return err
 		}
@@ -81,6 +102,9 @@ func (store *ConnectionStore) withAuthorizedRead(ctx context.Context, organizati
 	}
 	authz.RegisterOutputCheck(ctx, func(checkContext context.Context) error {
 		return store.policy.withPolicyRead(checkContext, store.pool, organization, func(checkContext context.Context, queries *db.Queries, at time.Time) error {
+			if history != nil {
+				return history.checkOutput(checkContext, queries, at, decisions)
+			}
 			for _, previous := range decisions {
 				current, err := store.policy.authorize(checkContext, queries, operation.Principal, previous.permission, authz.ResourceTarget{OrganizationID: organization, Type: previous.decision.Resource.Type, ID: previous.decision.Resource.ID}, at)
 				if err != nil {

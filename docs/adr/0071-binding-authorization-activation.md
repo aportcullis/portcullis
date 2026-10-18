@@ -1,6 +1,6 @@
 # ADR-0071: Atomic activation of resource Binding authorization
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0073](0073-authorized-history-pagination.md) for audit/request list candidate ceilings
 - **Date:** 2026-10-18
 - **Implements:** [ADR-0062](0062-role-bindings-and-conditions.md) and [ADR-0064](0064-binding-schema-preparation-and-activation.md)'s coordinated activation.
 - **Refines:** [ADR-0066](0066-resource-binding-authorization-snapshots.md)'s runtime snapshots and result identity.

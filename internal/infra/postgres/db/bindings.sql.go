@@ -213,3 +213,47 @@ func (q *Queries) ResolveBindingResource(ctx context.Context, arg ResolveBinding
 	}
 	return items, nil
 }
+
+const resolveHistoryResources = `-- name: ResolveHistoryResources :many
+select resource.id as resource_id, null::uuid as connection_id
+from public.audit_events resource
+where $1::text = 'audit' and resource.organization_id = $2::uuid
+  and resource.id = any($3::uuid[])
+union all
+select resource.id as resource_id, resource.connection_id as connection_id
+from public.access_requests resource
+where $1::text = 'request' and resource.organization_id = $2::uuid
+  and resource.id = any($3::uuid[])
+`
+
+type ResolveHistoryResourcesParams struct {
+	ResourceType   string
+	OrganizationID pgtype.UUID
+	ResourceIds    []pgtype.UUID
+}
+
+type ResolveHistoryResourcesRow struct {
+	ResourceID   pgtype.UUID
+	ConnectionID pgtype.UUID
+}
+
+// Revalidate all disclosed history/count identities and ancestry in bounded output batches.
+func (q *Queries) ResolveHistoryResources(ctx context.Context, arg ResolveHistoryResourcesParams) ([]ResolveHistoryResourcesRow, error) {
+	rows, err := q.db.Query(ctx, resolveHistoryResources, arg.ResourceType, arg.OrganizationID, arg.ResourceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ResolveHistoryResourcesRow{}
+	for rows.Next() {
+		var i ResolveHistoryResourcesRow
+		if err := rows.Scan(&i.ResourceID, &i.ConnectionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
