@@ -1,4 +1,4 @@
-import { fromJsonString } from "@bufbuild/protobuf";
+import { fromBinary, fromJsonString } from "@bufbuild/protobuf";
 import { MeResponseSchema } from "@/gen/portcullis/v1/auth_pb";
 
 import { expect, test } from "@playwright/test";
@@ -63,6 +63,15 @@ test("active management preserves grants and protects real user, Role and Bindin
   await expect(page.getByRole("status")).toContainText("Created user without grants");
   const memberID = await page.getByLabel("Created user ID").inputValue();
   await expect(page.getByLabel("Setup token", { exact: true })).not.toHaveValue("");
+  const setupDelivery = await page.getByLabel("Setup token", { exact: true }).inputValue();
+  const refreshedSession = page.waitForResponse("**/portcullis.v1.Auth/Me");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  const currentAuthority = fromBinary(MeResponseSchema, await (await refreshedSession).body());
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+  expect(currentAuthority.authorizationRevision).toBeGreaterThan(authorityBefore.authorizationRevision);
+  expect(currentAuthority.bindings).toEqual(authorityBefore.bindings);
+  await expect(page.getByLabel("Setup token", { exact: true })).toHaveValue(setupDelivery);
+  await expect(page.getByRole("button", { name: "Create user", exact: true })).toBeDisabled();
 
   await page.goto("/roles/new");
   await expect(page.getByLabel("Setup token", { exact: true })).toHaveCount(0);

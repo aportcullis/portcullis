@@ -7,7 +7,7 @@ import { LoginResponseSchema, MeResponseSchema } from "@/gen/portcullis/v1/auth_
 const client = vi.hoisted(() => ({ me: vi.fn(), login: vi.fn(), logout: vi.fn() }));
 vi.mock("@/shared/api/client", () => ({ authClient: client }));
 
-import { hasPermission, load, login, logout, session, sessionAuthorizationKey } from "@/entities/session/store";
+import { hasPermission, load, login, logout, session, sessionAuthorizationKey, sessionInteractionKey } from "@/entities/session/store";
 
 /** Returns a complete current advisory view, including the valid empty-grant case. */
 function currentView(capabilities = ["requests.list"], authorizationUnavailable = false) {
@@ -28,6 +28,60 @@ beforeEach(async () => {
 });
 
 describe("current session authorization metadata", () => {
+  it("retains local composition across revision-only refreshes while invalidating protected reads", async () => {
+    const before = currentView(["users.create", "roles.create"]);
+    client.me.mockResolvedValueOnce(before);
+    await load();
+    const interaction = sessionInteractionKey();
+    const read = sessionAuthorizationKey();
+    const refreshed = currentView(["roles.create", "users.create"]);
+    refreshed.authorizationRevision++;
+    client.me.mockResolvedValueOnce(refreshed);
+    await load();
+    expect(sessionInteractionKey()).toBe(interaction);
+    expect(sessionAuthorizationKey()).not.toBe(read);
+  });
+
+  it("ends a previous interaction after a new sign-in to the same account", async () => {
+    client.me.mockResolvedValue(currentView());
+    await load();
+    const interaction = sessionInteractionKey();
+    const signedIn = currentView();
+    client.login.mockResolvedValue(create(LoginResponseSchema, { user: signedIn.user, capabilities: signedIn.capabilities, authorizationRevision: signedIn.authorizationRevision }));
+    await login("current@example.com", "password");
+    expect(sessionInteractionKey()).not.toBe(interaction);
+  });
+
+  it("discards the former interaction while a successful login without a user payload resolves Me", async () => {
+    client.me.mockResolvedValueOnce(currentView());
+    await load();
+    const interaction = sessionInteractionKey();
+    const resolving = deferred<ReturnType<typeof currentView>>();
+    client.me.mockReturnValueOnce(resolving.promise);
+    client.login.mockResolvedValue(create(LoginResponseSchema));
+    const pendingLogin = login("current@example.com", "password");
+    await vi.waitFor(() => expect(session().status).toBe("loading"));
+    expect(sessionInteractionKey()).toBe("");
+    resolving.resolve(currentView());
+    await pendingLogin;
+    expect(sessionInteractionKey()).not.toBe(interaction);
+  });
+
+  it("ends both local composition and protected reads when a Binding's condition presence changes", async () => {
+    const before = currentView();
+    before.bindings.push({ $typeName: "portcullis.v1.SessionBinding", id: "binding", roleId: "role", roleName: "Reader", scopeType: "organization", connectionId: "", hasCondition: false });
+    client.me.mockResolvedValueOnce(before);
+    await load();
+    const interaction = sessionInteractionKey();
+    const read = sessionAuthorizationKey();
+    const refreshed = create(MeResponseSchema, before);
+    for (const binding of refreshed.bindings) binding.hasCondition = true;
+    client.me.mockResolvedValueOnce(refreshed);
+    await load();
+    expect(sessionInteractionKey()).not.toBe(interaction);
+    expect(sessionAuthorizationKey()).not.toBe(read);
+  });
+
   it("shows evaluated capabilities after a successful resolve", async () => {
     client.me.mockResolvedValue(currentView());
     await load();

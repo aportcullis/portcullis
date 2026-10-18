@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createManagementAction } from "@/features/administration/action";
 
-vi.mock("@/entities/session/store", () => ({ load: vi.fn(async () => {}) }));
+const metadata = vi.hoisted(() => ({ authorizationKey: "initial-policy" }));
+vi.mock("@/entities/session/store", () => ({ load: vi.fn(async () => {}), sessionAuthorizationKey: () => metadata.authorizationKey }));
 
 /** Controls response timing at the server-preparation boundary. */
 function deferred<Value>() {
@@ -35,6 +36,25 @@ describe("management intents across asynchronous route lifetimes", () => {
     const pending = deferred<string>(); const intent = scope.action.run(() => pending.promise);
     scope.dispose(); pending.settle("previous user's setup token");
     expect(await intent).toBeUndefined(); expect(scope.action.busy()).toBe(false);
+  });
+  it("refuses a prepared write when policy changes while the local creation route remains open", async () => {
+    metadata.authorizationKey = "before-validation";
+    const scope = createRoot(dispose => ({ action: createManagementAction(), dispose }));
+    const validation = deferred<void>(); let writes = 0;
+    const intent = scope.action.run(async isCurrent => { await validation.promise; if (!isCurrent()) throw new ConnectError("Policy changed", Code.Aborted); writes++; return "must not write"; });
+    metadata.authorizationKey = "after-validation";
+    validation.settle();
+    expect(await intent).toBeUndefined(); expect(writes).toBe(0);
+    expect(scope.action.locked()).toBe(true); scope.dispose();
+  });
+  it("delivers an already issued creation receipt across a revision-only refresh without replaying its write", async () => {
+    metadata.authorizationKey = "before-creation";
+    const scope = createRoot(dispose => ({ action: createManagementAction(), dispose }));
+    const pending = deferred<string>(); let writes = 0;
+    const intent = scope.action.run(() => { writes++; return pending.promise; });
+    metadata.authorizationKey = "after-creation";
+    pending.settle("committed receipt");
+    expect((await intent)?.value).toBe("committed receipt"); expect(writes).toBe(1); scope.dispose();
   });
   it("releases a failed precondition without reporting success or raw diagnostics", async () => {
     await createRoot(async dispose => {

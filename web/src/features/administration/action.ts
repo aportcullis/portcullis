@@ -2,7 +2,7 @@ import { createSignal, onCleanup } from "solid-js";
 import { Code, ConnectError } from "@connectrpc/connect";
 
 import { isManagementAdmissionFailure, managementError } from "@/entities/administration/errors";
-import { load } from "@/entities/session/store";
+import { load, sessionAuthorizationKey } from "@/entities/session/store";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 
 /** Owns mutation feedback and fences every completion to the current route lifetime. */
@@ -17,7 +17,9 @@ export function createManagementAction(onAdmissionFailure: () => void = () => {}
   async function run<Result>(work: (isCurrent: () => boolean) => Promise<Result>, success = "Saved.") {
     if (busy() || locked()) return;
     setBusy(true); setError(""); setMessage("");
-    const isCurrent = lifetime.captureSession();
+    const isSameInteraction = lifetime.captureSession();
+    const authorizationKey = sessionAuthorizationKey();
+    const isCurrent = () => isSameInteraction() && sessionAuthorizationKey() === authorizationKey;
     const outcome = await lifetime.runInSession(() => work(isCurrent));
     if (outcome.status === "superseded") return;
     setBusy(false);

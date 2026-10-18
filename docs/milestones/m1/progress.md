@@ -42,6 +42,8 @@ The following entries record the historical preparation sequence through ADR-007
 
 ## Verification status
 
+[ADR-0075](../../adr/0075-local-draft-and-setup-receipt-lifetimes.md) separates route-owned creation inputs and setup delivery from revision-owned protected reads. Successful revision-only session refreshes retain local composition and creation/reissue receipts; identity/authority changes, admission refusal, session or metadata failures and route departure still discard them. Existing-resource edit drafts retain their conservative revision fence. This resolves the recorded management delivery lifetime defect without completing the remaining result, export, account-menu or release acceptance work.
+
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.
 The [2026-10-18 dependency verification](validation.md#verification--2026-10-18) passed both required gates, including all 38 then-existing real-binary browser scenarios. The later [atomic activation qualification](validation.md#atomic-binding-authorization-activation-qualification--2026-10-18) records the active replacement, 345 frontend unit tests and 51 real-binary browser scenarios; its separate race evidence covers the changed authorization packages.
 This evidence covers the tested journey and does not establish completion of the entire M1 scope or capacity qualification.

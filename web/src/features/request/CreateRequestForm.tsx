@@ -1,6 +1,6 @@
 import { A, useNavigate } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
+import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import {
@@ -16,7 +16,7 @@ import {
   targetState,
   updateDraft,
 } from "@/entities/request/store";
-import { hasPermission } from "@/entities/session/store";
+import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
 import { mayReturnToSavedDraft } from "@/features/request/actions";
 import type { RequestDraft } from "@/features/request/draft";
 import {
@@ -45,7 +45,6 @@ export const CreateRequestForm: Component = () => {
   // Leaving the route fences responses so they cannot affect another form.
   const { discardSession, runInSession } = createDialogSession();
   const navigate = useNavigate();
-  onMount(() => openList());
   onCleanup(discardSession);
   const [connectionId, setConnectionId] = createSignal("");
   const [draft, setDraft] = createSignal<RequestDraft>(createEmptyRequestDraft());
@@ -79,6 +78,8 @@ export const CreateRequestForm: Component = () => {
     // A saved draft is bound to its connection, so there is nothing to re-pick — and nothing to guess either. The archive that removed the connection also swept this draft (§4.3), so ASK the server what became of it instead of offering a cancel it would refuse.
     await reflectServerState();
   };
+
+  createEffect(on(sessionAuthorizationKey, () => openList()));
 
   // reflectServerState replaces guesswork with the row itself: settled means the work is already done (say so, refresh the list, let the user close), while a draft that somehow survived can still be withdrawn from here.
   const reflectServerState = async (): Promise<void> => {

@@ -95,11 +95,12 @@ These decisions establish the Core 1 foundation.
 | [0067](0067-binding-management-transactions.md) | Transactional binding management, delegation and recovery protection | Accepted |
 | [0068](0068-binding-authority-account-and-role-management.md) | Binding-authorized account and shared-role mutations with atomic recovery protection | Accepted |
 | [0069](0069-prepared-administration-rpc-contracts.md) | Prepared user, role and binding RPCs with coherent authorized reads | Accepted |
-| [0070](0070-prepared-administration-ui.md) | Prepared administration pages, condition choices and scoped UI request lifetimes | Accepted |
-| [0071](0071-binding-authorization-activation.md) | Atomic Binding authorization across bootstrap, sessions, governance and protected output | Partly superseded by ADR-0073/0074 |
+| [0070](0070-prepared-administration-ui.md) | Prepared administration pages, condition choices and scoped UI request lifetimes | Partly superseded by ADR-0071/0075 |
+| [0071](0071-binding-authorization-activation.md) | Atomic Binding authorization across bootstrap, sessions, governance and protected output | Partly superseded by ADR-0073/0074/0075 |
 | [0072](0072-password-setup-consumption.md) | Atomic initial-password setup consumption and public registration page | Accepted |
 | [0073](0073-authorized-history-pagination.md) | Authorized history pagination beyond candidate limits | Partly superseded by ADR-0074 |
 | [0074](0074-session-capability-discovery-and-recovery.md) | Session capability discovery and metadata recovery | Accepted |
+| [0075](0075-local-draft-and-setup-receipt-lifetimes.md) | Local creation drafts and setup receipts independent of protected-read revisions | Accepted |
 
 ## Template
 ```markdown

@@ -12,6 +12,34 @@ function deferred<Value>() {
 }
 
 describe("management route data ownership", () => {
+  it.each([Code.PermissionDenied, Code.Unauthenticated, Code.NotFound])("discards route-owned delivery when a current protected read refuses admission %s", async code => {
+    await createRoot(async dispose => {
+      let delivery = "fresh setup delivery";
+      const query = createManagementQuery<string>(() => {}, () => { delivery = ""; });
+      await query.load(async () => "authorized account");
+      await query.load(async () => { throw new ConnectError("private diagnostic", code); });
+      expect(delivery).toBe(""); expect(query.data()).toBeUndefined(); dispose();
+    });
+  });
+  it("retains local delivery on an ordinary detail retrieval outage without restoring protected data", async () => {
+    await createRoot(async dispose => {
+      let delivery = "fresh setup delivery";
+      const query = createManagementQuery<string>(() => {}, () => { delivery = ""; });
+      await query.load(async () => { throw new ConnectError("temporary", Code.Unavailable); });
+      expect(delivery).toBe("fresh setup delivery"); expect(query.data()).toBeUndefined(); dispose();
+    });
+  });
+  it("ignores an old refused read after a newer account detail succeeds", async () => {
+    await createRoot(async dispose => {
+      let refusals = 0;
+      const query = createManagementQuery<string>(() => {}, () => { refusals++; });
+      const delayed = deferred<string>();
+      const old = query.load(async () => { await delayed.promise; throw new ConnectError("old refusal", Code.NotFound); });
+      await query.load(async () => "fresh account");
+      delayed.settle("finished"); await old;
+      expect(refusals).toBe(0); expect(query.data()).toBe("fresh account"); dispose();
+    });
+  });
   it("re-resolves session admission after a read discovers session revocation", async () => {
     await createRoot(async dispose => {
       let admissions = 0;

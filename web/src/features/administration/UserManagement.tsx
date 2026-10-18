@@ -33,9 +33,8 @@ export function UserStatusAction(props: { id: string; status: string; own: boole
 }
 
 /** Reissues setup only after an authorized passwordless account detail read. */
-export function UserSetupAction(props: { id: string; active: boolean; hasPassword: boolean; own: boolean; stale?: boolean; onAdmissionFailure: () => void }) {
-  const [link, setLink] = createSignal<UserSetupLink>();
-  const action = createManagementAction(() => { setLink(undefined); props.onAdmissionFailure(); });
-  createEffect(() => { if (props.stale) setLink(undefined); });
-  return <Show when={!props.stale && !props.own && props.active && !props.hasPassword && hasPermission("users.update")}><Button variant="outline" disabled={action.busy() || action.locked()} onClick={() => { setLink(undefined); void action.run(() => issueManagedSetup(props.id), "Issued a replacement setup token.").then(result => { if (result) setLink(result.value.setupLink); }); }}>Issue setup token</Button><ManagementFeedback error={action.error()} message={action.message()} /><Show when={link()}>{receipt => <SetupTokenReceipt link={receipt()} onDismiss={() => setLink(undefined)} />}</Show></Show>;
+export function UserSetupAction(props: { id: string; active: boolean; hasPassword: boolean; own: boolean; stale?: boolean; onSetupLink: (link: UserSetupLink | undefined) => void; onAdmissionFailure: () => void }) {
+  const action = createManagementAction(() => { props.onSetupLink(undefined); props.onAdmissionFailure(); });
+  createEffect(() => { if (props.stale || !props.active || props.hasPassword || props.own) props.onSetupLink(undefined); });
+  return <Show when={!props.stale && !props.own && props.active && !props.hasPassword && hasPermission("users.update")}><Button variant="outline" disabled={action.busy() || action.locked()} onClick={() => { props.onSetupLink(undefined); void action.run(() => issueManagedSetup(props.id), "Issued a replacement setup token.").then(result => { if (result) props.onSetupLink(result.value.setupLink); }); }}>Issue setup token</Button><ManagementFeedback error={action.error()} message={action.message()} /></Show>;
 }

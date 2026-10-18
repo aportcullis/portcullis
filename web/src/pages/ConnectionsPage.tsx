@@ -3,12 +3,13 @@ import { Show } from "solid-js";
 
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
+import { SessionInteraction } from "@/entities/session/SessionInteraction";
 import { ConnectionList } from "@/features/connection/ConnectionList";
 import { CreateConnectionForm } from "@/features/connection/CreateConnectionForm";
 
 // ConnectionsPage assembles the header and connection features; Me.capabilities gates affordances while every RPC checks current server authority.
 const ConnectionsPage: Component = () => (
-  <Show when={sessionAuthorizationKey()} keyed>{_authorization => <>
+  <SessionInteraction>
     <PageHeader eyebrow="Database governance" title="Connections" description="Register the databases your team works with, then define how access is reviewed." />
     <div class="flex flex-col gap-4">
       <Show when={hasPermission("connections.create")}>
@@ -26,9 +27,9 @@ const ConnectionsPage: Component = () => (
         </p>
       }
     >
-      <div class="content-surface"><ConnectionList /></div>
+      <Show when={sessionAuthorizationKey()} keyed>{_authorization => <div class="content-surface"><ConnectionList /></div>}</Show>
     </Show>
-  </>}</Show>
+  </SessionInteraction>
 );
 
 export default ConnectionsPage;

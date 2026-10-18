@@ -554,6 +554,10 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 
 - Use reloadable pages with browser history/back links for creation, review, policies and results; reserve modal confirmation for risky/destructive actions. Login returns to a safe same-origin requested page.
 - Preserve typed SQL, reasons and last loaded data during refresh; clear data on principal/permission changes. Save draft and Submit are explicit, and navigation never silently saves plaintext or executes SQL.
+  - When only the organization authorization revision changes and the current user and complete advisory authority remain identical, retain locally authored creation inputs and narrow creation/setup-delivery receipts in the current route’s memory (ADR-0075).
+  - Continue discarding protected lists, details, results, existing-resource edit state and delayed read responses on revision changes.
+  - Discard inputs and receipts too on changed identity or authority hints, session loss, session-metadata retrieval failure (including authorization or transport outages), protected-operation admission refusal, a new sign-in or route departure; recovery must not resurrect them or automatically retry writes.
+  - Explicit dismissal and account state changes also discard setup delivery.
 - Show not-found/recoverable error pages instead of blank routes; optional instance-limit failures do not disable request pages or server enforcement.
 - Format editable SQL locally on blur with opt-out, manual formatting and undo. Failures retain input; submitted SQL, parameters, approval evidence and execution input stay unchanged.
 - Keep navigation/ordinary controls usable at 320 CSS pixels with keyboard focus; SQL/tables may scroll locally. Inline request progress shows only authorized facts and explicit unknowns.

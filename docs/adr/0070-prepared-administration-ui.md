@@ -1,6 +1,6 @@
 # ADR-0070: Prepared user, role and binding management UI
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0071](0071-binding-authorization-activation.md) for production activation and [ADR-0075](0075-local-draft-and-setup-receipt-lifetimes.md) for local creation inputs and setup-receipt disposal on organization revision changes
 - **Date:** 2026-10-18
 - **Refines:** [ADR-0069](0069-prepared-administration-rpc-contracts.md)'s prepared transport contracts and [ADR-0063](0063-condition-dsl-and-pure-evaluation.md)'s form-generated conditions.
 - **Preserves:** [ADR-0064](0064-binding-schema-preparation-and-activation.md)'s atomic activation boundary.

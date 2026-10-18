@@ -1,11 +1,11 @@
 import { createSignal } from "solid-js";
 import { Code, ConnectError } from "@connectrpc/connect";
 
-import { managementError } from "@/entities/administration/errors";
+import { isManagementAdmissionFailure, managementError } from "@/entities/administration/errors";
 import { createDialogSession } from "@/shared/lib/dialogSession";
 
 /** Owns one route's authorized result; reset fences all outstanding work. */
-export function createManagementQuery<Result>(onSessionExpired: () => void = () => {}) {
+export function createManagementQuery<Result>(onSessionExpired: () => void = () => {}, onAdmissionRefused: () => void = () => {}) {
   const [data, setData] = createSignal<Result>();
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(false);
@@ -21,6 +21,7 @@ export function createManagementQuery<Result>(onSessionExpired: () => void = () 
     if (result.status === "ok") setData(() => result.value);
     else {
       setError(managementError(result.error));
+      if (isManagementAdmissionFailure(result.error)) onAdmissionRefused();
       if (result.error instanceof ConnectError && result.error.code === Code.Unauthenticated) onSessionExpired();
     }
   };

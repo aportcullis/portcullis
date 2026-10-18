@@ -79,6 +79,8 @@ See the [UI kit catalog and reuse guide](../../web/src/shared/ui/README.md) for 
 
 Routine create/edit/detail/review/settings/results workflows use pages with direct URLs and visible navigation (ADR-0022). Reserve modal confirmation for risky or destructive actions. Read-only expansion, full cells and validation errors stay inline. Fence asynchronous reads/mutations on route unmount and session changes; background refresh must preserve active SQL edits and decision reasons.
 
+Protected reads and server-derived edit forms keep the identity/revision/capability fence. Locally authored creation forms and narrow mutation/setup receipts use the separate authenticated interaction lifetime in ADR-0075; a revision alone does not dispose them. Any identity/authority-hint change, session loss, session-metadata retrieval failure, admission refusal, new sign-in or route departure still disposes local state and fences its callbacks. Never persist it or infer resource authorization from that lifetime. Capture the authorization snapshot separately before condition validation so a revision change cannot admit its subsequent write.
+
 ## Changing the UI
 
 Design values live in [`web/src/app/theme.css`](../../web/src/app/theme.css): light/dark semantic colors, `--ui-font`, `--code-font`, `--radius`, `--content-width`, `--page-padding`, `--section-gap` and `--header-padding`. The defaults define the current application appearance.

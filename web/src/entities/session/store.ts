@@ -48,6 +48,7 @@ function isAuthRejection(err: unknown): boolean {
 // Module-level store (one session per tab). createRoot detaches the signals from any component lifecycle.
 const store = createRoot(() => {
   const [session, setSession] = createSignal<SessionState>({ status: "loading" });
+  const [interactionGeneration, setInteractionGeneration] = createSignal(0);
 
   // Apply only the latest session operation so delayed Me responses cannot overwrite a newer login or logout.
   let latest = 0;
@@ -83,12 +84,14 @@ const store = createRoot(() => {
     const res = await authClient.login({ email, password });
     if (seq !== latest) return;
     if (res.authorizationUnavailable) { setSession({ status: "unreachable", cause: "authorization" }); return; }
+    setInteractionGeneration(generation => generation + 1);
     const user = res.user;
     if (user) {
       setSession({ status: "authenticated", user, permissions: res.permissions, capabilities: res.capabilities, bindings: res.bindings, authorizationRevision: res.authorizationRevision, roleName: res.roleName });
       return;
     }
     // A login that succeeds without a user payload should not happen; fall back to the server as the source of truth.
+    setSession({ status: "loading" });
     await load();
   }
 
@@ -112,13 +115,21 @@ const store = createRoot(() => {
     return principal.status === "authenticated" && principal.capabilities.includes(permission);
   }
 
-  return { session, load, login, logout, hasPermission, refreshRevokedSession };
+  /** Keeps only locally authored creation state across revision-only metadata refreshes. */
+  function sessionInteractionKey(): string {
+    const principal = session();
+    if (principal.status !== "authenticated") return "";
+    const bindingKeys = principal.bindings.map(binding => JSON.stringify([binding.id, binding.roleId, binding.roleName, binding.scopeType, binding.connectionId, binding.hasCondition])).sort();
+    return JSON.stringify([interactionGeneration(), principal.user.id, principal.user.status, [...new Set(principal.permissions)].sort(), [...new Set(principal.capabilities)].sort(), principal.roleName, bindingKeys]);
+  }
+
+  return { session, load, login, logout, hasPermission, refreshRevokedSession, sessionInteractionKey };
 });
 
-export const { session, load, login, logout, hasPermission, refreshRevokedSession } = store;
+export const { session, load, login, logout, hasPermission, refreshRevokedSession, sessionInteractionKey } = store;
 
 /** Identifies the current advisory snapshot so protected views discard older responses and drafts. */
 export function sessionAuthorizationKey(): string {
   const principal = session();
-  return principal.status === "authenticated" ? JSON.stringify([principal.user.id, principal.authorizationRevision.toString(), [...principal.capabilities].sort()]) : "";
+  return principal.status === "authenticated" ? JSON.stringify([sessionInteractionKey(), principal.authorizationRevision.toString()]) : "";
 }
