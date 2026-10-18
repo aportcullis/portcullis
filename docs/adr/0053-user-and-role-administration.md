@@ -1,6 +1,6 @@
 # ADR-0053: User and role administration with one-time password setup links
 
-- **Status:** Accepted
+- **Status:** Superseded in part by [ADR-0062](0062-role-bindings-and-conditions.md); see that decision for the exact replacement boundary and retained contracts.
 - **Date:** 2026-10-04
 
 ## Context

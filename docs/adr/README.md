@@ -33,7 +33,7 @@ These decisions establish the Core 1 foundation.
 |---|---|---|
 | [0006](0006-authentication-and-sessions.md) | Authentication & sessions (cookies, CSRF) | Accepted |
 | [0007](0007-social-login-google-oidc.md) | Social login via Google (OIDC) | Superseded by ADR-0057 |
-| [0008](0008-rbac-roles-and-permissions.md) | RBAC — permissions in SQL catalog, roles in DB | Accepted |
+| [0008](0008-rbac-roles-and-permissions.md) | RBAC — permissions in SQL catalog, roles in DB | Partly superseded by ADR-0062 |
 | [0009](0009-audit-integrity.md) | Audit integrity — same-tx delivery, runtime role boundary | Accepted |
 | [0010](0010-runtime-and-transport-defaults.md) | Runtime & transport defaults (timeouts, caps, rate limits, boot) | Accepted |
 | [0011](0011-result-store-quota-and-eviction.md) | Result store quota & eviction (gates Core 2) | Accepted |
@@ -78,7 +78,7 @@ These decisions establish the Core 1 foundation.
 | [0050](0050-private-vulnerability-reporting.md) | GitHub private vulnerability reporting | Accepted |
 | [0051](0051-connection-destination-policy.md) | Operator destination policy for connection dials | Accepted |
 | [0052](0052-pre-session-origin-and-setup-boundary.md) | Pre-session Host, origin and setup-token boundary | Accepted |
-| [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Accepted |
+| [0053](0053-user-and-role-administration.md) | User and role administration with one-time password setup links | Partly superseded by ADR-0062 |
 | [0054](0054-release-branches-and-documentation-policy.md) | Release branches, tag ownership and documentation policy | Accepted |
 | [0055](0055-result-exploration-layout.md) | Result controls, responsive alignment and wrapped Text values | Superseded by ADR-0058 |
 | [0056](0056-account-menu-and-csv-dialog.md) | Avatar account menu and bounded CSV export dialog | Superseded by ADR-0061 |
@@ -87,6 +87,8 @@ These decisions establish the Core 1 foundation.
 | [0059](0059-bounded-result-scrolling.md) | Bounded virtual scrolling for result tables | Accepted |
 | [0060](0060-request-comments-and-replies.md) | Request comments and replies in M3 | Accepted |
 | [0061](0061-csv-export-dialog-destinations.md) | Clipboard and file destinations in the CSV export dialog | Accepted |
+| [0062](0062-role-bindings-and-conditions.md) | Separate roles, resource bindings and bounded conditions | Accepted |
+| [0063](0063-condition-dsl-and-pure-evaluation.md) | Condition CEL DSL, pure evaluation and form-based entry | Accepted |
 
 ## Template
 ```markdown

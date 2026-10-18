@@ -90,7 +90,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 #### 제외
 - PostgreSQL/MySQL 외 추가 관리 대상 DB, 임시 접근 세션과 DB proxy.
 - team/role별 승인 규칙, 순서가 있는 다단계 승인, break-glass.
-  동일 역할의 N명 정족수 승인은 MVP에 포함.
+  현재 자격이 있는 서로 다른 N명의 정족수 승인은 MVP에 포함하며, 자격은 같은 역할 이름이 아니라 리소스 범위의 Binding과 Condition으로 판단한다.
 - Google과 M3 Keycloak 연동 외의 OIDC 제공자, LDAP, SAML, SCIM 및 IdP 그룹과 역할 동기화.
 - 애플리케이션 고가용성, Terraform/OpenTofu provider. CNPG 관리 대상 자동 발견은 Later로 유지한다.
 - Schema Change Governance(첫 MVP 다음의 **Schema 마일스톤** 범위).
@@ -181,10 +181,17 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
   하나라도 바뀌면 새 요청이 필요. **connection config version이 승인 단위에 들어가는 이유 (ADR-0014/0018):** connection id는 config를 교체해도 그대로다 — host·port·database·TLS·credential이 전부 그 id 뒤에서 바뀔 수 있다.
   그래서 id만 고정하면 승인 후 대상을 갈아치워도 digest 재검증이 통과하고, 승인자들이 본 것과 다른 데이터베이스에서 문장이 돌 수 있다(OWASP transaction authorization: 거래 데이터가 바뀌면 승인은 무효). **config 교체는 그 connection의 미실행 pending/approved 요청을 같은 트랜잭션에서 `expired(connection_changed)`로 만료시킨다**; draft는 살아남아 새 config로 다시 제출할 수 있다.
   단순 rename은 대상 변경이 아니므로 승인을 죽이지 않는다(그래서 descriptor `version`이 아니라 별도의 `config_version`이다).
-- **역할/권한(RBAC, ADR-0008):** 권한은 Google-IAM 스타일 `resource.verb`로 세분화된 **카탈로그(SQL seed)**이고, 역할은 **DB에 저장된 권한 묶음**이다.
-  인가는 역할 이름이 아니라 **권한으로 검사**한다.
-  코드가 검사하는 권한 키가 로드된 카탈로그에 없으면 서버는 기동을 거부한다.
-  시드 시스템 역할 3개는 **default**일 뿐 닫힌 집합이 아니며 admin이 **custom role을 생성**할 수 있다 — `requester`(자기 요청·saved query 관리), `approver`(+ 타인 요청 검토), `admin`(+ 사용자·connection·정책·audit 관리, 전 권한). admin도 자신의 요청은 승인할 수 없음.
+- **Role·Binding·Condition(ADR-0062):** SQL seed의 `resource.verb` 권한 카탈로그와 DB의 재사용 가능한 역할을 유지하고, 역할 정의와 부여 대상·리소스 범위·조건을 분리한다.
+  - Role은 권한 묶음이다. Binding은 기존 사용자에게 조직 또는 특정 connection 범위의 역할을 부여하고 선택적 Condition을 가진다. 조직 membership은 독립적이며 한 사용자가 여러 Binding과 Role을 가질 수 있다.
+  - 조직 부여는 해당 조직의 적용 가능한 리소스에, connection 부여는 서버가 소속 관계를 검증한 해당 connection·정책·요청·실행·결과에 적용한다. 사용자·역할·Binding·설정·감사와 connection 생성은 조직 범위가 필요하다. 다른 리소스 범위는 후속 명세에서 명시적으로 정의한다.
+  - Role과 Binding은 구조화된 데이터다. Condition만 제한된 CEL DSL을 사용하며 역할 권한·범위 일치·부여 합산·워크플로 보호 규칙은 표현식과 분리한다(ADR-0063).
+  - Condition은 신뢰할 수 있는 사용자·리소스 속성과 서버 시각을 평가한다. M1은 제한된 ID·종류 비교, literal 목록 포함 여부와 시간 조건을 제공하며 임의 label·제공자 claim·네트워크 속성·외부 조회는 제외한다. 제한된 언어는 ADR-0062에서 정의한다.
+  - 순수 평가기는 검증된 조건·불변 속성 스냅샷·명시적인 평가 한도를 입력받는다. 입력과 언어/환경 버전이 같으면 같은 논리 결과 또는 사유 코드가 있는 오류를 재현한다. 속성 조회·시각 취득·트랜잭션 조정·감사·운영 취소/기한 처리는 호출 서비스가 맡고 평가기는 I/O나 시계 읽기를 수행하지 않는다. 속성 누락·오류·예산 소진은 권한을 부여하지 않는다(ADR-0063).
+  - M1 조건 폼은 지원하는 시간·리소스 선택에서 검증된 CEL을 생성하며 DSL 문법 지식을 요구하지 않는다. 폼과 API 입력에 같은 서버 검증을 적용하고, 폼으로 표현할 수 없는 기존 식은 명시적 교체·제거 전까지 보존한다. 잘못된 입력이 무조건부 부여로 바뀌어서는 안 되며 범용 표현식 편집기는 M1 필수 범위가 아니다(ADR-0063).
+  - 해당 권한을 가진 활성 Binding의 범위가 맞고 조건이 없거나 참이어야 허용한다. 여러 부여는 합산하므로 조건부 Binding이 다른 넓은 부여를 제한하지 않는다. 적용 가능한 부여가 없으면 거부하고, 속성 누락·조건 오류는 권한을 부여하지 않는다.
+  - 목록·개수·선택 목록·검토 자격·실행·크기가 제한된 결과/CSV 출력을 포함한 모든 보호 작업에서 현재 리소스와 조건을 검사한다. 세션의 평면 권한 목록을 리소스 인가 근거로 쓰거나 접근 불가 행·필터 전 전체 개수를 공개하지 않는다.
+  - 조직 격리·자기 승인 금지·요청자/결과 소유권·정족수·승인 불변성·1회 실행은 부여와 별개로 강제한다. M1에는 사용자 정의 deny 정책·그룹/서비스 주체·일반적인 위임 정책 관리를 추가하지 않는다.
+  - 코드가 검사하는 키가 카탈로그에 없으면 서버는 기동을 거부한다. 시드 `requester`·`approver`·`admin`은 기본 역할이며 custom role을 지원하고 실제 권한은 Binding으로만 부여한다. 구현·마이그레이션은 계획된 M1 작업이며 기존 검증 기록은 이전 모델에 대한 것이다.
 - **실행 권한:** 요청자만 자신의 승인된 요청을 실행할 수 있음. admin 대리 실행은 MVP에서 허용하지 않음. kviklet은 0.8.0부터 단일 실행 요청에 타 execute 권한자의 실행을 허용하지만, Portcullis는 requester를 승인 단위와 결과 권한에 포함하는 기존 계약을 유지한다(ADR-0019).
 - **소규모 팀 데드락 (결정됨):** 자기 승인 금지(admin 포함) 정책상, 권한자가 1명뿐인 셀프호스트는 자기 요청을 승인할 주체가 없어 실행이 막힌다. connection·종류별 `required_approvals=0` 설정으로 이 데드락을 해소한다.
   이 경우 submit과 동시에 system actor가 자동 승인 event를 남기고 `approved`로 전이한다.
@@ -305,7 +312,7 @@ Portcullis에 telemetry를 추가하는 결정은 하지 않는다. 0.9.2의 승
 | 기능 | 시점 | Portcullis 방침 |
 |---|---|---|
 | 단일 쿼리 요청·승인·반려 | MVP | PostgreSQL/MySQL 공통 지원 |
-| connection별 RBAC·read/write/DDL 정책 | MVP | 기본 read-only, 자기 승인 금지 |
+| connection별 역할 Binding/Condition·read/write/DDL 정책 | MVP | 기본 read-only, 자기 승인 금지; ADR-0062 |
 | 통합 audit log | MVP | query asset·schema change와 같은 timeline 사용 |
 | 요청 댓글·답글 | M3 | 권한을 검증하는 추가 기록 방식의 대화, 승인·실행과 분리(ADR-0060) |
 | 구조화된 review suggestion | post-MVP | 제출된 SQL을 자동으로 바꾸지 않는 SQL 검토 제안 |
@@ -435,7 +442,7 @@ multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와
 | 메타데이터 DB 접근 | `sqlc` on `pgx` | raw SQL + 타입 안전. ORM 미사용 |
 | 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL 차이를 명시적으로 격리 |
 | 인증 | password(argon2id) + Google OIDC + M3 Keycloak OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 추가 인증 연동은 이후 |
-| Authz | Go 레이어(RBAC + org 스코프) | repository 강제 + cross-org 통합 테스트. metadata RLS는 MVP 미적용으로 확정(ADR-0004, 스키마는 RLS-ready) |
+| Authz | 리소스 기반 Role·Binding·Condition | 계획된 M1 전환(ADR-0062). repository 조직 격리·cross-org 테스트 유지. metadata RLS는 MVP 미적용(ADR-0004, 스키마는 RLS-ready) |
 | 프론트엔드 | SolidJS SPA + Vite | CSR. `go:embed`로 바이너리에 포함 |
 | UI 라이브러리 | Kobalte + Tailwind + TanStack Table | 데이터 그리드가 제품 핵심 |
 | Schema 엔진 | Atlas Community CLI subprocess | 버전·checksum을 고정하고 `SchemaEngine` 인터페이스로 격리 |
@@ -491,7 +498,7 @@ Atlas 버전 변경 시 compatibility suite와 라이선스 지도를 함께 갱
 
 ## 6. 데이터 모델 (개요)
 
-메타데이터는 조직·사용자, 인증, 권한, 연결, 불변 요청·정책 버전, 승인 결정, 실행 결과와 감사를 영속적으로 기록한다.
+메타데이터는 조직·사용자, 인증, 권한 카탈로그, 역할 정의, 독립적인 membership, 범위와 버전별 조건을 가진 역할 Binding, 연결, 불변 요청·정책 버전, 승인 결정, 실행 결과와 감사를 영속적으로 기록한다. ADR-0062는 membership에 직접 역할을 지정하던 구조에서 권한을 보존하는 마이그레이션과 동시 변경을 위한 인가 revision을 정의하며, 이는 현재 스키마에 대한 설명이 아니다.
 M3는 버전이 있는 쿼리 자산과 공유를 추가하고 schema 마일스톤은 불변 migration artifact와 변경 이력을 추가한다.
 결과 스냅샷은 임시 암호화 데이터다. 만료·축출·PostgreSQL 장애나 failover로 조회할 수 없게 되어도 성공한 실행 이력을 바꾸거나 SQL을 재실행하지 않는다.
 
@@ -621,15 +628,15 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   opaque user ID로 생성한 일정한 기하학 프로필 이미지를 표시하고 메뉴에서 계정 정보를 제공하며, 기본 이미지는 외부 요청 없이 로컬에서 생성한다(ADR-0056).
 - 공개 회원가입은 제공하지 않음. admin이 사용자를 생성하면 24시간 유효한 일회용 password setup link를 발급하며 MVP에서는 이메일 발송 없이 한 번만 표시.
   - token은 digest만 저장하고 사용자당 열린 link는 하나이며 원자적으로 소비한다. 완료 시 해당 사용자의 session을 revoke하고 이후 일반 로그인을 요구한다. 재사용·만료·revoke된 link는 하나의 일반 거부로 응답한다. link는 password가 없는 active 사용자에게만 발급하며 admin의 password 재설정은 후속 작업이다(ADR-0053).
-  - admin은 사용자 목록·생성·비활성화/재활성화·사용자당 role 하나 지정과, seed된 catalog 기반 custom role 생성·수정·soft delete를 수행한다. system role은 읽기 전용이며 사용 중인 role은 삭제할 수 없다(ADR-0053).
-  - 누구도 자신이 갖지 않은 권한을 부여·회수·차단할 수 없고, 자기 자신을 비활성화하거나 role을 바꿀 수 없다(ADR-0053).
+  - admin은 사용자 목록·생성·비활성화/재활성화, 독립적인 역할 정의와 선택적 조건을 가진 여러 범위별 Binding을 관리한다. 사용자 생성 시 초기 Binding을 원자적으로 포함할 수 있다. system role은 읽기 전용이며 회수되지 않은 Binding이 참조하는 역할은 삭제할 수 없다(ADR-0062).
+  - 정책 쓰기는 무조건부 조직 전체 관리 권한과 같은 무제한 범위의 변경 전후 관련 권한을 모두 요구한다. 조건부·connection 전용 부여의 권한 키만 복사해 더 넓은 권한을 만들 수 없으며 자기 활성화/비활성화·자기 Binding 변경은 거부한다. 범위별 위임 관리는 후속 범위다(ADR-0062).
 - **Google 소셜 로그인(OIDC):** Authorization Code + PKCE, `state`(CSRF)·`nonce`(replay) 필수, ID token 검증(서명·iss·aud·exp)과 `email_verified` 확인.
   흐름은 **서버 사이드 콜백**(`/auth/google/start`·`/auth/google/callback`)이며 프론트는 Google SDK를 쓰지 않고 백엔드 링크만 둔다.
   기존 `(issuer, subject)` 연결을 먼저 조회한다. 새 연결은 verified email의 현재 Google 소유권 근거(Gmail 또는 서명된 Workspace `hd`)가 있고 **admin이 만든 기존 사용자**와 일치할 때만 허용한다. 과거 검증된 제3자 email만으로는 거부하며 자동 가입·암묵적 제3자 email 연결은 없다. 명시적으로 재인증하는 연결 흐름은 후속 작업이다(ADR-0007). pending state(state/nonce/PKCE verifier)는 단명 AEAD 암호화 `__Host-` 쿠키로 전달.
   (ADR-0007)
-- 마지막 active admin은 비활성화·삭제·강등할 수 없음.
-  사용자 비활성화와 role 변경은 audit event를 남기고 기존 session을 즉시 revoke.
-- 비활성화된 requester는 실행할 수 없고, 비활성화되거나 approver 권한을 잃은 사용자의 아직 실행되지 않은 승인은 실행 시 무효 처리.
+- 모든 `users.*`·`roles.*`·`bindings.*` 권한을 무조건부 조직 Binding으로 가진 active 복구 관리자를 최소 한 명 유지한다. bootstrap은 이 Binding을 원자적으로 생성한다. 조건부 부여는 이 보호 조건을 충족하지 못하며 계정·역할·Binding 변경과 승인/실행 진입을 직렬화한다(ADR-0062).
+- 계정·역할·Binding 변경은 audit event를 남기고 관련 세션을 즉시 revoke한다. 시간 조건은 background 만료 작업을 기다리지 않고 매번 평가하며 접근권 상실 후 추가 결과/CSV 청크 출력을 중단한다. 실행 lease가 이미 커밋된 뒤의 회수가 SQL을 되돌리거나 재실행을 허용하지는 않는다.
+- 비활성화되거나 범위를 벗어난 requester는 실행할 수 없다. 실행 직전에 각기 다른 승인자의 현재 리소스 범위·조건을 다시 평가하고 회수·만료된 부여는 정족수에 포함하지 않는다. 정족수 미달은 기존 `approval_invalidated`를 유지한다(ADR-0062).
 
 - **Keycloak OIDC(M3):** 운영자가 설정한 Keycloak realm으로 선택적 로그인을 제공한다. 서버에서 Authorization Code + PKCE S256을 사용하며 state·nonce와 토큰 서명·issuer·audience·만료를 검증한다.
   - 관리자가 설정된 issuer와 subject를 기존 사용자에 명시적으로 연결한다. 이메일 일치만으로 계정을 연결하거나 사용자를 생성하지 않으며, Keycloak 역할·그룹으로 Portcullis 권한을 부여하지 않는다.
@@ -699,7 +706,7 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
 | 마일스톤 | 요약 | 범위 |
 | --- | --- | --- |
 | M0 | 토대 | [M0](../milestones/m0/scope.md) |
-| M1 | PostgreSQL 거버넌스 + 사용자·역할 관리 | [M1](../milestones/m1/scope.md) |
+| M1 | PostgreSQL 거버넌스 + 사용자·역할·Binding 관리 | [M1](../milestones/m1/scope.md) |
 | M2 | MySQL → Kubernetes/CNPG → SQL 검토·EXPLAIN | [M2](../milestones/m2/scope.md) |
 | M3 | 쿼리 자산 + schema 미리보기 + Keycloak SSO + 요청 대화; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | 마스킹 → 임시 console·인증 확장 | [M4](../milestones/m4/scope.md) |

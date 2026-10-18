@@ -3,6 +3,10 @@
 Portcullis ships as one Go binary with the SolidJS SPA embedded through `go:embed`. The diagrams below map the current repository: source dependencies, frontend layers and runtime calls have separate views because their arrows mean different things.
 For the recommended private-network production topology and remote access through Cloudflare WARP or Tailscale, see [Deployment architecture](operations/recommended-architecture.md).
 
+The current authorization code resolves one membership role into organization-wide permission keys. [ADR-0062](adr/0062-role-bindings-and-conditions.md) accepts a planned M1 replacement with independent roles, organization/connection bindings and bounded conditions. That replacement requires resource-aware authorization/evaluator ports, migrated persistence, concurrent admission checks and updated session/API/UI contracts; it is not represented as implemented by the diagrams below.
+
+[ADR-0063](adr/0063-condition-dsl-and-pure-evaluation.md) separates structured Role/Binding data, checked CEL conditions and pure predicate evaluation. The planned outer services resolve attributes and authoritative time, prepare immutable inputs and handle transactions/audit; the evaluator performs no I/O or clock reads. Condition forms generate the same server-validated CEL used by API clients.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.

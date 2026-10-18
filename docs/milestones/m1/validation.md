@@ -83,3 +83,13 @@ Result scenarios verified aligned filter controls and complete wrapped Text valu
 The tracked capture tools refreshed and visually checked nine application screenshots and eleven GIF frames; login remained visually identical, while first-run setup includes its one-time token and authenticated screens include the current account avatar.
 `make supply-chain` passed module verification, both package audits, govulncheck reachable-symbol analysis and fresh-install script rejection. Govulncheck also reported one package/module advisory outside the called symbols; this is not a claim that all transitive advisory records are absent.
 Per [scope.md](scope.md), these passes establish the recorded implementation and do not establish full M1 release readiness.
+
+## Verification — 2026-10-18
+
+The dependency-recovery run matching runtime commit `0d9acc4` passed `make verify` on Go 1.27.2 and SolidJS 1.9.17: static checks in 245 seconds, uncached Go tests with required PostgreSQL fixtures in 173 seconds, and all 38 real-binary Docker-browser scenarios in 184 seconds. Web verification passed 310 tests across 31 files; load typecheck, lint, bundling and all 10 contract scenarios also passed. Native CSV saving and saved-file readback remain part of the browser gate.
+
+`make supply-chain` passed both npm audits, fresh-install script rejection, module integrity and reachable-symbol analysis. The npm audits reported no known vulnerabilities and govulncheck reported zero reachable vulnerabilities. The latter still reported one imported-package and one required-module advisory outside called vulnerable symbols; no advisory or installation policy was suppressed.
+
+Linux AMD64 source analysis with a host-built golangci-lint v2.14.0 and Go 1.27.2 completed with zero issues. Analyzer cache-write warnings were nonfatal. On this macOS host, an explicitly permitted disposable OS temporary directory resolved project-directory temporary-write failures; module/build caches and browser downloads remained project-local. Docker used the explicitly permitted socket and project-local configuration, including the installed Buildx plugin. The [Docker browser recipe](../../operations/browser-e2e.md) retains the host-native download qualification boundary.
+
+[ADR-0062](../../adr/0062-role-bindings-and-conditions.md) and [ADR-0063](../../adr/0063-condition-dsl-and-pure-evaluation.md) define the planned authorization replacement. This verification establishes the currently implemented PostgreSQL governance journey and the recovered gates; it does not deliver bindings, a CEL evaluator, condition forms or their migration, and it does not establish full M1 release readiness.

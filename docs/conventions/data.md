@@ -36,10 +36,12 @@ The migration runner drops any session-local temporary objects and pins its dedi
   - Qualify application metadata relations with `public.`.
   - Runtime roles hold no database `TEMPORARY` privilege.
 
-## RBAC permissions (ADR-0008)
+## Authorization permissions (ADR-0008/0062)
 Permissions are **Google-IAM-style `resource.verb`** (verbs `list`/`get`/`create`/`update`/`delete` plus resource-specific actions), seeded in SQL and loaded at startup.
 Roles live in the DB; admins create custom roles.
 Authorization checks **permissions, never role names**.
+
+[ADR-0062](../adr/0062-role-bindings-and-conditions.md) replaces membership-assigned roles with independent membership and scoped role bindings with optional conditions in M1. New authorization work must evaluate permission, resource scope and condition together; a flat union of role keys cannot authorize an operation. The current schema remains the legacy model until an additive, grant-preserving migration and reader/writer cutover are qualified. Keep new binding/condition versions organization-scoped with composite FKs, explicit indexes, soft revocation and protected history; do not rewrite existing migrations.
 
 ## Org scope (ADR-0004)
 Every query over an org-scoped table (anything carrying `organization_id`) **must** filter by the caller's organization — pass the org explicitly and add `where organization_id = @organization_id`; never resolve a user's permissions/rows across all orgs.

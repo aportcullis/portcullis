@@ -98,7 +98,7 @@ Expand BI gradually from MVP saved queries and result grids.
 
 - Additional target databases, temporary access sessions, and DB proxy.
 - Team/role approval rules, ordered multistage approvals, and break-glass.
-  - Quorum approval by N people with the same role is included.
+  - Quorum approval by N distinct currently eligible users is included; eligibility follows resource-scoped bindings and conditions rather than a shared role name.
 - OIDC providers other than Google and the M3 Keycloak integration, LDAP, SAML, SCIM, and IdP group-role sync.
 - Application HA and Terraform/OpenTofu providers. CNPG automatic target discovery remains Later.
 - Schema Change Governance, reserved for the **Schema milestone** after the first MVP.
@@ -192,12 +192,17 @@ Turn approved, executed queries into assets.
   - Pinning only the ID would let digest verification pass against a different database than the approvers reviewed, contrary to OWASP transaction authorization.
   - Config replacement atomically expires unexecuted pending/approved requests as `expired(connection_changed)`; drafts survive and can be resubmitted against the new config.
   - Renaming preserves approval because it changes the descriptor, not the target; use separate `config_version` rather than descriptor `version`.
-- **RBAC, ADR-0008:** SQL-seeded permissions form a Google-IAM-style `resource.verb` catalog; roles are DB-stored permission bundles.
-  - Authorize by permission, never role name.
-  - Startup refuses to serve when a permission key enforced in code is missing from the loaded catalog.
-  - Seed roles are defaults, not a closed set; admins can create custom roles.
-  - `requester` manages own requests/assets, `approver` additionally reviews others' requests, and `admin` additionally manages users/connections/policies/audit with all permissions.
-  - Admins cannot approve their own requests.
+- **Role, Binding and Condition (ADR-0062):** Keep the SQL-seeded `resource.verb` permission catalog and reusable DB-stored roles; separate role definitions from who receives them, on which resources and under which conditions.
+  - A Role contains permissions. A Binding grants one role to an existing user at organization or exact-connection scope, with an optional Condition. Organization membership is independent; a user may hold multiple bindings and roles.
+  - Organization grants cover applicable resources in that organization; connection grants cover the connection, its policy, requests, executions and results through verified ancestry. Users, roles, bindings, settings, audit and connection creation require organization scope. Other resource scopes require an explicit later mapping.
+  - Role and Binding are structured data. Condition alone uses the restricted CEL DSL; role permissions, scope matching, grant combination and workflow safeguards remain separate from the expression (ADR-0063).
+  - A condition evaluates trusted principal/resource attributes and server time. M1 supports bounded ID/type comparisons, literal-list membership and time conditions; arbitrary labels, provider claims, network attributes and external lookups are outside this slice. The bounded language is specified in ADR-0062.
+  - The pure evaluator takes a checked condition, an immutable attribute snapshot and explicit evaluation limits. Identical inputs and language/environment versions reproduce the same logical result or reason-coded error. Attribute loading, time acquisition, transaction coordination, audit and operational cancellation/deadlines belong to the calling service; evaluation performs no I/O or clock reads. Missing attributes, errors and exhausted budgets never grant access (ADR-0063).
+  - M1 condition forms generate validated CEL from supported time/resource choices without requiring DSL syntax knowledge. Use the same server validation for form and API input; preserve stored expressions the form cannot represent until explicit replacement or removal. Invalid input must never become an unconditional grant; a general expression editor is not required for M1 (ADR-0063).
+  - Access requires a matching live binding with the required permission and an absent or true condition. Grants are additive: a conditional binding does not narrow another broader grant. No applicable grant means denial; missing attributes and condition errors grant nothing.
+  - Check the current resource and conditions on every protected operation, including list/count/picker results, review eligibility, execution and bounded result/CSV output. Never treat a session's flat permission list as resource authority; do not disclose inaccessible rows or unfiltered totals.
+  - Organization isolation, no self-approval, requester/result ownership, quorum, immutable approval and single-use execution remain mandatory regardless of grants. M1 adds no custom deny policies, group/service principals or general delegated policy administration.
+  - Startup refuses to serve when an enforced permission key is absent from the catalog. Seed `requester`, `approver` and `admin` roles remain defaults; custom roles are supported. Only bindings grant their permissions. Implementation and migration remain planned M1 work; existing evidence covers the previous model.
 - **Execution permission:** Only the requester can execute their approved request; no admin proxy execution in MVP.
   - kviklet 0.8.0 permits other execute-permission holders to run single-execution requests; Portcullis keeps its requester-bound approval/result contract, ADR-0019.
 - **Single-person deadlock:** Keep no-self-approval even for admins; resolve solo self-hosting through per-connection/class `required_approvals=0`.
@@ -329,7 +334,7 @@ Use the 0.9.2 fixes for approved-command replacement and result-log exposure as 
 | Feature | Phase | Portcullis policy |
 |---|---|---|
 | Single-query request/approve/reject | MVP | Common support for both databases |
-| Connection RBAC/read/write/DDL policy | MVP | Default read-only, no self-approval |
+| Connection role bindings/conditions and read/write/DDL policy | MVP | Default read-only, no self-approval; ADR-0062 |
 | Unified audit | MVP | Same timeline as query assets and schema changes |
 | Request comments and replies | M3 | Authorized append-only discussion separate from approval and execution, ADR-0060 |
 | Structured review suggestions | Post-MVP | SQL-specific suggestions without implicitly changing submitted SQL |
@@ -467,7 +472,7 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | Metadata access | `sqlc` on `pgx` | Raw SQL with type safety, no ORM |
 | Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL differences |
 | Authentication | argon2id passwords, Google OIDC, M3 Keycloak OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; broader federation later |
-| Authorization | Go RBAC/org scope | Repository enforcement and cross-org integration tests; no metadata RLS in MVP, schema remains RLS-ready, ADR-0004 |
+| Authorization | Resource-aware Role/Binding/Condition | Planned M1 replacement, ADR-0062; repository org isolation and cross-org tests remain mandatory; no MVP metadata RLS, ADR-0004 |
 | Frontend | SolidJS SPA/Vite | CSR, embedded using `go:embed` |
 | UI | Kobalte/Tailwind/TanStack Table | Data grid is central to the product |
 | Schema engine | Atlas Community CLI subprocess | Pin version/checksum and isolate behind `SchemaEngine` |
@@ -523,7 +528,7 @@ Update the compatibility suite and license map together when changing Atlas vers
 
 ## 6. Data model overview
 
-Metadata durably records organization identity, authentication, permissions, connections, immutable request/policy versions, decisions, execution outcomes and audit.
+Metadata durably records organization identity, authentication, permission catalogs, role definitions, independent memberships, scoped role bindings with versioned conditions, connections, immutable request/policy versions, decisions, execution outcomes and audit. ADR-0062 defines the planned grant-preserving migration from membership-assigned roles and the authorization revision used for concurrent changes; this is not the current schema.
 M3 adds versioned query assets and sharing; schema milestones add immutable migration artifacts and change history.
 Result snapshots are temporary encrypted data: expiry, eviction or PostgreSQL crash/failover may make them unavailable without changing successful execution history or rerunning SQL.
 
@@ -662,14 +667,15 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
   - Show a stable, locally generated geometric profile image derived from the opaque user ID; reveal account identity through its menu without external fallback-image requests (ADR-0056).
 - No public signup; admin-created users get a 24-hour one-time password-setup link, displayed once without MVP email delivery.
   - Store only the token digest, keep one open link per user, consume it atomically, revoke the user's sessions on completion and require a normal login afterwards; replayed, expired or revoked links get one generic refusal. Links are issued only to active users without a password; admin-initiated password reset is deferred (ADR-0053).
-  - Admins list, create, disable/enable and assign one role per user, and create, edit and soft-delete custom roles from the seeded catalog; system roles are read-only and an in-use role cannot be deleted (ADR-0053).
-  - Nobody grants, strips or locks out permissions they do not hold, and nobody disables or reassigns themselves (ADR-0053).
+  - Admins list, create and disable/enable users; manage independent role definitions and multiple scoped bindings with optional conditions. User creation may atomically include initial bindings. System roles remain read-only; roles referenced by non-revoked bindings cannot be deleted (ADR-0062).
+  - Policy writes require unconditional organization-wide management authority and all old/new affected permissions at that same unrestricted scope. Conditional or connection-only grants cannot be copied into broader authority; self enable/disable and self-binding changes are refused. Scoped delegation is deferred (ADR-0062).
 - **Google OIDC:** Authorization Code + PKCE, mandatory state/nonce, ID-token signature/issuer/audience/expiry and `email_verified` validation.
   - Use server `/auth/google/start` and `/auth/google/callback`; frontend links to backend without Google SDK.
   - Resolve existing `(issuer, subject)` links first. A new link requires verified email, current Google authority (Gmail or signed Workspace `hd`) and an admin-created existing user; historically verified third-party email alone is refused. No automatic signup or implicit third-party-email linking; explicit reauthenticated linking is future work (ADR-0007).
   - Pass short-lived state/nonce/PKCE verifier through an AEAD-encrypted `__Host-` cookie, ADR-0007.
-- Never disable/delete/demote the last active admin; audit disabling/role changes and revoke sessions immediately.
-- Disabled requesters cannot execute; revalidate unexecuted approvals from disabled users or users who lost approval permission.
+- Preserve at least one active recovery administrator holding all `users.*`, `roles.*` and `bindings.*` permissions through unconditional organization bindings. Bootstrap establishes such a binding atomically. Conditional grants never satisfy this safeguard; serialize account, role and binding changes with approval/execution admission (ADR-0062).
+- Audit account/role/binding mutations and revoke affected sessions immediately. Evaluate time conditions afresh without waiting for a background expiry job; stop further bounded result/CSV output after access is lost. A committed execution lease does not imply that later revocation can undo SQL or authorize replay.
+- Disabled or out-of-scope requesters cannot execute. Re-evaluate each distinct approver's current resource-scoped grant and conditions immediately before execution; revoked or expired grants do not count toward quorum. Preserve `approval_invalidated` below quorum (ADR-0062).
 
 - **Keycloak OIDC (M3):** Optional sign-in through an operator-configured Keycloak realm, with server-side Authorization Code + PKCE S256, state/nonce and signature/issuer/audience/expiry validation.
   - Administrators explicitly link the configured issuer and subject to an existing user; email equality alone never links accounts or creates users. Keycloak roles and groups do not grant Portcullis permissions.
@@ -743,7 +749,7 @@ M1 is the first releasable alpha; M3 completes MVP, subject to product validatio
 | Milestone | Summary | Scope |
 | --- | --- | --- |
 | M0 | Foundation | [M0](../milestones/m0/scope.md) |
-| M1 | PostgreSQL governance + user/role administration | [M1](../milestones/m1/scope.md) |
+| M1 | PostgreSQL governance + user/role/binding administration | [M1](../milestones/m1/scope.md) |
 | M2 | MySQL → Kubernetes/CNPG → SQL review/EXPLAIN | [M2](../milestones/m2/scope.md) |
 | M3 | Query assets + schema preview + Keycloak SSO + request discussion; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | Masking → temporary console and identity | [M4](../milestones/m4/scope.md) |
