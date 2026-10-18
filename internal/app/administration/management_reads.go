@@ -30,9 +30,9 @@ type ManagementRead struct {
 	EvaluatedAt          time.Time
 }
 
-// ManagementReadRepository owns a single repeatable-read transaction for authorization and data.
+// ManagementReadRepository owns one coherent transaction and bounded context for authorization and data.
 type ManagementReadRepository interface {
-	WithManagementRead(context.Context, identity.OrganizationID, func(ManagementReadSnapshot) error) error
+	WithManagementRead(context.Context, identity.OrganizationID, func(context.Context, ManagementReadSnapshot) error) error
 }
 
 // ManagementReadSnapshot exposes bounded metadata reads inside one coherent authorization snapshot.
@@ -56,7 +56,7 @@ type ManagementReader struct {
 	authorization authz.ResourceConfig
 }
 
-// NewManagementReader constructs the prepared coherent administration query boundary.
+// NewManagementReader constructs the coherent administration query boundary.
 func NewManagementReader(repository ManagementReadRepository, conditions authz.ResourceConditions, settings BindingConfig, authorization authz.ResourceConfig) (*ManagementReader, error) {
 	if repository == nil || conditions == nil || settings.Validate() != nil || authorization.Validate() != nil {
 		return nil, ErrBindingManagementUnavailable
@@ -109,7 +109,7 @@ func (s *ManagementReader) Read(ctx context.Context, organization identity.Organ
 		return ManagementRead{}, ErrInvalidManagementPage
 	}
 	var result ManagementRead
-	err := s.repository.WithManagementRead(bounded, organization, func(snapshot ManagementReadSnapshot) error {
+	err := s.repository.WithManagementRead(bounded, organization, func(bounded context.Context, snapshot ManagementReadSnapshot) error {
 		catalog, err := snapshot.LoadPermissionCatalog(bounded)
 		if err != nil {
 			return err

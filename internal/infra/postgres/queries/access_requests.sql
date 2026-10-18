@@ -149,74 +149,26 @@ from public.organization_memberships
 where organization_id = @organization_id and user_id = @approver_id
 for share;
 
--- name: ApproverEligible :one
--- Recheck active status and the action’s live permission inside the decision transaction; see LockApproverMembership for the revocation-lock boundary.
-select exists (
-    select 1
-    from public.users u
-    where u.id = @approver_id and u.status = 'active'
-      and exists (
-          select 1
-          from public.organization_memberships m
-          join public.roles r on r.id = m.role_id and r.deleted_at is null
-          join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-          where m.organization_id = @organization_id
-            and m.user_id = @approver_id
-            and rp.permission_key = @permission_key
-      )
-) as eligible;
-
 -- name: InsertApproval :one
--- Read clock_timestamp() after the request lock and reuse the returned instant for approval, transition, expiry, and audit.
+-- Use the database instant observed after policy, request and membership locks for permission, approval, expiry and audit.
 insert into public.approvals (request_id, organization_id, approver_id, decision, reason, decided_at)
-values ($1, $2, $3, $4, $5, clock_timestamp())
+values ($1, $2, $3, $4, $5, sqlc.arg(at)::timestamptz)
 returning decided_at;
 
--- name: CountValidApprovals :one
--- How many recorded approvals still COUNT (ADR-0018): the approver is active, still resolves requests.approve through the live membership→role→permission join (the PermissionsForUser shape, rbac.sql), and is not the requester.
-select count(*) from public.approvals a
-join public.users u on u.id = a.approver_id and u.status = 'active'
-where a.request_id = @request_id
-  and a.organization_id = @organization_id
-  and a.decision = 'approved'
-  and a.approver_id <> @requester_id
-  and exists (
-      select 1
-      from public.organization_memberships m
-      join public.roles r on r.id = m.role_id and r.deleted_at is null
-      join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-      where m.organization_id = a.organization_id
-        and m.user_id = a.approver_id
-        and rp.permission_key = 'requests.approve'
-  );
-
 -- name: ListApprovalsForRequest :many
--- Every decision with its display fields and computed validity (same predicate as CountValidApprovals). Rejections are listed but never "valid approvals".
+-- Decision history and display fields only; current resource/CEL validity is assigned by the workflow reader.
 select
     a.id, a.request_id, a.organization_id, a.approver_id, a.decision, a.reason, a.decided_at,
     u.email as approver_email,
     u.display_name as approver_display_name,
-    (
-        a.decision = 'approved'
-        and u.status = 'active'
-        and a.approver_id <> @requester_id
-        and exists (
-            select 1
-            from public.organization_memberships m
-            join public.roles r on r.id = m.role_id and r.deleted_at is null
-            join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-            where m.organization_id = a.organization_id
-              and m.user_id = a.approver_id
-              and rp.permission_key = 'requests.approve'
-        )
-    )::boolean as valid
+    false::boolean as valid
 from public.approvals a
 join public.users u on u.id = a.approver_id
 where a.request_id = @request_id and a.organization_id = @organization_id
 order by a.decided_at asc, a.id asc;
 
 -- name: GetAccessRequestView :one
--- Return requester, target, and current valid-approval count together. Keep detail and list projections aligned for their shared Go row type.
+-- Keep detail and list row shapes aligned; the resource evaluator supplies current valid-approval counts.
 select
     r.*,
     u.email as requester_email,
@@ -229,19 +181,7 @@ select
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
     coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
-    (
-        select count(*) from public.approvals a
-        join public.users au on au.id = a.approver_id and au.status = 'active'
-        where a.request_id = r.id and a.organization_id = r.organization_id
-          and a.decision = 'approved' and a.approver_id <> r.requester_id
-          and exists (
-              select 1 from public.organization_memberships m
-              join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-              where m.organization_id = a.organization_id and m.user_id = a.approver_id
-                and rp.permission_key = 'requests.approve'
-          )
-    )::bigint as valid_approvals,
+    0::bigint as valid_approvals,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.access_requests r
@@ -263,19 +203,7 @@ select
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
     coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
-    (
-        select count(*) from public.approvals a
-        join public.users au on au.id = a.approver_id and au.status = 'active'
-        where a.request_id = r.id and a.organization_id = r.organization_id
-          and a.decision = 'approved' and a.approver_id <> r.requester_id
-          and exists (
-              select 1 from public.organization_memberships m
-              join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-              where m.organization_id = a.organization_id and m.user_id = a.approver_id
-                and rp.permission_key = 'requests.approve'
-          )
-    )::bigint as valid_approvals,
+    0::bigint as valid_approvals,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.access_requests r
@@ -301,19 +229,7 @@ select
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
     coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
-    (
-        select count(*) from public.approvals a
-        join public.users au on au.id = a.approver_id and au.status = 'active'
-        where a.request_id = r.id and a.organization_id = r.organization_id
-          and a.decision = 'approved' and a.approver_id <> r.requester_id
-          and exists (
-              select 1 from public.organization_memberships m
-              join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-              where m.organization_id = a.organization_id and m.user_id = a.approver_id
-                and rp.permission_key = 'requests.approve'
-          )
-    )::bigint as valid_approvals,
+    0::bigint as valid_approvals,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.access_requests r

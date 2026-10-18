@@ -14,10 +14,10 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
 
-// BindingManagementStore provides locked policy transactions; production preparation remains read-only.
+// BindingManagementStore provides policy transactions under the organization coordinator.
 type BindingManagementStore struct{ pool *pgxpool.Pool }
 
-// NewBindingManagementStore constructs the inactive management repository for constructor injection.
+// NewBindingManagementStore constructs the transaction-locked policy management repository.
 func NewBindingManagementStore(pool *pgxpool.Pool) *BindingManagementStore {
 	return &BindingManagementStore{pool: pool}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,7 +117,7 @@ func TestBindingManagementRefusesUnsafeWritesWithoutPartialEffects(t *testing.T)
 			definition.Condition.LanguageVersion = "future"
 		}, identity.ErrInvalidCondition},
 		{"missing catalog cannot borrow legacy authority", func(repository *bindingPolicyFake, _ *identity.BindingDefinition) {
-			repository.catalog = identity.EnforcedPermissions()
+			repository.catalog = slices.DeleteFunc(identity.EnforcedPermissions(), func(permission identity.Permission) bool { return strings.HasPrefix(string(permission), "bindings.") })
 		}, administration.ErrBindingManagementInactive},
 		{"missing revision cannot borrow legacy authority", func(repository *bindingPolicyFake, _ *identity.BindingDefinition) { repository.state.revision = 0 }, administration.ErrBindingManagementInactive},
 		{"audit or storage failure", func(repository *bindingPolicyFake, _ *identity.BindingDefinition) { repository.fail = "audit" }, administration.ErrBindingManagementUnavailable},

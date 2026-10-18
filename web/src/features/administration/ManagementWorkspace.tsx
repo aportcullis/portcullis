@@ -14,7 +14,7 @@ import { PageHeader } from "@/shared/ui/PageHeader";
 /** Fences the whole route's data, drafts and setup tokens when identity or advisory permissions change. */
 export function ManagementWorkspace(props: { kind: ManagementKind }) {
   const params = useParams();
-  const owner = createMemo(() => { const principal = session(); return principal.status === "authenticated" ? JSON.stringify([principal.user.id, [...principal.permissions].sort(), props.kind, params.id ?? ""]) : ""; });
+  const owner = createMemo(() => { const principal = session(); return principal.status === "authenticated" ? JSON.stringify([principal.user.id, principal.authorizationRevision.toString(), [...principal.capabilities].sort(), props.kind, params.id ?? ""]) : ""; });
   const routeOwner = createMemo(() => owner() ? { kind: props.kind, id: params.id ?? "" } : undefined);
   return <Show when={routeOwner()} keyed>{route => <ManagementSession kind={route.kind} id={route.id} />}</Show>;
 }

@@ -20,7 +20,6 @@ import (
 	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
 	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	"github.com/aportcullis/portcullis/internal/app/auth"
-	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/infra/crypto"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	"github.com/aportcullis/portcullis/internal/infra/postgres"
@@ -54,15 +53,12 @@ func newAuditTestEnv(t *testing.T) *auditTestEnv {
 		t.Fatalf("auth.New: %v", err)
 	}
 
-	catalog, err := authz.LoadCatalog(ctx, store)
+	organization, policy, authzSvc := activeAPIPolicy(t, pool)
+	protectedAudit, err := postgres.NewAuthorizedAuditStore(pool, policy, organization)
 	if err != nil {
-		t.Fatalf("LoadCatalog: %v", err)
+		t.Fatal(err)
 	}
-	authzSvc, err := authz.New(store, catalog)
-	if err != nil {
-		t.Fatalf("authz.New: %v", err)
-	}
-	auditReader, err := auditapp.New(postgres.NewAuditStore(pool))
+	auditReader, err := auditapp.New(protectedAudit)
 	if err != nil {
 		t.Fatalf("auditapp.New: %v", err)
 	}
@@ -70,6 +66,7 @@ func newAuditTestEnv(t *testing.T) *auditTestEnv {
 	chain := connect.WithInterceptors(
 		connectapi.NewClientIPInterceptor(nil),
 		connectapi.NewAuthInterceptor(authSvc),
+		connectapi.NewActiveBoundaryInterceptor(authzSvc, authSvc),
 	)
 	mux := http.NewServeMux()
 	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(authSvc, authzSvc), chain)
@@ -187,6 +184,11 @@ func TestAuditListAuthorization(t *testing.T) {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	viewerJar, viewerAuth, viewerAudit := env.clients()
+	organization, err := env.store.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedAPIMembership(t, env.pool, string(organization), string(u.ID))
 	if _, err := viewerAuth.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: "viewer@example.com", Password: password})); err != nil {
 		t.Fatalf("viewer Login: %v", err)
 	}

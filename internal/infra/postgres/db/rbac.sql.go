@@ -49,11 +49,16 @@ func (q *Queries) ListPermissionKeys(ctx context.Context) ([]string, error) {
 }
 
 const permissionsForUser = `-- name: PermissionsForUser :many
-select distinct rp.permission_key
-from public.organization_memberships m
-join public.roles r on r.id = m.role_id and r.deleted_at is null
-join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-where m.organization_id = $1 and m.user_id = $2
+select distinct permission.permission_key
+from public.organization_memberships member
+join public.users account on account.id=member.user_id and account.status='active'
+join public.role_bindings binding on binding.organization_id=member.organization_id and binding.user_id=member.user_id
+join public.role_binding_versions version on version.binding_id=binding.id and version.organization_id=binding.organization_id and version.version=binding.current_version
+join public.roles role on role.id=version.role_id and role.organization_id=version.organization_id and role.deleted_at is null
+join public.role_permissions permission on permission.role_id=role.id and permission.deleted_at is null
+where member.organization_id= $1 and member.user_id= $2
+  and version.revoked_at is null and version.scope_type='organization' and version.condition_expression is null
+order by permission.permission_key
 `
 
 type PermissionsForUserParams struct {
@@ -61,7 +66,7 @@ type PermissionsForUserParams struct {
 	UserID         pgtype.UUID
 }
 
-// A user's effective permissions within one organization. Scoped by org (ADR-0004 repository contract) and joined to roles so a soft-deleted role stops granting its permissions even while a membership still references it (FKs are RESTRICT).
+// Compatibility hints from live unconditional organization Bindings only; never flatten scoped or conditional grants.
 func (q *Queries) PermissionsForUser(ctx context.Context, arg PermissionsForUserParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, permissionsForUser, arg.OrganizationID, arg.UserID)
 	if err != nil {
@@ -83,11 +88,11 @@ func (q *Queries) PermissionsForUser(ctx context.Context, arg PermissionsForUser
 }
 
 const roleNameForUser = `-- name: RoleNameForUser :one
-select r.name
-from public.organization_memberships m
-join public.roles r on r.id = m.role_id and r.deleted_at is null
-where m.organization_id = $1 and m.user_id = $2
-limit 1
+select coalesce(string_agg(distinct role.name, ', ' order by role.name), '')::text
+from public.role_bindings binding
+join public.role_binding_versions version on version.binding_id=binding.id and version.organization_id=binding.organization_id and version.version=binding.current_version
+join public.roles role on role.id=version.role_id and role.organization_id=version.organization_id and role.deleted_at is null
+where binding.organization_id= $1 and binding.user_id= $2 and version.revoked_at is null
 `
 
 type RoleNameForUserParams struct {
@@ -95,10 +100,10 @@ type RoleNameForUserParams struct {
 	UserID         pgtype.UUID
 }
 
-// The display name of the user's role within one organization — a UI label (ADR-0008: authorization decisions never consult role names). The same soft-delete join rule as PermissionsForUser applies.
+// Legacy display metadata only; active sessions display separate caller-owned Binding summaries.
 func (q *Queries) RoleNameForUser(ctx context.Context, arg RoleNameForUserParams) (string, error) {
 	row := q.db.QueryRow(ctx, roleNameForUser, arg.OrganizationID, arg.UserID)
-	var name string
-	err := row.Scan(&name)
-	return name, err
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
 }

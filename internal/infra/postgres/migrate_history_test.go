@@ -35,9 +35,16 @@ func embeddedMigrationChecksums(t *testing.T) map[string][]byte {
 	return checksums
 }
 
-func requireRecordedChecksums(t *testing.T, pool *pgxpool.Pool) {
+func requireRecordedChecksums(t *testing.T, pool *pgxpool.Pool, before ...string) {
 	t.Helper()
 	want := embeddedMigrationChecksums(t)
+	if len(before) > 0 {
+		for version := range want {
+			if version >= before[0] {
+				delete(want, version)
+			}
+		}
+	}
 	rows, err := pool.Query(context.Background(), `select version, checksum from public.schema_migrations`)
 	if err != nil {
 		t.Fatalf("read history checksums: %v", err)

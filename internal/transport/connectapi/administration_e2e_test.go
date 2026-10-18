@@ -41,11 +41,6 @@ type administrationAPIEnv struct {
 
 // newAdministrationAPIEnv seeds only a disposable owner-controlled qualification database.
 func newAdministrationAPIEnv(t *testing.T) administrationAPIEnv {
-	return newAdministrationAPIEnvForMode(t, false)
-}
-
-// newAdministrationAPIEnvForMode also qualifies the mandatory production barrier with owner-ready policy data.
-func newAdministrationAPIEnvForMode(t *testing.T, prepared bool) administrationAPIEnv {
 	t.Helper()
 	ctx := context.Background()
 	pool := dbtest.FreshPostgres(t)
@@ -57,14 +52,7 @@ func newAdministrationAPIEnvForMode(t *testing.T, prepared bool) administrationA
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := store.ListPermissions(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy, err := authz.New(store, catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, policy, active := activeAPIPolicy(t, pool)
 	org, err := store.DefaultOrganizationID(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -92,18 +80,19 @@ func newAdministrationAPIEnvForMode(t *testing.T, prepared bool) administrationA
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := administration.NewManagementReader(pg.NewManagementReadStore(pool), conditions, administration.BindingConfig{Timeout: 5 * time.Second}, authz.ResourceConfig{MaxBindings: 64, Timeout: 5 * time.Second})
+	readStore, err := pg.NewAuthorizedManagementReadStore(pool, policy, org)
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := connect.WithInterceptors(connectapi.NewAuthInterceptor(sessions))
+	reader, err := administration.NewManagementReader(readStore, conditions, administration.BindingConfig{Timeout: 5 * time.Second}, authz.ResourceConfig{MaxBindings: 64, Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := connect.WithInterceptors(connectapi.NewAuthInterceptor(sessions), connectapi.NewActiveBoundaryInterceptor(active, sessions))
 	mux := http.NewServeMux()
-	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(sessions, legacy), options)
+	authPath, authHandler := portcullisv1connect.NewAuthHandler(connectapi.NewAuthService(sessions, active), options)
 	mux.Handle(authPath, authHandler)
 	managementOptions := []connect.HandlerOption{options}
-	if prepared {
-		managementOptions = append(managementOptions, connect.WithInterceptors(connectapi.NewPendingAdministrationInterceptor()))
-	}
 	for _, route := range connectapi.NewAdministrationRoutes(connectapi.NewUsersService(org, accounts, reader), connectapi.NewRolesService(org, roles, reader), connectapi.NewBindingsService(org, bindings, reader), managementOptions...) {
 		mux.Handle(route.Pattern, route.Handler)
 	}
@@ -132,14 +121,11 @@ func newAdministrationAPIEnvForMode(t *testing.T, prepared bool) administrationA
 	if _, err := pool.Exec(ctx, `insert into public.role_permissions (role_id,permission_key) select $1,key from public.permissions`, environment.managerRole); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `insert into public.organization_authorization_revisions (organization_id,revision) values ($1,1)`, string(org)); err != nil {
+	if err := pool.QueryRow(ctx, `select id::text from public.role_bindings where organization_id=$1 and user_id=$2`, org, environment.actor).Scan(&environment.actorBinding); err != nil {
 		t.Fatal(err)
 	}
-	environment.actorBinding = environment.seedBinding(t, environment.actor, environment.managerRole)
-	if !prepared {
-		if _, err := pool.Exec(ctx, `alter table public.organization_memberships drop column role_id`); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := pool.Exec(ctx, `update public.role_binding_versions set role_id=$2 where binding_id=$1`, environment.actorBinding, environment.managerRole); err != nil {
+		t.Fatal(err)
 	}
 	return environment
 }

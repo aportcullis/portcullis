@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,6 +26,15 @@ func NewConnectionPolicyStore(pool *pgxpool.Pool) *ConnectionPolicyStore {
 	return &ConnectionPolicyStore{conns: NewConnectionStore(pool)}
 }
 
+// NewAuthorizedConnectionPolicyStore uses the same policy lock and evaluator as workflow admission.
+func NewAuthorizedConnectionPolicyStore(pool *pgxpool.Pool, policy *BindingPolicyEvaluator, organization identity.OrganizationID) (*ConnectionPolicyStore, error) {
+	connections, err := NewAuthorizedConnectionStore(pool, policy, organization)
+	if err != nil {
+		return nil, err
+	}
+	return &ConnectionPolicyStore{conns: connections}, nil
+}
+
 // DefaultOrganizationID resolves the single self-hosted organization.
 func (s *ConnectionPolicyStore) DefaultOrganizationID(ctx context.Context) (identity.OrganizationID, error) {
 	return s.conns.DefaultOrganizationID(ctx)
@@ -32,6 +42,20 @@ func (s *ConnectionPolicyStore) DefaultOrganizationID(ctx context.Context) (iden
 
 // GetCurrent returns the connection's current policy snapshot. Archived connections keep answering — the policy is part of the historical snapshot.
 func (s *ConnectionPolicyStore) GetCurrent(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (connection.Policy, error) {
+	if s.conns.policy != nil {
+		var result connection.Policy
+		err := s.conns.withAuthorizedRead(ctx, org, func(ctx context.Context, scope *policyReadScope) error {
+			if len(scope.decisions) == 0 || scope.decisions[0].decision.Resource.ConnectionID != string(id) {
+				return authz.ErrPermissionDenied
+			}
+			copy := *s
+			copy.conns = &ConnectionStore{pool: s.conns.pool, q: scope.queries}
+			var err error
+			result, err = copy.GetCurrent(ctx, org, id)
+			return err
+		})
+		return result, err
+	}
 	cid, oid, err := connIDs(id, org)
 	if err != nil {
 		return connection.Policy{}, err

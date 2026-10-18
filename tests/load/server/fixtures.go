@@ -29,7 +29,7 @@ func provisionActor(ctx context.Context, store *postgres.IdentityStore, pool *pg
 	if err != nil {
 		return actor{}, err
 	}
-	if _, err := pool.Exec(ctx, "insert into organization_memberships (organization_id,user_id,role_id) select $1,$2,id from roles where organization_id=$1 and name=$3", string(org), string(user.ID), role); err != nil {
+	if _, err := pool.Exec(ctx, `with member as(insert into public.organization_memberships(organization_id,user_id) values($1,$2) returning organization_id,user_id),head as(insert into public.role_bindings(organization_id,user_id,current_version,created_at) select organization_id,user_id,1,clock_timestamp() from member returning id) insert into public.role_binding_versions(binding_id,organization_id,user_id,version,role_id,scope_type,created_at) select head.id,$1,$2,1,role.id,'organization',clock_timestamp() from head,public.roles role where role.organization_id=$1 and role.name=$3`, string(org), string(user.ID), role); err != nil {
 		return actor{}, err
 	}
 	raw := make([]byte, 32)

@@ -122,18 +122,6 @@ func NewAdministrationRoutes(users *UsersService, roles *RolesService, bindings 
 	return routes
 }
 
-// NewPendingAdministrationInterceptor preserves inactive production authority until atomic activation.
-func NewPendingAdministrationInterceptor() connect.UnaryInterceptorFunc {
-	return func(_ connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
-			if _, err := managementActor(ctx); err != nil {
-				return nil, err
-			}
-			return nil, connect.NewError(connect.CodeUnavailable, errors.New("administration authorization is not active"))
-		}
-	}
-}
-
 // toProtoPolicyVersion returns only committed identity/version metadata to write callers.
 func toProtoPolicyVersion(identifier string, version int64) *portcullisv1.PolicyVersion {
 	return &portcullisv1.PolicyVersion{Id: identifier, Version: version}

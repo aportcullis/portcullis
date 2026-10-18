@@ -21,7 +21,6 @@ import (
 	accessreq "github.com/aportcullis/portcullis/internal/app/accessrequest"
 	auditapp "github.com/aportcullis/portcullis/internal/app/audit"
 	"github.com/aportcullis/portcullis/internal/app/auth"
-	"github.com/aportcullis/portcullis/internal/app/authz"
 	connapp "github.com/aportcullis/portcullis/internal/app/connection"
 	connpolicy "github.com/aportcullis/portcullis/internal/app/connectionpolicy"
 	executionapp "github.com/aportcullis/portcullis/internal/app/execution"
@@ -80,20 +79,21 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
 	}
-	catalog, err := authz.LoadCatalog(ctx, store)
+	organization, bindingPolicy, authzSvc := activeAPIPolicy(t, pool)
+	protectedAudit, err := postgres.NewAuthorizedAuditStore(pool, bindingPolicy, organization)
 	if err != nil {
-		t.Fatalf("LoadCatalog: %v", err)
+		t.Fatal(err)
 	}
-	authzSvc, err := authz.New(store, catalog)
-	if err != nil {
-		t.Fatalf("authz.New: %v", err)
-	}
-	auditReader, err := auditapp.New(postgres.NewAuditStore(pool))
+	auditReader, err := auditapp.New(protectedAudit)
 	if err != nil {
 		t.Fatalf("auditapp.New: %v", err)
 	}
+	protectedConnections, err := postgres.NewAuthorizedConnectionStore(pool, bindingPolicy, organization)
+	if err != nil {
+		t.Fatal(err)
+	}
 	connSvc, err := connapp.New(
-		postgres.NewConnectionStore(pool),
+		protectedConnections,
 		pgdialect.New(pgdialect.Options{ValidateTimeout: 10 * time.Second, Destinations: dbtest.TargetDestinationPolicy(t)}),
 		crypto.NewConnectionCredentialCodec(keyring),
 		postgres.NewAuditStore(pool),
@@ -101,11 +101,18 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatalf("connapp.New: %v", err)
 	}
-	policySvc, err := connpolicy.New(postgres.NewConnectionPolicyStore(pool))
+	protectedPolicies, err := postgres.NewAuthorizedConnectionPolicyStore(pool, bindingPolicy, organization)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policySvc, err := connpolicy.New(protectedPolicies)
 	if err != nil {
 		t.Fatalf("connpolicy.New: %v", err)
 	}
-	requestStore := postgres.NewAccessRequestStore(pool)
+	requestStore, err := postgres.NewAuthorizedAccessRequestStore(pool, bindingPolicy, organization)
+	if err != nil {
+		t.Fatal(err)
+	}
 	requestSvc, err := accessreq.New(
 		requestStore,
 		requestStore,
@@ -118,10 +125,16 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	}
 
 	logs := &testLogBuffer{}
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Log(logs.String())
+		}
+	})
 	chain := connect.WithInterceptors(
 		connectapi.NewErrorLogInterceptor(slog.New(slog.NewJSONHandler(logs, nil))),
 		connectapi.NewClientIPInterceptor(nil),
 		connectapi.NewAuthInterceptor(authSvc),
+		connectapi.NewActiveBoundaryInterceptor(authzSvc, authSvc),
 	)
 	// Apply production limits in the harness: Connect caps decompressed messages and MaxBytesHandler caps the request stream.
 	readLimit := connect.WithReadMaxBytes(server.MaxRequestBytes)
@@ -135,11 +148,19 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	executionSvc, err := executionapp.New(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)}), resultSvc, "test-server", 2)
+	executionSvc, err := executionapp.New(requestStore, requestStore, protectedConnections, crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t)}), resultSvc, "test-server", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	executionPath, executionHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultSvc), chain, readLimit, connect.WithCodec(connectapi.ExecutionJSONCodec{}), connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, nil)))
+	protectedResults, err := postgres.NewAuthorizedResultReader(pool, bindingPolicy, organization)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultReader, err := resultapp.New(protectedResults, crypto.NewResultCodec(keyring), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executionPath, executionHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultReader), chain, readLimit, connect.WithCodec(connectapi.ExecutionJSONCodec{}), connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, nil)))
 	mux.Handle(executionPath, http.MaxBytesHandler(connectapi.BoundCSVWrites(executionHandler), server.MaxRequestBytes))
 	mux.Handle(authPath, http.MaxBytesHandler(authHandler, server.MaxRequestBytes))
 	mux.Handle(auditPath, http.MaxBytesHandler(auditHandler, server.MaxRequestBytes))
@@ -207,12 +228,11 @@ func (e *connsTestEnv) seedUser(t *testing.T, email, role string) {
 	if err != nil {
 		t.Fatalf("org: %v", err)
 	}
-	if _, err := e.pool.Exec(ctx,
-		`insert into organization_memberships (organization_id, user_id, role_id)
-		 select $1, $2, r.id from roles r where r.organization_id = $1 and r.name = $3`,
-		string(org), string(u.ID), role); err != nil {
-		t.Fatalf("membership: %v", err)
+	var roleID string
+	if err := e.pool.QueryRow(ctx, `select id::text from public.roles where organization_id=$1 and name=$2`, org, role).Scan(&roleID); err != nil {
+		t.Fatal(err)
 	}
+	seedAPIRole(t, e.pool, string(org), string(u.ID), roleID)
 }
 
 func (e *connsTestEnv) seedUserWithCustomRole(t *testing.T, email, roleName string, perms ...string) {
@@ -238,11 +258,7 @@ func (e *connsTestEnv) seedUserWithCustomRole(t *testing.T, email, roleName stri
 			t.Fatalf("grant %s: %v", p, err)
 		}
 	}
-	if _, err := e.pool.Exec(ctx,
-		`insert into organization_memberships (organization_id, user_id, role_id) values ($1, $2, $3)`,
-		string(org), string(u.ID), roleID); err != nil {
-		t.Fatalf("membership: %v", err)
-	}
+	seedAPIRole(t, e.pool, string(org), string(u.ID), roleID)
 }
 
 func (e *connsTestEnv) loginAs(t *testing.T, email, password string) (portcullisv1connect.AccessRequestsClient, string) {
@@ -574,6 +590,11 @@ func TestConnectionsPermissionDenied(t *testing.T) {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	viewerJar, viewerAuth, viewerConns, _ := env.clients()
+	organization, err := env.store.DefaultOrganizationID(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedAPIMembership(t, env.pool, string(organization), string(u.ID))
 	if _, err := viewerAuth.Login(ctx, connect.NewRequest(&portcullisv1.LoginRequest{Email: "viewer@example.com", Password: "correct-horse-battery"})); err != nil {
 		t.Fatalf("viewer Login: %v", err)
 	}

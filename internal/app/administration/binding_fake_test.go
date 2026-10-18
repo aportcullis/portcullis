@@ -163,7 +163,7 @@ func (transaction *bindingPolicyTransaction) FinalizeBindingChange(_ context.Con
 // bindingManagementScenario injects real bounded condition preparation into transactional use cases.
 func bindingManagementScenario(t *testing.T) (*bindingPolicyFake, *administration.BindingService, identity.BindingDefinition) {
 	t.Helper()
-	catalog := append(identity.EnforcedPermissions(), identity.BindingManagementPermissions()...)
+	catalog := identity.EnforcedPermissions()
 	repository := &bindingPolicyFake{catalog: catalog, at: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC), state: bindingPolicyState{
 		members:  map[identity.UserID]identity.UserStatus{"actor": identity.StatusActive, "target": identity.StatusActive},
 		roles:    map[identity.RoleID]identity.Role{"administrator": {ID: "administrator", Version: 1, Permissions: catalog}, "reader": {ID: "reader", Version: 1, Permissions: []identity.Permission{identity.PermissionConnectionsGet}}, "executor": {ID: "executor", Version: 1, Permissions: []identity.Permission{identity.PermissionRequestsExecute}}, "empty": {ID: "empty", Version: 1}},

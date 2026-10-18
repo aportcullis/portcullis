@@ -87,10 +87,10 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 
 const createSession = `-- name: CreateSession :one
 with observed as materialized (select clock_timestamp() as at)
-insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at)
+insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at, created_at)
 select $1, $2,
        observed.at + make_interval(secs => $3::float8),
-       observed.at + make_interval(secs => $4::float8)
+       observed.at + make_interval(secs => $4::float8), observed.at
 from observed
 returning id, user_id, token_hash, idle_expires_at, absolute_expires_at, revoked_at, created_at
 `
@@ -470,7 +470,7 @@ func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) (int64, err
 }
 
 const revokeUserSessions = `-- name: RevokeUserSessions :exec
-update public.sessions set revoked_at = now()
+update public.sessions set revoked_at = clock_timestamp()
 where user_id = $1 and revoked_at is null
 `
 

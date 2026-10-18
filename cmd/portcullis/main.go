@@ -224,14 +224,18 @@ func run() error {
 		logger.Error("permission catalog incomplete", "err", err, "hint", "apply every migration (`portcullis migrate`) before serving this release")
 		return err
 	}
-	authzSvc, err := authz.New(store, catalog)
+	organization, bindingPolicy, authzSvc, err := activeAuthorization(startupCtx, pool, store, catalog)
 	if err != nil {
 		logger.Error("authz init failed", "err", err)
 		return err
 	}
 	logger.Info("authorization ready", "permissions", len(catalog))
 
-	auditReader, err := auditapp.New(postgres.NewAuditStore(pool))
+	protectedAudit, err := postgres.NewAuthorizedAuditStore(pool, bindingPolicy, organization)
+	if err != nil {
+		return err
+	}
+	auditReader, err := auditapp.New(protectedAudit)
 	if err != nil {
 		logger.Error("audit read init failed", "err", err)
 		return err
@@ -245,6 +249,7 @@ func run() error {
 			connectapi.NewClientIPInterceptor(cfg.TrustedProxyNets()),
 			connectapi.NewRateLimitInterceptor(),
 			connectapi.NewAuthInterceptor(authSvc),
+			connectapi.NewActiveBoundaryInterceptor(authzSvc, authSvc),
 		),
 		readLimit,
 	}
@@ -258,8 +263,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	protectedConnections, err := postgres.NewAuthorizedConnectionStore(pool, bindingPolicy, organization)
+	if err != nil {
+		return err
+	}
 	connSvc, err := connapp.New(
-		postgres.NewConnectionStore(pool),
+		protectedConnections,
 		pgDialect,
 		crypto.NewConnectionCredentialCodec(keyring),
 		postgres.NewAuditStore(pool),
@@ -272,7 +281,11 @@ func run() error {
 	connsPath, connsHandler := portcullisv1connect.NewConnectionsHandler(connectapi.NewConnectionsService(authzSvc, connSvc), recoverAndChain...)
 
 	// Connection policies (ADR-0015): per-connection execution policy as immutable versions behind the policies.* gated RPCs.
-	policySvc, err := connpolicy.New(postgres.NewConnectionPolicyStore(pool))
+	protectedPolicies, err := postgres.NewAuthorizedConnectionPolicyStore(pool, bindingPolicy, organization)
+	if err != nil {
+		return err
+	}
+	policySvc, err := connpolicy.New(protectedPolicies)
 	if err != nil {
 		logger.Error("connection policies init failed", "err", err)
 		return err
@@ -280,7 +293,10 @@ func run() error {
 	policiesPath, policiesHandler := portcullisv1connect.NewConnectionPoliciesHandler(connectapi.NewConnectionPoliciesService(authzSvc, policySvc), recoverAndChain...)
 
 	// Access requests vertical (ADR-0018): the state machine + approvals behind the requests.* gated RPCs. It reuses the dialect adapter (parse/classify/ bind/redact at submit) and a keyring-backed payload codec. The store satisfies both ports — request storage and the (separate, ISP-narrow) request-target listing — so one adapter covers both.
-	requestStore := postgres.NewAccessRequestStore(pool)
+	requestStore, err := postgres.NewAuthorizedAccessRequestStore(pool, bindingPolicy, organization)
+	if err != nil {
+		return err
+	}
 	requestSvc, err := accessreq.NewWithDialects(
 		requestStore,
 		requestStore,
@@ -299,7 +315,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	executionSvc, err := executionapp.NewWithDialects(requestStore, requestStore, postgres.NewConnectionStore(pool), crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), sqlDialects, resultSvc, uuid.NewString(), 2)
+	executionSvc, err := executionapp.NewWithDialects(requestStore, requestStore, protectedConnections, crypto.NewAccessRequestPayloadCodec(keyring), crypto.NewConnectionCredentialCodec(keyring), sqlDialects, resultSvc, uuid.NewString(), 2)
 	if err != nil {
 		return err
 	}
@@ -317,7 +333,15 @@ func run() error {
 	queryOptions := append([]connect.HandlerOption(nil), recoverAndChain...)
 	queryOptions = append(queryOptions, connect.WithCodec(connectapi.ExecutionJSONCodec{}))
 	queryOptions = append(queryOptions, connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, cfg.TrustedProxyNets())))
-	executionsPath, executionsHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultSvc), queryOptions...)
+	protectedResults, err := postgres.NewAuthorizedResultReader(pool, bindingPolicy, organization)
+	if err != nil {
+		return err
+	}
+	resultReader, err := resultapp.New(protectedResults, crypto.NewResultCodec(keyring), 2)
+	if err != nil {
+		return err
+	}
+	executionsPath, executionsHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultReader), queryOptions...)
 
 	mounts := []server.Mount{
 		{Pattern: healthPath, Handler: http.MaxBytesHandler(healthHandler, server.MaxRequestBytes)},
@@ -329,7 +353,7 @@ func run() error {
 		{Pattern: executionsPath, Handler: http.MaxBytesHandler(connectapi.BoundCSVWrites(executionsHandler), server.MaxRequestBytes)},
 	}
 
-	administrationMounts, err := preparedAdministrationMounts(startupCtx, pool, store, recoverAndChain)
+	administrationMounts, err := activeAdministrationMounts(startupCtx, pool, store, bindingPolicy, recoverAndChain)
 	if err != nil {
 		logger.Error("administration API init failed", "err", err)
 		return err

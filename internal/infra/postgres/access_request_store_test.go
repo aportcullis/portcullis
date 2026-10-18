@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/aportcullis/portcullis/internal/app/administration"
 	"slices"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ type reqFixture struct {
 	policies *pg.ConnectionPolicyStore
 
 	requester identity.UserID
+	prepared  bool
 }
 
 func newReqFixture(t *testing.T) reqFixture {
@@ -57,11 +59,28 @@ func newReqFixtureFresh(t *testing.T) reqFixture {
 }
 
 func reqFixtureOver(t *testing.T, f connFixture) reqFixture {
+	return buildReqFixture(t, f, false)
+}
+
+// reqPreparationFixtureOver qualifies migration from the historical authority model only.
+func reqPreparationFixtureOver(t *testing.T, f connFixture) reqFixture {
+	return buildReqFixture(t, f, true)
+}
+
+func buildReqFixture(t *testing.T, f connFixture, prepared bool) reqFixture {
 	t.Helper()
 	fx := reqFixture{
 		connFixture: f,
 		requests:    pg.NewAccessRequestStore(f.pool),
 		policies:    pg.NewConnectionPolicyStore(f.pool),
+		prepared:    prepared,
+	}
+	if !prepared {
+		var err error
+		fx.requests, err = pg.NewWorkflowAccessRequestStore(f.pool, activePolicyFixture(t, f.pool))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	fx.requester = fx.userWithRole(t, "requester")
 	return fx
@@ -73,6 +92,14 @@ func (f reqFixture) userWithRole(t *testing.T, role string) identity.UserID {
 	u, err := ids.CreateUser(context.Background(), unique(role)+"@example.com", "User "+role)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
+	}
+	if !f.prepared {
+		var roleID string
+		if err := f.pool.QueryRow(context.Background(), `select id::text from public.roles where organization_id=$1 and name=$2`, f.org, role).Scan(&roleID); err != nil {
+			t.Fatal(err)
+		}
+		seedActiveFixtureRole(t, f.pool, f.org, u.ID, identity.RoleID(roleID))
+		return u.ID
 	}
 	if _, err := f.pool.Exec(context.Background(),
 		`insert into organization_memberships (organization_id, user_id, role_id)
@@ -104,6 +131,10 @@ func (f reqFixture) userWithCustomRole(t *testing.T, role string, permissions ..
 			`insert into role_permissions (role_id, permission_key) values ($1, $2)`, roleID, p); err != nil {
 			t.Fatalf("grant %s: %v", p, err)
 		}
+	}
+	if !f.prepared {
+		seedActiveFixtureRole(t, f.pool, f.org, u.ID, identity.RoleID(roleID))
+		return u.ID
 	}
 	if _, err := f.pool.Exec(ctx,
 		`insert into organization_memberships (organization_id, user_id, role_id) values ($1, $2, $3)`,
@@ -433,21 +464,24 @@ func TestAccessRequestInvalidatedApprover(t *testing.T) {
 func TestSoftDeletedRolePermissionStopsGrantingApproval(t *testing.T) {
 	f := newReqFixture(t)
 	ctx := context.Background()
-	identities := pg.NewIdentityStore(f.pool)
 	admin := f.userWithRole(t, "admin")
-	roleEvent := audit.Event{ActorType: audit.ActorUser, ActorUserID: &admin, Action: audit.ActionRoleUpdated, TargetType: audit.TargetTypeRole, Outcome: audit.OutcomeSucceeded}
-	reviewerRole, err := identities.CreateRole(ctx, f.org, identity.Delegation{Actor: admin, Gate: identity.PermissionRolesCreate}, identity.RoleDefinition{Name: unique("reviewer"), Permissions: []identity.Permission{identity.PermissionRequestsApprove, identity.PermissionRequestsReject}}, roleEvent)
+	roles, err := administration.NewRolePolicyService(pg.NewBindingManagementStore(f.pool), pg.NewAuditStore(f.pool), administration.DefaultRolePolicyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	reviewer, _, err := identities.CreateMember(ctx, f.org, identity.Delegation{Actor: admin, Gate: identity.PermissionUsersCreate}, identity.NewMember{Email: unique("reviewer") + "@example.com", DisplayName: "Reviewer", RoleID: reviewerRole.ID}, identity.PasswordSetupIssue{TokenHash: make([]byte, 32), Validity: time.Hour}, roleEvent)
+	reviewerRole, err := roles.Create(ctx, f.org, admin, administration.RoleParams{Name: unique("reviewer"), Permissions: []identity.Permission{identity.PermissionRequestsApprove, identity.PermissionRequestsReject}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	demoted := reviewer.User.ID
+	reviewer, err := pg.NewIdentityStore(f.pool).CreateUser(ctx, unique("reviewer")+"@example.com", "Reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	demoted := reviewer.ID
+	seedActiveFixtureRole(t, f.pool, f.org, demoted, reviewerRole.ID)
 	updateReviewerRole := func(version int64, permissions ...identity.Permission) {
 		t.Helper()
-		if _, err := identities.UpdateRole(ctx, f.org, identity.Delegation{Actor: admin, Gate: identity.PermissionRolesUpdate}, reviewerRole.ID, version, identity.RoleDefinition{Name: reviewerRole.Name, Permissions: permissions}, roleEvent); err != nil {
+		if _, err := roles.Update(ctx, f.org, admin, reviewerRole.ID, version, administration.RoleParams{Name: reviewerRole.Name, Permissions: permissions}); err != nil {
 			t.Fatalf("UpdateRole(version %d): %v", version, err)
 		}
 	}
@@ -1709,14 +1743,14 @@ func TestApprovalReadsAreOrgScoped(t *testing.T) {
 		{name: "another organization", org: elsewhere, want: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			count, err := q.CountValidApprovals(ctx, db.CountValidApprovalsParams{
-				RequestID: rid, OrganizationID: tc.org, RequesterID: requester,
+			candidates, err := q.ListPolicyApprovalCandidates(ctx, db.ListPolicyApprovalCandidatesParams{
+				RequestID: rid, OrganizationID: tc.org, RequesterID: requester, CandidateLimit: 1025,
 			})
-			if err != nil || count != tc.want {
-				t.Errorf("CountValidApprovals = %d, %v; want %d", count, err, tc.want)
+			if err != nil || int64(len(candidates)) != tc.want {
+				t.Errorf("ListPolicyApprovalCandidates = %d, %v; want %d", len(candidates), err, tc.want)
 			}
 			rows, err := q.ListApprovalsForRequest(ctx, db.ListApprovalsForRequestParams{
-				RequestID: rid, OrganizationID: tc.org, RequesterID: requester,
+				RequestID: rid, OrganizationID: tc.org,
 			})
 			if err != nil || int64(len(rows)) != tc.want {
 				t.Errorf("ListApprovalsForRequest = %d rows, %v; want %d", len(rows), err, tc.want)

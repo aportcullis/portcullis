@@ -21,7 +21,7 @@ type CreatedPolicyAccount struct {
 	SetupLink SetupLink
 }
 
-// NewAccountPolicyService constructs the inactive binding-based account boundary.
+// NewAccountPolicyService constructs the Binding-authorized account boundary.
 func NewAccountPolicyService(repository AccountPolicyRepository, auditor AuditRecorder, settings BindingConfig) (*AccountPolicyService, error) {
 	if repository == nil || auditor == nil {
 		return nil, errors.New("administration: account policy dependencies required")

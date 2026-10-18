@@ -18,7 +18,7 @@ async function answer<Schema extends DescMessage>(route: Route, schema: Schema, 
 
 /** Gives an isolated page advisory capabilities without changing the real installation's authority. */
 async function sessionFixture(page: Page, granted = permissions) {
-  await page.route("**/portcullis.v1.Auth/Me", route => answer(route, MeResponseSchema, { user: { id: actor, email: "operator@example.com", status: "active" }, permissions: granted }));
+  await page.route("**/portcullis.v1.Auth/Me", route => answer(route, MeResponseSchema, { user: { id: actor, email: "operator@example.com", status: "active" }, capabilities: granted, authorizationRevision: 7n }));
 }
 
 const pagination = { page: 1, pageSize: 20, totalCount: 1n, authorizationRevision: 7n };

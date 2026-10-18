@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"errors"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"math"
 	"time"
 
@@ -28,7 +29,7 @@ func (s *AccessRequestStore) AcquireExecution(ctx context.Context, org identity.
 	}
 	var lease access.ExecutionLease
 	var refused error
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
 		before, err := q.GetAccessRequest(ctx, db.GetAccessRequestParams{ID: requestUUID, OrganizationID: organizationUUID})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)
@@ -62,7 +63,7 @@ func (s *AccessRequestStore) AcquireExecution(ctx context.Context, org identity.
 		case r.ConnectionConfigVersion != target.ConfigVersion:
 			reason = access.ReasonConnectionChanged
 		}
-		count, err := q.CountValidApprovals(ctx, db.CountValidApprovalsParams{RequestID: requestUUID, OrganizationID: organizationUUID, RequesterID: row.RequesterID})
+		count, err := s.countCurrentApprovals(ctx, q, organizationUUID, requestUUID, row.RequesterID, at)
 		if err != nil {
 			return err
 		}
@@ -78,12 +79,12 @@ func (s *AccessRequestStore) AcquireExecution(ctx context.Context, org identity.
 			refused = access.ErrNotExecutable
 			return insertAuditTx(ctx, q, evt)
 		}
-		eligible, err := q.ApproverEligible(ctx, db.ApproverEligibleParams{ApproverID: row.RequesterID, OrganizationID: organizationUUID, PermissionKey: "requests.execute"})
+		checkpoint, err := s.requestDecision(ctx, q, organizationUUID, requestUUID, row.RequesterID, identity.PermissionRequestsExecute, at)
 		if err != nil {
+			if errors.Is(err, authz.ErrPermissionDenied) {
+				return access.ErrNotExecutable
+			}
 			return err
-		}
-		if !eligible {
-			return access.ErrNotExecutable
 		}
 		if !hmac.Equal(r.Digest, digest) {
 			return access.ErrPayloadIntegrity
@@ -97,6 +98,8 @@ func (s *AccessRequestStore) AcquireExecution(ctx context.Context, org identity.
 		}
 		evt := executionEvent(r, event, audit.ActionExecutionStarted, access.StateApproved, access.StateExecuting)
 		evt.OccurredAt = at
+		attachAuthorizationEvidence(&evt, checkpoint, identity.PermissionRequestsExecute)
+		evt.Metadata["valid_approvals"] = count
 		if err = insertAuditTx(ctx, q, evt); err != nil {
 			return err
 		}
@@ -122,7 +125,7 @@ func (s *AccessRequestStore) HeartbeatExecution(ctx context.Context, org identit
 	if err != nil {
 		return err
 	}
-	return s.conns.withTx(ctx, func(q *db.Queries) error {
+	return s.withWorkflowTx(ctx, oid, func(q *db.Queries) error {
 		row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: rid, OrganizationID: oid})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)
@@ -136,6 +139,16 @@ func (s *AccessRequestStore) HeartbeatExecution(ctx context.Context, org identit
 		at, err := observeInstant(ctx, q)
 		if err != nil {
 			return err
+		}
+		if err := s.authorizeRequest(ctx, q, oid, rid, row.RequesterID, identity.PermissionRequestsExecute, at); err != nil {
+			return access.ErrLeaseLost
+		}
+		approvals, err := s.countCurrentApprovals(ctx, q, oid, rid, row.RequesterID, at)
+		if err != nil {
+			return err
+		}
+		if approvals < int64(toAccessRequest(row).RequiredApprovals) {
+			return access.ErrLeaseLost
 		}
 		count, err := q.HeartbeatQueryExecution(ctx, db.HeartbeatQueryExecutionParams{At: timeToTS(at), LeaseMilliseconds: access.ExecutionLeaseDuration.Milliseconds(), RequestID: rid, OrganizationID: oid, Owner: lease.Owner, AttemptID: aid})
 		if err != nil {
@@ -162,7 +175,7 @@ func (s *AccessRequestStore) CompleteExecution(ctx context.Context, org identity
 		return err
 	}
 	var lost bool
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, oid, func(q *db.Queries) error {
 		row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: rid, OrganizationID: oid})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)
@@ -261,7 +274,7 @@ const (
 // reconcileOverdueExecution records outcome_unknown for one still-overdue attempt, locking request then execution like completion and skipping a request another transaction holds.
 func (s *AccessRequestStore) reconcileOverdueExecution(ctx context.Context, oid, rid pgtype.UUID) (reconcileOutcome, error) {
 	outcome := reconcileUnchanged
-	err := s.conns.withTx(ctx, func(q *db.Queries) error {
+	err := s.withWorkflowTx(ctx, oid, func(q *db.Queries) error {
 		row, err := q.LockAccessRequestSkipLocked(ctx, db.LockAccessRequestSkipLockedParams{ID: rid, OrganizationID: oid})
 		if errors.Is(err, pgx.ErrNoRows) {
 			outcome = reconcileSkippedLocked
@@ -361,7 +374,7 @@ func (s *AccessRequestStore) RecordExecutionRefusal(ctx context.Context, org ide
 	if err != nil {
 		return err
 	}
-	return s.conns.withTx(ctx, func(q *db.Queries) error {
+	return s.withWorkflowTx(ctx, oid, func(q *db.Queries) error {
 		row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: rid, OrganizationID: oid})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)

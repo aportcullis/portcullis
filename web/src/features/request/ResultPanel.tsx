@@ -6,7 +6,7 @@ import { createSolidTable, getCoreRowModel } from "@tanstack/solid-table";
 import type { QueryExecution, QueryResultPage, QueryResultRow } from "@/gen/portcullis/v1/query_executions_pb";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { LogicalType } from "@/gen/portcullis/v1/query_executions_pb";
-import { errorMessage } from "@/shared/api/errors";
+import { errorMessage, isAuthorizationRefusal } from "@/shared/api/errors";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";
@@ -58,7 +58,10 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
       requestId: props.requestId ?? "", page: view.page, pageSize: view.pageSize, sortColumn: view.sortColumn, descending: view.descending, filter: view.filter,
     }) : undefined;
     return { info, snapshot, view };
-  }, ({ info, snapshot, view }) => { setExecution(info); setResult(snapshot); appliedView = view; }, (err) => describeResultError(err, errorMessage));
+  }, ({ info, snapshot, view }) => { setExecution(info); setResult(snapshot); appliedView = view; }, (err) => {
+    if (isAuthorizationRefusal(err)) { revision++; requestRevision++; discardDownload(); setExecution(); setResult(); setFullCell(); setExporting(false); setCopying(false); appliedView = undefined; }
+    return describeResultError(err, errorMessage);
+  });
   createEffect(on(read.error, (message) => {
     if (message !== "" && appliedView !== undefined && result() !== undefined) restoreView(appliedView);
   }, { defer: true }));

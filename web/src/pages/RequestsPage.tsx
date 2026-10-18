@@ -4,14 +4,14 @@ import { Button } from "@/shared/ui/button";
 import type { Component } from "solid-js";
 import { Show } from "solid-js";
 
-import { hasPermission } from "@/entities/session/store";
+import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
 import { RequestList } from "@/features/request/RequestList";
 
 // RequestsPage is assembly only (frontend.md): the header and the create + list features. The route guard lives in AppShell; affordances are hidden by can() while the server keeps enforcing every RPC (ADR-0008).
 const RequestsPage: Component = () => {
   const navigate = useNavigate();
   return (
-  <>
+  <Show when={sessionAuthorizationKey()} keyed>{_authorization => <>
     <PageHeader eyebrow="Governed access" title="Access requests"
       description="Follow requests from draft and review to a single approved execution."
       actions={<Show when={hasPermission("requests.create")}>
@@ -31,7 +31,7 @@ const RequestsPage: Component = () => {
     >
       <div class="content-surface"><RequestList /></div>
     </Show>
-  </>
+  </>}</Show>
 );
 };
 

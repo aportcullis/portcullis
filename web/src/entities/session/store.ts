@@ -2,7 +2,7 @@ import { createRoot, createSignal } from "solid-js";
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
-import type { User } from "@/gen/portcullis/v1/auth_pb";
+import type { SessionBinding, User } from "@/gen/portcullis/v1/auth_pb";
 import { authClient } from "@/shared/api/client";
 import { retryOnThrottle } from "@/shared/api/retry";
 
@@ -11,7 +11,7 @@ export type SessionState =
   | { status: "loading" }
   | { status: "anonymous"; cause: AnonymousCause }
   | { status: "unreachable" }
-  | { status: "authenticated"; user: User; permissions: readonly string[]; roleName: string };
+  | { status: "authenticated"; user: User; permissions: readonly string[]; capabilities: readonly string[]; bindings: readonly SessionBinding[]; authorizationRevision: bigint; roleName: string };
 
 // AnonymousCause separates an explicit sign-out from finding no valid session, so only the latter offers to continue where the caller was.
 export type AnonymousCause = "signed-out" | "no-session";
@@ -61,13 +61,19 @@ const store = createRoot(() => {
       if (seq !== latest) return;
       setSession(
         user
-          ? { status: "authenticated", user, permissions: res.permissions, roleName: res.roleName }
+          ? { status: "authenticated", user, permissions: res.permissions, capabilities: res.capabilities, bindings: res.bindings, authorizationRevision: res.authorizationRevision, roleName: res.roleName }
           : { status: "anonymous", cause: "no-session" },
       );
     } catch (err) {
       if (seq !== latest) return;
       setSession(isAuthRejection(err) ? { status: "anonymous", cause: "no-session" } : { status: "unreachable" });
     }
+  }
+
+  /** Immediately removes data owned by a refused session before resolving current admission again. */
+  async function refreshRevokedSession(): Promise<void> {
+    setSession({ status: "loading" });
+    await load();
   }
 
   // login starts a session (cookies are set by the response) and becomes authenticated from the login response itself — no extra Me round-trip, so a transient Me failure can never turn a successful login into an apparent rejection. Errors propagate to the form, which renders ONE uniform message.
@@ -77,7 +83,7 @@ const store = createRoot(() => {
     if (seq !== latest) return;
     const user = res.user;
     if (user) {
-      setSession({ status: "authenticated", user, permissions: res.permissions, roleName: res.roleName });
+      setSession({ status: "authenticated", user, permissions: res.permissions, capabilities: res.capabilities, bindings: res.bindings, authorizationRevision: res.authorizationRevision, roleName: res.roleName });
       return;
     }
     // A login that succeeds without a user payload should not happen; fall back to the server as the source of truth.
@@ -101,10 +107,16 @@ const store = createRoot(() => {
   // can reports whether the signed-in user holds a permission key. UI affordance gating only: hiding a button is UX, the server still returns the uniform permission-denied when an RPC is attempted (ADR-0008).
   function hasPermission(permission: PermissionKey): boolean {
     const principal = session();
-    return principal.status === "authenticated" && principal.permissions.includes(permission);
+    return principal.status === "authenticated" && principal.capabilities.includes(permission);
   }
 
-  return { session, load, login, logout, hasPermission };
+  return { session, load, login, logout, hasPermission, refreshRevokedSession };
 });
 
-export const { session, load, login, logout, hasPermission } = store;
+export const { session, load, login, logout, hasPermission, refreshRevokedSession } = store;
+
+/** Identifies the current advisory snapshot so protected views discard older responses and drafts. */
+export function sessionAuthorizationKey(): string {
+  const principal = session();
+  return principal.status === "authenticated" ? JSON.stringify([principal.user.id, principal.authorizationRevision.toString(), [...principal.capabilities].sort()]) : "";
+}

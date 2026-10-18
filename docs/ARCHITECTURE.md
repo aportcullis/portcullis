@@ -3,7 +3,9 @@
 Portcullis ships as one Go binary with the SolidJS SPA embedded through `go:embed`. The diagrams below map the current repository: source dependencies, frontend layers and runtime calls have separate views because their arrows mean different things.
 For the recommended private-network production topology and remote access through Cloudflare WARP or Tailscale, see [Deployment architecture](operations/recommended-architecture.md).
 
-The current authorization code resolves one membership role into organization-wide permission keys. [ADR-0062](adr/0062-role-bindings-and-conditions.md) accepts a planned M1 replacement with independent roles, organization/connection bindings and bounded conditions. That replacement requires resource-aware authorization/evaluator ports, migrated persistence, concurrent admission checks and updated session/API/UI contracts; it is not represented as implemented by the diagrams below.
+Authorization uses independent membership, reusable Roles and organization/connection Bindings with bounded CEL conditions. [ADR-0071](adr/0071-binding-authorization-activation.md) activates migration, bootstrap, sessions, protected adapters, governance and output together. The server selects each RPC's resource purpose and resolves ancestry from storage. Policy/workflow changes take the organization coordinator exclusively; coherent protected reads take it shared and filter candidates before pagination. Result/CSV output repeats current permission, ownership, expiry and session checks.
+
+The following ADR entries describe the historical preparation sequence; ADR-0071 supersedes their inactive-production boundaries.
 
 [ADR-0063](adr/0063-condition-dsl-and-pure-evaluation.md) separates structured Role/Binding data, checked CEL conditions and pure predicate evaluation. The planned outer services resolve attributes and authoritative time, prepare immutable inputs and handle transactions/audit; the evaluator performs no I/O or clock reads. Condition forms generate the same server-validated CEL used by API clients.
 

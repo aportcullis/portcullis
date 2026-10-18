@@ -281,6 +281,9 @@ func (a *AccessRequestsService) ListRequestableConnections(
 
 // requestError maps the access-request use cases' outcomes onto Connect codes. Domain sentinels are safe to surface; anything else collapses to internal. Nothing here echoes SQL or parameter values (PRD §8.1).
 func requestError(err error) error {
+	if isResourceAuthorizationError(err) {
+		return activeAuthorizationError(err)
+	}
 	switch {
 	case errors.Is(err, access.ErrNotFound), errors.Is(err, connection.ErrNotFound):
 		return connect.NewError(connect.CodeNotFound, errors.New("request not found"))

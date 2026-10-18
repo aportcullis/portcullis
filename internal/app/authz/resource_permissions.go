@@ -37,6 +37,11 @@ var resourcePermissionTypes = map[identity.Permission][]identity.ResourceType{
 	identity.PermissionAuditGet:          {identity.ResourceAudit},
 }
 
+// ResourceTypesForPermission returns the registered candidate kinds without exposing mutable registry storage.
+func ResourceTypesForPermission(permission identity.Permission) []identity.ResourceType {
+	return append([]identity.ResourceType(nil), resourcePermissionTypes[permission]...)
+}
+
 // supportsResourcePermission denies unregistered permission and resource combinations.
 func supportsResourcePermission(permission identity.Permission, resource identity.ResourceType) bool {
 	for _, supported := range resourcePermissionTypes[permission] {

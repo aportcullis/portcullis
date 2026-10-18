@@ -16,8 +16,8 @@ import (
 	"github.com/aportcullis/portcullis/internal/transport/server"
 )
 
-// preparedAdministrationMounts wires real management adapters behind the mandatory inactive-production boundary.
-func preparedAdministrationMounts(ctx context.Context, pool *pgxpool.Pool, store *postgres.IdentityStore, options []connect.HandlerOption) ([]server.Mount, error) {
+// activeAdministrationMounts exposes policy services under the shared active authorization boundary.
+func activeAdministrationMounts(ctx context.Context, pool *pgxpool.Pool, store *postgres.IdentityStore, policy *postgres.BindingPolicyEvaluator, options []connect.HandlerOption) ([]server.Mount, error) {
 	organization, err := store.DefaultOrganizationID(ctx)
 	if err != nil {
 		return nil, err
@@ -59,13 +59,16 @@ func preparedAdministrationMounts(ctx context.Context, pool *pgxpool.Pool, store
 	if err != nil {
 		return nil, err
 	}
-	reader, err := administration.NewManagementReader(postgres.NewManagementReadStore(pool), conditions, managementSettings, resourceSettings)
+	readStore, err := postgres.NewAuthorizedManagementReadStore(pool, policy, organization)
 	if err != nil {
 		return nil, err
 	}
-	preparedOptions := append([]connect.HandlerOption(nil), options...)
-	preparedOptions = append(preparedOptions, connect.WithInterceptors(connectapi.NewPendingAdministrationInterceptor()))
-	routes := connectapi.NewAdministrationRoutes(connectapi.NewUsersService(organization, accounts, reader), connectapi.NewRolesService(organization, roles, reader), connectapi.NewBindingsService(organization, bindings, reader), preparedOptions...)
+	reader, err := administration.NewManagementReader(readStore, conditions, managementSettings, resourceSettings)
+	if err != nil {
+		return nil, err
+	}
+	managementOptions := append([]connect.HandlerOption(nil), options...)
+	routes := connectapi.NewAdministrationRoutes(connectapi.NewUsersService(organization, accounts, reader), connectapi.NewRolesService(organization, roles, reader), connectapi.NewBindingsService(organization, bindings, reader), managementOptions...)
 	mounts := make([]server.Mount, 0, len(routes))
 	for _, route := range routes {
 		mounts = append(mounts, server.Mount{Pattern: route.Pattern, Handler: http.MaxBytesHandler(route.Handler, server.MaxRequestBytes)})

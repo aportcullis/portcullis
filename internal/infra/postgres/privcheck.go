@@ -87,19 +87,10 @@ var defaultTablePolicy = tablePolicy{
 
 // tablePolicies is the single source of the per-table exceptions — the code form of data.md's sensitive-table judgments.
 var tablePolicies = map[string]tablePolicy{
-	// Prepared authorization storage stays read-only until the atomic grant-source cutover (ADR-0064).
-	"role_bindings": {
-		required:  []string{"SELECT"},
-		forbidden: []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
-	},
-	"role_binding_versions": {
-		required:  []string{"SELECT"},
-		forbidden: []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
-	},
-	"organization_authorization_revisions": {
-		required:  []string{"SELECT"},
-		forbidden: []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"},
-	},
+	// Active binding heads are mutable; immutable versions may only be appended (ADR-0062/0064).
+	"role_bindings":                        defaultTablePolicy,
+	"role_binding_versions":                {required: []string{"SELECT", "INSERT"}, forbidden: []string{"UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"}},
+	"organization_authorization_revisions": {required: []string{"SELECT", "UPDATE"}, forbidden: []string{"INSERT", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES", "MAINTAIN"}},
 	// Append-only evidence: read and append, never mutate (ADR-0009).
 	"audit_events": {
 		required:  []string{"SELECT", "INSERT"},

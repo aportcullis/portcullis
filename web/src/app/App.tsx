@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { ErrorBoundary, createEffect, lazy, onMount } from "solid-js";
+import { ErrorBoundary, createEffect, lazy, onCleanup, onMount } from "solid-js";
 
 import { Navigate, Route, Router } from "@solidjs/router";
 
@@ -9,7 +9,8 @@ import AppShell from "@/app/AppShell";
 import { landingFor } from "@/app/navigation";
 import { resetConnections } from "@/entities/connection/store";
 import { resetAccessRequests, setMayListAccessRequests } from "@/entities/request/store";
-import { hasPermission, session } from "@/entities/session/store";
+import { hasPermission, refreshRevokedSession, sessionAuthorizationKey } from "@/entities/session/store";
+import { observeAuthorizationFailures } from "@/shared/api/authorization";
 import BootstrapPage from "@/pages/BootstrapPage";
 import LoginPage from "@/pages/LoginPage";
 import NotFoundPage from "@/pages/NotFoundPage";
@@ -25,15 +26,23 @@ const RequestResultPage = lazy(() => import("@/pages/RequestResultPage"));
 
 // Composition root: global CSS, the router, the one-time session resolve, and the cross-entity lifecycle wiring (a leaf entity must not import another, so the "purge a principal's cached data when the principal changes" rule lives here, at the composition root that legitimately sees both entities).
 const App: Component = () => {
-  onMount(() => void load());
+  onMount(() => {
+    const unsubscribe = observeAuthorizationFailures(failure => { void (failure === "session" ? refreshRevokedSession() : load()); });
+    const refresh = () => { if (!document.hidden) void load(); };
+    const timer = setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    onCleanup(() => { unsubscribe(); clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); document.removeEventListener("visibilitychange", refresh); });
+    void load();
+  });
 
-  // Clear the connection cache whenever the authenticated principal changes or goes away — a later, less-privileged login in the same tab must never see the previous user's descriptors (OWASP: purge client-side data on session end). resetConnections also fences any in-flight load from the old user.
-  let lastUserID = "";
+  // Identity, policy revision and capability changes discard protected caches and fence pending reads.
+  let lastAuthorizationKey = "";
   createEffect(() => {
-    const principal = session();
-    const userID = principal.status === "authenticated" ? principal.user.id : "";
-    if (userID !== lastUserID) {
-      lastUserID = userID;
+    const authorizationKey = sessionAuthorizationKey();
+    if (authorizationKey !== lastAuthorizationKey) {
+      lastAuthorizationKey = authorizationKey;
       resetConnections();
       resetAccessRequests();
     }

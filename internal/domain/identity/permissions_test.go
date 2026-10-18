@@ -64,33 +64,35 @@ func TestValidatePermissionCatalogRefusesMissingOrMisspelledKeys(t *testing.T) {
 
 func TestEnforcedPermissionsListsEveryDeclaredPermissionConstant(t *testing.T) {
 	t.Parallel()
-	file, err := parser.ParseFile(token.NewFileSet(), "permissions.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var declared []identity.Permission
-	for _, declaration := range file.Decls {
-		general, ok := declaration.(*ast.GenDecl)
-		if !ok || general.Tok != token.CONST {
-			continue
+	for _, filename := range []string{"permissions.go", "binding_management.go"} {
+		file, err := parser.ParseFile(token.NewFileSet(), filename, nil, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, spec := range general.Specs {
-			value, ok := spec.(*ast.ValueSpec)
-			if !ok || len(value.Values) != 1 {
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.CONST {
 				continue
 			}
-			if typeName, ok := value.Type.(*ast.Ident); !ok || typeName.Name != "Permission" {
-				continue
+			for _, spec := range general.Specs {
+				value, ok := spec.(*ast.ValueSpec)
+				if !ok || len(value.Values) != 1 {
+					continue
+				}
+				if typeName, ok := value.Type.(*ast.Ident); !ok || typeName.Name != "Permission" {
+					continue
+				}
+				literal, ok := value.Values[0].(*ast.BasicLit)
+				if !ok {
+					t.Fatalf("permission constant %s is not a string literal", value.Names[0].Name)
+				}
+				key, err := strconv.Unquote(literal.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				declared = append(declared, identity.Permission(key))
 			}
-			literal, ok := value.Values[0].(*ast.BasicLit)
-			if !ok {
-				t.Fatalf("permission constant %s is not a string literal", value.Names[0].Name)
-			}
-			key, err := strconv.Unquote(literal.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			declared = append(declared, identity.Permission(key))
 		}
 	}
 	enforced := identity.EnforcedPermissions()

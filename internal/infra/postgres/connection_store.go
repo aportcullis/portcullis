@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,13 +19,23 @@ import (
 
 // ConnectionStore implements the connection domain's repository port (and the connection app service's narrower view of it) over the sqlc queries. Every query is organization-scoped (ADR-0004); mutations commit their audit events in the same transaction (ADR-0009).
 type ConnectionStore struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+	pool         *pgxpool.Pool
+	q            *db.Queries
+	policy       *BindingPolicyEvaluator
+	organization identity.OrganizationID
 }
 
 // NewConnectionStore builds the store on a connection pool.
 func NewConnectionStore(pool *pgxpool.Pool) *ConnectionStore {
 	return &ConnectionStore{pool: pool, q: db.New(pool)}
+}
+
+// NewAuthorizedConnectionStore pins resource authorization to the configured organization.
+func NewAuthorizedConnectionStore(pool *pgxpool.Pool, policy *BindingPolicyEvaluator, organization identity.OrganizationID) (*ConnectionStore, error) {
+	if pool == nil || policy == nil || organization == "" {
+		return nil, authz.ErrAuthorizationInactive
+	}
+	return &ConnectionStore{pool: pool, q: db.New(pool), policy: policy, organization: organization}, nil
 }
 
 // DefaultOrganizationID resolves the single self-hosted organization (single-org MVP). Unlike the identity store's hot-path cache, connection operations are rare admin actions, so a plain query keeps this simple.
@@ -61,7 +72,24 @@ func (s *ConnectionStore) withTx(ctx context.Context, fn func(*db.Queries) error
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful commit
-	if err := fn(s.q.WithTx(tx)); err != nil {
+	queries := s.q.WithTx(tx)
+	if s.policy != nil {
+		if err := lockPolicyOrganization(ctx, queries, s.organization, false); err != nil {
+			return err
+		}
+		operation, exists := authz.OperationFromContext(ctx)
+		if !exists || operation.Collection || operation.Permission == "" {
+			return authz.ErrPermissionDenied
+		}
+		at, err := observeInstant(ctx, queries)
+		if err != nil {
+			return err
+		}
+		if _, err := s.policy.authorizeOperation(ctx, queries, s.organization, operation.Principal, operation.Permission, operation, at); err != nil {
+			return err
+		}
+	}
+	if err := fn(queries); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -136,6 +164,9 @@ func (s *ConnectionStore) Create(ctx context.Context, c connection.Connection, c
 
 // GetByID returns one connection within the organization scope.
 func (s *ConnectionStore) GetByID(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (connection.Connection, error) {
+	if s.policy != nil {
+		return s.authorizedConnection(ctx, org, id)
+	}
 	cid, oid, err := connIDs(id, org)
 	if err != nil {
 		return connection.Connection{}, err
@@ -149,6 +180,9 @@ func (s *ConnectionStore) GetByID(ctx context.Context, org identity.Organization
 
 // List returns the organization's connections, newest first.
 func (s *ConnectionStore) List(ctx context.Context, org identity.OrganizationID, includeArchived bool) ([]connection.Connection, error) {
+	if s.policy != nil {
+		return s.authorizedConnections(ctx, org, includeArchived)
+	}
 	oid, err := stringToUUID(string(org))
 	if err != nil {
 		return nil, fmt.Errorf("organization id: %w", err)
@@ -321,6 +355,9 @@ func completeArchiveEvents(events []audit.Event, c connection.Connection) []audi
 
 // TestMaterial reads target and credential together to avoid mixing config versions; archived connections are refused.
 func (s *ConnectionStore) TestMaterial(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (connection.Connection, connection.SealedCredential, error) {
+	if s.policy != nil {
+		return s.authorizedTestMaterial(ctx, org, id)
+	}
 	cid, oid, err := connIDs(id, org)
 	if err != nil {
 		return connection.Connection{}, connection.SealedCredential{}, err

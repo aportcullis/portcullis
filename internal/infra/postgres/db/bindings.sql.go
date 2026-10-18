@@ -150,10 +150,10 @@ from public.query_executions execution join public.access_requests resource on r
 where $1::text = 'execution' and execution.organization_id = $2::uuid
   and execution.request_id = $3::uuid
 union all
-select result.id as resource_id, resource.connection_id as connection_id
-from result_cache.result_sets result join public.query_executions execution on execution.result_id = result.id and execution.organization_id = result.organization_id join public.access_requests resource on resource.id = execution.request_id and resource.organization_id = execution.organization_id
-where $1::text = 'result' and result.organization_id = $2::uuid
-  and result.id = $3::uuid
+select execution.result_id as resource_id, resource.connection_id as connection_id
+from public.query_executions execution join public.access_requests resource on resource.id = execution.request_id and resource.organization_id = execution.organization_id
+where $1::text = 'result' and execution.organization_id = $2::uuid
+  and execution.result_id = $3::uuid
 union all
 select resource.user_id as resource_id, null::uuid as connection_id
 from public.organization_memberships resource

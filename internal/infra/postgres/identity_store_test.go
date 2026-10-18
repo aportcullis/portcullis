@@ -59,9 +59,7 @@ func TestIdentityStore(t *testing.T) {
 	if err := store.SetPassword(ctx, u.ID, "phc-hash"); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
-	if err := store.AddMembership(ctx, org, u.ID, roleID); err != nil {
-		t.Fatalf("AddMembership: %v", err)
-	}
+	seedActiveFixtureRole(t, pool, org, u.ID, roleID)
 
 	userPerms, err := store.PermissionsForUser(ctx, org, u.ID)
 	if err != nil {
@@ -671,9 +669,7 @@ func TestPermissionsExcludeSoftDeletedRole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if err := store.AddMembership(ctx, org, u.ID, identity.RoleID(roleID)); err != nil {
-		t.Fatalf("AddMembership: %v", err)
-	}
+	seedActiveFixtureRole(t, pool, org, u.ID, identity.RoleID(roleID))
 
 	if perms, err := store.PermissionsForUser(ctx, org, u.ID); err != nil || len(perms) != 1 {
 		t.Fatalf("active role should grant 1 permission, got %d (%v)", len(perms), err)
@@ -727,12 +723,8 @@ func TestPermissionsAreOrgScoped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if err := store.AddMembership(ctx, orgA, u.ID, identity.RoleID(roleA)); err != nil {
-		t.Fatalf("AddMembership A: %v", err)
-	}
-	if err := store.AddMembership(ctx, identity.OrganizationID(orgB), u.ID, identity.RoleID(roleB)); err != nil {
-		t.Fatalf("AddMembership B: %v", err)
-	}
+	seedActiveFixtureRole(t, pool, orgA, u.ID, identity.RoleID(roleA))
+	seedActiveFixtureRole(t, pool, identity.OrganizationID(orgB), u.ID, identity.RoleID(roleB))
 
 	if a, err := store.PermissionsForUser(ctx, orgA, u.ID); err != nil || len(a) != 1 || a[0] != "users.list" {
 		t.Errorf("org A perms = %v (%v), want [users.list]", a, err)

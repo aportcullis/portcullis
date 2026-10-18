@@ -9,18 +9,31 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
 )
 
-// ManagementReadStore reads prepared policy administration data coherently.
-type ManagementReadStore struct{ pool *pgxpool.Pool }
+// ManagementReadStore reads policy administration data coherently.
+type ManagementReadStore struct {
+	pool         *pgxpool.Pool
+	policy       *BindingPolicyEvaluator
+	organization identity.OrganizationID
+}
 
-// NewManagementReadStore constructs the inactive administration query repository.
+// NewManagementReadStore constructs the historical snapshot reader; runtime uses NewAuthorizedManagementReadStore.
 func NewManagementReadStore(pool *pgxpool.Pool) *ManagementReadStore {
 	return &ManagementReadStore{pool: pool}
 }
 
+// NewAuthorizedManagementReadStore pins coordinated policy reads to the server organization.
+func NewAuthorizedManagementReadStore(pool *pgxpool.Pool, policy *BindingPolicyEvaluator, organization identity.OrganizationID) (*ManagementReadStore, error) {
+	if pool == nil || policy == nil || organization == "" {
+		return nil, authz.ErrAuthorizationInactive
+	}
+	return &ManagementReadStore{pool: pool, policy: policy, organization: organization}, nil
+}
+
 // WithManagementRead binds authorization and rows to one metadata snapshot.
-func (s *ManagementReadStore) WithManagementRead(ctx context.Context, org identity.OrganizationID, read func(administration.ManagementReadSnapshot) error) error {
+func (s *ManagementReadStore) WithManagementRead(ctx context.Context, org identity.OrganizationID, read func(context.Context, administration.ManagementReadSnapshot) error) error {
 	if err := bindingPolicyContextError(ctx); err != nil {
 		return err
 	}
@@ -28,13 +41,19 @@ func (s *ManagementReadStore) WithManagementRead(ctx context.Context, org identi
 	if !valid {
 		return administration.ErrBindingManagementInactive
 	}
+	if s.policy != nil {
+		if org != s.organization {
+			return authz.ErrPermissionDenied
+		}
+		return s.withAuthorizedManagementRead(ctx, organizationID, read)
+	}
 	transaction, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return bindingReadError(ctx)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
 	snapshot := managementReadSnapshot{queries: db.New(transaction), organization: org, organizationID: organizationID}
-	if err := read(&snapshot); err != nil {
+	if err := read(ctx, &snapshot); err != nil {
 		return err
 	}
 	if err := bindingPolicyContextError(ctx); err != nil {
@@ -48,6 +67,8 @@ type managementReadSnapshot struct {
 	queries        *db.Queries
 	organization   identity.OrganizationID
 	organizationID pgtype.UUID
+	at             time.Time
+	checkpoints    []managementReadCheckpoint
 }
 
 // LoadAuthorizationSnapshot keeps the read decision and all returned data in the same database snapshot.
@@ -55,7 +76,12 @@ func (snapshot *managementReadSnapshot) LoadAuthorizationSnapshot(ctx context.Co
 	if target.OrganizationID != snapshot.organization {
 		return authz.AuthorizationSnapshot{}, authz.ErrPermissionDenied
 	}
-	return loadBindingSnapshot(ctx, snapshot.queries, actor, permission, target, maxBindings)
+	result, err := loadBindingSnapshot(ctx, snapshot.queries, actor, permission, target, maxBindings)
+	if err == nil && !snapshot.at.IsZero() {
+		result.EvaluatedAt = snapshot.at
+		snapshot.checkpoints = append(snapshot.checkpoints, managementReadCheckpoint{actor: actor, permission: permission, target: target, revision: result.Revision})
+	}
+	return result, err
 }
 
 // ListManagementIDs returns a bounded stable page and its authorized organization count.

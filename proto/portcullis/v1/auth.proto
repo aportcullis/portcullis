@@ -43,10 +43,24 @@ message LoginRequest {
 }
 message LoginResponse {
   User user = 1;
-  // The caller's permission keys (ADR-0008 catalog), for UI affordance gating only — the server stays the authority on every RPC. Role changes revoke sessions immediately (§8.3), so a login/Me-time snapshot is current.
+  // Compatibility hints from unconditional organization Bindings only; scoped navigation uses capabilities.
   repeated string permissions = 2;
-  // The display name of the caller's role (e.g. "admin"), a UI badge label only — authorization never consults role names (ADR-0008). Empty when resolution degrades (same fail-open stance as permissions).
+  // Obsolete compatibility label; active Binding authorization leaves this empty.
   string role_name = 3;
+  // Resource-aware navigation hints; every protected RPC evaluates current policy again.
+  repeated string capabilities = 4;
+  repeated SessionBinding bindings = 5;
+  int64 authorization_revision = 6;
+}
+
+// SessionBinding summarizes one caller-owned current grant without exposing CEL source.
+message SessionBinding {
+  string id = 1;
+  string role_id = 2;
+  string role_name = 3;
+  string scope_type = 4;
+  string connection_id = 5;
+  bool has_condition = 6;
 }
 
 message LogoutRequest {}
@@ -59,6 +73,9 @@ message MeResponse {
   repeated string permissions = 2;
   // See LoginResponse.role_name.
   string role_name = 3;
+  repeated string capabilities = 4;
+  repeated SessionBinding bindings = 5;
+  int64 authorization_revision = 6;
 }
 
 message GetConfigRequest {}

@@ -206,6 +206,9 @@ var errAuthRequired = errors.New("authentication required")
 
 // connectionError maps the connection use cases' outcomes onto Connect codes. Domain sentinels and test buckets are safe to surface; anything else collapses to a generic internal error (no driver or storage detail leaks).
 func connectionError(err error) error {
+	if isResourceAuthorizationError(err) {
+		return activeAuthorizationError(err)
+	}
 	var te *connection.TestError
 	switch {
 	case errors.Is(err, connection.ErrNotFound):

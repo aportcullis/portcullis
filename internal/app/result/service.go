@@ -57,6 +57,12 @@ func (s *Service) Save(ctx context.Context, metadata query.SnapshotMetadata, col
 	return stored.Metadata, nil
 }
 
+// CheckAccess revalidates current ownership, expiry and repository authorization without decrypting content.
+func (s *Service) CheckAccess(ctx context.Context, org identity.OrganizationID, owner identity.UserID, id string) error {
+	_, err := s.repository.Get(ctx, org, owner, id)
+	return err
+}
+
 // Page processes a stable page from the same cached snapshot.
 func (s *Service) Page(ctx context.Context, org identity.OrganizationID, owner identity.UserID, id string, request query.ResultPageQuery) (query.ResultPage, error) {
 	if err := s.acquireWorker(ctx); err != nil {

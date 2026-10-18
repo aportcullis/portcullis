@@ -11,6 +11,7 @@ import (
 
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
 	"github.com/aportcullis/portcullis/internal/app/auth"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 )
@@ -33,6 +34,35 @@ type AuthService struct {
 // sessionInfoProvider enumerates the caller's own permission keys AND role name for the SPA's session views (Me/Login), resolving the org once. Consumer-defined (ISP): the app authz service satisfies it.
 type sessionInfoProvider interface {
 	SessionInfo(ctx context.Context, user identity.User) ([]identity.Permission, string, error)
+}
+
+type sessionCapabilityProvider interface {
+	Capabilities(context.Context, identity.User) (authz.SessionCapabilities, error)
+}
+
+// sessionView maps one coherent advisory snapshot; failures expose no stale capabilities.
+func (a *AuthService) sessionView(ctx context.Context, user identity.User) *portcullisv1.LoginResponse {
+	result := &portcullisv1.LoginResponse{User: toProtoUser(user)}
+	provider, exists := a.session.(sessionCapabilityProvider)
+	if !exists {
+		result.Permissions, result.RoleName = a.sessionInfo(ctx, user)
+		return result
+	}
+	snapshot, err := provider.Capabilities(ctx, user)
+	if err != nil {
+		return result
+	}
+	for _, key := range snapshot.Permissions {
+		result.Permissions = append(result.Permissions, string(key))
+	}
+	for _, key := range snapshot.Capabilities {
+		result.Capabilities = append(result.Capabilities, string(key))
+	}
+	for _, binding := range snapshot.Bindings {
+		result.Bindings = append(result.Bindings, &portcullisv1.SessionBinding{Id: binding.ID, RoleId: binding.RoleID, RoleName: binding.RoleName, ScopeType: binding.ScopeType, ConnectionId: binding.ConnectionID, HasCondition: binding.HasCondition})
+	}
+	result.AuthorizationRevision = snapshot.Revision
+	return result
 }
 
 // NewAuthService builds the Auth RPC handler. The session-info provider is a REQUIRED collaborator: an optional builder was a silent footgun — forgotten wiring rendered an authenticated UI with every affordance hidden and no signal.
@@ -76,8 +106,7 @@ func (a *AuthService) Login(
 	if err != nil {
 		return nil, authError(err)
 	}
-	perms, role := a.sessionInfo(ctx, sess.User)
-	resp := connect.NewResponse(&portcullisv1.LoginResponse{User: toProtoUser(sess.User), Permissions: perms, RoleName: role})
+	resp := connect.NewResponse(a.sessionView(ctx, sess.User))
 	noStore(resp.Header())
 	setCookie(resp.Header(), sessionCookie, sess.Token, true, sess.Session.AbsoluteExpiresAt)
 	setCookie(resp.Header(), csrfCookie, sess.CSRF, false, sess.Session.AbsoluteExpiresAt)
@@ -106,8 +135,10 @@ func (a *AuthService) Me(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
-	perms, role := a.sessionInfo(ctx, u)
-	return connect.NewResponse(&portcullisv1.MeResponse{User: toProtoUser(u), Permissions: perms, RoleName: role}), nil
+	view := a.sessionView(ctx, u)
+	response := connect.NewResponse(&portcullisv1.MeResponse{User: view.User, Permissions: view.Permissions, RoleName: view.RoleName, Capabilities: view.Capabilities, Bindings: view.Bindings, AuthorizationRevision: view.AuthorizationRevision})
+	noStore(response.Header())
+	return response, nil
 }
 
 func (a *AuthService) GetConfig(

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/aportcullis/portcullis/internal/domain/audit"
+	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/infra/dbtest"
 	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
 )
@@ -105,25 +105,21 @@ func TestBindingSchemaPreparationPreservesLegacyGrants(t *testing.T) {
 	pool := dbtest.FreshPostgres(t)
 	applyLegacyHistoryBefore(t, pool, "0023")
 	store := pg.NewIdentityStore(pool)
-	admin, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc", nil, testEvent(audit.ActionAuthBootstrap))
-	if err != nil {
+	var administrator string
+	if err := pool.QueryRow(ctx, `with account as(insert into public.users(email) values('admin@example.com') returning id) insert into public.organization_memberships(organization_id,user_id,role_id) select role.organization_id,account.id,role.id from public.roles role cross join account where role.is_bootstrap_default returning user_id::text`).Scan(&administrator); err != nil {
 		t.Fatal(err)
 	}
 	organization, err := store.DefaultOrganizationID(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := store.PermissionsForUser(ctx, organization, admin.ID)
+	before, err := preparationPermissions(ctx, pool, organization, identity.UserID(administrator))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := pg.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	if err := pg.Migrate(ctx, pool); err != nil {
-		t.Fatalf("repeated preparation: %v", err)
-	}
-	after, err := store.PermissionsForUser(ctx, organization, admin.ID)
+	migratePreparationFixture(t, pool)
+	migratePreparationFixture(t, pool)
+	after, err := preparationPermissions(ctx, pool, organization, identity.UserID(administrator))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +135,7 @@ func TestBindingSchemaPreparationPreservesLegacyGrants(t *testing.T) {
 	if bindings != 0 || revisions != 0 {
 		t.Fatalf("preparation prematurely activated grants or revisions: bindings=%d revisions=%d", bindings, revisions)
 	}
-	requireRecordedChecksums(t, pool)
+	requireRecordedChecksums(t, pool, "0025")
 }
 
 func TestBindingSchemaStoresIndependentScopesAndConditionHistory(t *testing.T) {
@@ -340,7 +336,7 @@ func TestBindingSchemaPreparationKeepsRuntimeReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = pg.Migrate(ctx, fixture.pool)
-	if err == nil || !strings.Contains(err.Error(), "role_binding_versions") {
-		t.Fatalf("boot must refuse immutable history privilege drift for binding %s: %v", binding, err)
+	if err == nil || !strings.Contains(err.Error(), "prepared policy storage is not empty") {
+		t.Fatalf("activation must refuse the owner-seeded preparation fixture for binding %s: %v", binding, err)
 	}
 }

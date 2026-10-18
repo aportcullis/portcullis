@@ -58,7 +58,7 @@ test.describe.serial("auth vertical", () => {
     const profilePattern = await avatar.innerHTML();
     await page.screenshot({ path: testInfo.outputPath("signed-in-profile.png") });
 
-    await expect(page.getByText("admin", { exact: true })).toBeVisible();
+    await expect(page.getByText("admin · organization", { exact: true })).toBeVisible();
 
 
     await page.reload();

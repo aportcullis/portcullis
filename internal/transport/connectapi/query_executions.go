@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	portcullisv1 "github.com/aportcullis/portcullis/gen/portcullis/v1"
+	"github.com/aportcullis/portcullis/gen/portcullis/v1/portcullisv1connect"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"github.com/aportcullis/portcullis/internal/domain/access"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
 	"github.com/aportcullis/portcullis/internal/domain/query"
@@ -20,6 +22,7 @@ type executionApp interface {
 	ResultOwner(context.Context, identity.UserID, access.RequestID) (identity.OrganizationID, string, error)
 }
 type resultApp interface {
+	CheckAccess(context.Context, identity.OrganizationID, identity.UserID, string) error
 	Page(context.Context, identity.OrganizationID, identity.UserID, string, query.ResultPageQuery) (query.ResultPage, error)
 	ExportCSV(context.Context, identity.OrganizationID, identity.UserID, string, io.Writer) error
 }
@@ -126,6 +129,8 @@ func (s *QueryExecutionsService) GetResult(ctx context.Context, req *connect.Req
 }
 
 func (s *QueryExecutionsService) ExportCSV(ctx context.Context, req *connect.Request[portcullisv1.ExportQueryCSVRequest], stream *connect.ServerStream[portcullisv1.QueryCSVChunk]) error {
+	ctx, _, _ = operationForMessage(ctx, portcullisv1connect.QueryExecutionsExportCSVProcedure, req.Msg)
+	ctx = authz.WithoutOutputFence(ctx)
 	if err := requirePermission(ctx, s.authz, identity.PermissionRequestsGet); err != nil {
 		return err
 	}
@@ -144,6 +149,9 @@ func (s *QueryExecutionsService) ExportCSV(ctx context.Context, req *connect.Req
 	writer := csvStreamWriter{write: func(data []byte) error {
 		if err := requirePermission(ctx, s.authz, identity.PermissionRequestsGet); err != nil {
 			return err
+		}
+		if err := s.results.CheckAccess(ctx, org, user.ID, resultID); err != nil {
+			return executionError(err)
 		}
 		return stream.Send(&portcullisv1.QueryCSVChunk{Data: data})
 	}}

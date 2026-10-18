@@ -5,7 +5,7 @@
 Give teams one complete path from connection registration through policy, request, distinct review, single-use execution, result exploration, and audit. Preserve exact result values and explicitly report uncertain outcomes without automatically rerunning SQL.
 
 User, role and binding administration with one-time password setup links belongs to this milestone.
-Per [ADR-0062](../../adr/0062-role-bindings-and-conditions.md), separate organization membership, permission-bundle roles and multiple user bindings at organization or exact-connection scope, with optional bounded attribute/time conditions. This replaces single-role membership assignment and flat permission checks; implementation and migration remain pending.
+Per [ADR-0062](../../adr/0062-role-bindings-and-conditions.md), separate organization membership, permission-bundle roles and multiple user bindings at organization or exact-connection scope, with optional bounded attribute/time conditions. [ADR-0071](../../adr/0071-binding-authorization-activation.md) activates their grant-preserving migration, session contract, governance and protected reads/output together. This implementation does not establish all M1 acceptance, including one-time password setup consumption and the remaining result/export/account UX requirements below.
 Administrators manage users, roles and bindings under unconditional organization-wide delegation safeguards. Revalidate resource-scoped requester/approver eligibility and current conditions before execution, serialize authorization changes with approval/execution checks, revoke affected sessions and audit every administration mutation. Preserve an unconditional recovery administrator.
 
 ## UI usability

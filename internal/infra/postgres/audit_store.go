@@ -18,8 +18,9 @@ import (
 
 // AuditStore persists audit events into the append-only audit_events table. It satisfies auth.AuditRecorder structurally; mutation and truncation are blocked by DB triggers, so the adapter only ever inserts. The pool backs the one-snapshot list read (readSnapshot).
 type AuditStore struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+	pool   *pgxpool.Pool
+	q      *db.Queries
+	reader *ConnectionStore
 }
 
 // NewAuditStore builds the store on a connection pool.
@@ -43,6 +44,9 @@ func (s *AuditStore) DefaultOrganizationID(ctx context.Context) (identity.Organi
 
 // List reads one organization's page, total, and page clamp from one repository snapshot (PRD §7.1, ADR-0004).
 func (s *AuditStore) List(ctx context.Context, orgID identity.OrganizationID, p audit.ListParams) (audit.EventPage, error) {
+	if s.reader != nil {
+		return s.authorizedAuditPage(ctx, orgID, p)
+	}
 	organizationUUID, err := parseAuditOrganization(orgID)
 	if err != nil {
 		return audit.EventPage{}, err
@@ -118,6 +122,9 @@ func (s *AuditStore) List(ctx context.Context, orgID identity.OrganizationID, p 
 
 // Get returns one full audit event inside the caller's organization; a foreign id is not found. The detail endpoint is separately guarded by audit.get in the transport layer.
 func (s *AuditStore) Get(ctx context.Context, orgID identity.OrganizationID, id string) (audit.Event, error) {
+	if s.reader != nil {
+		return s.authorizedAuditEvent(ctx, orgID, id)
+	}
 	organizationUUID, err := parseAuditOrganization(orgID)
 	if err != nil {
 		return audit.Event{}, err

@@ -311,6 +311,18 @@ func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, 
 		if n > 0 {
 			return identity.ErrAlreadyBootstrapped
 		}
+		org, err := q.GetDefaultOrganization(ctx)
+		if err != nil {
+			return err
+		}
+		organization := identity.OrganizationID(uuidToString(org.ID))
+		if err := lockPolicyOrganization(ctx, q, organization, false); err != nil {
+			return err
+		}
+		revision, err := q.LockBindingRevision(ctx, org.ID)
+		if err != nil {
+			return err
+		}
 		if setupTokenHash != nil {
 			consumed, err := q.ConsumeSetupToken(ctx, setupTokenHash)
 			if err != nil {
@@ -320,25 +332,59 @@ func (s *IdentityStore) BootstrapAdmin(ctx context.Context, email, displayName, 
 				return identity.ErrSetupTokenInvalid
 			}
 		}
-		org, err := q.GetDefaultOrganization(ctx)
-		if err != nil {
-			return err
-		}
 		role, err := q.BootstrapRoleID(ctx, org.ID)
 		if err != nil {
 			return notFound(err, errors.New("postgres: no bootstrap-default role seeded"))
 		}
-		u, err := q.CreateUser(ctx, db.CreateUserParams{Email: email, DisplayName: displayName})
+		at, err := observeInstant(ctx, q)
 		if err != nil {
 			return err
 		}
-		if err := q.UpsertPasswordAuth(ctx, db.UpsertPasswordAuthParams{UserID: u.ID, Secret: passwordHash}); err != nil {
+		userID, err := q.InsertPolicyUser(ctx, db.InsertPolicyUserParams{Email: email, DisplayName: displayName, At: timeToTS(at)})
+		if err != nil {
 			return err
 		}
-		if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{OrganizationID: org.ID, UserID: u.ID, RoleID: role}); err != nil {
+		u, err := q.GetUserByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if err := q.InsertBootstrapPasswordAuth(ctx, db.InsertBootstrapPasswordAuthParams{UserID: u.ID, Secret: passwordHash, At: timeToTS(at)}); err != nil {
+			return err
+		}
+		if err := q.InsertIndependentMembership(ctx, db.InsertIndependentMembershipParams{OrganizationID: org.ID, UserID: u.ID, At: timeToTS(at)}); err != nil {
+			return err
+		}
+		binding, err := q.InsertManagedBindingHead(ctx, db.InsertManagedBindingHeadParams{OrganizationID: org.ID, UserID: u.ID, At: timeToTS(at)})
+		if err != nil {
+			return err
+		}
+		if err := q.InsertManagedBindingVersion(ctx, db.InsertManagedBindingVersionParams{BindingID: binding, OrganizationID: org.ID, UserID: u.ID, Version: 1, RoleID: role, ScopeType: string(identity.ScopeOrganization), At: timeToTS(at)}); err != nil {
+			return err
+		}
+		catalog, err := q.ListPermissionKeys(ctx)
+		if err != nil {
+			return err
+		}
+		recovery, err := q.HasBindingRecoveryAdministrator(ctx, db.HasBindingRecoveryAdministratorParams{OrganizationID: org.ID, RequiredPermissions: permissionStrings(identity.SelectRecoveryPermissions(toPermissions(catalog)))})
+		if err != nil {
+			return err
+		}
+		if !recovery {
+			return identity.ErrLastAdministrator
+		}
+		advanced, err := q.AdvanceBindingPolicyRevision(ctx, db.AdvanceBindingPolicyRevisionParams{OrganizationID: org.ID, ExpectedRevision: revision})
+		if err != nil {
 			return err
 		}
 		out = toUser(u)
+		evt.OccurredAt = at
+		if evt.Metadata == nil {
+			evt.Metadata = map[string]any{}
+		}
+		evt.Metadata["authorization_revision"] = advanced
+		evt.Metadata["bootstrap_binding_id"] = uuidToString(binding)
+		evt.Metadata["binding_version"] = int64(1)
+		evt.Metadata["role_id"] = uuidToString(role)
 		evt.OrganizationID = identity.OrganizationID(uuidToString(org.ID))
 		evt.ActorUserID = &out.ID
 		evt.TargetType = audit.TargetTypeUser
@@ -539,7 +585,10 @@ func (s *IdentityStore) RotateSession(ctx context.Context, user identity.UserID,
 		return identity.Session{}, err
 	}
 	var out identity.Session
-	err = s.withLockedTx(ctx, lockClassSession, userLockObject(user), func(q *db.Queries) error {
+	err = s.withLockedTx(ctx, lockClassAdministration, organizationLockObject(evt.OrganizationID), func(q *db.Queries) error {
+		if err := lockCurrentSessionMember(ctx, q, evt.OrganizationID, user); err != nil {
+			return err
+		}
 		return rotateSessionTx(ctx, q, uid, sess, tokenHash, evt, &out)
 	})
 	return out, err
@@ -555,7 +604,10 @@ func (s *IdentityStore) LinkIdentityAndRotateSession(ctx context.Context, link i
 		return identity.Session{}, err
 	}
 	var out identity.Session
-	err = s.withLockedTx(ctx, lockClassSession, userLockObject(link.UserID), func(q *db.Queries) error {
+	err = s.withLockedTx(ctx, lockClassAdministration, organizationLockObject(evt.OrganizationID), func(q *db.Queries) error {
+		if err := lockCurrentSessionMember(ctx, q, evt.OrganizationID, link.UserID); err != nil {
+			return err
+		}
 		if err := linkOIDCIdentity(ctx, q, link); err != nil {
 			return err
 		}
@@ -577,5 +629,6 @@ func rotateSessionTx(ctx context.Context, q *db.Queries, user pgtype.UUID, sess 
 		return err
 	}
 	*out = toSession(row)
+	evt.OccurredAt = tsToTime(row.CreatedAt)
 	return insertAuditTx(ctx, q, evt)
 }

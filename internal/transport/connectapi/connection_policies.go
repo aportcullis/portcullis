@@ -86,6 +86,9 @@ func (c *ConnectionPoliciesService) Update(
 
 // policyError maps the policy use cases' outcomes onto Connect codes. Domain sentinels are safe to surface; anything else collapses to a generic internal error.
 func policyError(err error) error {
+	if isResourceAuthorizationError(err) {
+		return activeAuthorizationError(err)
+	}
 	switch {
 	case errors.Is(err, connection.ErrNotFound):
 		return connect.NewError(connect.CodeNotFound, errors.New("connection not found"))

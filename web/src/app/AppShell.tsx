@@ -72,7 +72,9 @@ const AppShell: Component<RouteSectionProps> = (props) => {
                 <span class="text-sm text-muted-foreground">{user().displayName || user().email}</span>
               </div>}
             </Show>
-            {/* Role badge: the membership's display label (empty when the server degraded resolution) — a label, never authorization. */}
+            <For each={(() => { const principal = session(); return principal.status === "authenticated" ? principal.bindings : []; })()}>
+              {(binding) => <Badge variant="secondary" title={`${binding.scopeType}${binding.connectionId ? `: ${binding.connectionId}` : ""}${binding.hasCondition ? " · Conditional" : ""}`}>{binding.roleName} · {binding.scopeType}{binding.hasCondition ? " · Conditional" : ""}</Badge>}
+            </For>
             <Show
               when={(() => {
                 const principal = session();

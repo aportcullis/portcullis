@@ -119,8 +119,8 @@ func TestUnaryAndStreamSessionPipelinesAgree(t *testing.T) {
 		want       connect.Code
 		wantSlides int32
 	}{
-		{"valid session and CSRF", &scriptedSessions{}, validCookie, "csrf-token", success, 2},
-		{"session cookie beside a foreign sibling cookie", &scriptedSessions{}, "other=1; " + validCookie, "csrf-token", success, 2},
+		{"valid session and CSRF", &scriptedSessions{}, validCookie, "csrf-token", success, 3},
+		{"session cookie beside a foreign sibling cookie", &scriptedSessions{}, "other=1; " + validCookie, "csrf-token", success, 3},
 		{"missing session cookie", &scriptedSessions{}, "__Host-portcullis_csrf=csrf-token", "csrf-token", connect.CodeUnauthenticated, 0},
 		{"revoked session", &scriptedSessions{authenticateErr: identity.ErrSessionNotFound}, validCookie, "csrf-token", connect.CodeUnauthenticated, 0},
 		{"disabled user", &scriptedSessions{authenticateErr: identity.ErrUserDisabled}, validCookie, "csrf-token", connect.CodeUnauthenticated, 0},
@@ -140,7 +140,7 @@ func TestUnaryAndStreamSessionPipelinesAgree(t *testing.T) {
 			if unaryCode != tc.want || streamCode != tc.want {
 				t.Errorf("codes unary=%v stream=%v, want %v for both", unaryCode, streamCode, tc.want)
 			}
-			// The idle window may slide only after CSRF passes, on both paths.
+			// CSRF precedes every validity check, including the additional check before stream output.
 			if slides := tc.sessions.slides.Load(); slides != tc.wantSlides {
 				t.Errorf("idle slides = %d, want %d", slides, tc.wantSlides)
 			}

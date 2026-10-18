@@ -95,10 +95,10 @@ select * from public.auth_methods where user_id = $1 and type = 'password';
 -- name: CreateSession :one
 -- Anchor both windows at the database clock that ValidateSession and ExtendSessionIdle compare against, so application-clock skew cannot pre-expire or prolong a session (ADR-0009).
 with observed as materialized (select clock_timestamp() as at)
-insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at)
+insert into public.sessions (user_id, token_hash, idle_expires_at, absolute_expires_at, created_at)
 select sqlc.arg('user_id'), sqlc.arg('token_hash'),
        observed.at + make_interval(secs => sqlc.arg('idle_seconds')::float8),
-       observed.at + make_interval(secs => sqlc.arg('absolute_seconds')::float8)
+       observed.at + make_interval(secs => sqlc.arg('absolute_seconds')::float8), observed.at
 from observed
 returning *;
 
@@ -120,7 +120,7 @@ where id = $1 and revoked_at is null;
 
 -- name: RevokeUserSessions :exec
 -- Invalidate a user's active sessions (ADR-0006: login/privilege change rotates).
-update public.sessions set revoked_at = now()
+update public.sessions set revoked_at = clock_timestamp()
 where user_id = $1 and revoked_at is null;
 
 -- name: CloseExpiredSessions :execrows

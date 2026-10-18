@@ -80,6 +80,13 @@ func TestSessionExpiriesAreAnchoredAtTheDatabaseClock(t *testing.T) {
 
 	t.Run("rotate with an application clock an hour behind", func(t *testing.T) {
 		user := newUser(t)
+		organization, err := store.DefaultOrganizationID(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `insert into public.organization_memberships(organization_id,user_id) values($1,$2)`, organization, user); err != nil {
+			t.Fatal(err)
+		}
 		sess := identity.NewSession("", user, time.Now().Add(-time.Hour), 30*time.Minute, 2*time.Hour)
 		rotated, err := store.RotateSession(ctx, user, sess, token(), testEvent(audit.ActionAuthLogin))
 		if err != nil {

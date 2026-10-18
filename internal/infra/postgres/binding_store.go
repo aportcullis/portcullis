@@ -12,7 +12,7 @@ import (
 	"github.com/aportcullis/portcullis/internal/infra/postgres/db"
 )
 
-// BindingStore reads prepared bindings without granting runtime mutation privileges.
+// BindingStore reads coherent resource Binding snapshots without mutating policy.
 type BindingStore struct{ pool *pgxpool.Pool }
 
 // NewBindingStore constructs a resource authorization snapshot reader.

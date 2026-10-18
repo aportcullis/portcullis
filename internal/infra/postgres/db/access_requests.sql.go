@@ -11,37 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const approverEligible = `-- name: ApproverEligible :one
-select exists (
-    select 1
-    from public.users u
-    where u.id = $1 and u.status = 'active'
-      and exists (
-          select 1
-          from public.organization_memberships m
-          join public.roles r on r.id = m.role_id and r.deleted_at is null
-          join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-          where m.organization_id = $2
-            and m.user_id = $1
-            and rp.permission_key = $3
-      )
-) as eligible
-`
-
-type ApproverEligibleParams struct {
-	ApproverID     pgtype.UUID
-	OrganizationID pgtype.UUID
-	PermissionKey  string
-}
-
-// Recheck active status and the action’s live permission inside the decision transaction; see LockApproverMembership for the revocation-lock boundary.
-func (q *Queries) ApproverEligible(ctx context.Context, arg ApproverEligibleParams) (bool, error) {
-	row := q.db.QueryRow(ctx, approverEligible, arg.ApproverID, arg.OrganizationID, arg.PermissionKey)
-	var eligible bool
-	err := row.Scan(&eligible)
-	return eligible, err
-}
-
 const cancelDraftsForConnection = `-- name: CancelDraftsForConnection :many
 update public.access_requests
 set state = 'cancelled', state_reason = 'connection_archived', version = version + 1,
@@ -122,38 +91,6 @@ type CountAccessRequestsParams struct {
 // Counts on the EFFECTIVE state too, so the total matches the filtered rows.
 func (q *Queries) CountAccessRequests(ctx context.Context, arg CountAccessRequestsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countAccessRequests, arg.OrganizationID, arg.State, arg.RequesterID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countValidApprovals = `-- name: CountValidApprovals :one
-select count(*) from public.approvals a
-join public.users u on u.id = a.approver_id and u.status = 'active'
-where a.request_id = $1
-  and a.organization_id = $2
-  and a.decision = 'approved'
-  and a.approver_id <> $3
-  and exists (
-      select 1
-      from public.organization_memberships m
-      join public.roles r on r.id = m.role_id and r.deleted_at is null
-      join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-      where m.organization_id = a.organization_id
-        and m.user_id = a.approver_id
-        and rp.permission_key = 'requests.approve'
-  )
-`
-
-type CountValidApprovalsParams struct {
-	RequestID      pgtype.UUID
-	OrganizationID pgtype.UUID
-	RequesterID    pgtype.UUID
-}
-
-// How many recorded approvals still COUNT (ADR-0018): the approver is active, still resolves requests.approve through the live membership→role→permission join (the PermissionsForUser shape, rbac.sql), and is not the requester.
-func (q *Queries) CountValidApprovals(ctx context.Context, arg CountValidApprovalsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countValidApprovals, arg.RequestID, arg.OrganizationID, arg.RequesterID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -416,19 +353,7 @@ select
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
     coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
-    (
-        select count(*) from public.approvals a
-        join public.users au on au.id = a.approver_id and au.status = 'active'
-        where a.request_id = r.id and a.organization_id = r.organization_id
-          and a.decision = 'approved' and a.approver_id <> r.requester_id
-          and exists (
-              select 1 from public.organization_memberships m
-              join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-              where m.organization_id = a.organization_id and m.user_id = a.approver_id
-                and rp.permission_key = 'requests.approve'
-          )
-    )::bigint as valid_approvals,
+    0::bigint as valid_approvals,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.access_requests r
@@ -478,7 +403,7 @@ type GetAccessRequestViewRow struct {
 	TotalCount              int64
 }
 
-// Return requester, target, and current valid-approval count together. Keep detail and list projections aligned for their shared Go row type.
+// Keep detail and list row shapes aligned; the resource evaluator supplies current valid-approval counts.
 func (q *Queries) GetAccessRequestView(ctx context.Context, arg GetAccessRequestViewParams) (GetAccessRequestViewRow, error) {
 	row := q.db.QueryRow(ctx, getAccessRequestView, arg.ID, arg.OrganizationID)
 	var i GetAccessRequestViewRow
@@ -564,7 +489,7 @@ func (q *Queries) InsertAccessRequest(ctx context.Context, arg InsertAccessReque
 
 const insertApproval = `-- name: InsertApproval :one
 insert into public.approvals (request_id, organization_id, approver_id, decision, reason, decided_at)
-values ($1, $2, $3, $4, $5, clock_timestamp())
+values ($1, $2, $3, $4, $5, $6::timestamptz)
 returning decided_at
 `
 
@@ -574,9 +499,10 @@ type InsertApprovalParams struct {
 	ApproverID     pgtype.UUID
 	Decision       string
 	Reason         string
+	At             pgtype.Timestamptz
 }
 
-// Read clock_timestamp() after the request lock and reuse the returned instant for approval, transition, expiry, and audit.
+// Use the database instant observed after policy, request and membership locks for permission, approval, expiry and audit.
 func (q *Queries) InsertApproval(ctx context.Context, arg InsertApprovalParams) (pgtype.Timestamptz, error) {
 	row := q.db.QueryRow(ctx, insertApproval,
 		arg.RequestID,
@@ -584,6 +510,7 @@ func (q *Queries) InsertApproval(ctx context.Context, arg InsertApprovalParams) 
 		arg.ApproverID,
 		arg.Decision,
 		arg.Reason,
+		arg.At,
 	)
 	var decided_at pgtype.Timestamptz
 	err := row.Scan(&decided_at)
@@ -603,19 +530,7 @@ select
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
     coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
-    (
-        select count(*) from public.approvals a
-        join public.users au on au.id = a.approver_id and au.status = 'active'
-        where a.request_id = r.id and a.organization_id = r.organization_id
-          and a.decision = 'approved' and a.approver_id <> r.requester_id
-          and exists (
-              select 1 from public.organization_memberships m
-              join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-              where m.organization_id = a.organization_id and m.user_id = a.approver_id
-                and rp.permission_key = 'requests.approve'
-          )
-    )::bigint as valid_approvals,
+    0::bigint as valid_approvals,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.access_requests r
@@ -746,19 +661,7 @@ select
     -- coalesced because state_reason is null for requester/approver actions and the domain models "no reason" as the empty string, not as absence.
     coalesce(case when r.state = 'approved' and (r.expires_at is null or r.expires_at <= now()) then 'ttl_expired' else r.state_reason end, '')::text
         as effective_reason,
-    (
-        select count(*) from public.approvals a
-        join public.users au on au.id = a.approver_id and au.status = 'active'
-        where a.request_id = r.id and a.organization_id = r.organization_id
-          and a.decision = 'approved' and a.approver_id <> r.requester_id
-          and exists (
-              select 1 from public.organization_memberships m
-              join public.roles ro on ro.id = m.role_id and ro.deleted_at is null
-              join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-              where m.organization_id = a.organization_id and m.user_id = a.approver_id
-                and rp.permission_key = 'requests.approve'
-          )
-    )::bigint as valid_approvals,
+    0::bigint as valid_approvals,
     -- Count within the same query before pagination so rows, effective-state filtering, and total share one snapshot.
     count(*) over ()::bigint as total_count
 from public.access_requests r
@@ -882,28 +785,14 @@ select
     a.id, a.request_id, a.organization_id, a.approver_id, a.decision, a.reason, a.decided_at,
     u.email as approver_email,
     u.display_name as approver_display_name,
-    (
-        a.decision = 'approved'
-        and u.status = 'active'
-        and a.approver_id <> $1
-        and exists (
-            select 1
-            from public.organization_memberships m
-            join public.roles r on r.id = m.role_id and r.deleted_at is null
-            join public.role_permissions rp on rp.role_id = m.role_id and rp.deleted_at is null
-            where m.organization_id = a.organization_id
-              and m.user_id = a.approver_id
-              and rp.permission_key = 'requests.approve'
-        )
-    )::boolean as valid
+    false::boolean as valid
 from public.approvals a
 join public.users u on u.id = a.approver_id
-where a.request_id = $2 and a.organization_id = $3
+where a.request_id = $1 and a.organization_id = $2
 order by a.decided_at asc, a.id asc
 `
 
 type ListApprovalsForRequestParams struct {
-	RequesterID    pgtype.UUID
 	RequestID      pgtype.UUID
 	OrganizationID pgtype.UUID
 }
@@ -921,9 +810,9 @@ type ListApprovalsForRequestRow struct {
 	Valid               bool
 }
 
-// Every decision with its display fields and computed validity (same predicate as CountValidApprovals). Rejections are listed but never "valid approvals".
+// Decision history and display fields only; current resource/CEL validity is assigned by the workflow reader.
 func (q *Queries) ListApprovalsForRequest(ctx context.Context, arg ListApprovalsForRequestParams) ([]ListApprovalsForRequestRow, error) {
-	rows, err := q.db.Query(ctx, listApprovalsForRequest, arg.RequesterID, arg.RequestID, arg.OrganizationID)
+	rows, err := q.db.Query(ctx, listApprovalsForRequest, arg.RequestID, arg.OrganizationID)
 	if err != nil {
 		return nil, err
 	}

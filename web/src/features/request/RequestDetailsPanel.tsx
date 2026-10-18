@@ -17,7 +17,7 @@ import {
   updateDraft,
 } from "@/entities/request/store";
 import { hasPermission, session } from "@/entities/session/store";
-import { errorMessage } from "@/shared/api/errors";
+import { errorMessage, isAuthorizationRefusal } from "@/shared/api/errors";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import {
   mayApprove,
@@ -65,7 +65,10 @@ export const RequestDetailsPanel: Component<{
       setReason("");
       setRejectReasonError("");
     },
-    errorMessage,
+    error => {
+      if (isAuthorizationRefusal(error)) { setDetail(); setEditing(false); setEditDraft({ title: "", body: "", sql: "", params: [] }); setReason(""); setBusy(false); }
+      return errorMessage(error);
+    },
   );
 
   // Read when the page starts showing a DIFFERENT request — not when the row object changes under a refresh. The id goes through createMemo because an inline accessor re-runs the effect on every list change, which would discard the session mid-save and re-fetch over the draft being edited.

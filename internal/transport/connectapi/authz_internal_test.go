@@ -2,6 +2,7 @@ package connectapi
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -68,5 +69,31 @@ func TestRequirePermissionOtherErrorIsInternal(t *testing.T) {
 	err := requirePermission(ctxWithUser(identity.User{ID: "u1"}), az, "audit.list")
 	if connect.CodeOf(err) != connect.CodeInternal {
 		t.Fatalf("expected Internal, got %v", connect.CodeOf(err))
+	}
+}
+
+// TestActivePermissionFailuresPreserveOperationalCodes exercises private handler admission helpers without exporting them.
+func TestActivePermissionFailuresPreserveOperationalCodes(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		failure error
+		want    connect.Code
+	}{
+		{"snapshot unavailable", authz.ErrSnapshotUnavailable, connect.CodeUnavailable},
+		{"candidate overflow", authz.ErrBindingLimitExceeded, connect.CodeUnavailable},
+		{"cancelled policy read", errors.Join(authz.ErrSnapshotUnavailable, context.Canceled), connect.CodeCanceled},
+		{"elapsed policy read", errors.Join(authz.ErrSnapshotUnavailable, context.DeadlineExceeded), connect.CodeDeadlineExceeded},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			authorization := &fakeAuthorizer{err: scenario.failure}
+			ctx := ctxWithUser(identity.User{ID: "actor"})
+			if err := requirePermission(ctx, authorization, identity.PermissionRequestsGet); connect.CodeOf(err) != scenario.want {
+				t.Fatalf("admission code=%v want %v", connect.CodeOf(err), scenario.want)
+			}
+			allowed, err := hasPermission(ctx, authorization, identity.User{ID: "actor"}, identity.PermissionRequestsApprove)
+			if allowed || connect.CodeOf(err) != scenario.want {
+				t.Fatalf("visibility allowed=%v code=%v want %v", allowed, connect.CodeOf(err), scenario.want)
+			}
+		})
 	}
 }

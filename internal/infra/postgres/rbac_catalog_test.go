@@ -21,7 +21,7 @@ func TestPermissionCatalogSeededSize(t *testing.T) {
 		t.Fatalf("LoadCatalog: %v", err)
 	}
 
-	if len(catalog) != 35 {
-		t.Fatalf("seeded catalog has %d keys, want 35", len(catalog))
+	if len(catalog) != 40 {
+		t.Fatalf("seeded catalog has %d keys, want 40", len(catalog))
 	}
 }

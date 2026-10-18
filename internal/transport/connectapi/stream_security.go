@@ -45,29 +45,28 @@ func (s *StreamSecurityInterceptor) WrapStreamingHandler(next connect.StreamingH
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
 		ctx = reqmeta.WithClientIP(withAuthenticatedSession(ctx, session), ip)
-		guard := &sessionStream{StreamingHandlerConn: conn, sessions: s.sessions, token: session.token, ctx: ctx, lastChecked: time.Now()}
+		guard := &sessionStream{StreamingHandlerConn: conn, sessions: s.sessions, token: session.token, ctx: ctx}
 		return next(ctx, guard)
 	}
 }
 
 type sessionStream struct {
 	connect.StreamingHandlerConn
-	sessions    sessionAuthenticator
-	token       string
-	ctx         context.Context
-	lastChecked time.Time
+	sessions sessionAuthenticator
+	token    string
+	ctx      context.Context
 }
 
 func (s *sessionStream) Send(message any) error {
 	if err := s.ctx.Err(); err != nil {
 		return err
 	}
-	if time.Since(s.lastChecked) >= time.Minute {
-		_, _, err := s.sessions.Authenticate(s.ctx, s.token)
-		if err != nil {
-			return sessionAuthenticationError(err)
-		}
-		s.lastChecked = time.Now()
+	_, current, err := s.sessions.Authenticate(s.ctx, s.token)
+	if err != nil {
+		return sessionAuthenticationError(err)
+	}
+	if err := s.sessions.SlideIdle(s.ctx, current); err != nil {
+		return sessionAuthenticationError(err)
 	}
 	return s.StreamingHandlerConn.Send(message)
 }

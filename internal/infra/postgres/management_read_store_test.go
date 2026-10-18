@@ -38,9 +38,9 @@ type changingReadRepository struct {
 	afterDecision func()
 }
 
-func (repository changingReadRepository) WithManagementRead(ctx context.Context, organization identity.OrganizationID, read func(administration.ManagementReadSnapshot) error) error {
-	return repository.repository.WithManagementRead(ctx, organization, func(snapshot administration.ManagementReadSnapshot) error {
-		return read(changingReadSnapshot{ManagementReadSnapshot: snapshot, afterDecision: repository.afterDecision})
+func (repository changingReadRepository) WithManagementRead(ctx context.Context, organization identity.OrganizationID, read func(context.Context, administration.ManagementReadSnapshot) error) error {
+	return repository.repository.WithManagementRead(ctx, organization, func(ctx context.Context, snapshot administration.ManagementReadSnapshot) error {
+		return read(ctx, changingReadSnapshot{ManagementReadSnapshot: snapshot, afterDecision: repository.afterDecision})
 	})
 }
 

@@ -30,16 +30,27 @@ func newAdministrationEnv(t *testing.T) administrationEnv {
 	t.Helper()
 	ctx := context.Background()
 	pool := dbtest.FreshPostgres(t)
-	if err := pg.Migrate(ctx, pool); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
+	migratePreparationFixture(t, pool)
 	store := pg.NewIdentityStore(pool)
-	admin, err := store.BootstrapAdmin(ctx, "admin@example.com", "Admin", "phc", nil, testEvent(audit.ActionAuthBootstrap))
+	// Superseded single-role scenarios deliberately qualify the preparation schema, never active production.
+	var identifier string
+	if err := pool.QueryRow(ctx, `with account as (insert into public.users(email,display_name) values('admin@example.com','Admin') returning id), membership as (insert into public.organization_memberships(organization_id,user_id,role_id) select role.organization_id,account.id,role.id from public.roles role cross join account where role.is_bootstrap_default returning user_id) select user_id::text from membership`).Scan(&identifier); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := store.GetUserByID(ctx, identity.UserID(identifier))
 	if err != nil {
-		t.Fatalf("BootstrapAdmin: %v", err)
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `insert into public.auth_methods(user_id,type,secret) values($1,'password','phc')`, admin.ID); err != nil {
+		t.Fatal(err)
 	}
 	org, err := store.DefaultOrganizationID(ctx)
 	if err != nil {
+		t.Fatal(err)
+	}
+	event := administrationEvent(admin.ID, audit.ActionAuthBootstrap, audit.TargetTypeUser)
+	event.OrganizationID = org
+	if err := pg.NewAuditStore(pool).Record(ctx, event); err != nil {
 		t.Fatal(err)
 	}
 	roles, err := store.ListRoles(ctx, org)
@@ -334,7 +345,7 @@ func TestAssignMemberRoleRevokesSessionsAndGuardsTheLastAdministrator(t *testing
 	if env.activeSessions(t, member.User.ID) != 0 {
 		t.Error("role change must revoke the member's sessions")
 	}
-	permissions, err := env.store.PermissionsForUser(ctx, env.org, member.User.ID)
+	permissions, err := preparationPermissions(ctx, env.pool, env.org, member.User.ID)
 	if err != nil || !slices.Contains(permissions, identity.PermissionRequestsApprove) {
 		t.Errorf("permissions after assignment = %v, %v", permissions, err)
 	}
@@ -403,7 +414,7 @@ func TestRoleLifecycleReplacesPermissionsAndSoftDeletes(t *testing.T) {
 	if env.activeSessions(t, member.User.ID) != 0 {
 		t.Error("a role update must revoke its members' sessions")
 	}
-	permissions, err := env.store.PermissionsForUser(ctx, env.org, member.User.ID)
+	permissions, err := preparationPermissions(ctx, env.pool, env.org, member.User.ID)
 	if err != nil || slices.Contains(permissions, identity.PermissionAuditList) || !slices.Contains(permissions, identity.PermissionUsersList) {
 		t.Errorf("member permissions after update = %v, %v", permissions, err)
 	}
@@ -421,7 +432,7 @@ func TestRoleLifecycleReplacesPermissionsAndSoftDeletes(t *testing.T) {
 	if got := env.count(t, `select count(*) from role_permissions where role_id = $1::uuid and deleted_at is not null`, string(auditor.ID)); got != 0 {
 		t.Errorf("deleted role permission rows after re-adding = %d, want 0", got)
 	}
-	if permissions, err := env.store.PermissionsForUser(ctx, env.org, member.User.ID); err != nil || !slices.Contains(permissions, identity.PermissionAuditList) {
+	if permissions, err := preparationPermissions(ctx, env.pool, env.org, member.User.ID); err != nil || !slices.Contains(permissions, identity.PermissionAuditList) {
 		t.Errorf("re-added permission not granted: %v, %v", permissions, err)
 	}
 	emptied := env.createCustomRole(t, "emptied", identity.PermissionAuditList, identity.PermissionAuditGet)
@@ -461,7 +472,11 @@ func TestRoleMutationsRefuseNamesSystemStaleAssignedForeignAndLastAdministrator(
 	assigned := env.createCustomRole(t, "assigned", identity.PermissionAuditList)
 	env.createMemberWithRole(t, "assigned@example.com", assigned.ID)
 	_, foreignRole, _ := env.foreignOrganization(t)
-	owner := env.createCustomRole(t, "owner", identity.EnforcedPermissions()...)
+	permissions, err := preparationPermissions(ctx, env.pool, env.org, env.admin.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := env.createCustomRole(t, "owner", permissions...)
 	if _, err := env.store.AssignMemberRole(ctx, env.org, identity.Delegation{Actor: env.admin.ID, Gate: identity.PermissionUsersUpdate}, env.admin.ID, owner.ID, administrationEvent(env.admin.ID, audit.ActionUserRoleAssigned, audit.TargetTypeUser)); err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +504,7 @@ func TestRoleMutationsRefuseNamesSystemStaleAssignedForeignAndLastAdministrator(
 		}
 	}
 	ownerAfter, err := env.store.GetRole(ctx, env.org, owner.ID)
-	if err != nil || ownerAfter.Version != 1 || len(ownerAfter.Permissions) != len(identity.EnforcedPermissions()) {
+	if err != nil || ownerAfter.Version != 1 || len(ownerAfter.Permissions) != len(owner.Permissions) {
 		t.Errorf("refused owner update left %+v, %v", ownerAfter, err)
 	}
 	deletes := []struct {

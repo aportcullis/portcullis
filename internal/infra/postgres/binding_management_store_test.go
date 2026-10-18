@@ -417,8 +417,8 @@ func TestBindingManagementStoreKeepsPreparedRuntimeReadOnly(t *testing.T) {
 	if _, err := service.Create(ctx, identity.OrganizationID(fixture.organization), identity.UserID(fixture.user), fixture.bindingDefinition()); !errors.Is(err, administration.ErrBindingManagementUnavailable) || before != readBindingPolicyCounts(t, fixture) {
 		t.Fatalf("prepared runtime mutation: %v", err)
 	}
-	if err := pg.Migrate(ctx, fixture.pool); err != nil {
-		t.Fatalf("privilege boundary drifted: %v", err)
+	if err := pg.Migrate(ctx, fixture.pool); err == nil {
+		t.Fatal("activation accepted owner-seeded preparation policy")
 	}
 }
 

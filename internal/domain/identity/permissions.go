@@ -59,6 +59,7 @@ func EnforcedPermissions() []Permission {
 		PermissionRequestsList, PermissionRequestsGet, PermissionRequestsCreate, PermissionRequestsApprove, PermissionRequestsReject, PermissionRequestsExecute,
 		PermissionUsersList, PermissionUsersGet, PermissionUsersCreate, PermissionUsersUpdate, PermissionUsersDisable,
 		PermissionRolesList, PermissionRolesGet, PermissionRolesCreate, PermissionRolesUpdate, PermissionRolesDelete,
+		PermissionBindingsList, PermissionBindingsGet, PermissionBindingsCreate, PermissionBindingsUpdate, PermissionBindingsDelete,
 	}
 }
 

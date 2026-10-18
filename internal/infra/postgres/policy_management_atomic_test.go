@@ -114,7 +114,7 @@ func TestPolicyManagementKeepsRuntimeInactive(t *testing.T) {
 	if before != readBindingPolicyCounts(t, fixture) {
 		t.Fatal("runtime changed prepared policy")
 	}
-	if err := pg.Migrate(ctx, fixture.pool); err != nil {
-		t.Fatal(err)
+	if err := pg.Migrate(ctx, fixture.pool); err == nil {
+		t.Fatal("activation accepted owner-seeded preparation policy")
 	}
 }

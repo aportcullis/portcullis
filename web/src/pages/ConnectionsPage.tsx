@@ -2,13 +2,13 @@ import type { Component } from "solid-js";
 import { Show } from "solid-js";
 
 import { PageHeader } from "@/shared/ui/PageHeader";
-import { hasPermission } from "@/entities/session/store";
+import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
 import { ConnectionList } from "@/features/connection/ConnectionList";
 import { CreateConnectionForm } from "@/features/connection/CreateConnectionForm";
 
-// ConnectionsPage is assembly only (frontend.md): the header and the create + list features. The route guard lives in AppShell; affordances are hidden by can() (Me.permissions) while the server keeps enforcing every RPC (ADR-0008 — hiding is UX, not authorization).
+// ConnectionsPage assembles the header and connection features; Me.capabilities gates affordances while every RPC checks current server authority.
 const ConnectionsPage: Component = () => (
-  <>
+  <Show when={sessionAuthorizationKey()} keyed>{_authorization => <>
     <PageHeader eyebrow="Database governance" title="Connections" description="Register the databases your team works with, then define how access is reviewed." />
     <div class="flex flex-col gap-4">
       <Show when={hasPermission("connections.create")}>
@@ -28,7 +28,7 @@ const ConnectionsPage: Component = () => (
     >
       <div class="content-surface"><ConnectionList /></div>
     </Show>
-  </>
+  </>}</Show>
 );
 
 export default ConnectionsPage;

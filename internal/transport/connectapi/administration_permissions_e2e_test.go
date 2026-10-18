@@ -214,8 +214,8 @@ func TestAdministrationAPIRoleAndBindingRaceProtectsLastAdministrator(t *testing
 	}
 }
 
-func TestAdministrationAPIPreparedBoundaryPreservesLegacyAuthority(t *testing.T) {
-	environment := newAdministrationAPIEnvForMode(t, true)
+func TestAdministrationAPIActivationPreservesGrantsAndOpensManagement(t *testing.T) {
+	environment := newAdministrationAPIEnv(t)
 	ctx := context.Background()
 	store := pg.NewIdentityStore(environment.pool)
 	before, err := store.PermissionsForUser(ctx, environment.organization, identity.UserID(environment.actor))
@@ -228,22 +228,22 @@ func TestAdministrationAPIPreparedBoundaryPreservesLegacyAuthority(t *testing.T)
 	if _, err := environment.users.List(ctx, connect.NewRequest(&portcullisv1.ListUsersRequest{})); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("prepared CSRF: %v", err)
 	}
-	if _, err := environment.users.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.ListUsersRequest{}), environment.csrf)); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("premature read activation: %v", err)
+	if _, err := environment.users.List(ctx, withCSRF(connect.NewRequest(&portcullisv1.ListUsersRequest{}), environment.csrf)); err != nil {
+		t.Fatalf("activated read: %v", err)
 	}
-	if _, err := environment.roles.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetRoleRequest{Id: environment.managerRole}), environment.csrf)); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("premature role detail activation: %v", err)
+	if _, err := environment.roles.Get(ctx, withCSRF(connect.NewRequest(&portcullisv1.GetRoleRequest{Id: environment.managerRole}), environment.csrf)); err != nil {
+		t.Fatalf("activated role detail: %v", err)
 	}
-	if _, err := environment.roles.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateRoleRequest{Name: "Must remain absent"}), environment.csrf)); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("premature write activation: %v", err)
+	if _, err := environment.roles.Create(ctx, withCSRF(connect.NewRequest(&portcullisv1.CreateRoleRequest{Name: "Activated role"}), environment.csrf)); err != nil {
+		t.Fatalf("activated write: %v", err)
 	}
 	after, err := store.PermissionsForUser(ctx, environment.organization, identity.UserID(environment.actor))
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatalf("legacy authority changed: %v %v %v", before, after, err)
 	}
 	var created int
-	if err := environment.pool.QueryRow(ctx, `select count(*) from public.roles where name='Must remain absent'`).Scan(&created); err != nil || created != 0 {
-		t.Fatalf("prepared write: %d %v", created, err)
+	if err := environment.pool.QueryRow(ctx, `select count(*) from public.roles where name='Activated role'`).Scan(&created); err != nil || created != 1 {
+		t.Fatalf("activated write: %d %v", created, err)
 	}
 }
 

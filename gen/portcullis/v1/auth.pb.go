@@ -258,12 +258,16 @@ func (x *LoginRequest) GetPassword() string {
 type LoginResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	User  *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	// The caller's permission keys (ADR-0008 catalog), for UI affordance gating only — the server stays the authority on every RPC. Role changes revoke sessions immediately (§8.3), so a login/Me-time snapshot is current.
+	// Compatibility hints from unconditional organization Bindings only; scoped navigation uses capabilities.
 	Permissions []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
-	// The display name of the caller's role (e.g. "admin"), a UI badge label only — authorization never consults role names (ADR-0008). Empty when resolution degrades (same fail-open stance as permissions).
-	RoleName      string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Obsolete compatibility label; active Binding authorization leaves this empty.
+	RoleName string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	// Resource-aware navigation hints; every protected RPC evaluates current policy again.
+	Capabilities          []string          `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Bindings              []*SessionBinding `protobuf:"bytes,5,rep,name=bindings,proto3" json:"bindings,omitempty"`
+	AuthorizationRevision int64             `protobuf:"varint,6,opt,name=authorization_revision,json=authorizationRevision,proto3" json:"authorization_revision,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *LoginResponse) Reset() {
@@ -317,6 +321,112 @@ func (x *LoginResponse) GetRoleName() string {
 	return ""
 }
 
+func (x *LoginResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *LoginResponse) GetBindings() []*SessionBinding {
+	if x != nil {
+		return x.Bindings
+	}
+	return nil
+}
+
+func (x *LoginResponse) GetAuthorizationRevision() int64 {
+	if x != nil {
+		return x.AuthorizationRevision
+	}
+	return 0
+}
+
+// SessionBinding summarizes one caller-owned current grant without exposing CEL source.
+type SessionBinding struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	RoleId        string                 `protobuf:"bytes,2,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
+	RoleName      string                 `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	ScopeType     string                 `protobuf:"bytes,4,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	ConnectionId  string                 `protobuf:"bytes,5,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	HasCondition  bool                   `protobuf:"varint,6,opt,name=has_condition,json=hasCondition,proto3" json:"has_condition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionBinding) Reset() {
+	*x = SessionBinding{}
+	mi := &file_portcullis_v1_auth_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionBinding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionBinding) ProtoMessage() {}
+
+func (x *SessionBinding) ProtoReflect() protoreflect.Message {
+	mi := &file_portcullis_v1_auth_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionBinding.ProtoReflect.Descriptor instead.
+func (*SessionBinding) Descriptor() ([]byte, []int) {
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SessionBinding) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SessionBinding) GetRoleId() string {
+	if x != nil {
+		return x.RoleId
+	}
+	return ""
+}
+
+func (x *SessionBinding) GetRoleName() string {
+	if x != nil {
+		return x.RoleName
+	}
+	return ""
+}
+
+func (x *SessionBinding) GetScopeType() string {
+	if x != nil {
+		return x.ScopeType
+	}
+	return ""
+}
+
+func (x *SessionBinding) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
+func (x *SessionBinding) GetHasCondition() bool {
+	if x != nil {
+		return x.HasCondition
+	}
+	return false
+}
+
 type LogoutRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -325,7 +435,7 @@ type LogoutRequest struct {
 
 func (x *LogoutRequest) Reset() {
 	*x = LogoutRequest{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[5]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +447,7 @@ func (x *LogoutRequest) String() string {
 func (*LogoutRequest) ProtoMessage() {}
 
 func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[5]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +460,7 @@ func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutRequest.ProtoReflect.Descriptor instead.
 func (*LogoutRequest) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{5}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{6}
 }
 
 type LogoutResponse struct {
@@ -361,7 +471,7 @@ type LogoutResponse struct {
 
 func (x *LogoutResponse) Reset() {
 	*x = LogoutResponse{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[6]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -373,7 +483,7 @@ func (x *LogoutResponse) String() string {
 func (*LogoutResponse) ProtoMessage() {}
 
 func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[6]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -386,7 +496,7 @@ func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutResponse.ProtoReflect.Descriptor instead.
 func (*LogoutResponse) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{6}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{7}
 }
 
 type MeRequest struct {
@@ -397,7 +507,7 @@ type MeRequest struct {
 
 func (x *MeRequest) Reset() {
 	*x = MeRequest{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -409,7 +519,7 @@ func (x *MeRequest) String() string {
 func (*MeRequest) ProtoMessage() {}
 
 func (x *MeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[7]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -422,7 +532,7 @@ func (x *MeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeRequest.ProtoReflect.Descriptor instead.
 func (*MeRequest) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{7}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{8}
 }
 
 type MeResponse struct {
@@ -431,14 +541,17 @@ type MeResponse struct {
 	// See LoginResponse.permissions.
 	Permissions []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	// See LoginResponse.role_name.
-	RoleName      string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RoleName              string            `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
+	Capabilities          []string          `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Bindings              []*SessionBinding `protobuf:"bytes,5,rep,name=bindings,proto3" json:"bindings,omitempty"`
+	AuthorizationRevision int64             `protobuf:"varint,6,opt,name=authorization_revision,json=authorizationRevision,proto3" json:"authorization_revision,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *MeResponse) Reset() {
 	*x = MeResponse{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -450,7 +563,7 @@ func (x *MeResponse) String() string {
 func (*MeResponse) ProtoMessage() {}
 
 func (x *MeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[8]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -463,7 +576,7 @@ func (x *MeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeResponse.ProtoReflect.Descriptor instead.
 func (*MeResponse) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{8}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *MeResponse) GetUser() *User {
@@ -487,6 +600,27 @@ func (x *MeResponse) GetRoleName() string {
 	return ""
 }
 
+func (x *MeResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *MeResponse) GetBindings() []*SessionBinding {
+	if x != nil {
+		return x.Bindings
+	}
+	return nil
+}
+
+func (x *MeResponse) GetAuthorizationRevision() int64 {
+	if x != nil {
+		return x.AuthorizationRevision
+	}
+	return 0
+}
+
 type GetConfigRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -495,7 +629,7 @@ type GetConfigRequest struct {
 
 func (x *GetConfigRequest) Reset() {
 	*x = GetConfigRequest{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -507,7 +641,7 @@ func (x *GetConfigRequest) String() string {
 func (*GetConfigRequest) ProtoMessage() {}
 
 func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[9]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -520,7 +654,7 @@ func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigRequest) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{9}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{10}
 }
 
 type GetConfigResponse struct {
@@ -539,7 +673,7 @@ type GetConfigResponse struct {
 
 func (x *GetConfigResponse) Reset() {
 	*x = GetConfigResponse{}
-	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -551,7 +685,7 @@ func (x *GetConfigResponse) String() string {
 func (*GetConfigResponse) ProtoMessage() {}
 
 func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portcullis_v1_auth_proto_msgTypes[10]
+	mi := &file_portcullis_v1_auth_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -564,7 +698,7 @@ func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigResponse) Descriptor() ([]byte, []int) {
-	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{10}
+	return file_portcullis_v1_auth_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetConfigResponse) GetGoogleEnabled() bool {
@@ -622,19 +756,33 @@ const file_portcullis_v1_auth_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"w\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x8d\x02\n" +
 	"\rLoginResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x1b\n" +
-	"\trole_name\x18\x03 \x01(\tR\broleName\"\x0f\n" +
+	"\trole_name\x18\x03 \x01(\tR\broleName\x12\"\n" +
+	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x129\n" +
+	"\bbindings\x18\x05 \x03(\v2\x1d.portcullis.v1.SessionBindingR\bbindings\x125\n" +
+	"\x16authorization_revision\x18\x06 \x01(\x03R\x15authorizationRevision\"\xbf\x01\n" +
+	"\x0eSessionBinding\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\arole_id\x18\x02 \x01(\tR\x06roleId\x12\x1b\n" +
+	"\trole_name\x18\x03 \x01(\tR\broleName\x12\x1d\n" +
+	"\n" +
+	"scope_type\x18\x04 \x01(\tR\tscopeType\x12#\n" +
+	"\rconnection_id\x18\x05 \x01(\tR\fconnectionId\x12#\n" +
+	"\rhas_condition\x18\x06 \x01(\bR\fhasCondition\"\x0f\n" +
 	"\rLogoutRequest\"\x10\n" +
 	"\x0eLogoutResponse\"\v\n" +
-	"\tMeRequest\"t\n" +
+	"\tMeRequest\"\x8a\x02\n" +
 	"\n" +
 	"MeResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.portcullis.v1.UserR\x04user\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x1b\n" +
-	"\trole_name\x18\x03 \x01(\tR\broleName\"\x12\n" +
+	"\trole_name\x18\x03 \x01(\tR\broleName\x12\"\n" +
+	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x129\n" +
+	"\bbindings\x18\x05 \x03(\v2\x1d.portcullis.v1.SessionBindingR\bbindings\x125\n" +
+	"\x16authorization_revision\x18\x06 \x01(\x03R\x15authorizationRevision\"\x12\n" +
 	"\x10GetConfigRequest\"\x8a\x02\n" +
 	"\x11GetConfigResponse\x12%\n" +
 	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\x12'\n" +
@@ -661,39 +809,42 @@ func file_portcullis_v1_auth_proto_rawDescGZIP() []byte {
 	return file_portcullis_v1_auth_proto_rawDescData
 }
 
-var file_portcullis_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_portcullis_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_portcullis_v1_auth_proto_goTypes = []any{
 	(*User)(nil),              // 0: portcullis.v1.User
 	(*BootstrapRequest)(nil),  // 1: portcullis.v1.BootstrapRequest
 	(*BootstrapResponse)(nil), // 2: portcullis.v1.BootstrapResponse
 	(*LoginRequest)(nil),      // 3: portcullis.v1.LoginRequest
 	(*LoginResponse)(nil),     // 4: portcullis.v1.LoginResponse
-	(*LogoutRequest)(nil),     // 5: portcullis.v1.LogoutRequest
-	(*LogoutResponse)(nil),    // 6: portcullis.v1.LogoutResponse
-	(*MeRequest)(nil),         // 7: portcullis.v1.MeRequest
-	(*MeResponse)(nil),        // 8: portcullis.v1.MeResponse
-	(*GetConfigRequest)(nil),  // 9: portcullis.v1.GetConfigRequest
-	(*GetConfigResponse)(nil), // 10: portcullis.v1.GetConfigResponse
+	(*SessionBinding)(nil),    // 5: portcullis.v1.SessionBinding
+	(*LogoutRequest)(nil),     // 6: portcullis.v1.LogoutRequest
+	(*LogoutResponse)(nil),    // 7: portcullis.v1.LogoutResponse
+	(*MeRequest)(nil),         // 8: portcullis.v1.MeRequest
+	(*MeResponse)(nil),        // 9: portcullis.v1.MeResponse
+	(*GetConfigRequest)(nil),  // 10: portcullis.v1.GetConfigRequest
+	(*GetConfigResponse)(nil), // 11: portcullis.v1.GetConfigResponse
 }
 var file_portcullis_v1_auth_proto_depIdxs = []int32{
 	0,  // 0: portcullis.v1.BootstrapResponse.user:type_name -> portcullis.v1.User
 	0,  // 1: portcullis.v1.LoginResponse.user:type_name -> portcullis.v1.User
-	0,  // 2: portcullis.v1.MeResponse.user:type_name -> portcullis.v1.User
-	1,  // 3: portcullis.v1.Auth.Bootstrap:input_type -> portcullis.v1.BootstrapRequest
-	3,  // 4: portcullis.v1.Auth.Login:input_type -> portcullis.v1.LoginRequest
-	5,  // 5: portcullis.v1.Auth.Logout:input_type -> portcullis.v1.LogoutRequest
-	7,  // 6: portcullis.v1.Auth.Me:input_type -> portcullis.v1.MeRequest
-	9,  // 7: portcullis.v1.Auth.GetConfig:input_type -> portcullis.v1.GetConfigRequest
-	2,  // 8: portcullis.v1.Auth.Bootstrap:output_type -> portcullis.v1.BootstrapResponse
-	4,  // 9: portcullis.v1.Auth.Login:output_type -> portcullis.v1.LoginResponse
-	6,  // 10: portcullis.v1.Auth.Logout:output_type -> portcullis.v1.LogoutResponse
-	8,  // 11: portcullis.v1.Auth.Me:output_type -> portcullis.v1.MeResponse
-	10, // 12: portcullis.v1.Auth.GetConfig:output_type -> portcullis.v1.GetConfigResponse
-	8,  // [8:13] is the sub-list for method output_type
-	3,  // [3:8] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	5,  // 2: portcullis.v1.LoginResponse.bindings:type_name -> portcullis.v1.SessionBinding
+	0,  // 3: portcullis.v1.MeResponse.user:type_name -> portcullis.v1.User
+	5,  // 4: portcullis.v1.MeResponse.bindings:type_name -> portcullis.v1.SessionBinding
+	1,  // 5: portcullis.v1.Auth.Bootstrap:input_type -> portcullis.v1.BootstrapRequest
+	3,  // 6: portcullis.v1.Auth.Login:input_type -> portcullis.v1.LoginRequest
+	6,  // 7: portcullis.v1.Auth.Logout:input_type -> portcullis.v1.LogoutRequest
+	8,  // 8: portcullis.v1.Auth.Me:input_type -> portcullis.v1.MeRequest
+	10, // 9: portcullis.v1.Auth.GetConfig:input_type -> portcullis.v1.GetConfigRequest
+	2,  // 10: portcullis.v1.Auth.Bootstrap:output_type -> portcullis.v1.BootstrapResponse
+	4,  // 11: portcullis.v1.Auth.Login:output_type -> portcullis.v1.LoginResponse
+	7,  // 12: portcullis.v1.Auth.Logout:output_type -> portcullis.v1.LogoutResponse
+	9,  // 13: portcullis.v1.Auth.Me:output_type -> portcullis.v1.MeResponse
+	11, // 14: portcullis.v1.Auth.GetConfig:output_type -> portcullis.v1.GetConfigResponse
+	10, // [10:15] is the sub-list for method output_type
+	5,  // [5:10] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_portcullis_v1_auth_proto_init() }
@@ -707,7 +858,7 @@ func file_portcullis_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portcullis_v1_auth_proto_rawDesc), len(file_portcullis_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

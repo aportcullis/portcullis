@@ -16,7 +16,7 @@ type RolePolicyService struct {
 	settings   RolePolicyConfig
 }
 
-// NewRolePolicyService constructs the inactive binding-based role boundary.
+// NewRolePolicyService constructs the Binding-authorized role boundary.
 func NewRolePolicyService(repository RolePolicyRepository, auditor AuditRecorder, settings RolePolicyConfig) (*RolePolicyService, error) {
 	if repository == nil || auditor == nil {
 		return nil, errors.New("administration: role policy dependencies required")

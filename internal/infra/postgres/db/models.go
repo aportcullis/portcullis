@@ -80,6 +80,20 @@ type AuthMethod struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type BindingActivationGrant struct {
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	PermissionKey  string
+}
+
+type BindingActivationMapping struct {
+	MembershipID   pgtype.UUID
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	RoleID         pgtype.UUID
+	BindingID      pgtype.UUID
+}
+
 type Connection struct {
 	ID                   pgtype.UUID
 	OrganizationID       pgtype.UUID

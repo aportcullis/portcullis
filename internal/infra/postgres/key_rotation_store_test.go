@@ -35,6 +35,17 @@ func testKeyRotationPreservesOrgEnvelopes(t *testing.T, nondefault bool) {
 		if _, err := f.pool.Exec(context.Background(), `insert into organizations(id,name,slug) values ($1,'Rotation fixture',$2)`, string(f.org), uuid.NewString()); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := f.pool.Exec(context.Background(), `insert into public.organization_authorization_revisions(organization_id,revision) values($1,1)`, f.org); err != nil {
+			t.Fatal(err)
+		}
+		var role string
+		if err := f.pool.QueryRow(context.Background(), `insert into public.roles(organization_id,name) values($1,'Rotation requester') returning id::text`, f.org).Scan(&role); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.pool.Exec(context.Background(), `insert into public.role_permissions(role_id,permission_key) values($1,'requests.create')`, role); err != nil {
+			t.Fatal(err)
+		}
+		seedActiveFixtureRole(t, f.pool, f.org, f.requester, identity.RoleID(role))
 	}
 	ctx := context.Background()
 	oldKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))

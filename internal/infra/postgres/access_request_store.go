@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aportcullis/portcullis/internal/app/authz"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -20,12 +21,30 @@ import (
 // AccessRequestStore persists requests, approvals, and audit events atomically.
 type AccessRequestStore struct {
 	// conns is reused for org resolution, the withTx helper, and the shared converters — same pool, same queries.
-	conns *ConnectionStore
+	conns        *ConnectionStore
+	policy       *BindingPolicyEvaluator
+	organization identity.OrganizationID
+}
+
+// NewWorkflowAccessRequestStore injects current policy into internal workflows whose reads have a separate protected adapter.
+func NewWorkflowAccessRequestStore(pool *pgxpool.Pool, policy *BindingPolicyEvaluator) (*AccessRequestStore, error) {
+	if pool == nil || policy == nil {
+		return nil, authz.ErrAuthorizationInactive
+	}
+	return &AccessRequestStore{conns: NewConnectionStore(pool), policy: policy}, nil
 }
 
 // NewAccessRequestStore builds the store on a connection pool.
 func NewAccessRequestStore(pool *pgxpool.Pool) *AccessRequestStore {
 	return &AccessRequestStore{conns: NewConnectionStore(pool)}
+}
+
+// NewAuthorizedAccessRequestStore requires the current resource evaluator for workflow admissions.
+func NewAuthorizedAccessRequestStore(pool *pgxpool.Pool, policy *BindingPolicyEvaluator, organization identity.OrganizationID) (*AccessRequestStore, error) {
+	if pool == nil || policy == nil || organization == "" {
+		return nil, authz.ErrAuthorizationInactive
+	}
+	return &AccessRequestStore{conns: NewConnectionStore(pool), policy: policy, organization: organization}, nil
 }
 
 // DefaultOrganizationID resolves the single self-hosted organization.
@@ -52,6 +71,17 @@ func (s *AccessRequestStore) lockConnection(ctx context.Context, q *db.Queries, 
 
 // ListRequestable returns active connection summaries for request forms.
 func (s *AccessRequestStore) ListRequestable(ctx context.Context, org identity.OrganizationID) ([]access.RequestableConnection, error) {
+	if s.organization != "" {
+		rows, err := s.readStore().authorizedConnections(ctx, org, false)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]access.RequestableConnection, 0, len(rows))
+		for _, row := range rows {
+			result = append(result, access.RequestableConnection{ID: row.ID, DisplayName: row.DisplayName, DBType: string(row.DBType), Environment: string(row.Environment)})
+		}
+		return result, nil
+	}
 	organizationUUID, err := stringToUUID(string(org))
 	if err != nil {
 		return nil, err
@@ -74,6 +104,22 @@ func (s *AccessRequestStore) ListRequestable(ctx context.Context, org identity.O
 
 // CurrentTarget returns the active target configuration and policy snapshot.
 func (s *AccessRequestStore) CurrentTarget(ctx context.Context, org identity.OrganizationID, id connection.ConnectionID) (access.SubmitTarget, error) {
+	if s.organization != "" {
+		var result access.SubmitTarget
+		err := s.readStore().withAuthorizedRead(ctx, org, func(ctx context.Context, scope *policyReadScope) error {
+			if len(scope.decisions) == 0 || scope.decisions[0].decision.Resource.ConnectionID != string(id) {
+				return authz.ErrPermissionDenied
+			}
+			copy := *s
+			copy.policy = nil
+			copy.organization = ""
+			copy.conns = &ConnectionStore{pool: s.conns.pool, q: scope.queries}
+			var err error
+			result, err = copy.CurrentTarget(ctx, org, id)
+			return err
+		})
+		return result, err
+	}
 	cid, organizationUUID, err := connIDs(id, org)
 	if err != nil {
 		return access.SubmitTarget{}, err
@@ -114,7 +160,7 @@ func (s *AccessRequestStore) CreateDraft(ctx context.Context, r access.Request, 
 		return access.RequestView{}, fmt.Errorf("requester id: %w", err)
 	}
 	var view access.RequestView
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
 		// Lock the connection and check its archive state INSIDE this transaction: an archive committing between any pre-read and this insert has already run its cascade sweep, so the draft would survive on an archived connection (§4.3, ADR-0018).
 		if _, err := s.lockConnection(ctx, q, cid, organizationUUID); err != nil {
 			return err
@@ -123,6 +169,11 @@ func (s *AccessRequestStore) CreateDraft(ctx context.Context, r access.Request, 
 		at, err := observeInstant(ctx, q)
 		if err != nil {
 			return err
+		}
+		if s.policy != nil {
+			if _, err := s.policy.authorize(ctx, q, r.RequesterID, identity.PermissionRequestsCreate, authz.ResourceTarget{OrganizationID: r.OrganizationID, Type: identity.ResourceConnection, ID: string(r.ConnectionID)}, at); err != nil {
+				return err
+			}
 		}
 		if err := q.InsertAccessRequest(ctx, db.InsertAccessRequestParams{
 			ID:                requestUUID,
@@ -152,6 +203,10 @@ func (s *AccessRequestStore) CreateDraft(ctx context.Context, r access.Request, 
 
 // GetSealed returns the bare row plus its sealed payload, org-scoped.
 func (s *AccessRequestStore) GetSealed(ctx context.Context, org identity.OrganizationID, id access.RequestID) (access.Request, access.SealedPayload, error) {
+	if s.organization != "" {
+		view, sealed, err := s.authorizedRequest(ctx, org, id)
+		return view.Request, sealed, err
+	}
 	requestUUID, organizationUUID, err := parseRequestAndOrganizationUUIDs(id, org)
 	if err != nil {
 		return access.Request{}, access.SealedPayload{}, err
@@ -170,7 +225,7 @@ func (s *AccessRequestStore) UpdateDraft(ctx context.Context, r access.Request, 
 		return access.RequestView{}, err
 	}
 	var view access.RequestView
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
 		// Take the row lock as its own statement before writing. The UPDATE would acquire it anyway, but then the wait would sit INSIDE the statement that stamps the row, and a stamp cannot describe a wait it is part of (ADR-0009). Locking first also means the instant below is read with the row already ours.
 		if _, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: requestUUID, OrganizationID: organizationUUID}); err != nil {
 			return notFound(err, access.ErrNotFound)
@@ -178,6 +233,15 @@ func (s *AccessRequestStore) UpdateDraft(ctx context.Context, r access.Request, 
 		at, err := observeInstant(ctx, q)
 		if err != nil {
 			return err
+		}
+		if s.policy != nil {
+			actor, err := stringToUUID(string(r.RequesterID))
+			if err != nil {
+				return err
+			}
+			if err := s.authorizeRequest(ctx, q, organizationUUID, requestUUID, actor, identity.PermissionRequestsCreate, at); err != nil {
+				return err
+			}
 		}
 		if _, err := q.UpdateAccessRequestDraftPayload(ctx, db.UpdateAccessRequestDraftPayloadParams{
 			ID:                requestUUID,
@@ -237,7 +301,7 @@ func (s *AccessRequestStore) Submit(ctx context.Context, r access.Request, expec
 		return access.RequestView{}, fmt.Errorf("connection id: %w", err)
 	}
 	var view access.RequestView
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
 		// Recheck the pinned policy under the connection lock so submission cannot use a superseded quorum after the policy cascade has run.
 		locked, err := s.lockConnection(ctx, q, cid, organizationUUID)
 		if err != nil {
@@ -249,6 +313,19 @@ func (s *AccessRequestStore) Submit(ctx context.Context, r access.Request, expec
 		// The target itself is pinned the same way: the digest the pipeline just computed names a configuration, and if a replacement committed in between, this request would land approved-able against a database nobody looked at (ADR-0018).
 		if locked.ConfigVersion != r.ConnectionConfigVersion {
 			return access.ErrConnectionChanged
+		}
+		if s.policy != nil {
+			at, err := observeInstant(ctx, q)
+			if err != nil {
+				return err
+			}
+			actor, err := stringToUUID(string(r.RequesterID))
+			if err != nil {
+				return err
+			}
+			if err := s.authorizeRequest(ctx, q, organizationUUID, requestUUID, actor, identity.PermissionRequestsCreate, at); err != nil {
+				return err
+			}
 		}
 		row, err := q.SubmitAccessRequest(ctx, params)
 		if err != nil {
@@ -319,7 +396,7 @@ func (s *AccessRequestStore) decide(ctx context.Context, org identity.Organizati
 	}
 	var view access.RequestView
 	var refused error
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
 		row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: requestUUID, OrganizationID: organizationUUID})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)
@@ -347,24 +424,22 @@ func (s *AccessRequestStore) decide(ctx context.Context, org identity.Organizati
 		}); err != nil {
 			return err
 		}
-		eligible, err := q.ApproverEligible(ctx, db.ApproverEligibleParams{
-			ApproverID:     aid,
-			OrganizationID: organizationUUID,
-			PermissionKey:  decisionPermission(decision),
-		})
+		at, err := observeInstant(ctx, q)
 		if err != nil {
 			return err
 		}
-		if !eligible {
-			return access.ErrApproverIneligible
+		checkpoint, err := s.requestDecision(ctx, q, organizationUUID, requestUUID, aid, identity.Permission(decisionPermission(decision)), at)
+		if err != nil {
+			return currentDecisionError(err)
 		}
-		// The approval's own timestamp is the decision's instant (clock_timestamp() inside the query, not the frozen now()), and everything else this transaction records about the decision is derived from it: the row's updated_at, the validity window, and the audit event's occurred_at.
+		// Permission, approval, transition, validity and audit share the database instant observed after the locks.
 		decidedAt, err := q.InsertApproval(ctx, db.InsertApprovalParams{
 			RequestID:      requestUUID,
 			OrganizationID: organizationUUID,
 			ApproverID:     aid,
 			Decision:       string(decision),
 			Reason:         reason,
+			At:             timeToTS(at),
 		})
 		if err != nil {
 			return onUniqueViolation(err, "approvals_one_decision_per_approver", access.ErrAlreadyDecided)
@@ -379,9 +454,7 @@ func (s *AccessRequestStore) decide(ctx context.Context, org identity.Organizati
 				return err
 			}
 		case access.DecisionApproved:
-			count, err := q.CountValidApprovals(ctx, db.CountValidApprovalsParams{
-				RequestID: requestUUID, OrganizationID: organizationUUID, RequesterID: row.RequesterID,
-			})
+			count, err := s.countCurrentApprovals(ctx, q, organizationUUID, requestUUID, row.RequesterID, decided)
 			if err != nil {
 				return err
 			}
@@ -395,6 +468,7 @@ func (s *AccessRequestStore) decide(ctx context.Context, org identity.Organizati
 		}
 
 		completeRequestEvent(&evt, r, from)
+		attachAuthorizationEvidence(&evt, checkpoint, identity.Permission(decisionPermission(decision)))
 		if err := insertAuditTx(ctx, q, evt); err != nil {
 			return err
 		}
@@ -418,7 +492,7 @@ func (s *AccessRequestStore) Cancel(ctx context.Context, org identity.Organizati
 	}
 	var view access.RequestView
 	var refused error
-	err = s.conns.withTx(ctx, func(q *db.Queries) error {
+	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
 		row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: requestUUID, OrganizationID: organizationUUID})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)
@@ -438,6 +512,15 @@ func (s *AccessRequestStore) Cancel(ctx context.Context, org identity.Organizati
 		}
 		if err := r.ValidateCancellation(); err != nil {
 			return err
+		}
+		if s.policy != nil {
+			at, err := observeInstant(ctx, q)
+			if err != nil {
+				return err
+			}
+			if err := s.authorizeRequest(ctx, q, organizationUUID, requestUUID, row.RequesterID, identity.PermissionRequestsCreate, at); err != nil {
+				return err
+			}
 		}
 		from := r.State
 		if r, err = s.transition(ctx, q, requestUUID, organizationUUID, from, access.StateCancelled, nil, nil); err != nil {
@@ -463,6 +546,9 @@ func (s *AccessRequestStore) Cancel(ctx context.Context, org identity.Organizati
 
 // Get returns an organization-scoped request view and encrypted payload.
 func (s *AccessRequestStore) Get(ctx context.Context, org identity.OrganizationID, id access.RequestID) (access.RequestView, access.SealedPayload, error) {
+	if s.organization != "" {
+		return s.authorizedRequest(ctx, org, id)
+	}
 	requestUUID, organizationUUID, err := parseRequestAndOrganizationUUIDs(id, org)
 	if err != nil {
 		return access.RequestView{}, access.SealedPayload{}, err
@@ -499,6 +585,9 @@ func (s *AccessRequestStore) loadRequestViewInTransaction(ctx context.Context, q
 
 // List returns a page of request summaries without approval details.
 func (s *AccessRequestStore) List(ctx context.Context, org identity.OrganizationID, p access.ListQuery) (access.RequestPage, error) {
+	if s.organization != "" {
+		return s.authorizedRequestPage(ctx, org, p)
+	}
 	organizationUUID, err := stringToUUID(string(org))
 	if err != nil {
 		return access.RequestPage{}, err
@@ -520,7 +609,12 @@ func (s *AccessRequestStore) List(ctx context.Context, org identity.Organization
 	var rows []requestViewRow
 	var total int64
 	err = s.conns.withReadSnapshot(ctx, func(_ pgx.Tx, q *db.Queries) error {
-		read := func(pageNumber int) error {
+		read := func(pageNumber int) (readError error) {
+			defer func() {
+				if readError == nil {
+					readError = s.stampCurrentApprovalCounts(ctx, q, rows)
+				}
+			}()
 			offset := int64(pageNumber-1) * int64(p.PageSize)
 			if p.SortDescending {
 				got, err := q.ListAccessRequestsDesc(ctx, db.ListAccessRequestsDescParams{
@@ -714,14 +808,40 @@ func (s *AccessRequestStore) draftGuardError(ctx context.Context, q *db.Queries,
 
 // assembleView attaches approval details and current validity to a request view.
 func (s *AccessRequestStore) assembleView(ctx context.Context, q *db.Queries, row requestViewRow) (access.RequestView, error) {
+	at, err := observeInstant(ctx, q)
+	if err != nil {
+		return access.RequestView{}, err
+	}
+	return s.assembleViewAt(ctx, q, row, at)
+}
+
+// assembleViewAt attaches display and validity data at the read's explicit database instant.
+func (s *AccessRequestStore) assembleViewAt(ctx context.Context, q *db.Queries, row requestViewRow, at time.Time) (access.RequestView, error) {
 	view := viewFromRow(row)
+	view.StampEffective(at)
+	if s.policy != nil {
+		view.ValidApprovals = 0
+	}
 	approvals, err := q.ListApprovalsForRequest(ctx, db.ListApprovalsForRequestParams{
-		RequestID: row.ID, OrganizationID: row.OrganizationID, RequesterID: row.RequesterID,
+		RequestID: row.ID, OrganizationID: row.OrganizationID,
 	})
 	if err != nil {
 		return access.RequestView{}, err
 	}
 	for _, a := range approvals {
+		valid := a.Valid
+		if s.policy != nil {
+			valid = false
+			if a.Decision == string(access.DecisionApproved) && a.ApproverID != row.RequesterID {
+				err := s.authorizeRequest(ctx, q, row.OrganizationID, row.ID, a.ApproverID, identity.PermissionRequestsApprove, at)
+				if err == nil {
+					valid = true
+					view.ValidApprovals++
+				} else if !errors.Is(err, authz.ErrPermissionDenied) {
+					return access.RequestView{}, err
+				}
+			}
+		}
 		view.Approvals = append(view.Approvals, access.ApprovalView{
 			Approval: access.Approval{
 				ID:             uuidToString(a.ID),
@@ -734,7 +854,7 @@ func (s *AccessRequestStore) assembleView(ctx context.Context, q *db.Queries, ro
 			},
 			ApproverEmail:       a.ApproverEmail,
 			ApproverDisplayName: a.ApproverDisplayName,
-			Valid:               a.Valid,
+			Valid:               valid,
 		})
 	}
 	return view, nil

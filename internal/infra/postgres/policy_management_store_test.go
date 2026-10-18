@@ -112,7 +112,7 @@ func TestPolicyAccountsPreserveGrantsAndRevokeSessions(t *testing.T) {
 	target := identity.UserID(fixture.target)
 	grantPolicyRole(t, fixture, fixture.target, fixture.readerRole, "connection", true)
 	legacy := pg.NewIdentityStore(fixture.pool)
-	before, err := legacy.PermissionsForUser(ctx, org, target)
+	before, err := preparationPermissions(ctx, fixture.pool, org, target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestPolicyAccountsPreserveGrantsAndRevokeSessions(t *testing.T) {
 	if _, err := accounts.Enable(ctx, org, actor, target); err != nil {
 		t.Fatal(err)
 	}
-	after, err := legacy.PermissionsForUser(ctx, org, target)
+	after, err := preparationPermissions(ctx, fixture.pool, org, target)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatalf("legacy grants changed: %v %v %v", before, after, err)
 	}
@@ -406,7 +406,7 @@ func TestPolicySharedRoleEditRevokesActorSessionWithoutChangingLegacyGrants(t *t
 	ctx := context.Background()
 	org, actor := identity.OrganizationID(fixture.organization), identity.UserID(fixture.user)
 	legacy := pg.NewIdentityStore(fixture.pool)
-	before, err := legacy.PermissionsForUser(ctx, org, actor)
+	before, err := preparationPermissions(ctx, fixture.pool, org, actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +429,7 @@ func TestPolicySharedRoleEditRevokesActorSessionWithoutChangingLegacyGrants(t *t
 	if err := fixture.pool.QueryRow(ctx, `select count(*) from public.sessions where user_id=$1 and revoked_at is null`, fixture.user).Scan(&sessions); err != nil || sessions != 0 {
 		t.Fatalf("actor session survived: %d %v", sessions, err)
 	}
-	after, err := legacy.PermissionsForUser(ctx, org, actor)
+	after, err := preparationPermissions(ctx, fixture.pool, org, actor)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatalf("legacy grant changed: %v %v %v", before, after, err)
 	}
