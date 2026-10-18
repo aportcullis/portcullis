@@ -8,7 +8,7 @@
   - `make test` runs uncached shuffled tests; `make test-race` adds the race detector and runs as its own CI job. Both require the test databases, so a database-backed test fails instead of skipping when its container cannot start; `GO_TEST_PACKAGES` narrows the package set.
     Both schedule package processes sequentially (`-p 1`) to avoid the reproduced shared Testcontainers reaper startup race (ADR-0045), while retaining within-package parallel tests and competing-caller scenarios.
   - `make clean` removes build outputs only and never deletes committed generated sources; `make clean-check`, part of `make verify`, proves it in a disposable clone.
-  - `make lint` checks gofmt on every tracked Go file and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also run `GOOS=linux GOARCH=amd64 make lint` to check Linux-specific source before relying on Linux CI (ADR-0029).
+  - `make lint` checks gofmt on every tracked Go file and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also check Linux-specific source with a host-built copy of the pinned analyzer: run it with `GOOS=linux GOARCH=amd64` and the same `run` options as `make lint`. Compile the tool for the host first, then apply the target environment during analysis; this supplements the native Linux CI gate (ADR-0029).
 - **Frontend verification**
   - `make web-lint`, `make web-typecheck`, and `make web-test` run Oxlint, TypeScript 7 native `tsc`, and Vitest.
 - **Container images**
