@@ -61,6 +61,8 @@ type Querier interface {
 	GetActorAuthority(ctx context.Context, arg GetActorAuthorityParams) (GetActorAuthorityRow, error)
 	// Detail remains organization-scoped; audit.get must never become an IDOR path. total_count is literally 1 here and goes unused — it keeps the row shape structurally identical to the list rows, so one mapper serves all three.
 	GetAuditEvent(ctx context.Context, arg GetAuditEventParams) (GetAuditEventRow, error)
+	// Read membership independently of its legacy role, plus revision and explicit database time.
+	GetBindingAuthorizationContext(ctx context.Context, arg GetBindingAuthorizationContextParams) (GetBindingAuthorizationContextRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
 	// The connection's current policy snapshot, resolved through the pointer. Works for archived connections too: the policy is part of the historical snapshot (ADR-0015).
 	GetCurrentConnectionPolicy(ctx context.Context, arg GetCurrentConnectionPolicyParams) (ConnectionPolicyVersion, error)
@@ -125,6 +127,8 @@ type Querier interface {
 	ListPermissionKeys(ctx context.Context) ([]string, error)
 	// Return active target summaries under requests.create without connection-admin permissions (ADR-0008).
 	ListRequestableConnections(ctx context.Context, organizationID pgtype.UUID) ([]ListRequestableConnectionsRow, error)
+	// Fetch one extra candidate to reject overflow instead of authorizing a truncated prefix.
+	ListResourceBindingGrants(ctx context.Context, arg ListResourceBindingGrantsParams) ([]ListResourceBindingGrantsRow, error)
 	// Read under the organization's admission lock; reads and last-access touches are not blocked, and deletes of rows a purge already removed are no-ops.
 	ListResultAccounting(ctx context.Context, organizationID pgtype.UUID) ([]ResultCacheResultSet, error)
 	ListRolesWithPermissions(ctx context.Context, organizationID pgtype.UUID) ([]ListRolesWithPermissionsRow, error)
@@ -161,6 +165,8 @@ type Querier interface {
 	ReplaceConnectionConfig(ctx context.Context, arg ReplaceConnectionConfigParams) (Connection, error)
 	// A successful login clears the slate. The WHERE leaves an already-clean row unwritten, so calling this on every success keeps the hot path write-free while still clearing failures committed by concurrent attempts mid-verify.
 	ResetLoginBackoff(ctx context.Context, userID pgtype.UUID) error
+	// Read identifiers only; execution identity is request_id and results inherit ancestry through execution metadata.
+	ResolveBindingResource(ctx context.Context, arg ResolveBindingResourceParams) ([]ResolveBindingResourceRow, error)
 	RevokeOpenPasswordSetups(ctx context.Context, arg RevokeOpenPasswordSetupsParams) error
 	// Soft-revoke the outstanding first-run setup token before issuing its replacement (ADR-0052).
 	RevokeOutstandingSetupTokens(ctx context.Context) error

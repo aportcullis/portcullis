@@ -11,6 +11,8 @@ The current authorization code resolves one membership role into organization-wi
 
 [ADR-0065](adr/0065-restricted-cel-condition-evaluation.md) implements identity binding/condition values and the restricted `cel.dev/cel-go` adapter behind condition application ports. The wrapper owns operational bounds; the adapter evaluates immutable checked ASTs and supplied scalar attributes without I/O or clock reads. It is qualified independently and injected through constructors in scenarios, while production composition-root authorization remains unchanged until cutover.
 
+[ADR-0066](adr/0066-resource-binding-authorization-snapshots.md) connects a read-only PostgreSQL binding repository to the resource authorization service and bounded CEL wrapper through consumer-owned ports. It resolves trusted ancestry, time, revision and grants in one repeatable-read snapshot and returns a bounded permission checkpoint. Database scenarios qualify this path independently; production composition, all workflow guards and atomic activation remain pending.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.

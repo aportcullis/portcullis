@@ -25,6 +25,8 @@ Per [administration use cases](../../../internal/app/administration/users.go) an
 
 [ADR-0065](../../adr/0065-restricted-cel-condition-evaluation.md) adds domain Membership/RoleBinding/Condition and typed resource scopes, [consumer-owned condition ports and wrapper](../../../internal/app/condition/service.go), and the [restricted CEL adapter](../../../internal/infra/celcondition/adapter.go). Source/type/attribute/budget validation, explicit UTC time, immutable checked artifacts and outer cancellation/deadline/concurrency have scenario and race coverage. This qualifies the predicate slice only; production authorization still uses membership roles, and binding use cases, forms, grant resolution, composition-root cutover and backfill remain pending.
 
+[ADR-0066](../../adr/0066-resource-binding-authorization-snapshots.md) adds the read-only [Binding repository](../../../internal/infra/postgres/binding_store.go) and [resource permission service](../../../internal/app/authz/resource_service.go), connected to real CEL through consumer-owned ports. Qualification covers server-resolved ancestry, bounded additive grants, current role/head changes, coherent revision snapshots and disposable grant-equivalence copies for default/custom/empty roles. Production membership authority is preserved. Binding administration, authorized collections/output, transaction-bound workflow admission and atomic backfill/cutover remain pending; a read-only permission checkpoint is not a workflow lease.
+
 ## Verification status
 
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.
