@@ -3,6 +3,7 @@ module github.com/aportcullis/portcullis
 go 1.27.2
 
 require (
+	cel.dev/cel-go v0.32.0
 	connectrpc.com/connect v1.20.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-viper/mapstructure/v2 v2.5.0

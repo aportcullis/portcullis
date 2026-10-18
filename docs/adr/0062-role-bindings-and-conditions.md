@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
+- **Implementation refinement:** [ADR-0065](0065-restricted-cel-condition-evaluation.md) pins the upstream canonical module and concrete versioned evaluator limits; the original adapter naming below records the decision at its date.
 - **Supersedes:** [ADR-0008](0008-rbac-roles-and-permissions.md) membership-based role assignment and flat effective-permission resolution; its permission catalog, startup validation and role-definition rules remain binding.
 - **Supersedes:** [ADR-0053](0053-user-and-role-administration.md) single-role assignment, delegation comparison, administrator definition and administration API shape; its password setup, account protection, atomic audit and session safeguards remain binding as refined below.
 

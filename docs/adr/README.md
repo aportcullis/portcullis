@@ -90,6 +90,7 @@ These decisions establish the Core 1 foundation.
 | [0062](0062-role-bindings-and-conditions.md) | Separate roles, resource bindings and bounded conditions | Accepted |
 | [0063](0063-condition-dsl-and-pure-evaluation.md) | Condition CEL DSL, pure evaluation and form-based entry | Accepted |
 | [0064](0064-binding-schema-preparation-and-activation.md) | Read-only binding storage preparation before atomic authorization activation | Accepted |
+| [0065](0065-restricted-cel-condition-evaluation.md) | Versioned condition models and restricted pure CEL evaluation | Accepted |
 
 ## Template
 ```markdown
