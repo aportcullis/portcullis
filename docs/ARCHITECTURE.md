@@ -19,6 +19,8 @@ The current authorization code resolves one membership role into organization-wi
 
 [ADR-0069](adr/0069-prepared-administration-rpc-contracts.md) connects generated Users/Roles/Bindings RPCs to the qualified management services and a coherent read-only administration snapshot. Production mounts the actual adapters behind a mandatory post-authentication pending interceptor returning Unavailable; there is no partial activation switch or replacement of legacy grants.
 
+[ADR-0070](adr/0070-prepared-administration-ui.md) adds lazy prepared management pages with independent RPC affordances, bounded revisioned lists, explicit source-preserving condition forms and route/session response fencing. UI binary-contract qualification is separate from real-server authorization evidence; the mandatory production inactive boundary remains.
+
 ## Go source dependencies
 
 Arrows point from the importing package toward an inner dependency. `cmd/portcullis` is the composition root: it constructs concrete adapters, injects them into application services and mounts the generated Connect handlers. Its wiring is outside the dependency diagram; application services do not import their concrete adapters.

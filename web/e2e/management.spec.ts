@@ -48,6 +48,14 @@ test("prepared management APIs enforce sessions and CSRF while preserving active
       expect(await response.json()).toHaveProperty("code", "unavailable");
     }
   }
+  await page.goto("/users");
+  await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("currently unavailable");
+  await expect(page.getByRole("link", { name: "Details" })).toHaveCount(0);
+  await page.goto("/roles");
+  await expect(page.getByRole("alert")).toContainText("currently unavailable");
+  await page.goto("/bindings");
+  await expect(page.getByRole("alert")).toContainText("bindings.list");
   const after = await page.request.post("/portcullis.v1.Auth/Me", { headers: authenticatedHeaders, data: {} });
   expect(after.status()).toBe(200);
   expect(await after.json()).toEqual(authorityBefore);

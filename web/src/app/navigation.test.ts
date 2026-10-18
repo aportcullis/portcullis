@@ -115,3 +115,20 @@ describe("sign-in redirect", () => {
     expect(signInRedirectFor("no-session", at("/login", "?returnTo=%2Frequests"))).toBe("/login");
   });
 });
+
+
+describe("independent management navigation hints", () => {
+  it("allows grantless account creation without listing other users", () => {
+    expect(visibleSections(holder("users.create")).map(section => section.href)).toEqual(["/users"]);
+  });
+  it("allows reusable role creation without borrowing roles.list", () => {
+    expect(landingFor(holder("roles.create"))).toBe("/roles");
+  });
+  it("offers Binding creation and lists independently", () => {
+    expect(visibleSections(holder("bindings.create")).map(section => section.href)).toEqual(["/bindings"]);
+    expect(visibleSections(holder("bindings.list")).map(section => section.href)).toEqual(["/bindings"]);
+  });
+  it("does not infer Binding or Role capability from account administration", () => {
+    expect(visibleSections(holder("users.list", "users.disable")).map(section => section.href)).toEqual(["/users"]);
+  });
+});

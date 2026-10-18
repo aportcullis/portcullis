@@ -9,6 +9,9 @@ export const sections: readonly Section[] = [
   // Registering a connection stands on its own permission, so create alone opens this page — the same union the requests section uses. The list inside it is still gated on connections.list.
   { href: "/connections", label: "Connections", capabilities: ["connections.list", "connections.create"] },
   { href: "/requests", label: "Requests", capabilities: ["requests.list", "requests.create"] },
+  { href: "/users", label: "Users", capabilities: ["users.list", "users.create"] },
+  { href: "/roles", label: "Roles", capabilities: ["roles.list", "roles.create"] },
+  { href: "/bindings", label: "Bindings", capabilities: ["bindings.list", "bindings.create"] },
 ];
 
 // PermissionCheck answers "does the signed-in principal hold this key?" — the session store's lookup, passed in so these stay pure and testable.

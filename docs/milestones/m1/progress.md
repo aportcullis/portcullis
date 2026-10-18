@@ -33,6 +33,8 @@ Per [administration use cases](../../../internal/app/administration/users.go) an
 
 [ADR-0069](../../adr/0069-prepared-administration-rpc-contracts.md) adds generated user/role/binding RPC contracts, actual management handlers, shared TypeScript clients and organization-pinned read snapshots with bounded pages and revision checks. Raw TLS/Connect scenarios qualify sessions/CSRF, conditions, complete delegation, recovery races, session revocation, source preservation and rollback. Production routes remain unavailable after normal authentication until atomic activation; API qualification does not deliver management screens, migrated bootstrap/session admission, governance/output cutover or production backfill.
 
+[ADR-0070](../../adr/0070-prepared-administration-ui.md) adds prepared user/role/binding collection, create and detail pages with independent capabilities, transient setup delivery, form-generated CEL and versioned mutations. UI contracts qualify protected request lifetimes, source preservation, confirmation, conflicts and refusal feedback while the real-binary scenario preserves inactive production admission and existing authority. Atomic activation, setup consumption, trusted capability discovery and governance/output cutover remain pending.
+
 ## Verification status
 
 The recorded PostgreSQL governance tests passed in the documented Docker-browser environment.

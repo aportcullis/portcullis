@@ -10,7 +10,8 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "paths": {
-      "@e2e/*": ["./*"]
+      "@e2e/*": ["./*"],
+      "@/*": ["../src/*"]
     }
   },
   "include": ["./*.ts"]

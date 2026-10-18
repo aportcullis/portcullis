@@ -32,7 +32,10 @@ export type PermissionKey =
   | "requests.create"
   | "requests.approve"
   | "requests.reject"
-  | "audit.list";
+  | "audit.list"
+  | `users.${"list" | "get" | "create" | "update" | "disable"}`
+  | `roles.${"list" | "get" | "create" | "update" | "delete"}`
+  | `bindings.${"list" | "get" | "create" | "update" | "delete"}`;
 
 // Me and Logout are not permission-gated, so PermissionDenied indicates failed CSRF and invalidates the session alongside Unauthenticated.
 function isAuthRejection(err: unknown): boolean {

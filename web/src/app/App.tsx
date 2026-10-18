@@ -17,6 +17,7 @@ import { load } from "@/entities/session/store";
 
 // Sign-in and first-run stay in the entry chunk; authenticated workflows load on first visit so the login page does not download the SQL editor, result grid and connection forms.
 const ConnectionsPage = lazy(() => import("@/pages/ConnectionsPage"));
+const AdministrationPage = lazy(() => import("@/pages/AdministrationPage"));
 const RequestsPage = lazy(() => import("@/pages/RequestsPage"));
 const NewRequestPage = lazy(() => import("@/pages/NewRequestPage"));
 const RequestDetailsPage = lazy(() => import("@/pages/RequestDetailsPage"));
@@ -58,6 +59,12 @@ const App: Component = () => {
       <Route component={AppShell}>
         <Route path="/" component={() => <Navigate href={landing()} />} />
         <Route path="/connections" component={ConnectionsPage} />
+        <Route path="/users" component={() => <AdministrationPage kind="users" />} />
+        <Route path="/users/:id" component={() => <AdministrationPage kind="users" />} />
+        <Route path="/roles" component={() => <AdministrationPage kind="roles" />} />
+        <Route path="/roles/:id" component={() => <AdministrationPage kind="roles" />} />
+        <Route path="/bindings" component={() => <AdministrationPage kind="bindings" />} />
+        <Route path="/bindings/:id" component={() => <AdministrationPage kind="bindings" />} />
         <Route path="/requests" component={RequestsPage} />
         <Route path="/requests/new" component={NewRequestPage} />
         <Route path="/requests/:id" component={RequestDetailsPage} />

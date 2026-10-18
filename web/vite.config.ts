@@ -32,6 +32,10 @@ export default defineConfig({
   build: {
     outDir: "../internal/platform/assets/dist",
     emptyOutDir: true,
+    // Keep initial dependencies with the entry; authenticated workflows remain dynamic imports.
+    rolldownOptions: {
+      output: { codeSplitting: { groups: [{ name: "index", tags: ["$initial"] }] } },
+    },
   },
   server: {
     proxy: {
