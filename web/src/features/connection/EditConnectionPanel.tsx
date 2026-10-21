@@ -15,11 +15,14 @@ import { Button } from "@/shared/ui/button";
 import { InlinePanel } from "@/shared/ui/InlinePanel";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// Descriptor edits prefill from the list without connections.get; config changes require fresh credentials and a server test. The list owns the panel so refreshes preserve its draft.
-export const EditConnectionPanel: Component<{
+/** Defines the inputs owned by EditConnectionPanel. */
+export type EditConnectionPanelProps = {
   target: ConnectionSummary | undefined;
   onClose: () => void;
-}> = (props) => {
+};
+
+// Descriptor edits prefill from the list without connections.get; config changes require fresh credentials and a server test. The list owns the panel so refreshes preserve its draft.
+export const EditConnectionPanel: Component<EditConnectionPanelProps> = (props) => {
   const { discardSession, runInSession } = createDialogSession();
   const [displayName, setDisplayName] = createSignal("");
   const [environment, setEnvironment] = createSignal<EnvironmentValue>("development");

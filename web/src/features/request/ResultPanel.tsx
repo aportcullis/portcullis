@@ -22,8 +22,16 @@ import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 
+/** Selects the presentation of the current result page. */
+export type ResultDisplayMode = "table" | "text";
+
+/** Defines the inputs owned by ResultPanel. */
+export type ResultPanelProps = {
+  requestId: string;
+};
+
 /** Displays an owner-scoped result snapshot with server paging, sorting, filtering, and streamed export. */
-export const ResultPanel: Component<{ requestId: string }> = (props) => {
+export const ResultPanel: Component<ResultPanelProps> = (props) => {
   const [execution, setExecution] = createSignal<QueryExecution>();
   const [result, setResult] = createSignal<QueryResultPage>();
   const [page, setPage] = createSignal(1);
@@ -33,7 +41,7 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
   const [filter, setFilter] = createSignal("");
   const [filterDraft, setFilterDraft] = createSignal("");
   const [fullCell, setFullCell] = createSignal<string>();
-  const [view, setView] = createSignal<"table" | "text">("table");
+  const [view, setView] = createSignal<ResultDisplayMode>("table");
   const [copying, setCopying] = createSignal(false);
   const [copyMessage, setCopyMessage] = createSignal("");
   const [exporting, setExporting] = createSignal(false);
@@ -160,8 +168,11 @@ export const ResultPanel: Component<{ requestId: string }> = (props) => {
     reload();
   };
   const cycleColumnSorting = (column: number) => {
-    const next = cycleResultSorting({ column: sortColumn(), descending: descending() }, column);
-    applySorting(next.column, next.descending);
+    const { column: nextColumn, descending: nextDescending } = cycleResultSorting(
+      { column: sortColumn(), descending: descending() },
+      column,
+    );
+    applySorting(nextColumn, nextDescending);
   };
   onCleanup(() => {
     revision++;

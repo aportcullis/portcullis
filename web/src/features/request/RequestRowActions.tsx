@@ -18,14 +18,17 @@ import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import { executionsClient } from "@/shared/api/client";
 
-// Offers owner actions according to request state and each operation's permission.
-export const RequestRowActions: Component<{
+/** Defines the inputs owned by RequestRowActions. */
+export type RequestRowActionsProps = {
   request: AccessRequest;
   onChanged?: () => void;
   executionOnly?: boolean;
   // The list owns this so pending and error state survive a refresh that recreates the row.
   rowActions?: RowActionRegistry;
-}> = (props) => {
+};
+
+// Offers owner actions according to request state and each operation's permission.
+export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
   const rowActions = props.rowActions ?? createRowActionRegistry();
   let mounted = true;
   onCleanup(() => {

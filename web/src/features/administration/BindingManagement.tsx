@@ -8,8 +8,17 @@ import { ConditionFields } from "@/features/administration/ConditionFields";
 import { ConfirmManagementAction, ManagementFeedback, ManagementField, ManagementIDReceipt, ManagementSelect, createManagementAction } from "@/features/administration/controls";
 import { Button } from "@/shared/ui/button";
 
+/** Reuses the mutation client contract for explicit condition replacement or removal. */
+export type BindingConditionEdit = Parameters<typeof updateManagedBinding>[0]["conditionEdit"];
+
+/** Defines the inputs owned by BindingForm. */
+export type BindingFormProps = {
+  binding?: ManagedBinding;
+  onAdmissionFailure: () => void;
+};
+
 /** Edits structured grants while preserving every existing expression until an explicit change. */
-export function BindingForm(props: { binding?: ManagedBinding; onAdmissionFailure: () => void }) {
+export function BindingForm(props: BindingFormProps) {
   const head = props.binding?.summary;
   const [userID, setUserID] = createSignal(head?.userId ?? "");
   const [roleID, setRoleID] = createSignal(head?.roleId ?? "");
@@ -39,7 +48,7 @@ export function BindingForm(props: { binding?: ManagedBinding; onAdmissionFailur
         if (!isCurrent()) throw new Error("Route changed during validation");
       }
       if (!head) return createManagedBinding({ userId: userID(), roleId: roleID(), scope: selectedScope, condition });
-      const conditionEdit = capturedMode === "replace" && condition ? { case: "replaceCondition", value: condition } as const : capturedMode === "clear" ? { case: "clearCondition", value: true } as const : undefined;
+      const conditionEdit: BindingConditionEdit = capturedMode === "replace" && condition ? { case: "replaceCondition", value: condition } : capturedMode === "clear" ? { case: "clearCondition", value: true } : undefined;
       return updateManagedBinding({ id: head.id, expectedVersion: head.version, roleId: roleID(), scope: selectedScope, conditionEdit });
     }, head ? "Saved binding. Reload to obtain its current version." : "Created binding.");
     if (result) { setCommitted(true); setReceipt(result.value.binding); setValidation(condition ? "The server validated the generated condition before saving." : ""); }
@@ -62,8 +71,17 @@ export function BindingForm(props: { binding?: ManagedBinding; onAdmissionFailur
   </form>;
 }
 
+/** Defines the inputs owned by RevokeBindingAction. */
+export type RevokeBindingActionProps = {
+  id: string;
+  version: bigint;
+  own: boolean;
+  revoked: boolean;
+  onAdmissionFailure: () => void;
+};
+
 /** Revokes a grant from its summary without fetching condition source or allowing self changes. */
-export function RevokeBindingAction(props: { id: string; version: bigint; own: boolean; revoked: boolean; onAdmissionFailure: () => void }) {
+export function RevokeBindingAction(props: RevokeBindingActionProps) {
   const action = createManagementAction(props.onAdmissionFailure); const [revoked, setRevoked] = createSignal(false);
   return <Show when={!props.own && !props.revoked && hasPermission("bindings.delete")}><ConfirmManagementAction label="Revoke binding" description="Revoke this grant and its subject's sessions. The server rechecks complete delegation and protects the last recovery administrator." disabled={revoked() || action.busy() || action.locked()} onConfirm={async () => { const result = await action.run(() => revokeManagedBinding(props.id, props.version), "Revoked binding. Refresh to see its current state."); if (result) setRevoked(true); }} /><ManagementFeedback error={action.error()} message={action.message()} /></Show>;
 }

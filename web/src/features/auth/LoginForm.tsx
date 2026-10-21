@@ -10,7 +10,12 @@ import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-fiel
 // ONE uniform message for every rejection — wrong password, unknown email, disabled account, and backoff lockout are indistinguishable by design (the server is oracle-free, ADR-0006; the UI must not undo that). The wording is deliberately gentle: it suggests the next step without blaming or revealing anything.
 const GENERIC_ERROR = "We couldn't sign you in. Please check your email and password and try again.";
 
-export const LoginForm: Component<{ onSuccess: () => void }> = (props) => {
+/** Defines the inputs owned by LoginForm. */
+export type LoginFormProps = {
+  onSuccess: () => void;
+};
+
+export const LoginForm: Component<LoginFormProps> = (props) => {
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [error, setError] = createSignal("");

@@ -8,9 +8,9 @@ import type {
   TypedParam,
 } from "@/gen/portcullis/v1/access_requests_pb";
 import { requestsClient } from "@/shared/api/client";
+import type { ListLoadState } from "@/shared/lib/listLoadState";
 import { errorMessage } from "@/shared/api/errors";
 
-export type ListState = "idle" | "loading" | "ready" | "error";
 
 // TargetLoad is what a target read concluded — see loadTargets. "ok" carries the server's answer (possibly an empty list), "error" means the question never got answered, "superseded" means we dropped the read ourselves.
 export type TargetLoad = "ok" | "error" | "superseded";
@@ -31,10 +31,10 @@ const store = createRoot(() => {
   // The connections this caller may target. Served by the access-request RPC (requests.create), NOT the admin connection list — the seeded requester and approver roles hold no connections.list (ADR-0008/0018).
   const [targets, setTargets] = createSignal<RequestableConnection[]>([]);
   const [listError, setListError] = createSignal("");
-  const [listState, setListState] = createSignal<ListState>("idle");
+  const [listState, setListState] = createSignal<ListLoadState>("idle");
   const [listStale, setListStale] = createSignal(false);
   const [targetError, setTargetError] = createSignal("");
-  const [targetState, setTargetState] = createSignal<ListState>("idle");
+  const [targetState, setTargetState] = createSignal<ListLoadState>("idle");
   // targetsStale marks the cached targets as possibly out of date WITHOUT discarding them: the picker may be on screen, and a user mid-edit must not lose their options (or their selection) because a request was refused.
   const [targetsStale, setTargetsStale] = createSignal(false);
   // Whether this principal may read the request list. Set by the composition root from the session's permissions — an entity must not import another entity (frontend.md), and this is the same wiring the cache reset uses.

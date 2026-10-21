@@ -2,8 +2,13 @@ import type { Component } from "solid-js";
 
 import { cn } from "@/shared/lib/utils";
 
+/** Defines the inputs owned by BrandLogo. */
+export type BrandLogoProps = {
+  class?: string;
+};
+
 /** Displays the shared Portcullis wordmark at the caller's layout size. */
-export const BrandLogo: Component<{ class?: string }> = (props) => (
+export const BrandLogo: Component<BrandLogoProps> = (props) => (
   <>
   <img
     src="/brand/logo.svg"

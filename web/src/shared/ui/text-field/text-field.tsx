@@ -3,9 +3,9 @@ import { mergeProps, splitProps } from "solid-js";
 
 import type { PolymorphicProps } from "@kobalte/core";
 import * as TextFieldPrimitive from "@kobalte/core/text-field";
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 
-import { nativeControlVariants } from "@/shared/ui/control";
+import { nativeControlVariants, type ControlSize } from "@/shared/ui/control";
 
 import { cn } from "@/shared/lib/utils";
 
@@ -20,33 +20,36 @@ const TextField = (props: PolymorphicProps<"div", TextFieldRootProps>) => {
   return <TextFieldPrimitive.Root class={cn("flex flex-col gap-1", local.class)} {...others} />;
 };
 
-type TextFieldInputProps<T extends ValidComponent = "input"> =
+/** Enumerates the native input kinds supported by the owned text-field wrapper. */
+export type TextFieldInputType =
+  | "button"
+  | "checkbox"
+  | "color"
+  | "date"
+  | "datetime-local"
+  | "email"
+  | "file"
+  | "hidden"
+  | "image"
+  | "month"
+  | "number"
+  | "password"
+  | "radio"
+  | "range"
+  | "reset"
+  | "search"
+  | "submit"
+  | "tel"
+  | "text"
+  | "time"
+  | "url"
+  | "week";
+
+export type TextFieldInputProps<T extends ValidComponent = "input"> =
   TextFieldPrimitive.TextFieldInputProps<T> & {
     class?: string | undefined;
-    controlSize?: VariantProps<typeof nativeControlVariants>["size"];
-    type?:
-      | "button"
-      | "checkbox"
-      | "color"
-      | "date"
-      | "datetime-local"
-      | "email"
-      | "file"
-      | "hidden"
-      | "image"
-      | "month"
-      | "number"
-      | "password"
-      | "radio"
-      | "range"
-      | "reset"
-      | "search"
-      | "submit"
-      | "tel"
-      | "text"
-      | "time"
-      | "url"
-      | "week";
+    controlSize?: ControlSize | null;
+    type?: TextFieldInputType;
   };
 
 const TextFieldInput = (rawProps: PolymorphicProps<"input", TextFieldInputProps>) => {

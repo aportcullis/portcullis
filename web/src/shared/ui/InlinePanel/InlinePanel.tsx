@@ -3,8 +3,15 @@ import { Show, onCleanup, onMount } from "solid-js";
 import { Button } from "@/shared/ui/button";
 import { returnFocusToOpener } from "@/shared/ui/InlinePanel/focusReturn";
 
+/** Defines the inputs owned by InlinePanel. */
+export type InlinePanelProps = {
+  open: boolean;
+  label: string;
+  onClose: () => void;
+};
+
 /** Reveals a routine workflow in the document, focuses its first field, and returns focus to its opener on close. */
-export const InlinePanel: ParentComponent<{ open: boolean; label: string; onClose: () => void }> = props => {
+export const InlinePanel: ParentComponent<InlinePanelProps> = props => {
   const Body: ParentComponent = content => {
     let section: HTMLElement | undefined;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;

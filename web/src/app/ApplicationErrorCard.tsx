@@ -3,8 +3,13 @@ import type { Component } from "solid-js";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 
+/** Defines the inputs owned by ApplicationErrorCard. */
+export type ApplicationErrorCardProps = {
+  onRetry: () => void;
+};
+
 /** Replaces a page that failed to render with a generic message and recovery actions. */
-export const ApplicationErrorCard: Component<{ onRetry: () => void }> = (props) => (
+export const ApplicationErrorCard: Component<ApplicationErrorCardProps> = (props) => (
   <main class="flex min-h-screen items-center justify-center p-4">
     <Card class="w-full max-w-sm" role="alert">
       <CardHeader>

@@ -5,8 +5,14 @@ import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
 import { requestWorkflow } from "@/features/request/workflow";
 import { stateLabel } from "@/entities/request/model";
 
+/** Defines the inputs owned by RequestWorkflow. */
+export type RequestWorkflowProps = {
+  request: AccessRequest;
+  mayOpenDetails: boolean;
+};
+
 /** Shows a request's stage DAG using only the authorized list summary. */
-export const RequestWorkflow: Component<{ request: AccessRequest; mayOpenDetails: boolean }> = (props) => {
+export const RequestWorkflow: Component<RequestWorkflowProps> = (props) => {
   const flow = createMemo(() => requestWorkflow(props.request));
   return <section id={`workflow-${props.request.id}`} aria-label={`Workflow for ${props.request.title || "Untitled request"}`} class="request-workflow">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">

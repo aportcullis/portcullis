@@ -6,8 +6,13 @@ import { createOpenFetch } from "@/shared/lib/openFetch";
 import { errorMessage } from "@/shared/api/errors";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";
 
+/** Defines the inputs owned by RequestExecutionSummary. */
+export type RequestExecutionSummaryProps = {
+  requestId: string;
+};
+
 /** Reads requester-only durable metrics for a completed request with fenced responses. */
-export const RequestExecutionSummary: Component<{ requestId: string }> = (props) => {
+export const RequestExecutionSummary: Component<RequestExecutionSummaryProps> = (props) => {
   const [execution, setExecution] = createSignal<QueryExecution>();
   const read = createOpenFetch(
     () => executionsClient.get({ requestId: props.requestId }),

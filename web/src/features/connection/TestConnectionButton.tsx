@@ -6,8 +6,13 @@ import { testSaved } from "@/entities/connection/store";
 import { errorMessage } from "@/shared/api/errors";
 import { Button } from "@/shared/ui/button";
 
+/** Defines the inputs owned by TestConnectionButton. */
+export type TestConnectionButtonProps = {
+  id: string;
+};
+
 // TestConnectionButton re-tests a SAVED connection: the server decrypts the stored credential and dials (the credential never travels to the browser).
-export const TestConnectionButton: Component<{ id: string }> = (props) => {
+export const TestConnectionButton: Component<TestConnectionButtonProps> = (props) => {
   const [result, setResult] = createSignal<TestResult | null>(null);
   const [pending, setPending] = createSignal(false);
 

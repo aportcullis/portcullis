@@ -13,15 +13,26 @@ import { RoleForm } from "@/features/administration/RoleManagement";
 import { CreateUserForm, SetupTokenReceipt } from "@/features/administration/UserManagement";
 import { PageHeader } from "@/shared/ui/PageHeader";
 
+/** Defines the inputs owned by ManagementWorkspace. */
+export type ManagementWorkspaceProps = {
+  kind: ManagementKind;
+};
+
 /** Owns local creation inputs and delivery independently of revision-owned protected reads. */
-export function ManagementWorkspace(props: { kind: ManagementKind }) {
+export function ManagementWorkspace(props: ManagementWorkspaceProps) {
   const params = useParams();
   const owner = createMemo(() => { const interaction = sessionInteractionKey(); return interaction ? JSON.stringify([interaction, props.kind, params.id ?? ""]) : ""; });
   return <Show when={owner()} keyed>{_owner => <SessionInteraction><ManagementSession kind={props.kind} id={params.id ?? ""} /></SessionInteraction>}</Show>;
 }
 
+/** Defines the inputs owned by ManagementSession. */
+export type ManagementSessionProps = {
+  kind: ManagementKind;
+  id: string;
+};
+
 /** Composes independent read/create affordances while every RPC retains server authority. */
-function ManagementSession(props: { kind: ManagementKind; id: string }) {
+function ManagementSession(props: ManagementSessionProps) {
   const [denied, setDenied] = createSignal(false);
   const [setupLink, setSetupLink] = createSignal<UserSetupLink>();
   const principal = session();

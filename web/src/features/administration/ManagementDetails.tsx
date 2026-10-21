@@ -11,8 +11,17 @@ import { ManagementFeedback } from "@/features/administration/controls";
 import { Button } from "@/shared/ui/button";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 
+/** Defines the inputs owned by ManagementDetails. */
+export type ManagementDetailsProps = {
+  kind: ManagementKind;
+  id: string;
+  actorID: string;
+  onSetupLink: (link: UserSetupLink | undefined) => void;
+  onAdmissionFailure: () => void;
+};
+
 /** Loads protected detail independently, with explicit reload discarding stale forms. */
-export function ManagementDetails(props: { kind: ManagementKind; id: string; actorID: string; onSetupLink: (link: UserSetupLink | undefined) => void; onAdmissionFailure: () => void }) {
+export function ManagementDetails(props: ManagementDetailsProps) {
   const [accountChanged, setAccountChanged] = createSignal(false);
   const query = createManagementQuery<ManagementDetail>(() => void load(), () => props.onSetupLink(undefined));
   const reload = () => { setAccountChanged(false); return query.load(() => getManagement(props.kind, props.id)); };

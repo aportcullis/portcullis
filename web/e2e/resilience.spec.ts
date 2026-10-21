@@ -8,11 +8,12 @@ const password = "correct-horse-battery";
 
 test.describe("sign-in return path", () => {
   test("a deep link survives the sign-in redirect", async ({ page }) => {
-    for (const [deepLink, landing] of [
+    const destinations: readonly (readonly [string, RegExp])[] = [
       ["/requests/new", /\/requests\/new$/],
       ["/requests?from=link#top", /\/requests\?from=link#top$/],
       ["/no-such-page", /\/no-such-page$/],
-    ] as const) {
+    ];
+    for (const [deepLink, landing] of destinations) {
       await page.context().clearCookies();
       await page.goto(deepLink);
       await expect(page).toHaveURL(/\/login\?returnTo=/);

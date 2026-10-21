@@ -1,16 +1,19 @@
-import type { ClassRuleDraft, PolicyDraft } from "@/features/connection/policyDraft";
+import type { ClassRuleDraft, PolicyDraft, StatementClassKey } from "@/features/connection/policyDraft";
 
 // Rebase each policy field against the original form: keep local-only edits and accept remote changes, including conflicts. Report conflicts so the admin can reconsider them.
 export type PolicyRebase = { merged: PolicyDraft; conflicts: string[] };
 
 // The field labels are what the admin is told; they read as the form's own words rather than as property paths.
-const CLASS_LABELS = { read: "read", write: "write", ddl: "DDL" } as const;
+const CLASS_LABELS: Readonly<Record<StatementClassKey, string>> = { read: "read", write: "write", ddl: "DDL" };
+
+/** Describes the primitive fields reconciled across policy versions. */
+type PolicyFieldValue = boolean | number | bigint;
 
 export function rebasePolicy(base: PolicyDraft, mine: PolicyDraft, fresh: PolicyDraft): PolicyRebase {
   const conflicts: string[] = [];
 
   // resolveField decides one field. Values are compared with ===, which is exact for the primitives a policy is made of (boolean, number, bigint).
-  const resolveField = <T extends boolean | number | bigint>(
+  const resolveField = <T extends PolicyFieldValue>(
     label: string,
     was: T,
     ours: T,

@@ -54,10 +54,13 @@ import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-f
 // The stand-in for "no request is open" — see current() below.
 const noRequest = create(AccessRequestSchema, {});
 
-/** Reads and reviews one request without replacing SQL edits during refresh. */
-export const RequestDetailsPanel: Component<{
+/** Defines the inputs owned by RequestDetailsPanel. */
+export type RequestDetailsPanelProps = {
   requestId: string;
-}> = (props) => {
+};
+
+/** Reads and reviews one request without replacing SQL edits during refresh. */
+export const RequestDetailsPanel: Component<RequestDetailsPanelProps> = (props) => {
   const [detail, setDetail] = createSignal<GetAccessRequestResponse | undefined>();
   const [reason, setReason] = createSignal("");
   const [rejectReasonError, setRejectReasonError] = createSignal("");

@@ -12,8 +12,15 @@ import { Button } from "@/shared/ui/button";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 
+/** Defines the inputs owned by ManagementCollection. */
+export type ManagementCollectionProps = {
+  kind: ManagementKind;
+  actorID: string;
+  onAdmissionFailure: () => void;
+};
+
 /** Shows one authorized numbered collection without borrowing detail permissions. */
-export function ManagementCollection(props: { kind: ManagementKind; actorID: string; onAdmissionFailure: () => void }) {
+export function ManagementCollection(props: ManagementCollectionProps) {
   const query = createManagementQuery<ManagementList>(() => void load());
   const [search, setSearch] = useSearchParams();
   const page = () => { const value = Number(search.page); return Number.isInteger(value) && value > 0 && value <= 4294967295 ? value : 1; };

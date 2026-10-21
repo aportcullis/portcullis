@@ -18,8 +18,14 @@ import { Button } from "@/shared/ui/button";
 import { nativeControlVariants } from "@/shared/ui/control";
 import { passwordSetupLink } from "@/shared/lib/passwordSetupLink";
 
+/** Defines the inputs owned by SetupTokenReceipt. */
+export type SetupTokenReceiptProps = {
+  link: UserSetupLink;
+  onDismiss: () => void;
+};
+
 /** Presents a fresh token only in volatile route state with explicit dismissal. */
-export function SetupTokenReceipt(props: { link: UserSetupLink; onDismiss: () => void }) {
+export function SetupTokenReceipt(props: SetupTokenReceiptProps) {
   return (
     <section aria-label="One-time setup delivery" class="flex flex-col gap-3 rounded-md border p-4">
       <p>
@@ -51,8 +57,13 @@ export function SetupTokenReceipt(props: { link: UserSetupLink; onDismiss: () =>
   );
 }
 
+/** Defines the inputs owned by CreateUserForm. */
+export type CreateUserFormProps = {
+  onAdmissionFailure: () => void;
+};
+
 /** Creates independent membership without assigning an implicit Role. */
-export function CreateUserForm(props: { onAdmissionFailure: () => void }) {
+export function CreateUserForm(props: CreateUserFormProps) {
   const [createdID, setCreatedID] = createSignal("");
   const [email, setEmail] = createSignal("");
   const [name, setName] = createSignal("");
@@ -71,9 +82,10 @@ export function CreateUserForm(props: { onAdmissionFailure: () => void }) {
     );
     if (!result) return;
 
+    const { user, setupLink } = result.value;
     setCreated(true);
-    setCreatedID(result.value.user?.id ?? "");
-    setLink(result.value.setupLink);
+    setCreatedID(user?.id ?? "");
+    setLink(setupLink);
   }
 
   return (
@@ -100,14 +112,17 @@ export function CreateUserForm(props: { onAdmissionFailure: () => void }) {
   );
 }
 
-/** Changes account status independently of detail permissions and protects self controls. */
-export function UserStatusAction(props: {
+/** Defines the inputs owned by UserStatusAction. */
+export type UserStatusActionProps = {
   id: string;
   status: string;
   own: boolean;
   onChanged?: () => void;
   onAdmissionFailure: () => void;
-}) {
+};
+
+/** Changes account status independently of detail permissions and protects self controls. */
+export function UserStatusAction(props: UserStatusActionProps) {
   const action = createManagementAction(props.onAdmissionFailure);
   const [changed, setChanged] = createSignal(false);
   const enable = () => props.status === "disabled";
@@ -136,8 +151,8 @@ export function UserStatusAction(props: {
   );
 }
 
-/** Reissues setup only after an authorized passwordless account detail read. */
-export function UserSetupAction(props: {
+/** Defines the inputs owned by UserSetupAction. */
+export type UserSetupActionProps = {
   id: string;
   active: boolean;
   hasPassword: boolean;
@@ -145,7 +160,10 @@ export function UserSetupAction(props: {
   stale?: boolean;
   onSetupLink: (link: UserSetupLink | undefined) => void;
   onAdmissionFailure: () => void;
-}) {
+};
+
+/** Reissues setup only after an authorized passwordless account detail read. */
+export function UserSetupAction(props: UserSetupActionProps) {
   const action = createManagementAction(() => {
     props.onSetupLink(undefined);
     props.onAdmissionFailure();

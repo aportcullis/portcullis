@@ -14,12 +14,15 @@ import { nativeControlVariants } from "@/shared/ui/control";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// ParamEditor edits the typed parameter rows of a request draft (PRD §4.2): name, type (the 8-value vocabulary), and value — the value input goes inert for a null parameter. Named parameters bind server-side (never string substitution); this form only declares them.
-export const ParamEditor: Component<{
+/** Defines the inputs owned by ParamEditor. */
+export type ParamEditorProps = {
   draft: RequestDraft;
   onChange: (draft: RequestDraft) => void;
   disabled?: boolean;
-}> = (props) => {
+};
+
+// ParamEditor edits the typed parameter rows of a request draft (PRD §4.2): name, type (the 8-value vocabulary), and value — the value input goes inert for a null parameter. Named parameters bind server-side (never string substitution); this form only declares them.
+export const ParamEditor: Component<ParamEditorProps> = (props) => {
   return (
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between">

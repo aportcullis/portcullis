@@ -3,15 +3,21 @@ import { Show, createSignal } from "solid-js";
 
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// A password input with a show/hide toggle. Revealing is a deliberate, reversible act scoped to this field only — the value never leaves the controlled signal, and the toggle is a plain button so it cannot submit the surrounding form.
-export const PasswordField: Component<{
+/** Distinguishes existing credentials from newly composed passwords. */
+export type PasswordAutocomplete = "current-password" | "new-password";
+
+/** Defines the inputs owned by PasswordField. */
+export type PasswordFieldProps = {
   id: string;
   label: string;
-  autocomplete: "current-password" | "new-password";
+  autocomplete: PasswordAutocomplete;
   value: string;
   onInput: (value: string) => void;
   minlength?: number;
-}> = (props) => {
+};
+
+// A password input with a show/hide toggle. Revealing is a deliberate, reversible act scoped to this field only — the value never leaves the controlled signal, and the toggle is a plain button so it cannot submit the surrounding form.
+export const PasswordField: Component<PasswordFieldProps> = (props) => {
   const [visible, setVisible] = createSignal(false);
 
   return (
@@ -26,14 +32,14 @@ export const PasswordField: Component<{
           minlength={props.minlength}
           class="pr-10"
           value={props.value}
-          onInput={(e) => props.onInput(e.currentTarget.value)}
+          onInput={(event) => props.onInput(event.currentTarget.value)}
         />
         <button
           type="button"
           class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground hover:text-foreground"
           aria-label={visible() ? "Hide password" : "Show password"}
           aria-pressed={visible()}
-          onClick={() => setVisible((v) => !v)}
+          onClick={() => setVisible((currentVisibility) => !currentVisibility)}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

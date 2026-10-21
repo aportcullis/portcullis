@@ -8,7 +8,12 @@ import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldDescription, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-export const BootstrapForm: Component<{ onSuccess: () => void }> = (props) => {
+/** Defines the inputs owned by BootstrapForm. */
+export type BootstrapFormProps = {
+  onSuccess: () => void;
+};
+
+export const BootstrapForm: Component<BootstrapFormProps> = (props) => {
   const [setupToken, setSetupToken] = createSignal("");
   const [email, setEmail] = createSignal("");
   const [displayName, setDisplayName] = createSignal("");

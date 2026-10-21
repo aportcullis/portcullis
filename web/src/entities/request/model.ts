@@ -1,3 +1,4 @@
+import type { BadgeProps } from "@/shared/ui/badge";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 
 // ParamType is the UI-known parameter-value vocabulary (PRD §4.2), mirroring the server's domain enum. A union so a typo fails to compile.
@@ -26,7 +27,7 @@ export const paramTypes: readonly ParamType[] = [
 export type ParamRow = { name: string; type: ParamType; value: string };
 
 // Badge variant names available in the vendored solid-ui Badge.
-export type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+export type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
 // stateLabel renders a request state as human text.
 export function stateLabel(state: AccessRequestState): string {

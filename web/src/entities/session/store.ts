@@ -16,6 +16,12 @@ export type SessionState =
 // AnonymousCause separates an explicit sign-out from finding no valid session, so only the latter offers to continue where the caller was.
 export type AnonymousCause = "signed-out" | "no-session";
 
+/** Describes independently authorized user-management operations. */
+export type UserManagementOperation = "list" | "get" | "create" | "update" | "disable";
+
+/** Describes operations shared by Role and Binding management. */
+export type PolicyManagementOperation = "list" | "get" | "create" | "update" | "delete";
+
 // PermissionKey is the UI-known subset of the server's seeded permission catalog (migration 0002, ADR-0008). A union — like TlsMode and EnvironmentValue in the connection entity — so a typo'd key at a can() call site fails to compile instead of silently hiding an affordance forever. Extend as new sections (requests, audit, …) reach the UI.
 export type PermissionKey =
   | "connections.list"
@@ -33,9 +39,9 @@ export type PermissionKey =
   | "requests.approve"
   | "requests.reject"
   | "audit.list"
-  | `users.${"list" | "get" | "create" | "update" | "disable"}`
-  | `roles.${"list" | "get" | "create" | "update" | "delete"}`
-  | `bindings.${"list" | "get" | "create" | "update" | "delete"}`;
+  | `users.${UserManagementOperation}`
+  | `roles.${PolicyManagementOperation}`
+  | `bindings.${PolicyManagementOperation}`;
 
 // Me and Logout are not permission-gated, so PermissionDenied indicates failed CSRF and invalidates the session alongside Unauthenticated.
 function isAuthRejection(err: unknown): boolean {

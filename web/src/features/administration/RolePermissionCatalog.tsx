@@ -4,8 +4,13 @@ import { listManagedPermissions } from "@/entities/administration/api";
 import { ManagementFeedback, createManagementAction } from "@/features/administration/controls";
 import { Button } from "@/shared/ui/button";
 
+/** Defines the inputs owned by RolePermissionCatalog. */
+export type RolePermissionCatalogProps = {
+  onAdmissionFailure: () => void;
+};
+
 /** Owns one revision's protected catalog independently of locally authored Role inputs. */
-export function RolePermissionCatalog(props: { onAdmissionFailure: () => void }) {
+export function RolePermissionCatalog(props: RolePermissionCatalogProps) {
   const [catalog, setCatalog] = createSignal<string[]>([]);
   const action = createManagementAction(props.onAdmissionFailure);
   return <>

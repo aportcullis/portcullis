@@ -18,15 +18,21 @@ import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-fiel
 
 export { createManagementAction } from "@/features/administration/action";
 
-/** Accessible field shared only within management interactions. */
-export function ManagementField(props: {
+/** Limits management fields to the plain text and email input contracts. */
+export type ManagementFieldType = "text" | "email";
+
+/** Defines the inputs owned by ManagementField. */
+export type ManagementFieldProps = {
   label: string;
   value: string;
   onInput: (value: string) => void;
-  type?: "text" | "email";
+  type?: ManagementFieldType;
   required?: boolean;
   disabled?: boolean;
-}) {
+};
+
+/** Accessible field shared only within management interactions. */
+export function ManagementField(props: ManagementFieldProps) {
   return (
     <TextField value={props.value} onChange={props.onInput}>
       <TextFieldLabel>{props.label}</TextFieldLabel>
@@ -39,14 +45,17 @@ export function ManagementField(props: {
   );
 }
 
-/** A labeled native select retains keyboard and narrow-screen behavior. */
-export function ManagementSelect(props: {
+/** Defines the inputs owned by ManagementSelect. */
+export type ManagementSelectProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
   children: JSX.Element;
   disabled?: boolean;
-}) {
+};
+
+/** A labeled native select retains keyboard and narrow-screen behavior. */
+export function ManagementSelect(props: ManagementSelectProps) {
   const identifier = createUniqueId();
   return (
     <div class="flex flex-col gap-1 text-sm">
@@ -64,8 +73,14 @@ export function ManagementSelect(props: {
   );
 }
 
+/** Defines the inputs owned by ManagementFeedback. */
+export type ManagementFeedbackProps = {
+  error: string;
+  message?: string;
+};
+
 /** Renders generic feedback without interpreting storage or CEL source messages. */
-export function ManagementFeedback(props: { error: string; message?: string }) {
+export function ManagementFeedback(props: ManagementFeedbackProps) {
   return (
     <>
       <Show when={props.error}>
@@ -82,13 +97,16 @@ export function ManagementFeedback(props: { error: string; message?: string }) {
   );
 }
 
-/** Requires an explicit modal confirmation for account removal and grant changes. */
-export function ConfirmManagementAction(props: {
+/** Defines the inputs owned by ConfirmManagementAction. */
+export type ConfirmManagementActionProps = {
   label: string;
   description: string;
   disabled?: boolean;
   onConfirm: () => Promise<unknown>;
-}) {
+};
+
+/** Requires an explicit modal confirmation for account removal and grant changes. */
+export function ConfirmManagementAction(props: ConfirmManagementActionProps) {
   const [open, setOpen] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const lifetime = createDialogSession();
@@ -133,8 +151,15 @@ export function ConfirmManagementAction(props: {
   );
 }
 
+/** Defines the inputs owned by ManagementIDReceipt. */
+export type ManagementIDReceiptProps = {
+  label: string;
+  id: string;
+  version?: bigint;
+};
+
 /** Makes a narrow committed identity receipt usable without requiring a separate read. */
-export function ManagementIDReceipt(props: { label: string; id: string; version?: bigint }) {
+export function ManagementIDReceipt(props: ManagementIDReceiptProps) {
   return (
     <div class="flex flex-col gap-1">
       <label class="flex flex-col gap-1 text-sm">

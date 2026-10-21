@@ -5,8 +5,14 @@ import { actorLabel } from "@/entities/request/model";
 import type { AccessRequest, AccessRequestPayload } from "@/gen/portcullis/v1/access_requests_pb";
 import { Badge } from "@/shared/ui/badge";
 
+/** Defines the inputs owned by RequestEvidence. */
+export type RequestEvidenceProps = {
+  request: AccessRequest;
+  payload: AccessRequestPayload | undefined;
+};
+
 /** Shows what a reviewer decides on: the body, SQL and parameters (or redacted SQL), the submitted target snapshot and the decisions so far. */
-export const RequestEvidence: Component<{ request: AccessRequest; payload: AccessRequestPayload | undefined }> = (props) => (
+export const RequestEvidence: Component<RequestEvidenceProps> = (props) => (
   <div class="content-surface request-evidence">
     <h2 class="text-base font-semibold">Request evidence</h2>
     <Show when={props.payload} fallback={

@@ -3,11 +3,17 @@ import type { ConnectionPolicy } from "@/gen/portcullis/v1/connection_policies_p
 // StatementClassKey mirrors the server's statement-class vocabulary.
 export type StatementClassKey = "read" | "write" | "ddl";
 
-export const STATEMENT_CLASSES: readonly { key: StatementClassKey; label: string }[] = [
+/** Labels one supported statement class in the policy form. */
+export type StatementClassOption = { key: StatementClassKey; label: string };
+
+export const STATEMENT_CLASSES: readonly StatementClassOption[] = [
   { key: "read", label: "Read" },
   { key: "write", label: "Write" },
   { key: "ddl", label: "DDL" },
 ];
+
+/** Reuses statement-class keys without reconstructing presentation data on each validation. */
+const statementClassKeys: readonly StatementClassKey[] = STATEMENT_CLASSES.map(({ key }) => key);
 
 export type ClassRuleDraft = { allowed: boolean; requiredApprovals: number };
 
@@ -23,12 +29,23 @@ export type PolicyDraft = {
 };
 
 // Bounds mirror the server's CHECK constraints (ADR-0015); the server stays authoritative — these exist for inline form validation only.
-export const POLICY_BOUNDS = {
+/** Bounds a numeric policy setting without allocating a runtime validator. */
+export type PolicyRange<Value extends number | bigint> = { readonly min: Value; readonly max: Value };
+
+/** Preserves the readonly policy validation limits. */
+export type PolicyBounds = {
+  readonly approvals: PolicyRange<number>;
+  readonly timeoutSeconds: PolicyRange<number>;
+  readonly rows: PolicyRange<number>;
+  readonly bytes: PolicyRange<bigint>;
+};
+
+export const POLICY_BOUNDS: PolicyBounds = {
   approvals: { min: 0, max: 100 },
   timeoutSeconds: { min: 1, max: 300 },
   rows: { min: 1, max: 10_000 },
   bytes: { min: 4096n, max: 67_108_864n },
-} as const;
+};
 
 export function fromPolicy(p: ConnectionPolicy): PolicyDraft {
   return {
@@ -48,12 +65,13 @@ export function rule(draft: PolicyDraft, key: StatementClassKey): ClassRuleDraft
 
 // newlyEnabledClasses lists risk classes the draft turns ON relative to the loaded policy — the trigger for the destructive warning (enabling write/DDL is an audited admin decision, PRD §4.3). Read is not a risk class.
 export function newlyEnabledClasses(loaded: PolicyDraft, draft: PolicyDraft): StatementClassKey[] {
-  return (["write", "ddl"] as const).filter((key) => !loaded[key].allowed && draft[key].allowed);
+  const riskClasses: readonly StatementClassKey[] = ["write", "ddl"];
+  return riskClasses.filter((key) => !loaded[key].allowed && draft[key].allowed);
 }
 
 // autoApproveClasses lists enabled classes with a zero quorum — submit is allowed (§4.3 small-team deadlock relief) but the form surfaces it.
 export function autoApproveClasses(draft: PolicyDraft): StatementClassKey[] {
-  return (["read", "write", "ddl"] as const).filter(
+  return statementClassKeys.filter(
     (key) => draft[key].allowed && draft[key].requiredApprovals === 0,
   );
 }

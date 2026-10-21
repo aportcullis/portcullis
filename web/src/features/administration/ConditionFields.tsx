@@ -3,8 +3,14 @@ import { For } from "solid-js";
 import { conditionResourceTypes, type ConditionChoices } from "@/entities/administration/condition";
 import { ManagementField, ManagementSelect } from "@/features/administration/controls";
 
+/** Defines the inputs owned by ConditionFields. */
+export type ConditionFieldsProps = {
+  value: ConditionChoices;
+  onChange: (value: ConditionChoices) => void;
+};
+
 /** Generates constrained choices without exposing an expression editor. */
-export function ConditionFields(props: { value: ConditionChoices; onChange: (value: ConditionChoices) => void }) {
+export function ConditionFields(props: ConditionFieldsProps) {
   /** Replaces one controlled choice without mutating the original source. */
   const change = (key: keyof ConditionChoices, value: string) => props.onChange({ ...props.value, [key]: value });
   return <fieldset class="flex flex-col gap-3 rounded border p-3"><legend>Condition restrictions</legend>

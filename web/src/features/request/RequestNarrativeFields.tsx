@@ -5,13 +5,16 @@ import { Show } from "solid-js";
 import { instanceConfig } from "@/entities/instance/config";
 import type { RequestDraft } from "@/features/request/draft";
 
-/** Edits a request's title and explanatory body within the page. */
-export const RequestNarrativeFields: Component<{
+/** Defines the inputs owned by RequestNarrativeFields. */
+export type RequestNarrativeFieldsProps = {
   id: string;
   draft: RequestDraft;
   disabled: boolean;
   onChange: (draft: RequestDraft) => void;
-}> = (props) => (
+};
+
+/** Edits a request's title and explanatory body within the page. */
+export const RequestNarrativeFields: Component<RequestNarrativeFieldsProps> = (props) => (
   <>
     <div class="flex flex-col gap-1">
       <label class="text-sm font-medium" for={`${props.id}-title`}>

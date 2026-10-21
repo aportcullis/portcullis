@@ -7,8 +7,14 @@ import { ConfirmManagementAction, ManagementFeedback, ManagementField, Managemen
 import { RolePermissionCatalog } from "@/features/administration/RolePermissionCatalog";
 import { Button } from "@/shared/ui/button";
 
+/** Defines the inputs owned by RoleForm. */
+export type RoleFormProps = {
+  role?: ManagedRole;
+  onAdmissionFailure: () => void;
+};
+
 /** Edits a reusable bundle without conflating a Role with its recipients. */
-export function RoleForm(props: { role?: ManagedRole; onAdmissionFailure: () => void }) {
+export function RoleForm(props: RoleFormProps) {
   const [name, setName] = createSignal(props.role?.summary?.name ?? "");
   const [permissions, setPermissions] = createSignal(props.role?.permissions.join("\n") ?? "");
   const [receipt, setReceipt] = createSignal<PolicyVersion>();
@@ -23,8 +29,17 @@ export function RoleForm(props: { role?: ManagedRole; onAdmissionFailure: () => 
   </form>;
 }
 
+/** Defines the inputs owned by DeleteRoleAction. */
+export type DeleteRoleActionProps = {
+  id: string;
+  version: bigint;
+  isSystem: boolean;
+  bindingCount: bigint;
+  onAdmissionFailure: () => void;
+};
+
 /** Removes only an unreferenced custom role; the server retains final authority. */
-export function DeleteRoleAction(props: { id: string; version: bigint; isSystem: boolean; bindingCount: bigint; onAdmissionFailure: () => void }) {
+export function DeleteRoleAction(props: DeleteRoleActionProps) {
   const action = createManagementAction(props.onAdmissionFailure); const [deleted, setDeleted] = createSignal(false);
   return <Show when={hasPermission("roles.delete") && !props.isSystem}><ConfirmManagementAction label="Delete role" description="Delete this custom permission definition. Live Bindings must be revoked first; the server protects the last administrator." disabled={props.bindingCount > 0n || deleted() || action.busy() || action.locked()} onConfirm={async () => { const result = await action.run(() => deleteManagedRole(props.id, props.version), "Deleted role. Refresh the list."); if (result) setDeleted(true); }} /><ManagementFeedback error={action.error()} message={action.message()} /></Show>;
 }

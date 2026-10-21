@@ -16,8 +16,14 @@ import {
   DialogTrigger,
 } from "@/shared/ui/dialog";
 
+/** Defines the inputs owned by ArchiveConnectionDialog. */
+export type ArchiveConnectionDialogProps = {
+  id: string;
+  displayName: string;
+};
+
 // ArchiveConnectionDialog confirms the soft delete. It spells out the PRD §4.3 consequences: the stored credential is destroyed, so restoring later means re-entering it and passing a fresh connection test.
-export const ArchiveConnectionDialog: Component<{ id: string; displayName: string }> = (props) => {
+export const ArchiveConnectionDialog: Component<ArchiveConnectionDialogProps> = (props) => {
   const { discardSession, runInSession } = createDialogSession();
   const [open, setOpen] = createSignal(false);
   const [error, setError] = createSignal("");

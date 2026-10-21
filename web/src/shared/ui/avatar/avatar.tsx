@@ -3,7 +3,11 @@ import { createMemo, For } from "solid-js";
 import { cn } from "@/shared/lib/utils";
 import { createIdenticon } from "@/shared/ui/avatar/identicon";
 
-export type AvatarProps = { seed: string; label: string; class?: string };
+export type AvatarProps = {
+  seed: string;
+  label: string;
+  class?: string;
+};
 
 /** Displays a stable local profile image with an accessible label. */
 export function Avatar(props: AvatarProps) {

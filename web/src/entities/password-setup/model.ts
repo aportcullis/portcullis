@@ -1,7 +1,10 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { passwordSetupToken } from "@/shared/lib/passwordSetupLink";
 
-export type SetupState = { status: "ready" | "busy" | "succeeded" | "refused" | "uncertain"; message: string };
+/** Identifies the current stage of a password setup interaction. */
+export type SetupStatus = "ready" | "busy" | "succeeded" | "refused" | "uncertain";
+
+export type SetupState = { status: SetupStatus; message: string };
 export type SetupFlow = { state: () => SetupState; submit: (password: string, confirmation: string) => Promise<void>; allowRetry: () => void; dispose: () => void };
 
 /** Owns a volatile bearer credential and fences completion after disposal. */

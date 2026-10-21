@@ -4,17 +4,17 @@ import type { Connection, ConnectionSummary } from "@/gen/portcullis/v1/connecti
 import type { ConfigDraft, EnvironmentValue, TestResult } from "@/entities/connection/model";
 import { toInput } from "@/entities/connection/model";
 import { connectionsClient } from "@/shared/api/client";
+import type { ListLoadState } from "@/shared/lib/listLoadState";
 import { errorMessage } from "@/shared/api/errors";
 
 export type { ConfigDraft, EnvironmentValue, TestResult } from "@/entities/connection/model";
 
 // Keep list-safe summaries separate from target details. Track fetch state so initial emptiness is not shown as a completed empty list.
-export type ListState = "idle" | "loading" | "ready" | "error";
 
 const store = createRoot(() => {
   const [connections, setConnections] = createSignal<ConnectionSummary[]>([]);
   const [listError, setListError] = createSignal("");
-  const [listState, setListState] = createSignal<ListState>("idle");
+  const [listState, setListState] = createSignal<ListLoadState>("idle");
 
   // Fence reads and mutations by principal generation so previous-user responses cannot repopulate caches after reset.
   let generation = 0;

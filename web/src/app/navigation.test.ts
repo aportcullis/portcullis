@@ -60,7 +60,8 @@ describe("navigation capabilities", () => {
 
   it("hides connections from a role that can only edit or archive", () => {
     // update/delete act on a row the caller must first be able to reach; neither opens the page by itself, exactly as requests.approve does not.
-    for (const key of ["connections.update", "connections.delete", "connections.test"] as const) {
+    const editPermissions: readonly PermissionKey[] = ["connections.update", "connections.delete", "connections.test"];
+    for (const key of editPermissions) {
       expect(visibleSections(holder(key))).toHaveLength(0);
     }
   });

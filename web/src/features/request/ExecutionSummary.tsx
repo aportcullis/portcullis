@@ -2,8 +2,13 @@ import type { Component } from "solid-js";
 import type { QueryExecution } from "@/gen/portcullis/v1/query_executions_pb";
 import { formatExecutionDuration } from "@/features/request/executionMetrics";
 
+/** Defines the inputs owned by ExecutionSummary. */
+export type ExecutionSummaryProps = {
+  execution: QueryExecution;
+};
+
 /** Displays durable execution metrics and their server measurement scope. */
-export const ExecutionSummary: Component<{ execution: QueryExecution }> = (props) => (
+export const ExecutionSummary: Component<ExecutionSummaryProps> = (props) => (
   <section aria-label="Execution summary" class="content-surface">
     <dl class="flex flex-wrap gap-x-10 gap-y-4">
       <div><dt class="text-sm text-muted-foreground">Execution time</dt><dd aria-label="Recorded execution time" class="mt-1 text-2xl font-semibold tabular-nums">{formatExecutionDuration(props.execution)}</dd></div>

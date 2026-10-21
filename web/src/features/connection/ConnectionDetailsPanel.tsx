@@ -8,8 +8,17 @@ import { createOpenFetch } from "@/shared/lib/openFetch";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { InlinePanel } from "@/shared/ui/InlinePanel";
 
+/** Selects only the descriptor identity needed before fetching authorized details. */
+export type ConnectionDetailsTarget = Pick<Connection, "id" | "displayName">;
+
+/** Defines the inputs owned by ConnectionDetailsPanel. */
+export type ConnectionDetailsPanelProps = {
+  target: ConnectionDetailsTarget | undefined;
+  onClose: () => void;
+};
+
 // ConnectionDetailsPanel intentionally reads through connections.get only when opened. The list stays safe for list-only principals, while operators with connections.get can inspect the descriptor ADR-0014 requires the UI to expose. Credentials are not part of the response.
-export const ConnectionDetailsPanel: Component<{ target: { id: string; displayName: string } | undefined; onClose: () => void }> = (props) => {
+export const ConnectionDetailsPanel: Component<ConnectionDetailsPanelProps> = (props) => {
   const [connection, setConnection] = createSignal<Connection>();
   const fetch = createOpenFetch(() => getConnection(props.target?.id ?? ""), setConnection, errorMessage);
 

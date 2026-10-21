@@ -7,7 +7,7 @@ const connectErrorStatus = {
   permission_denied: 403,
   unauthenticated: 401,
   internal: 500,
-} as const;
+};
 
 export type ConnectErrorCode = keyof typeof connectErrorStatus;
 

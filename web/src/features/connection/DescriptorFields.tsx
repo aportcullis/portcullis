@@ -6,15 +6,18 @@ import type { EnvironmentValue } from "@/entities/connection/model";
 import { ENVIRONMENTS, parseEnvironment } from "@/entities/connection/model";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
-// DescriptorFields is the shared environment + description form body used by the create and edit dialogs (the display name stays with each dialog — its ids and requiredness differ). A raw styled <select> follows the TLS-mode precedent (no vendored Select).
-export const DescriptorFields: Component<{
+/** Defines the inputs owned by DescriptorFields. */
+export type DescriptorFieldsProps = {
   idPrefix: string;
   environment: EnvironmentValue;
   description: string;
   onEnvironment: (value: EnvironmentValue) => void;
   onDescription: (value: string) => void;
   disabled?: boolean;
-}> = (props) => (
+};
+
+// DescriptorFields is the shared environment + description form body used by the create and edit dialogs (the display name stays with each dialog — its ids and requiredness differ). A raw styled <select> follows the TLS-mode precedent (no vendored Select).
+export const DescriptorFields: Component<DescriptorFieldsProps> = (props) => (
   <>
     <div class="flex flex-col gap-1.5">
       <label class="text-sm font-medium leading-none" for={`${props.idPrefix}-environment`}>

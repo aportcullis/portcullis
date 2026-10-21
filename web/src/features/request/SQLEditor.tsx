@@ -4,8 +4,16 @@ import { formatPostgresSQL } from "@/shared/lib/sqlFormatting";
 import { Button } from "@/shared/ui/button";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-field";
 
+/** Defines the inputs owned by SQLEditor. */
+export type SQLEditorProps = {
+  id: string;
+  sql: string;
+  onChange: (sql: string) => void;
+  disabled?: boolean;
+};
+
 /** Edits SQL with local format-on-blur, explicit formatting and one-step undo. */
-export const SQLEditor: Component<{ id: string; sql: string; onChange: (sql: string) => void; disabled?: boolean }> = props => {
+export const SQLEditor: Component<SQLEditorProps> = props => {
   const [automatic, setAutomatic] = createSignal(true);
   const [previous, setPrevious] = createSignal<string>();
   const [message, setMessage] = createSignal("");

@@ -24,11 +24,14 @@ import { Button } from "@/shared/ui/button";
 import { InlinePanel } from "@/shared/ui/InlinePanel";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/shared/ui/text-field";
 
-// EditPolicyPanel reads policies independently of connections.get and saves a new immutable version. The list owns its draft across row refreshes.
-export const EditPolicyPanel: Component<{
+/** Defines the inputs owned by EditPolicyPanel. */
+export type EditPolicyPanelProps = {
   target: ConnectionSummary | undefined;
   onClose: () => void;
-}> = (props) => {
+};
+
+// EditPolicyPanel reads policies independently of connections.get and saves a new immutable version. The list owns its draft across row refreshes.
+export const EditPolicyPanel: Component<EditPolicyPanelProps> = (props) => {
   // openedFrom is the policy version this form was built on. It is the base of the three-way merge on a conflict — "did I change this field?" is only answerable against it.
   const [openedFrom, setOpenedFrom] = createSignal<PolicyDraft>();
   const [draft, setDraft] = createSignal<PolicyDraft>();
