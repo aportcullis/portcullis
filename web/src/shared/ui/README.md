@@ -33,7 +33,7 @@ Import from a component directory, for example `import { Button } from "@/shared
 
 ## Reuse in this repository
 
-Compose these APIs in features and pages; keep authorization, RPCs, database state and request/execution logic in their existing layers. Edit semantic tokens in [theme.css](../../app/theme.css), layout in [layout.css](../../app/layout.css), and Tailwind mappings/base styles in [index.css](../../app/index.css). Use semantic utilities, preserve light/dark contrast, and supply labels for controls.
+Compose these APIs in features and pages; keep authorization, RPCs, database state and request/execution logic in their existing layers. Edit semantic tokens in [theme.css](../../app/theme.css), application surfaces in [layout.css](../../app/layout.css), shared layout beside its component, request layout in [request.css](../../features/request/request.css), and Tailwind mappings/base styles in [index.css](../../app/index.css). Use semantic utilities, preserve light/dark contrast, and supply labels for controls.
 
 The examples are source examples, not a hosted component gallery. TypeScript checks every `example.tsx` through `tsconfig.app.json`, but runtime behavior is checked by existing product browser scenarios. For a new interaction, first add an observable scenario, then implement and verify it.
 

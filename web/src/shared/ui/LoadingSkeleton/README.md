@@ -1,6 +1,6 @@
 # LoadingSkeleton
 
-Supply a meaningful loading label. The status region is busy and the three decorative bars are hidden from assistive technology. Size stays bounded regardless of result size. Requires loading-skeleton and content-surface styles from layout.css; callers handle empty, error and loaded states separately.
+Supply a meaningful loading label. The status region is busy and the three decorative bars are hidden from assistive technology. Size stays bounded regardless of result size. The application CSS entry includes the colocated LoadingSkeleton.css and application surface styles once; callers handle empty, error and loaded states separately.
 
 ## Use
 

@@ -1,6 +1,6 @@
 # PageHeader
 
-Supply title and description, with optional eyebrow and actions slots. Renders an h1; normally use one per page. Requires the page-heading rules from layout.css. Permission checks belong in the caller.
+Supply title and description, with optional eyebrow and actions slots. Renders an h1; normally use one per page. The application CSS entry includes the colocated PageHeader.css once. Permission checks belong in the caller.
 
 ## Use
 

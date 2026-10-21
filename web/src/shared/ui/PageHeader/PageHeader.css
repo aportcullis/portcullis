@@ -1,0 +1,31 @@
+/* Shared page heading, description and eyebrow presentation. */
+@layer components {
+  .page-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .page-heading h1 {
+    font-size: 1.75rem;
+    font-weight: 650;
+    letter-spacing: -0.035em;
+    line-height: 1.25;
+  }
+  .page-heading p {
+    margin-top: 0.5rem;
+    max-width: 48rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .page-eyebrow {
+    color: var(--primary);
+    font-size: 0.6875rem;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+}

@@ -1,0 +1,93 @@
+/* Slot layout and responsive navigation for the shared application frame. */
+@layer components {
+  .application-frame {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+  }
+  .application-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+  }
+  .application-header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: var(--content-width);
+    margin-inline: auto;
+    gap: var(--section-gap);
+    padding: var(--header-padding) var(--page-padding);
+  }
+  .application-navigation {
+    display: flex;
+    align-items: center;
+    gap: var(--section-gap);
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .application-navigation nav {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+  .application-navigation a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .application-navigation a:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+  .application-navigation a[aria-current="page"] {
+    background: var(--muted);
+    color: var(--primary);
+    font-weight: 650;
+  }
+  .application-account {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .application-account > span {
+    overflow-wrap: anywhere;
+  }
+  .application-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    max-width: var(--content-width);
+    margin-inline: auto;
+    gap: var(--section-gap);
+    padding: var(--page-padding);
+  }
+  @media (max-width: 48rem) {
+    .application-header-content {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .application-navigation {
+      width: 100%;
+      gap: 0.75rem;
+    }
+    .application-account {
+      width: 100%;
+    }
+    .application-content,
+    .application-header-content {
+      padding-inline: 1rem;
+    }
+  }
+}

@@ -103,6 +103,7 @@ These decisions establish the Core 1 foundation.
 | [0075](0075-local-draft-and-setup-receipt-lifetimes.md) | Local creation drafts and setup receipts independent of protected-read revisions | Accepted |
 | [0076](0076-accessible-colors-and-control-sizing.md) | Accessible semantic colors and shared control sizing | Accepted |
 | [0077](0077-explicit-frontend-type-contracts.md) | Explicit frontend type contracts and safe destructuring | Accepted |
+| [0078](0078-css-first-stylesheet-ownership.md) | CSS-first stylesheet ownership | Accepted |
 
 ## Template
 ```markdown

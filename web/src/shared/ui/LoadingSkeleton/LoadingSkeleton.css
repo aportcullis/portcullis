@@ -1,0 +1,7 @@
+/* Bounded shared loading presentation independent of request data. */
+.loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 8rem;
+}

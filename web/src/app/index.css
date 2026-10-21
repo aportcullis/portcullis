@@ -1,7 +1,11 @@
 /* Theme adapted from stefan-karger/solid-ui apps/docs/src/styles/app.css (MIT, ADR-0013). */
 @import "tailwindcss";
 @import "./theme.css";
+@import "../shared/ui/ApplicationFrame/ApplicationFrame.css";
+@import "../shared/ui/PageHeader/PageHeader.css";
 @import "./layout.css";
+@import "../features/request/request.css";
+@import "../shared/ui/LoadingSkeleton/LoadingSkeleton.css";
 
 @custom-variant dark (&:where(.dark, .dark *, [data-kb-theme=dark], [data-kb-theme=dark] *));
 

@@ -1,6 +1,6 @@
 # ApplicationFrame
 
-Supply brand, navigation, account and children slots. This component owns layout only; the application supplies session, permissions and navigation state. Requires the application-frame rules from layout.css.
+Supply brand, navigation, account and children slots. This component owns layout only; the application supplies session, permissions and navigation state. The application CSS entry includes the colocated ApplicationFrame.css once.
 
 ## Use
 
