@@ -4,12 +4,26 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/aportcullis/portcullis/internal/app/authz"
+	"github.com/aportcullis/portcullis/internal/app/condition"
 	"github.com/aportcullis/portcullis/internal/domain/identity"
+	pg "github.com/aportcullis/portcullis/internal/infra/postgres"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const historyPopulation = 1281
+
+// historyPolicyFixtureWithReads separates history correctness from tight per-decision performance budgets.
+func historyPolicyFixtureWithReads(t *testing.T, pool *pgxpool.Pool, readSettings authz.ReadConfig) *pg.BindingPolicyEvaluator {
+	t.Helper()
+	conditionSettings := condition.DefaultConfig()
+	conditionSettings.Timeout = time.Second
+	resourceSettings := authz.DefaultResourceConfig()
+	resourceSettings.Timeout = 5 * time.Second
+	return activePolicyFixtureWithLimits(t, pool, conditionSettings, resourceSettings, readSettings)
+}
 
 // setHistoryCondition changes only the fixture's current policy before exercising the reader.
 func setHistoryCondition(t *testing.T, environment administrationEnv, principal identity.UserID, expression string) {

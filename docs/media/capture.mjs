@@ -1,6 +1,6 @@
 import { spawn, execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { chromium, expect } from "../../web/node_modules/@playwright/test/index.mjs";
@@ -11,7 +11,7 @@ const media = fileURLToPath(new URL("./", import.meta.url));
 const work = root + ".test-docker/readme-media/";
 const baseURL = "http://127.0.0.1:18080";
 const password = "readme-demo-password-only";
-const setupTokenFile = work + randomBytes(16).toString("hex");
+const setupTokenFile = (process.env.TMPDIR ?? work) + "/" + randomBytes(16).toString("hex");
 const image = "postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
 const run = (command, args) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "inherit"] }).trim();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -91,17 +91,25 @@ try {
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("img", { name: "Portcullis" })).toBeVisible();
   await shot("login");
-  // M1 has no provisioning UI: add a second, distinct reviewer only in this disposable fixture.
+  // Provision a distinct reviewer directly in the owned capture fixture; product authority remains server-enforced.
   const seed = `BEGIN;
     INSERT INTO users(email, display_name) VALUES ('sam@example.test', 'Sam · Reviewer');
     INSERT INTO auth_methods(user_id, type, secret)
       SELECT reviewer.id, 'password', auth.secret FROM users reviewer
       CROSS JOIN users original JOIN auth_methods auth ON auth.user_id = original.id AND auth.type = 'password'
       WHERE reviewer.email = 'sam@example.test' AND original.email = 'alex@example.test';
-    INSERT INTO organization_memberships(organization_id, user_id, role_id)
-      SELECT roles.organization_id, users.id, roles.id FROM users CROSS JOIN roles
-      JOIN organizations ON organizations.id = roles.organization_id
-      WHERE users.email = 'sam@example.test' AND roles.name = 'approver' AND organizations.slug = 'default';
+    INSERT INTO organization_memberships(organization_id, user_id)
+      SELECT organizations.id, users.id FROM users CROSS JOIN organizations
+      WHERE users.email = 'sam@example.test' AND organizations.slug = 'default';
+    INSERT INTO role_bindings(organization_id, user_id, current_version, created_at)
+      SELECT organization_id, user_id, 1, now() FROM organization_memberships
+      JOIN users ON users.id = user_id WHERE users.email = 'sam@example.test';
+    INSERT INTO role_binding_versions(binding_id, organization_id, user_id, version, role_id, scope_type, created_at)
+      SELECT binding.id, binding.organization_id, binding.user_id, 1, roles.id, 'organization', binding.created_at
+      FROM role_bindings binding JOIN users ON users.id = binding.user_id
+      JOIN roles ON roles.organization_id = binding.organization_id AND roles.name = 'approver'
+      WHERE users.email = 'sam@example.test';
+    UPDATE organization_authorization_revisions SET revision = revision + 1;
     COMMIT;`;
   execFileSync("docker", ["exec", "-i", cid, "psql", "-v", "ON_ERROR_STOP=1", "-U", "portcullis", "-d", "portcullis"], { input: seed, stdio: ["pipe", "ignore", "inherit"] });
   await login(page, "alex@example.test");
@@ -227,4 +235,5 @@ FROM generate_series(1, 30) AS g`;
     if (server.exitCode === null) { server.kill("SIGKILL"); await stopped; }
   }
   run("docker", ["stop", cid]);
+  await rm(setupTokenFile, { force: true });
 }

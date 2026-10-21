@@ -1,3 +1,4 @@
+import { nativeControlVariants } from "@/shared/ui/control";
 import type { Component } from "solid-js";
 import { For, Show } from "solid-js";
 
@@ -72,7 +73,7 @@ export const ConfigFields: Component<{
       </label>
       <select
         id="conn-tls"
-        class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        class={nativeControlVariants({ class: "w-full" })}
         value={props.draft().tlsMode}
         onChange={(e) => {
           const tlsMode = parseTlsMode(e.currentTarget.value);
@@ -85,8 +86,8 @@ export const ConfigFields: Component<{
     <Show when={isRelaxedTlsMode(props.draft().tlsMode)}>
       <Alert variant="destructive">
         <AlertDescription>
-          This mode skips certificate validation — the connection is exposed to
-          man-in-the-middle attacks. Choosing it is recorded in the audit trail.
+          This mode skips certificate validation — the connection is exposed to man-in-the-middle
+          attacks. Choosing it is recorded in the audit trail.
         </AlertDescription>
       </Alert>
     </Show>

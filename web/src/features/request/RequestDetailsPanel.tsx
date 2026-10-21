@@ -6,7 +6,13 @@ import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } 
 import type { GetAccessRequestResponse } from "@/gen/portcullis/v1/access_requests_pb";
 import { AccessRequestSchema } from "@/gen/portcullis/v1/access_requests_pb";
 import { instanceConfig } from "@/entities/instance/config";
-import { actorLabel, isExecutionOutcomeState, isLiveRequestState, stateBadge, stateLabel } from "@/entities/request/model";
+import {
+  actorLabel,
+  isExecutionOutcomeState,
+  isLiveRequestState,
+  stateBadge,
+  stateLabel,
+} from "@/entities/request/model";
 import { truncateReasonCodePoints, countReasonCodePoints } from "@/entities/request/reason";
 import {
   approveAccessRequest,
@@ -28,7 +34,11 @@ import {
   validateRejectReason,
 } from "@/features/request/actions";
 import type { RequestDraft } from "@/features/request/draft";
-import { createRequestDraftFromPayload, toTypedRequestParameters, validateRequestDraft } from "@/features/request/draft";
+import {
+  createRequestDraftFromPayload,
+  toTypedRequestParameters,
+  validateRequestDraft,
+} from "@/features/request/draft";
 import { RequestNarrativeFields } from "@/features/request/RequestNarrativeFields";
 import { SQLEditor } from "@/features/request/SQLEditor";
 import { ParamEditor } from "@/features/request/ParamEditor";
@@ -44,7 +54,6 @@ import { TextField, TextFieldLabel, TextFieldTextArea } from "@/shared/ui/text-f
 // The stand-in for "no request is open" — see current() below.
 const noRequest = create(AccessRequestSchema, {});
 
-
 /** Reads and reviews one request without replacing SQL edits during refresh. */
 export const RequestDetailsPanel: Component<{
   requestId: string;
@@ -55,7 +64,12 @@ export const RequestDetailsPanel: Component<{
   const [actionError, setActionError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
-  const [editDraft, setEditDraft] = createSignal<RequestDraft>({ title: "", body: "", sql: "", params: [] });
+  const [editDraft, setEditDraft] = createSignal<RequestDraft>({
+    title: "",
+    body: "",
+    sql: "",
+    params: [],
+  });
 
   const requestRead = createOpenFetch(
     () => getAccessRequest(props.requestId),
@@ -65,8 +79,14 @@ export const RequestDetailsPanel: Component<{
       setReason("");
       setRejectReasonError("");
     },
-    error => {
-      if (isAuthorizationRefusal(error)) { setDetail(); setEditing(false); setEditDraft({ title: "", body: "", sql: "", params: [] }); setReason(""); setBusy(false); }
+    (error) => {
+      if (isAuthorizationRefusal(error)) {
+        setDetail();
+        setEditing(false);
+        setEditDraft({ title: "", body: "", sql: "", params: [] });
+        setReason("");
+        setBusy(false);
+      }
       return errorMessage(error);
     },
   );
@@ -90,8 +110,19 @@ export const RequestDetailsPanel: Component<{
   onCleanup(() => requestRead.handleOpenChange(false));
   onMount(() => {
     // A finished request never changes again, so background refreshes stop once the loaded state is terminal.
-    const isStillChanging = () => detail() === undefined || isLiveRequestState(current().effectiveState);
-    const refreshIfIdle = () => { if (!document.hidden && isStillChanging() && !editing() && reason() === "" && !busy() && !requestRead.loading()) refresh(); };
+    const isStillChanging = () =>
+      detail() === undefined || isLiveRequestState(current().effectiveState);
+    const refreshIfIdle = () => {
+      if (
+        !document.hidden &&
+        isStillChanging() &&
+        !editing() &&
+        reason() === "" &&
+        !busy() &&
+        !requestRead.loading()
+      )
+        refresh();
+    };
     const timer = setInterval(refreshIfIdle, 30_000);
     window.addEventListener("online", refreshIfIdle);
     document.addEventListener("visibilitychange", refreshIfIdle);
@@ -135,9 +166,14 @@ export const RequestDetailsPanel: Component<{
     }
     await runAndRefresh(
       () =>
-        updateDraft(current().id, current().version, editDraft().sql, toTypedRequestParameters(editDraft()), editDraft().title, editDraft().body).then(
-          () => undefined,
-        ),
+        updateDraft(
+          current().id,
+          current().version,
+          editDraft().sql,
+          toTypedRequestParameters(editDraft()),
+          editDraft().title,
+          editDraft().body,
+        ).then(() => undefined),
       refresh,
     );
   };
@@ -158,149 +194,224 @@ export const RequestDetailsPanel: Component<{
   return (
     <section aria-label="Request details" class="flex min-w-0 flex-col gap-6">
       <header class="request-detail-header">
-        <A href="/requests" class="inline-flex rounded-md border bg-card px-3 py-2 text-sm underline-offset-4 hover:underline">Back to requests</A>
+        <A
+          href="/requests"
+          class="inline-flex rounded-md border bg-card px-3 py-2 text-sm underline-offset-4 hover:underline"
+        >
+          Back to requests
+        </A>
         <h1 class="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-2xl font-semibold">
           <span class="min-w-0 break-words">{current().title || "Untitled request"}</span>
-          <Badge variant={stateBadge(current().effectiveState)}>{stateLabel(current().effectiveState)}</Badge>
+          <Badge variant={stateBadge(current().effectiveState)}>
+            {stateLabel(current().effectiveState)}
+          </Badge>
         </h1>
-        <p class="text-sm text-muted-foreground">{current().connectionName} · requested by {actorLabel(current().requester)}</p>
+        <p class="text-sm text-muted-foreground">
+          {current().connectionName} · requested by {actorLabel(current().requester)}
+        </p>
         <p class="break-all font-mono text-xs text-muted-foreground">{props.requestId}</p>
       </header>
-      <Show when={requestRead.loading() && !detail()}><LoadingSkeleton label="Loading request…" /></Show>
-        {/* A failed background refresh reports above the details it could not replace; only a failed first read has nothing to keep. */}
-        <Show when={requestRead.error() !== ""}>
-          <Alert variant="destructive">
-            <AlertDescription>
-              <Show when={detail()} fallback={requestRead.error()}>
-                Refresh failed: {requestRead.error()} Showing the last loaded details.
+      <Show when={requestRead.loading() && !detail()}>
+        <LoadingSkeleton label="Loading request…" />
+      </Show>
+      {/* A failed background refresh reports above the details it could not replace; only a failed first read has nothing to keep. */}
+      <Show when={requestRead.error() !== ""}>
+        <Alert variant="destructive">
+          <AlertDescription>
+            <Show when={detail()} fallback={requestRead.error()}>
+              Refresh failed: {requestRead.error()} Showing the last loaded details.
+            </Show>
+          </AlertDescription>
+        </Alert>
+      </Show>
+      <Show when={detail()}>
+        <Show
+          when={!editing()}
+          fallback={
+            // Draft edit form (owner only): change the SQL/parameters and save the SAME draft — no new request is created (§4.4).
+            <form class="flex flex-col gap-4" onSubmit={(event) => event.preventDefault()}>
+              <RequestNarrativeFields
+                id="edit"
+                draft={editDraft()}
+                disabled={busy()}
+                onChange={setEditDraft}
+              />
+              <SQLEditor
+                id="edit-sql"
+                sql={editDraft().sql}
+                disabled={busy()}
+                onChange={(sql) => setEditDraft({ ...editDraft(), sql })}
+              />
+              <ParamEditor draft={editDraft()} onChange={setEditDraft} disabled={busy()} />
+              <Show when={actionError() !== ""}>
+                <Alert variant="destructive">
+                  <AlertDescription>{actionError()}</AlertDescription>
+                </Alert>
               </Show>
-            </AlertDescription>
-          </Alert>
-        </Show>
-          <Show when={detail()}>
+              <div class="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy()}
+                  onClick={() => {
+                    setEditing(false);
+                    refresh();
+                  }}
+                >
+                  Cancel edit
+                </Button>
+                <Button type="button" disabled={busy()} onClick={() => void saveEdit()}>
+                  Save draft
+                </Button>
+              </div>
+            </form>
+          }
+        >
           <Show
-            when={!editing()}
-            fallback={
-              // Draft edit form (owner only): change the SQL/parameters and save the SAME draft — no new request is created (§4.4).
-              <form class="flex flex-col gap-4" onSubmit={(event) => event.preventDefault()}>
-                <RequestNarrativeFields id="edit" draft={editDraft()} disabled={busy()} onChange={setEditDraft} />
-                <SQLEditor id="edit-sql" sql={editDraft().sql} disabled={busy()} onChange={sql => setEditDraft({ ...editDraft(), sql })} />
-                <ParamEditor draft={editDraft()} onChange={setEditDraft} disabled={busy()} />
-                <Show when={actionError() !== ""}>
-                  <Alert variant="destructive"><AlertDescription>{actionError()}</AlertDescription></Alert>
-                </Show>
-                <div class="flex justify-end gap-2">
-                  <Button type="button" variant="outline" disabled={busy()} onClick={() => { setEditing(false); refresh(); }}>
-                    Cancel edit
-                  </Button>
-                  <Button type="button" disabled={busy()} onClick={() => void saveEdit()}>
-                    Save draft
-                  </Button>
-                </div>
-              </form>
+            when={
+              isOwner() &&
+              hasPermission("requests.get") &&
+              isExecutionOutcomeState(current().effectiveState)
             }
           >
-          <Show when={isOwner() && hasPermission("requests.get") && isExecutionOutcomeState(current().effectiveState)}>
             <RequestExecutionSummary requestId={props.requestId} />
           </Show>
           <div class="request-review-layout">
-          <RequestEvidence request={current()} payload={detail()?.payload} />
-          <aside aria-label="Request actions" class="content-surface decision-panel">
-            <div class="request-section-heading">
-              <div class="page-eyebrow">Next action</div>
-              <h2>Review and execution</h2>
-              <p>Current state: {stateLabel(current().effectiveState)}. {current().validApprovals} / {current().requiredApprovals} valid approvals.</p>
-            </div>
-            <Show when={canDecide()}><p class="text-sm text-muted-foreground">Review the target and SQL before deciding. Approval does not execute the statement.</p></Show>
-            <Show when={canDecide()}>
-              <TextField>
-                <TextFieldLabel for="decision-reason">Reason (required to reject)</TextFieldLabel>
-                {/* Clamped in code points, not with maxLength: the DOM counts UTF-16 code units, so maxLength would stop the user at half the server's allowance for emoji (see entities/request/reason). */}
-                <TextFieldTextArea
-                  id="decision-reason"
-                  value={reason()}
-                  disabled={busy()}
-                  aria-invalid={rejectReasonError() !== ""}
-                  aria-describedby={rejectReasonError() !== "" ? "decision-reason-error" : undefined}
-                  onInput={(event) => {
-                    requestRead.handleOpenChange(false);
-                    setRejectReasonError("");
-                    setReason(truncateReasonCodePoints(event.currentTarget.value, instanceConfig()?.maxApprovalReasonChars));
-                  }}
-                />
-                <Show when={rejectReasonError() !== ""}>
-                  <p id="decision-reason-error" class="text-xs text-destructive">{rejectReasonError()}</p>
-                </Show>
-                <Show when={instanceConfig()?.maxApprovalReasonChars !== undefined}>
-                  <p class="text-xs text-muted-foreground">
-                    {countReasonCodePoints(reason())} / {instanceConfig()?.maxApprovalReasonChars}
-                  </p>
-                </Show>
-              </TextField>
-            </Show>
+            <RequestEvidence request={current()} payload={detail()?.payload} />
+            <aside aria-label="Request actions" class="content-surface decision-panel">
+              <div class="request-section-heading">
+                <div class="page-eyebrow">Next action</div>
+                <h2>Review and execution</h2>
+                <p>
+                  Current state: {stateLabel(current().effectiveState)}. {current().validApprovals}{" "}
+                  / {current().requiredApprovals} valid approvals.
+                </p>
+              </div>
+              <Show when={canDecide()}>
+                <p class="text-sm text-muted-foreground">
+                  Review the target and SQL before deciding. Approval does not execute the
+                  statement.
+                </p>
+              </Show>
+              <Show when={canDecide()}>
+                <TextField>
+                  <TextFieldLabel for="decision-reason">Reason (required to reject)</TextFieldLabel>
+                  {/* Clamped in code points, not with maxLength: the DOM counts UTF-16 code units, so maxLength would stop the user at half the server's allowance for emoji (see entities/request/reason). */}
+                  <TextFieldTextArea
+                    id="decision-reason"
+                    value={reason()}
+                    disabled={busy()}
+                    aria-invalid={rejectReasonError() !== ""}
+                    aria-describedby={
+                      rejectReasonError() !== "" ? "decision-reason-error" : undefined
+                    }
+                    onInput={(event) => {
+                      requestRead.handleOpenChange(false);
+                      setRejectReasonError("");
+                      setReason(
+                        truncateReasonCodePoints(
+                          event.currentTarget.value,
+                          instanceConfig()?.maxApprovalReasonChars,
+                        ),
+                      );
+                    }}
+                  />
+                  <Show when={rejectReasonError() !== ""}>
+                    <p id="decision-reason-error" class="text-xs text-destructive-text">
+                      {rejectReasonError()}
+                    </p>
+                  </Show>
+                  <Show when={instanceConfig()?.maxApprovalReasonChars !== undefined}>
+                    <p class="text-xs text-muted-foreground">
+                      {countReasonCodePoints(reason())} / {instanceConfig()?.maxApprovalReasonChars}
+                    </p>
+                  </Show>
+                </TextField>
+              </Show>
 
-            <Show when={actionError() !== ""}>
-              <Alert variant="destructive"><AlertDescription>{actionError()}</AlertDescription></Alert>
-            </Show>
+              <Show when={actionError() !== ""}>
+                <Alert variant="destructive">
+                  <AlertDescription>{actionError()}</AlertDescription>
+                </Alert>
+              </Show>
 
-            <RequestRowActions request={current()} onChanged={refresh} executionOnly />
-            <div class="decision-buttons">
-              <Show when={showEditDraft()}>
-                <Button variant="outline" disabled={busy()} onClick={startEditing}>
-                  Edit draft
-                </Button>
-              </Show>
-              <Show when={showApprove()}>
-                <Button
-                  disabled={busy()}
-                  onClick={() => void runAndRefresh(() => approveAccessRequest(current().id, reason()), refresh)}
-                >
-                  Approve
-                </Button>
-              </Show>
-              <Show when={showReject()}>
-                <Button
-                  variant="destructive"
-                  disabled={busy()}
-                  onClick={() => {
-                    const problem = validateRejectReason(reason());
-                    setRejectReasonError(problem);
-                    if (problem !== "") return;
-                    void runAndRefresh(() => rejectAccessRequest(current().id, reason()), refresh);
-                  }}
-                >
-                  Reject
-                </Button>
-              </Show>
-              <Show when={showCancel()}>
-                <Button
-                  variant="outline"
-                  disabled={busy()}
-                  onClick={() => void runAndRefresh(() => cancelAccessRequest(current().id), refresh)}
-                >
-                  Cancel request
-                </Button>
-              </Show>
-              {/* The draft's way forward. Submitting uses the version the server last returned, so a draft edited elsewhere conflicts here instead of overwriting that edit. */}
-              <Show when={showSubmitDraft()}>
-                <Button
-                  disabled={busy()}
-                  onClick={() =>
-                    void runAndRefresh(
-                      () => submitAccessRequest(current().id, current().version),
-                      refresh,
-                    )
-                  }
-                >
-                  Submit
-                </Button>
-              </Show>
-            </div>
-            <A href="/requests" class="text-sm text-muted-foreground underline underline-offset-4">Return to request list</A>
-          </aside>
+              <RequestRowActions request={current()} onChanged={refresh} executionOnly />
+              <div class="decision-buttons">
+                <Show when={showEditDraft()}>
+                  <Button size="lg" variant="outline" disabled={busy()} onClick={startEditing}>
+                    Edit draft
+                  </Button>
+                </Show>
+                <Show when={showApprove()}>
+                  <Button
+                    size="lg"
+                    disabled={busy()}
+                    onClick={() =>
+                      void runAndRefresh(
+                        () => approveAccessRequest(current().id, reason()),
+                        refresh,
+                      )
+                    }
+                  >
+                    Approve
+                  </Button>
+                </Show>
+                <Show when={showReject()}>
+                  <Button
+                    size="lg"
+                    variant="destructive"
+                    disabled={busy()}
+                    onClick={() => {
+                      const problem = validateRejectReason(reason());
+                      setRejectReasonError(problem);
+                      if (problem !== "") return;
+                      void runAndRefresh(
+                        () => rejectAccessRequest(current().id, reason()),
+                        refresh,
+                      );
+                    }}
+                  >
+                    Reject
+                  </Button>
+                </Show>
+                <Show when={showCancel()}>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    disabled={busy()}
+                    onClick={() =>
+                      void runAndRefresh(() => cancelAccessRequest(current().id), refresh)
+                    }
+                  >
+                    Cancel request
+                  </Button>
+                </Show>
+                {/* The draft's way forward. Submitting uses the version the server last returned, so a draft edited elsewhere conflicts here instead of overwriting that edit. */}
+                <Show when={showSubmitDraft()}>
+                  <Button
+                    size="lg"
+                    disabled={busy()}
+                    onClick={() =>
+                      void runAndRefresh(
+                        () => submitAccessRequest(current().id, current().version),
+                        refresh,
+                      )
+                    }
+                  >
+                    Submit
+                  </Button>
+                </Show>
+              </div>
+              <A
+                href="/requests"
+                class="text-sm text-muted-foreground underline underline-offset-4"
+              >
+                Return to request list
+              </A>
+            </aside>
           </div>
-          </Show>
-          </Show>
+        </Show>
+      </Show>
     </section>
   );
 };

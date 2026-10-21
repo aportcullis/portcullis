@@ -1,53 +1,66 @@
 /* Project-owned design values. Edit these to restyle the UI without changing workflows.
  * Color theme adapted from solid-ui (MIT, ADR-0013). */
 :root {
+  --control-height-sm: 2.25rem;
+  --control-height: 2.5rem;
+  --control-height-lg: 2.75rem;
   --radius: 0.625rem;
   --content-width: 72rem;
   --page-padding: 1.5rem;
   --section-gap: 1.5rem;
   --header-padding: 0.75rem;
-  --ui-font: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --code-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --background: oklch(0.978 0.004 180);
-  --foreground: oklch(0.26 0.025 230);
+  --ui-font:
+    ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji";
+  --code-font:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  --background: oklch(0.978 0.004 220);
+  --foreground: oklch(0.26 0.022 220);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: var(--foreground);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: var(--foreground);
   --primary: oklch(0.43 0.072 190);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.955 0.005 180);
-  --muted-foreground: oklch(0.47 0.017 230);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --secondary: oklch(0.965 0.004 220);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.955 0.005 220);
+  --muted-foreground: oklch(0.47 0.017 220);
+  --accent: oklch(0.94 0.006 220);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.54 0.15 27);
+  --destructive-hover: oklch(0.48 0.14 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --destructive-text: oklch(0.5 0.14 27);
+  --destructive-surface: oklch(0.97 0.015 27);
+  --border: oklch(0.92 0.007 220);
+  --input: oklch(0.55 0.017 220);
   --ring: oklch(0.48 0.075 190);
 }
 
 .dark,
 [data-kb-theme="dark"] {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --background: oklch(0.17 0.012 220);
+  --foreground: oklch(0.95 0.006 220);
+  --card: oklch(0.21 0.014 220);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.69 0.085 190);
+  --primary-foreground: oklch(0.22 0.035 190);
+  --secondary: oklch(0.27 0.014 220);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.25 0.014 220);
+  --muted-foreground: oklch(0.75 0.015 220);
+  --accent: oklch(0.3 0.014 220);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.5 0.13 27);
+  --destructive-hover: oklch(0.46 0.13 27);
+  --destructive-foreground: oklch(0.985 0.005 27);
+  --destructive-text: oklch(0.75 0.12 27);
+  --destructive-surface: oklch(0.24 0.035 27);
+  --border: oklch(0.31 0.015 220);
+  --input: oklch(0.62 0.015 220);
+  --ring: oklch(0.69 0.085 190);
 }

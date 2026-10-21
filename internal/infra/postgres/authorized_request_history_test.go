@@ -68,7 +68,7 @@ func TestAuthorizedRequestHistoryBeyondCandidateBudget(t *testing.T) {
 			if scenario == "binding overflow" {
 				seedHistoryBindingOverflow(t, environment, principal)
 			}
-			store, err := pg.NewAuthorizedAccessRequestStore(environment.pool, activePolicyFixtureWithReads(t, environment.pool, settings), environment.org)
+			store, err := pg.NewAuthorizedAccessRequestStore(environment.pool, historyPolicyFixtureWithReads(t, environment.pool, settings), environment.org)
 			if err != nil {
 				t.Fatal(err)
 			}

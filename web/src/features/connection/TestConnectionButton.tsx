@@ -30,7 +30,11 @@ export const TestConnectionButton: Component<{ id: string }> = (props) => {
       </Button>
       <Show when={result()}>
         {(testResult) => (
-          <span class={testResult().ok ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
+          <span
+            class={
+              testResult().ok ? "text-sm text-muted-foreground" : "text-sm text-destructive-text"
+            }
+          >
             {testResult().ok ? "OK" : testResult().message}
           </span>
         )}

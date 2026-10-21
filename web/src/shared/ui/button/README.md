@@ -2,6 +2,8 @@
 
 Buttons expose default, destructive, outline, secondary, ghost and link variants; sizes are default, sm, lg and icon. Give icon-only controls an accessible name. Use destructive styling only for risky actions. Specify type="button" for non-submit actions inside forms.
 
+Heights share the control theme tokens: sm 36px, default 40px, lg 44px and icon 40px square. Keyboard focus uses the application base outline; destructive fill/foreground are separate from error text.
+
 ## Use
 
 ```tsx

@@ -43,7 +43,8 @@ export const EditPolicyPanel: Component<{
 
   // A response without a policy is a failed read, so the panel shows its error and Retry rather than an empty body.
   const policyRead = createOpenFetch(
-    async () => requireReturnedPolicy(await policiesClient.get({ connectionId: props.target?.id ?? "" })),
+    async () =>
+      requireReturnedPolicy(await policiesClient.get({ connectionId: props.target?.id ?? "" })),
     (policy) => {
       const current = fromPolicy(policy);
       setOpenedFrom(current);
@@ -88,7 +89,9 @@ export const EditPolicyPanel: Component<{
   };
 
   const patchRule = (key: StatementClassKey, patch: Partial<PolicyDraft["read"]>) => {
-    setDraft((current) => (current ? { ...current, [key]: { ...current[key], ...patch } } : current));
+    setDraft((current) =>
+      current ? { ...current, [key]: { ...current[key], ...patch } } : current,
+    );
   };
 
   const submit = async (event: SubmitEvent) => {
@@ -142,7 +145,9 @@ export const EditPolicyPanel: Component<{
     if (refreshed.status === "superseded") return;
     if (refreshed.status === "failed") {
       // Report the refusal AND why the retry path is closed — the token in the draft is still the stale one, so "save again" would conflict again.
-      policyRead.setError(conflictMessage({ status: "stale", reason: errorMessage(refreshed.error) }));
+      policyRead.setError(
+        conflictMessage({ status: "stale", reason: errorMessage(refreshed.error) }),
+      );
       return;
     }
     const fresh = fromPolicy(refreshed.value);
@@ -158,148 +163,169 @@ export const EditPolicyPanel: Component<{
 
   onCleanup(() => policyRead.handleOpenChange(false));
   return (
-    <InlinePanel open={props.target !== undefined} label="Execution policy" onClose={() => handleOpenChange(false)}>
-
-        <header>
-          <h2 class="text-xl font-semibold">Execution policy — “{props.target?.displayName ?? ""}”</h2>
-          <p class="text-sm text-muted-foreground">
-            Which statement classes may run here and how many approvals each needs. Saving creates a
-            new policy version; requests pin the version they were approved under.
-          </p>
-        </header>
-        <Show when={policyRead.loading()}>
-          <p role="status" class="text-sm text-muted-foreground">Loading policy…</p>
-        </Show>
-        {/* Without a draft there is no form to carry the error, so a failed initial read reports here with its own retry. */}
-        <Show when={!draft() && !policyRead.loading() && policyRead.error() !== ""}>
-          <Alert variant="destructive">
-            <AlertDescription class="flex items-center justify-between gap-3">
-              <span>{policyRead.error()}</span>
-              <Button type="button" variant="outline" size="sm" onClick={() => policyRead.handleOpenChange(true)}>
-                Retry
-              </Button>
-            </AlertDescription>
-          </Alert>
-        </Show>
-        <Show when={draft()}>
-          {(form) => (
-            <form class="flex flex-col gap-4" noValidate onSubmit={submit}>
-              {/* noValidate: the numeric min/max attributes are hints only — the browser's native constraint UI would otherwise swallow the submit and our validate() messages (the tested contract, mirroring the server bounds) would never render. */}
-              <div class="flex flex-col gap-3">
-                <For each={STATEMENT_CLASSES}>
-                  {(cls) => (
-                    <div class="flex items-end justify-between gap-4">
-                      <label class="flex items-center gap-2 text-sm font-medium leading-none">
-                        <input
-                          type="checkbox"
-                          checked={form()[cls.key].allowed}
-                          onChange={(event) => patchRule(cls.key, { allowed: event.currentTarget.checked })}
-                        />
-                        Allow {cls.label}
-                      </label>
-                      <TextField class="w-40">
-                        <TextFieldLabel for={`policy-${cls.key}-approvals`}>
-                          {cls.label} approvals
-                        </TextFieldLabel>
-                        <TextFieldInput
-                          id={`policy-${cls.key}-approvals`}
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={form()[cls.key].requiredApprovals}
-                          onInput={(event) =>
-                            patchRule(cls.key, { requiredApprovals: event.currentTarget.valueAsNumber })
-                          }
-                        />
-                      </TextField>
-                    </div>
-                  )}
-                </For>
-              </div>
-
-              <div class="grid grid-cols-3 gap-3">
-                <TextField>
-                  <TextFieldLabel for="policy-timeout">Timeout (s)</TextFieldLabel>
-                  <TextFieldInput
-                    id="policy-timeout"
-                    type="number"
-                    min="1"
-                    max="300"
-                    value={form().queryTimeoutSeconds}
-                    onInput={(event) =>
-                      setDraft((cur) =>
-                        cur ? { ...cur, queryTimeoutSeconds: event.currentTarget.valueAsNumber } : cur,
-                      )
-                    }
-                  />
-                </TextField>
-                <TextField>
-                  <TextFieldLabel for="policy-rows">Max rows</TextFieldLabel>
-                  <TextFieldInput
-                    id="policy-rows"
-                    type="number"
-                    min="1"
-                    max="10000"
-                    value={form().maxRows}
-                    onInput={(event) =>
-                      setDraft((cur) => (cur ? { ...cur, maxRows: event.currentTarget.valueAsNumber } : cur))
-                    }
-                  />
-                </TextField>
-                <TextField>
-                  <TextFieldLabel for="policy-bytes">Max result (MiB)</TextFieldLabel>
-                  <TextFieldInput
-                    id="policy-bytes"
-                    type="number"
-                    min="1"
-                    max="64"
-                    value={maxResultInput()}
-                    aria-invalid={maxResultError() !== ""}
-                    aria-describedby={maxResultError() !== "" ? "policy-bytes-error" : undefined}
-                    onInput={(event) => {
-                      setMaxResultInput(event.currentTarget.value);
-                      setMaxResultError("");
-                    }}
-                  />
-                  <Show when={maxResultError() !== ""}>
-                    <p id="policy-bytes-error" class="text-xs text-destructive">{maxResultError()}</p>
-                  </Show>
-                </TextField>
-              </div>
-
-              {/* Show's callback narrows the accessor for us, so the warning reads the classes once and needs no non-null assertion. */}
-              <Show when={newlyEnabled(openedFrom(), form())}>
-                {(classes) => (
-                  <Alert variant="destructive">
-                    <AlertDescription>
-                      Enabling {classes().join(" and ")} allows statements that can modify this
-                      database. The change is recorded in the audit trail.
-                    </AlertDescription>
-                  </Alert>
+    <InlinePanel
+      open={props.target !== undefined}
+      label="Execution policy"
+      onClose={() => handleOpenChange(false)}
+    >
+      <header>
+        <h2 class="text-xl font-semibold">
+          Execution policy — “{props.target?.displayName ?? ""}”
+        </h2>
+        <p class="text-sm text-muted-foreground">
+          Which statement classes may run here and how many approvals each needs. Saving creates a
+          new policy version; requests pin the version they were approved under.
+        </p>
+      </header>
+      <Show when={policyRead.loading()}>
+        <p role="status" class="text-sm text-muted-foreground">
+          Loading policy…
+        </p>
+      </Show>
+      {/* Without a draft there is no form to carry the error, so a failed initial read reports here with its own retry. */}
+      <Show when={!draft() && !policyRead.loading() && policyRead.error() !== ""}>
+        <Alert variant="destructive">
+          <AlertDescription class="flex items-center justify-between gap-3">
+            <span>{policyRead.error()}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => policyRead.handleOpenChange(true)}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </Show>
+      <Show when={draft()}>
+        {(form) => (
+          <form class="flex flex-col gap-4" noValidate onSubmit={submit}>
+            {/* noValidate: the numeric min/max attributes are hints only — the browser's native constraint UI would otherwise swallow the submit and our validate() messages (the tested contract, mirroring the server bounds) would never render. */}
+            <div class="flex flex-col gap-3">
+              <For each={STATEMENT_CLASSES}>
+                {(cls) => (
+                  <div class="flex items-end justify-between gap-4">
+                    <label class="flex items-center gap-2 text-sm font-medium leading-none">
+                      <input
+                        type="checkbox"
+                        checked={form()[cls.key].allowed}
+                        onChange={(event) =>
+                          patchRule(cls.key, { allowed: event.currentTarget.checked })
+                        }
+                      />
+                      Allow {cls.label}
+                    </label>
+                    <TextField class="w-40">
+                      <TextFieldLabel for={`policy-${cls.key}-approvals`}>
+                        {cls.label} approvals
+                      </TextFieldLabel>
+                      <TextFieldInput
+                        id={`policy-${cls.key}-approvals`}
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={form()[cls.key].requiredApprovals}
+                        onInput={(event) =>
+                          patchRule(cls.key, {
+                            requiredApprovals: event.currentTarget.valueAsNumber,
+                          })
+                        }
+                      />
+                    </TextField>
+                  </div>
                 )}
-              </Show>
-              <Show when={autoApproveClasses(form()).length > 0}>
-                <Alert>
+              </For>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+              <TextField>
+                <TextFieldLabel for="policy-timeout">Timeout (s)</TextFieldLabel>
+                <TextFieldInput
+                  id="policy-timeout"
+                  type="number"
+                  min="1"
+                  max="300"
+                  value={form().queryTimeoutSeconds}
+                  onInput={(event) =>
+                    setDraft((cur) =>
+                      cur
+                        ? { ...cur, queryTimeoutSeconds: event.currentTarget.valueAsNumber }
+                        : cur,
+                    )
+                  }
+                />
+              </TextField>
+              <TextField>
+                <TextFieldLabel for="policy-rows">Max rows</TextFieldLabel>
+                <TextFieldInput
+                  id="policy-rows"
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value={form().maxRows}
+                  onInput={(event) =>
+                    setDraft((cur) =>
+                      cur ? { ...cur, maxRows: event.currentTarget.valueAsNumber } : cur,
+                    )
+                  }
+                />
+              </TextField>
+              <TextField>
+                <TextFieldLabel for="policy-bytes">Max result (MiB)</TextFieldLabel>
+                <TextFieldInput
+                  id="policy-bytes"
+                  type="number"
+                  min="1"
+                  max="64"
+                  value={maxResultInput()}
+                  aria-invalid={maxResultError() !== ""}
+                  aria-describedby={maxResultError() !== "" ? "policy-bytes-error" : undefined}
+                  onInput={(event) => {
+                    setMaxResultInput(event.currentTarget.value);
+                    setMaxResultError("");
+                  }}
+                />
+                <Show when={maxResultError() !== ""}>
+                  <p id="policy-bytes-error" class="text-xs text-destructive-text">
+                    {maxResultError()}
+                  </p>
+                </Show>
+              </TextField>
+            </div>
+
+            {/* Show's callback narrows the accessor for us, so the warning reads the classes once and needs no non-null assertion. */}
+            <Show when={newlyEnabled(openedFrom(), form())}>
+              {(classes) => (
+                <Alert variant="destructive">
                   <AlertDescription>
-                    {autoApproveClasses(form()).join(", ")}: 0 approvals means requests are
-                    auto-approved by the system — still fully audited.
+                    Enabling {classes().join(" and ")} allows statements that can modify this
+                    database. The change is recorded in the audit trail.
                   </AlertDescription>
                 </Alert>
-              </Show>
-              <Show when={policyRead.error() !== ""}>
-                <Alert variant="destructive">
-                  <AlertDescription>{policyRead.error()}</AlertDescription>
-                </Alert>
-              </Show>
-              <div class="flex justify-end">
-                <Button type="submit" disabled={saving()}>
-                  Save policy
-                </Button>
-              </div>
-            </form>
-          )}
-        </Show>
-
+              )}
+            </Show>
+            <Show when={autoApproveClasses(form()).length > 0}>
+              <Alert>
+                <AlertDescription>
+                  {autoApproveClasses(form()).join(", ")}: 0 approvals means requests are
+                  auto-approved by the system — still fully audited.
+                </AlertDescription>
+              </Alert>
+            </Show>
+            <Show when={policyRead.error() !== ""}>
+              <Alert variant="destructive">
+                <AlertDescription>{policyRead.error()}</AlertDescription>
+              </Alert>
+            </Show>
+            <div class="flex justify-end">
+              <Button type="submit" disabled={saving()}>
+                Save policy
+              </Button>
+            </div>
+          </form>
+        )}
+      </Show>
     </InlinePanel>
   );
 };

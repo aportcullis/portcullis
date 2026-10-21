@@ -25,7 +25,7 @@ export const LogoutButton: Component = () => {
         Sign out
       </Button>
       <Show when={error() !== ""}>
-        <p class="text-sm text-destructive">{error()}</p>
+        <p class="text-sm text-destructive-text">{error()}</p>
       </Show>
     </div>
   );

@@ -16,6 +16,7 @@ Import from a component directory, for example `import { Button } from "@/shared
 
 | Family | Purpose |
 |---|---|
+| [control](control/README.md) | Shared native input/select geometry |
 | [button](button/README.md) | Actions, variants and sizes |
 | [badge](badge/README.md) | Short status labels |
 | [avatar](avatar/README.md) | Stable local default profile images |

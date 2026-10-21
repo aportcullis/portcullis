@@ -57,7 +57,7 @@ func TestAuthorizedHistoryKeepsOneSnapshotAcrossBatches(t *testing.T) {
 					changed = true
 				}
 			})
-			policy := activePolicyFixtureWithReads(t, environment.pool, settings)
+			policy := historyPolicyFixtureWithReads(t, environment.pool, settings)
 			if kind == "audit" {
 				var count int64
 				if err := environment.pool.QueryRow(ctx, `select count(*) from public.audit_events where organization_id=$1`, environment.org).Scan(&count); err != nil {
@@ -178,7 +178,7 @@ func TestAuthorizedHistoryCancellationDiscardsCompletedBatches(t *testing.T) {
 			})
 			settings := authz.DefaultReadConfig()
 			settings.MaxCandidates = 1
-			policy := activePolicyFixtureWithReads(t, environment.pool, settings)
+			policy := historyPolicyFixtureWithReads(t, environment.pool, settings)
 			var readError error
 			if kind == "audit" {
 				store, err := pg.NewAuthorizedAuditStore(pool, policy, environment.org)

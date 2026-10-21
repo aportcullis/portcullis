@@ -552,6 +552,8 @@ Per [ADR-0009](../adr/0009-audit-integrity.md), [ADR-0016](../adr/0016-sql-redac
 
 ### 7.1 Results and pagination
 
+- Use consistent semantic colors in light and dark themes, readable error text independent of destructive button fills, visible keyboard focus and identifiable input boundaries. Require enabled ordinary text contrast of at least 4.5:1 and necessary control/focus contrast of 3:1; preserve text labels and error messages. Share 36/40/44 CSS-pixel compact/default/large control heights across buttons, single-line inputs and native selects, with 40-pixel form defaults and at least 24-by-24-pixel hit targets. Retain multiline textareas, disabled/pending behavior, 320-pixel reflow and existing authorization/state lifetimes (ADR-0076).
+
 - Use reloadable pages with browser history/back links for creation, review, policies and results; reserve modal confirmation for risky/destructive actions. Login returns to a safe same-origin requested page.
 - Preserve typed SQL, reasons and last loaded data during refresh; clear data on principal/permission changes. Save draft and Submit are explicit, and navigation never silently saves plaintext or executes SQL.
   - When only the organization authorization revision changes and the current user and complete advisory authority remain identical, retain locally authored creation inputs and narrow creation/setup-delivery receipts in the current route’s memory (ADR-0075).

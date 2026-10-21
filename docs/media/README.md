@@ -18,7 +18,7 @@ These assets show the actual embedded SPA and Go server with synthetic data in a
 | `workflow.gif` | Request → distinct approval → single-use execution |
 | `results.gif` | Page → sort → filter → prepare the whole-snapshot CSV |
 
-The `production` label is illustrative: both targets connect to the disposable database. The reviewer is provisioned directly in that fixture because the user-management UI is not yet implemented and remains M1 scope.
+The `production` label is illustrative: both targets connect to the disposable database. The reviewer is provisioned directly with independent membership and an unconditional approver Binding in the owned capture fixture.
 The CSV sequence checks the downloaded file contains all 30 synthetic rows despite filtering down to 10. The final frame shows the prepared download link; see the [M1 validation record](../milestones/m1/validation.md) for browser download verification.
 
 ## Reproduce

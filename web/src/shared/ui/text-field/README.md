@@ -2,6 +2,8 @@
 
 Keep labels, description, input and error within the same Kobalte TextField root for accessible associations. TextFieldInput defaults to type="text". Use validationState="invalid" on the root for invalid input; business validation belongs to the caller.
 
+Use controlSize="sm" | "default" | "lg" for 36/40/44px single-line presentation; the native numeric size attribute remains available. Textareas stay multiline. Invalid text and borders use the readable destructive-text token, and keyboard focus uses the application base outline.
+
 ## Use
 
 ```tsx

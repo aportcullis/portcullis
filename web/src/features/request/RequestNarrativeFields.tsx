@@ -1,3 +1,4 @@
+import { nativeControlVariants } from "@/shared/ui/control";
 import type { Component } from "solid-js";
 import { Show } from "solid-js";
 
@@ -13,21 +14,35 @@ export const RequestNarrativeFields: Component<{
 }> = (props) => (
   <>
     <div class="flex flex-col gap-1">
-      <label class="text-sm font-medium" for={`${props.id}-title`}>Title</label>
+      <label class="text-sm font-medium" for={`${props.id}-title`}>
+        Title
+      </label>
       <input
         id={`${props.id}-title`}
         required
-        class="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        class={nativeControlVariants({ class: "w-full" })}
         value={props.draft.title}
         disabled={props.disabled}
         aria-describedby={`${props.id}-title-help`}
-        onInput={event => props.onChange({ ...props.draft, title: event.currentTarget.value })}
+        onInput={(event) => props.onChange({ ...props.draft, title: event.currentTarget.value })}
         placeholder="Describe the work you want reviewed"
       />
-      <p id={`${props.id}-title-help`} class="text-xs text-muted-foreground">Visible in the request list. Do not include secrets.<Show when={instanceConfig()?.maxRequestTitleChars}>{limit => <> {[...props.draft.title.trim()].length} / {limit()} characters.</>}</Show></p>
+      <p id={`${props.id}-title-help`} class="text-xs text-muted-foreground">
+        Visible in the request list. Do not include secrets.
+        <Show when={instanceConfig()?.maxRequestTitleChars}>
+          {(limit) => (
+            <>
+              {" "}
+              {[...props.draft.title.trim()].length} / {limit()} characters.
+            </>
+          )}
+        </Show>
+      </p>
     </div>
     <div class="flex flex-col gap-1">
-      <label class="text-sm font-medium" for={`${props.id}-body`}>Body (optional)</label>
+      <label class="text-sm font-medium" for={`${props.id}-body`}>
+        Body (optional)
+      </label>
       <textarea
         id={`${props.id}-body`}
         rows={5}
@@ -35,10 +50,20 @@ export const RequestNarrativeFields: Component<{
         value={props.draft.body}
         disabled={props.disabled}
         aria-describedby={`${props.id}-body-help`}
-        onInput={event => props.onChange({ ...props.draft, body: event.currentTarget.value })}
+        onInput={(event) => props.onChange({ ...props.draft, body: event.currentTarget.value })}
         placeholder="Explain the purpose, expected impact and anything reviewers should check."
       />
-      <p id={`${props.id}-body-help`} class="text-xs text-muted-foreground">Plain text; only visible in authorized request details. Do not include secrets.<Show when={instanceConfig()?.maxRequestBodyChars}>{limit => <> {[...props.draft.body].length} / {limit()} characters.</>}</Show></p>
+      <p id={`${props.id}-body-help`} class="text-xs text-muted-foreground">
+        Plain text; only visible in authorized request details. Do not include secrets.
+        <Show when={instanceConfig()?.maxRequestBodyChars}>
+          {(limit) => (
+            <>
+              {" "}
+              {[...props.draft.body].length} / {limit()} characters.
+            </>
+          )}
+        </Show>
+      </p>
     </div>
   </>
 );

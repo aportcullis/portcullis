@@ -1,3 +1,4 @@
+import { nativeControlVariants } from "@/shared/ui/control";
 import type { Component } from "solid-js";
 import { For } from "solid-js";
 
@@ -21,7 +22,7 @@ export const DescriptorFields: Component<{
       </label>
       <select
         id={`${props.idPrefix}-environment`}
-        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        class={nativeControlVariants({ class: "w-full" })}
         disabled={props.disabled}
         value={props.environment}
         onChange={(e) => {

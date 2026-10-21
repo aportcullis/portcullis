@@ -35,13 +35,26 @@ export const RequestRowActions: Component<{
 
   const isOwner = () => {
     const principal = session();
-    return principal.status === "authenticated" && principal.user.id === props.request.requester?.id;
+    return (
+      principal.status === "authenticated" && principal.user.id === props.request.requester?.id
+    );
   };
-  const showSubmit = () => !props.executionOnly && maySubmitDraft(props.request, isOwner(), hasPermission);
-  const showCancel = () => !props.executionOnly && mayCancel(props.request, isOwner(), hasPermission);
-  const showExecute = () => isOwner() && hasPermission("requests.execute") && props.request.effectiveState === AccessRequestState.APPROVED;
-  const showStop = () => isOwner() && hasPermission("requests.execute") && props.request.effectiveState === AccessRequestState.EXECUTING;
-  const showResult = () => isOwner() && hasPermission("requests.get") && isExecutionOutcomeState(props.request.effectiveState);
+  const showSubmit = () =>
+    !props.executionOnly && maySubmitDraft(props.request, isOwner(), hasPermission);
+  const showCancel = () =>
+    !props.executionOnly && mayCancel(props.request, isOwner(), hasPermission);
+  const showExecute = () =>
+    isOwner() &&
+    hasPermission("requests.execute") &&
+    props.request.effectiveState === AccessRequestState.APPROVED;
+  const showStop = () =>
+    isOwner() &&
+    hasPermission("requests.execute") &&
+    props.request.effectiveState === AccessRequestState.EXECUTING;
+  const showResult = () =>
+    isOwner() &&
+    hasPermission("requests.get") &&
+    isExecutionOutcomeState(props.request.effectiveState);
 
   // Settles against the request ID rather than this component, which a list refresh may already have replaced; a changed authorization snapshot discards the outcome.
   const act = async (work: () => Promise<unknown>) => {
@@ -52,7 +65,8 @@ export const RequestRowActions: Component<{
       await work();
       if (sessionAuthorizationKey() === authorizationKey) rowActions.settle(requestId, attempt, "");
     } catch (error: unknown) {
-      if (sessionAuthorizationKey() === authorizationKey) rowActions.settle(requestId, attempt, errorMessage(error));
+      if (sessionAuthorizationKey() === authorizationKey)
+        rowActions.settle(requestId, attempt, errorMessage(error));
     }
   };
 
@@ -67,24 +81,51 @@ export const RequestRowActions: Component<{
     <Show when={showSubmit() || showCancel() || showExecute() || showStop() || showResult()}>
       <span class="inline-flex items-center gap-2">
         <Show when={showExecute()}>
-          <Button size="sm" disabled={actionState().busy} onClick={() => void act(async () => {
-            const authorizationKey = sessionAuthorizationKey();
-            try { await executionsClient.execute({ requestId: props.request.id }); }
-            finally { await refreshAfterExecution(authorizationKey); }
-          })}>Execute</Button>
+          <Button
+            size="sm"
+            disabled={actionState().busy}
+            onClick={() =>
+              void act(async () => {
+                const authorizationKey = sessionAuthorizationKey();
+                try {
+                  await executionsClient.execute({ requestId: props.request.id });
+                } finally {
+                  await refreshAfterExecution(authorizationKey);
+                }
+              })
+            }
+          >
+            Execute
+          </Button>
         </Show>
         <Show when={showStop()}>
-          <Button size="sm" variant="outline" disabled={actionState().busy} onClick={() => void act(async () => {
-            const authorizationKey = sessionAuthorizationKey();
-            await executionsClient.cancel({ requestId: props.request.id });
-            if (mounted && sessionAuthorizationKey() === authorizationKey) props.onChanged?.();
-          })}>Stop execution</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={actionState().busy}
+            onClick={() =>
+              void act(async () => {
+                const authorizationKey = sessionAuthorizationKey();
+                await executionsClient.cancel({ requestId: props.request.id });
+                if (mounted && sessionAuthorizationKey() === authorizationKey) props.onChanged?.();
+              })
+            }
+          >
+            Stop execution
+          </Button>
         </Show>
         <Show when={showResult()}>
-          <A class={buttonVariants({ size: "sm", variant: "outline" })} href={`/requests/${props.request.id}/result`}>Result</A>
+          <A
+            class={buttonVariants({ size: "sm", variant: "outline" })}
+            href={`/requests/${props.request.id}/result`}
+          >
+            Result
+          </A>
         </Show>
         <Show when={actionState().error !== ""}>
-          <span role="alert" class="text-sm text-destructive">{actionState().error}</span>
+          <span role="alert" class="text-sm text-destructive-text">
+            {actionState().error}
+          </span>
         </Show>
         <Show when={showSubmit()}>
           <Button

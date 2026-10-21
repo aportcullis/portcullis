@@ -94,3 +94,11 @@ Restyle owned primitives in `shared/ui`; assemble features in `pages`. Branding 
 For example, edit `--content-width: 80rem` and `--page-padding: 2rem` in `theme.css` to widen the application and add space. Set `--radius: 0.75rem` to adjust shared rounded controls. Edit the light and dark semantic colors together and check text, errors and focus visibility in both. Make every test pass before committing, including `make verify`'s web checks and all browser workflows.
 
 Use the [UX research and evaluation protocol](../design/ux-evidence.md) when changing workflow hierarchy. Loading skeletons use fixed decorative bars; keep paging, error and empty-state contracts independent of loading presentation.
+
+Single-line control presentation follows ADR-0076: share `shared/ui/control` geometry for native inputs/selects and Button/TextFieldInput sizes. Use semantic destructive-text/surface for errors independently of destructive action fills. Keep the common visible keyboard outline and 36/40/44px compact/default/large heights; features retain all labels, event parsing, validation, permission and lifetime ownership.
+
+Keep nested JSX readable across multiple lines. Give mutation sequences and nontrivial event handlers explicit names outside the markup, keep state operations on separate lines, and name compound visibility/disposal predicates by intent. Formatting must preserve labels, whitespace meaning, permission checks and asynchronous lifecycle fences.
+
+Reuse existing controls, styles and helpers before adding another implementation. Extract shared behavior only where callers have the same contract; keep permission and lifecycle ownership explicit. Define clear prop and boundary types, reuse generated/library types, and let local values infer their types from those contracts. Use runtime validation and narrowing instead of type assertions, including `as const`.
+
+Treat browser performance as part of review: avoid duplicate requests, unnecessary reactive effects and repeated expensive transformations. Share static presentation definitions outside component execution, preserve fine-grained updates and measure representative workflows before claiming a performance improvement. Abstraction must not introduce extra loading or broaden state retention.

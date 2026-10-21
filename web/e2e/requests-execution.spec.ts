@@ -3,10 +3,15 @@ import { expect, test } from "@playwright/test";
 import { signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
-test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({ page, context }) => {
+test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({
+  page,
+  context,
+}) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   let executionCalls = 0;
-  page.on("request", request => { if (request.url().endsWith(".QueryExecutions/Execute")) executionCalls++; });
+  page.on("request", (request) => {
+    if (request.url().endsWith(".QueryExecutions/Execute")) executionCalls++;
+  });
   await page.goto("/login");
   await signInForScenario(page, "admin@example.com", "correct-horse-battery");
   const target = await loadTarget();
@@ -28,7 +33,11 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await page.getByRole("button", { name: "New request" }).click();
   await page.getByLabel("Connection").selectOption({ label: "ExecutionTarget" });
   await page.getByLabel("Title", { exact: true }).fill("Query review");
-  await page.getByLabel("SQL", { exact: true }).fill("SELECT (9007199254740993::bigint + g) AS exact_value, ('=formula' || repeat('long-value-', 100))::text AS note, CASE WHEN g % 2 = 0 THEN '2026-10-03T00:00:00Z'::timestamptz ELSE '2026-10-03T00:00:00.5Z'::timestamptz END AS recorded_at FROM generate_series(1,25) AS g ORDER BY g ASC");
+  await page
+    .getByLabel("SQL", { exact: true })
+    .fill(
+      "SELECT (9007199254740993::bigint + g) AS exact_value, ('=formula' || repeat('long-value-', 100))::text AS note, CASE WHEN g % 2 = 0 THEN '2026-10-03T00:00:00Z'::timestamptz ELSE '2026-10-03T00:00:00.5Z'::timestamptz END AS recorded_at FROM generate_series(1,25) AS g ORDER BY g ASC",
+    );
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   const row = page.getByRole("region", { name: "Request details" });
   await expect(row.getByText("Approved", { exact: true })).toBeVisible();
@@ -42,7 +51,9 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   const recordedDuration = (await duration.textContent()) ?? "";
   expect(recordedDuration).not.toBe("");
   await page.reload();
-  await expect(row.getByLabel("Recorded execution time", { exact: true })).toHaveText(recordedDuration);
+  await expect(row.getByLabel("Recorded execution time", { exact: true })).toHaveText(
+    recordedDuration,
+  );
   await row.getByRole("link", { name: "Result", exact: true }).click();
   await expect(page).toHaveURL(/\/requests\/[0-9a-f-]+\/result$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -50,7 +61,9 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await expect(dialog.getByLabel("Sort by", { exact: true })).toHaveCount(0);
   await expect(dialog.getByLabel("Sort direction", { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("columnheader").filter({ hasText: /[↕↑↓]/ })).toHaveCount(0);
-  await expect(dialog.getByLabel("Recorded execution time", { exact: true })).toHaveText(recordedDuration);
+  await expect(dialog.getByLabel("Recorded execution time", { exact: true })).toHaveText(
+    recordedDuration,
+  );
   await expect(dialog.getByText("9007199254740994", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(dialog.getByText("9007199254741018", { exact: true })).toBeVisible();
@@ -58,31 +71,52 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await expect(dialog.getByRole("columnheader").filter({ hasText: "↑" })).toHaveCount(1);
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254741018");
-  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute("aria-sort", "descending");
+  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
   await expect(dialog.getByRole("columnheader").filter({ hasText: "↓" })).toHaveCount(1);
   await expect(dialog.getByRole("columnheader").filter({ hasText: "↑" })).toHaveCount(0);
   await expect(dialog.getByText(/25 rows · Page 1 of 2/)).toBeVisible();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
-  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).not.toHaveAttribute("aria-sort");
+  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).not.toHaveAttribute(
+    "aria-sort",
+  );
   await expect(dialog.getByRole("columnheader").filter({ hasText: /[↕↑↓]/ })).toHaveCount(0);
   await dialog.getByRole("button", { name: /recorded_at/ }).focus();
+  const ascendingRows = page.waitForResponse("**/portcullis.v1.QueryExecutions/GetResult");
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("columnheader", { name: /recorded_at/ })).toHaveAttribute("aria-sort", "ascending");
+  await ascendingRows;
+  await expect(dialog.getByRole("columnheader", { name: /recorded_at/ })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740995");
   await expect(dialog.getByRole("button", { name: /recorded_at/ })).toBeFocused();
+  const descendingRows = page.waitForResponse("**/portcullis.v1.QueryExecutions/GetResult");
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("columnheader", { name: /recorded_at/ })).toHaveAttribute("aria-sort", "descending");
+  await descendingRows;
+  await expect(dialog.getByRole("columnheader", { name: /recorded_at/ })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
-  await test.info().attach("Type-aware result sorting", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+  await test.info().attach("Type-aware result sorting", {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: "image/png",
+  });
   await dialog.getByRole("button", { name: /recorded_at/ }).click();
   await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
   await dialog.getByLabel("Filter results", { exact: true }).fill("9007199254740994");
   await dialog.getByRole("button", { name: "Filter results", exact: true }).click();
   await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
-  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute("aria-sort", "ascending");
+  await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
@@ -90,20 +124,44 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await expect(dialog.getByLabel("Text results")).toContainText("9007199254740994\t=formula");
   await expect(dialog.getByLabel("Text results")).not.toContainText("9007199254741018");
   for (const theme of ["light", "dark"]) {
-    await page.evaluate(dark => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+    await page.evaluate(
+      (dark) => document.documentElement.classList.toggle("dark", dark),
+      theme === "dark",
+    );
     for (const width of [320, 480, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width);
       const filterInput = dialog.getByLabel("Filter results", { exact: true });
       const inputBounds = await filterInput.boundingBox();
-      const buttonBounds = await dialog.getByRole("button", { name: "Filter results", exact: true }).boundingBox();
-      if (inputBounds === null || buttonBounds === null) throw new Error("Result filter controls have no layout box");
+      const buttonBounds = await dialog
+        .getByRole("button", { name: "Filter results", exact: true })
+        .boundingBox();
+      if (inputBounds === null || buttonBounds === null)
+        throw new Error("Result filter controls have no layout box");
       expect(inputBounds.height).toBe(buttonBounds.height);
       expect(inputBounds.width).toBeGreaterThanOrEqual(180);
-      await expect.poll(() => dialog.getByLabel("Text results").evaluate(element => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
-      await expect.poll(() => dialog.getByLabel("Text results").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await expect
+        .poll(() =>
+          dialog
+            .getByLabel("Text results")
+            .evaluate((element) => getComputedStyle(element).whiteSpace),
+        )
+        .toBe("pre-wrap");
+      await expect
+        .poll(() =>
+          dialog
+            .getByLabel("Text results")
+            .evaluate((element) => element.scrollWidth <= element.clientWidth),
+        )
+        .toBe(true);
       await expect(dialog.getByLabel("Text results")).toContainText("long-value-".repeat(100));
-      if (width === 320) await test.info().attach(`Narrow Text results ${theme}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+      if (width === 320)
+        await test.info().attach(`Narrow Text results ${theme}`, {
+          body: await page.screenshot({ fullPage: true }),
+          contentType: "image/png",
+        });
     }
   }
   await page.evaluate(() => document.documentElement.classList.remove("dark"));
@@ -114,9 +172,14 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   expect(copied).toContain("exact_value\tnote\trecorded_at");
   expect(copied).toContain("9007199254740994\t'=formula");
   expect(copied).not.toContain("9007199254741018");
-  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", {
-    configurable: true, value: async () => { throw new DOMException("Denied", "NotAllowedError"); },
-  }));
+  await page.evaluate(() =>
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: async () => {
+        throw new DOMException("Denied", "NotAllowedError");
+      },
+    }),
+  );
   await dialog.getByRole("button", { name: "Copy visible rows", exact: true }).click();
   await expect(dialog.getByText(/Clipboard access was denied or unavailable/)).toBeVisible();
   await dialog.getByRole("button", { name: "Table", exact: true }).click();
@@ -138,6 +201,8 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   if (csvStream) for await (const chunk of csvStream) contents += String(chunk);
   expect(contents).toContain("9007199254740994,'=formula");
   expect(contents).toContain("9007199254741018,'=formula");
-  expect(contents.indexOf("9007199254740994,'=formula")).toBeLessThan(contents.indexOf("9007199254741018,'=formula"));
+  expect(contents.indexOf("9007199254740994,'=formula")).toBeLessThan(
+    contents.indexOf("9007199254741018,'=formula"),
+  );
   expect(executionCalls).toBe(1);
 });

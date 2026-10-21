@@ -41,7 +41,7 @@ func TestAuthorizedAuditHistoryBeyondCandidateBudget(t *testing.T) {
 			if scenario == "binding overflow" {
 				seedHistoryBindingOverflow(t, environment, environment.admin.ID)
 			}
-			store, err := pg.NewAuthorizedAuditStore(environment.pool, activePolicyFixtureWithReads(t, environment.pool, settings), environment.org)
+			store, err := pg.NewAuthorizedAuditStore(environment.pool, historyPolicyFixtureWithReads(t, environment.pool, settings), environment.org)
 			if err != nil {
 				t.Fatal(err)
 			}

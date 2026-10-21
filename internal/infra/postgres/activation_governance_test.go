@@ -22,11 +22,23 @@ func activePolicyFixture(t *testing.T, pool *pgxpool.Pool) *pg.BindingPolicyEval
 // activePolicyFixtureWithReads qualifies finite scan budgets using the real condition adapter.
 func activePolicyFixtureWithReads(t *testing.T, pool *pgxpool.Pool, readSettings authz.ReadConfig) *pg.BindingPolicyEvaluator {
 	t.Helper()
+	return activePolicyFixtureWithLimits(t, pool, condition.DefaultConfig(), authz.DefaultResourceConfig(), readSettings)
+}
+
+// activePolicyFixtureWithLimits keeps functional fixture budgets explicit without changing runtime defaults.
+func activePolicyFixtureWithLimits(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	conditionSettings condition.Config,
+	resourceSettings authz.ResourceConfig,
+	readSettings authz.ReadConfig,
+) *pg.BindingPolicyEvaluator {
+	t.Helper()
 	adapter, err := celcondition.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	conditions, err := condition.New(adapter, adapter, condition.DefaultConfig())
+	conditions, err := condition.New(adapter, adapter, conditionSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +46,7 @@ func activePolicyFixtureWithReads(t *testing.T, pool *pgxpool.Pool, readSettings
 	if err != nil {
 		t.Fatal(err)
 	}
-	evaluator, err := pg.NewBindingPolicyEvaluator(conditions, catalog, authz.DefaultResourceConfig(), readSettings)
+	evaluator, err := pg.NewBindingPolicyEvaluator(conditions, catalog, resourceSettings, readSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
