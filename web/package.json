@@ -36,6 +36,6 @@
     "typescript": "7.0.2",
     "vite": "8.1.6",
     "vite-plugin-solid": "2.11.12",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }
