@@ -1,6 +1,6 @@
 # M1 progress
 
-**Status: In progress · scope reviewed 2026-10-24 · verification reviewed 2026-10-24.**
+**Status: In progress · scope reviewed 2026-10-24 · verification reviewed 2026-10-25.**
 Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in [validation.md](validation.md).
 
 ## Established implementation
@@ -21,6 +21,7 @@ Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in 
 - Request approval/rejection and quorum decisions now belong to the domain Request receiver, with current authority, canonical identities, database time, locking and audit retained in the transactional adapter. See the [decision ownership qualification](validation.md#request-approval-decision-ownership--2026-10-24).
 - Result exploration and CSV export now have their own frontend feature, share passive execution metrics through the request entity and compose colocated styles through source aliases. Existing protected response lifetimes remain intact; see the [source ownership qualification](validation.md#result-feature-source-ownership--2026-10-24).
 - Account identity, current scoped Binding summaries and sign-out now open from the avatar disclosure. Native keyboard exits and stable action ownership preserve focus, retry and session fencing; see the [account qualification](validation.md#account-disclosure-and-logout-lifetime--2026-10-24).
+- Release-source admission now requires fresh tag/event/checkout/release-tip agreement, pins all CI/publication checkouts to the admitted SHA and rechecks the raw tag object before publication. See the [source-admission qualification](validation.md#release-source-admission--2026-10-25).
 
 Per [ADR-0053](../../adr/0053-user-and-role-administration.md), user and role administration is M1 scope.
 Per [administration use cases](../../../internal/app/administration/users.go) and [administration persistence](../../../internal/infra/postgres/administration_store.go), backend components exist without establishing a complete administration UI.
@@ -51,6 +52,6 @@ The following entries record the historical preparation sequence through ADR-007
 
 [ADR-0075](../../adr/0075-local-draft-and-setup-receipt-lifetimes.md) separates route-owned creation inputs and setup delivery from revision-owned protected reads. Successful revision-only session refreshes retain local composition and creation/reissue receipts; identity/authority changes, admission refusal, session or metadata failures and route departure still discard them. Existing-resource edit drafts retain their conservative revision fence.
 
-The latest [account qualification](validation.md#account-disclosure-and-logout-lifetime--2026-10-24) passes both complete gates with 439 web unit scenarios, 152 real-binary browser scenarios and actual light/dark desktop/320-pixel QA. It includes current Binding summaries, native disclosure focus, pending/recovery lifetime and confirmed logout during metadata refresh. The [validation record](validation.md) retains earlier governance, activation, result/CSV, runtime validation, workspace and domain-decision qualifications and their observed red/green evidence.
+The latest [release-source qualification](validation.md#release-source-admission--2026-10-25) passes both complete gates with 439 web unit scenarios and 152 real-binary browser scenarios, alongside actual Git and CI-input checks. The preceding [account qualification](validation.md#account-disclosure-and-logout-lifetime--2026-10-24) also records light/dark desktop/320-pixel QA, native disclosure focus and confirmed logout during metadata refresh. The [validation record](validation.md) retains earlier governance, activation, result/CSV, runtime validation, workspace and domain-decision qualifications and their observed red/green evidence.
 
 Documentation/media refresh, release acceptance and final milestone qualification remain incomplete. Per [scope.md](scope.md), all acceptance criteria and both verification gates must pass before release readiness; these completed concerns do not establish M1 completion or capacity qualification.

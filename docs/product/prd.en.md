@@ -733,7 +733,7 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
 - Kubernetes deployment preserves secrets/keys, separates migration-owner/runtime credentials, verifies TLS, supports backup/restore and tolerates lost results without rerunning SQL.
 - M6 adds Terraform/OpenTofu after API stability and Gateway deployment after identity/masking acceptance. Kubernetes/CNPG availability alone does not establish application HA.
 - Tagged publication verifies functionality and dependency security, then publishes AMD64/ARM64 images with SBOM/provenance, full-version/commit tags, stable minor aliases and no implicit latest. Operators protect tags and pin production digests.
-- Release tags belong to the matching release branch, and publication promotes the verified image digest.
+- Release tags belong to the matching release branch, and publication promotes the verified image digest. At admission, the tag commit must equal the current release/vMAJOR.MINOR tip and the triggering commit. Pin verification and publication to that admitted source; refuse a deleted, moved or reannotated tag before publication. Branch advancement during an admitted run is allowed, while a new admission for an older tag after advancement refuses (ADR-0084).
 
 Per [M2 scope](../milestones/m2/scope.md), deployment completion criteria and sequencing are defined in the milestone document.
 Per [ADR-0035](../adr/0035-kubernetes-cnpg-after-mysql.md), [ADR-0042](../adr/0042-private-network-deployment.md), [ADR-0047](../adr/0047-tagged-container-publication.md), [ADR-0049](../adr/0049-multiarchitecture-container-builds.md) and [ADR-0054](../adr/0054-release-branches-and-documentation-policy.md), packaging, topology and release ownership are technical decisions.

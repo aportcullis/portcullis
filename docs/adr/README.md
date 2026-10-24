@@ -109,6 +109,7 @@ These decisions establish the Core 1 foundation.
 | [0081](0081-request-approval-decision-ownership.md) | Request approval and quorum decision ownership | Accepted |
 | [0082](0082-result-feature-source-ownership.md) | Result feature source ownership | Accepted |
 | [0083](0083-account-disclosure-and-action-lifetime.md) | Account disclosure and action lifetime | Accepted |
+| [0084](0084-release-source-admission.md) | Release source admission | Accepted |
 
 ## Template
 ```markdown

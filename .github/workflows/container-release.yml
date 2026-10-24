@@ -17,21 +17,30 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.admit.outputs.source_sha }}
+      tag_oid: ${{ steps.admit.outputs.tag_oid }}
+      release_branch: ${{ steps.admit.outputs.release_branch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate release tag
+          ref: ${{ github.sha }}
+      - name: Admit release source
+        id: admit
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: bash .github/scripts/validate-release-tag.sh "$RELEASE_TAG"
+          EVENT_COMMIT: ${{ github.sha }}
+        run: bash .github/scripts/validate-release-source.sh "$RELEASE_TAG" "$EVENT_COMMIT" >> "$GITHUB_OUTPUT"
 
   verify:
     needs: validate
     uses: ./.github/workflows/ci.yml
+    with:
+      source_sha: ${{ needs.validate.outputs.source_sha }}
 
   publish:
-    needs: verify
+    needs: [validate, verify]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,6 +49,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 0
       - name: Record release notes
         run: make --no-print-directory -s release-notes >> "$GITHUB_STEP_SUMMARY"
@@ -61,6 +71,12 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-,format=long
+      - name: Verify admitted release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          TAG_OID: ${{ needs.validate.outputs.tag_oid }}
+        run: bash .github/scripts/verify-release-source.sh "$RELEASE_TAG" "$SOURCE_SHA" "$TAG_OID"
       - name: Build and publish image
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -78,4 +94,11 @@ jobs:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          printf 'Published digest: `%s`\n\nTags:\n```\n%s\n```\n' "$IMAGE_DIGEST" "$IMAGE_TAGS" >> "$GITHUB_STEP_SUMMARY"
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          Published digest: \`$IMAGE_DIGEST\`
+
+          Tags:
+          \`\`\`
+          $IMAGE_TAGS
+          \`\`\`
+          EOF

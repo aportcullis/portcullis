@@ -170,6 +170,8 @@ clean-check:
 
 release-check:
 	bash tests/release/tags.sh
+	bash tests/release/ci-source-input.sh
+	bash tests/release/source.sh
 
 # Concurrent verify groups (ADR-0045).
 VERIFY_LOG_DIR ?= $(or $(TMPDIR),/tmp)/portcullis-verify

@@ -28,7 +28,7 @@ These improve existing M1 workflows, separate from M3 personalization and review
 - Result navigation bounds rendered rows and retained browser pages/bytes, supports forward/backward scrolling and keyboard access, and rejects stale responses after sort, filter, permission or route changes.
 - CSV dialogs offer equivalent authorized CSV through clipboard or download, enforce clipboard size limits and preserve download on clipboard denial.
 - Account menus and CSV export dialogs support keyboard interaction, focus return and 320 px layouts without changing session, CSRF or result ownership checks.
-- Release admission binds a tag to its release branch and publication promotes the verified image digest.
+- Release admission requires the tag, event commit and matching release-branch tip to agree, pins subsequent verification/publication to that source and refuses later tag replacement or deletion. Publication promotes the verified image digest (ADR-0084).
 - Build version appears only in startup logs; Health responses do not expose it.
 - Review findings, documentation and CHANGELOG are resolved, and both `make verify` and `make supply-chain` pass before release readiness.
 
