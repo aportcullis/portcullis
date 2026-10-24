@@ -51,22 +51,30 @@ test.describe.serial("auth vertical", () => {
     await expect(page).toHaveURL(/\/login$/);
     await signInForScenario(page, email, password);
     await expect(page).toHaveURL(/\/connections$/);
-    await expect(page.getByText(displayName, { exact: true })).toBeVisible();
+    const accountTrigger = page.getByRole("button", { name: "Account menu", exact: true });
+    await expect(accountTrigger).toBeVisible();
+    const accountDetails = page.getByRole("region", { name: "Account details", exact: true });
+    await expect(accountDetails).toHaveCount(0);
 
-    const avatar = page.getByRole("img", { name: `Profile image for ${displayName}`, exact: true });
+    const avatar = accountTrigger.locator('svg[role="img"]');
     await expect(avatar).toBeVisible();
     const profilePattern = await avatar.innerHTML();
     await page.screenshot({ path: testInfo.outputPath("signed-in-profile.png") });
 
-    await expect(page.getByText("admin · organization", { exact: true })).toBeVisible();
+    await accountTrigger.click();
+    await expect(accountDetails.getByText(displayName, { exact: true })).toBeVisible();
+    await expect(accountDetails).toContainText("admin");
+    await expect(accountDetails).toContainText(/organization/i);
 
 
     await page.reload();
-    await expect(page.getByText(displayName, { exact: true })).toBeVisible();
+    await expect(accountTrigger).toBeVisible();
+    await expect(accountDetails).toHaveCount(0);
     await expect(avatar).toBeVisible();
     await expect(avatar).toHaveJSProperty("innerHTML", profilePattern);
 
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await accountTrigger.click();
+    await accountDetails.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(/\/login$/);
     await expect(avatar).toHaveCount(0);
     await page.reload();
@@ -77,7 +85,7 @@ test.describe.serial("auth vertical", () => {
     // Missing CSRF invalidates the session view and routes to login, rather than outage retry.
     await page.goto("/login");
     await signInForScenario(page, email, password);
-    await expect(page.getByText(displayName, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
 
     await page.context().clearCookies({ name: "__Host-portcullis_csrf" });
     await page.reload();

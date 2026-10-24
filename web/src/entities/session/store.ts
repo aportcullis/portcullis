@@ -56,8 +56,10 @@ const store = createRoot(() => {
   const [session, setSession] = createSignal<SessionState>({ status: "loading" });
   const [interactionGeneration, setInteractionGeneration] = createSignal(0);
 
-  // Apply only the latest session operation so delayed Me responses cannot overwrite a newer login or logout.
+  // Fence older metadata reads and sign-ins after a newer session operation starts.
   let latest = 0;
+  // Metadata refreshes do not cancel an in-flight logout.
+  let latestAuthenticationWrite = 0;
 
   // load marks invalid sessions anonymous, outages unreachable, and retries transient throttling (ADR-0006/0010).
   async function load(): Promise<void> {
@@ -86,6 +88,7 @@ const store = createRoot(() => {
 
   // login starts a session (cookies are set by the response) and becomes authenticated from the login response itself — no extra Me round-trip, so a transient Me failure can never turn a successful login into an apparent rejection. Errors propagate to the form, which renders ONE uniform message.
   async function login(email: string, password: string): Promise<void> {
+    latestAuthenticationWrite++;
     const seq = ++latest;
     const res = await authClient.login({ email, password });
     if (seq !== latest) return;
@@ -101,9 +104,11 @@ const store = createRoot(() => {
     await load();
   }
 
-  // logout goes anonymous only when the server actually revoked the session, or already considers it invalid (Unauthenticated / a CSRF PermissionDenied — the session is unusable either way). A network/server failure keeps the state and rethrows — the cookie is still alive, and pretending otherwise would misinform the user.
+  /** Revokes the current session while preserving newer sign-ins and replacement identities. */
   async function logout(): Promise<void> {
-    const seq = ++latest;
+    const startingSession = session();
+    const authenticationWrite = ++latestAuthenticationWrite;
+    latest++;
     try {
       await authClient.logout({});
     } catch (err) {
@@ -111,7 +116,12 @@ const store = createRoot(() => {
         throw err;
       }
     }
-    if (seq !== latest) return;
+    if (authenticationWrite !== latestAuthenticationWrite) return;
+    const currentSession = session();
+    if (currentSession.status === "authenticated" && (
+      startingSession.status !== "authenticated" || currentSession.user.id !== startingSession.user.id
+    )) return;
+    latest++;
     setSession({ status: "anonymous", cause: "signed-out" });
   }
 

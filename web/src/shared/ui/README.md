@@ -23,6 +23,7 @@ Import from a component directory, for example `import { Button } from "@/shared
 | [alert](alert/README.md) | Important inline feedback |
 | [card](card/README.md) | Grouped content |
 | [dialog](dialog/README.md) | Risky-action confirmation |
+| [popover](popover/README.md) | Anchored nonmodal disclosure |
 | [table](table/README.md) | Semantic table primitives |
 | [text-field](text-field/README.md) | Accessible labeled inputs and validation |
 | [ApplicationFrame](ApplicationFrame/README.md) | Brand, navigation, account and content slots |
@@ -33,7 +34,7 @@ Import from a component directory, for example `import { Button } from "@/shared
 
 ## Reuse in this repository
 
-Compose these APIs in features and pages; keep authorization, RPCs, database state and request/execution logic in their existing layers. Edit semantic tokens in [theme.css](../../app/theme.css), application surfaces in [layout.css](../../app/layout.css), shared layout beside its component, request layout in [request.css](../../features/request/request.css), and Tailwind mappings/base styles in [index.css](../../app/index.css). Use semantic utilities, preserve light/dark contrast, and supply labels for controls.
+Compose these APIs in features and pages; keep authorization, RPCs, database state and request/execution logic in their existing layers. Edit semantic tokens in [theme.css](../../app/theme.css), application surfaces in [layout.css](../../app/layout.css), shared layout beside its component, request layout in [request.css](../../features/request/request.css), result layout in [result.css](../../features/result/result.css), and Tailwind mappings/base styles in [index.css](../../app/index.css). Use semantic utilities, preserve light/dark contrast, and supply labels for controls.
 
 The examples are source examples, not a hosted component gallery. TypeScript checks every `example.tsx` through `tsconfig.app.json`, but runtime behavior is checked by existing product browser scenarios. For a new interaction, first add an observable scenario, then implement and verify it.
 

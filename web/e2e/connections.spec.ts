@@ -30,7 +30,9 @@ test.describe.serial("connections vertical", () => {
 
     await page.goto("/login");
     await signInForScenario(page, email, password);
-    await expect(page.getByText("Admin", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Account menu", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Account details", exact: true }).getByText("Admin", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(page.getByText("No connections yet")).toBeVisible();
 
 
@@ -129,9 +131,11 @@ test.describe.serial("connections vertical", () => {
     await expect(row.getByRole("button", { name: "Archive" })).toHaveCount(0);
     await expect(row.getByRole("button", { name: "Edit" })).toBeVisible();
 
-    // Verify client caches reset on session changes; cross-user server denial is covered by Go API E2E until browser user provisioning exists.
+    // Verify client caches reset on session changes.
     await page.goto("/");
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/connections$/);
+    await page.getByRole("button", { name: "Account menu", exact: true }).click();
+    await page.getByRole("region", { name: "Account details", exact: true }).getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(/\/login$/);
     // Use the bounded-retry sign-in: the per-account-and-client bucket can still be refilling from this file's earlier logins.
     await signInForScenario(page, email, password);

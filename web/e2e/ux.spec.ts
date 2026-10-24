@@ -27,7 +27,9 @@ test("narrow screens keep navigation and request actions reachable with a curren
   await page.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(page.getByRole("img", { name: "Portcullis" })).toHaveAttribute("src", "/brand/logo-dark.svg");
   const foreground = await page.locator("body").evaluate(element => getComputedStyle(element).color);
-  await expect.poll(() => page.getByRole("button", { name: "Sign out", exact: true }).evaluate(element => getComputedStyle(element).color)).toBe(foreground);
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await expect.poll(() => page.getByRole("region", { name: "Account details", exact: true }).getByRole("button", { name: "Sign out", exact: true }).evaluate(element => getComputedStyle(element).color)).toBe(foreground);
+  await page.keyboard.press("Escape");
   await page.screenshot({ path: "../.test-docker/readme-media/narrow-dark.png", fullPage: true });
 });
 

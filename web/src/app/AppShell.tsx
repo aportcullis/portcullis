@@ -9,12 +9,11 @@ import { createPendingRequests } from "@/app/pendingRequests";
 import { configRetryDelayMs, loginConfig, refetchLoginConfig } from "@/entities/instance/config";
 import { UnreachableCard } from "@/entities/session/UnreachableCard";
 import { hasPermission, session } from "@/entities/session/store";
-import { LogoutButton } from "@/features/auth/LogoutButton";
+import { AccountMenu } from "@/features/auth/AccountMenu";
 import { ApplicationFrame } from "@/shared/ui/ApplicationFrame";
 import { BrandLogo } from "@/shared/ui/BrandLogo";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Badge } from "@/shared/ui/badge";
-import { Avatar } from "@/shared/ui/avatar";
 
 // AppShell owns the session guard and capability-based navigation; the server still authorizes every RPC.
 const AppShell: Component<RouteSectionProps> = (props) => {
@@ -29,10 +28,6 @@ const AppShell: Component<RouteSectionProps> = (props) => {
   const anonymousCause = () => {
     const current = session();
     return current.status === "anonymous" ? current.cause : undefined;
-  };
-  const currentUser = () => {
-    const current = session();
-    return current.status === "authenticated" ? current.user : undefined;
   };
   return (
     <Switch>
@@ -65,26 +60,7 @@ const AppShell: Component<RouteSectionProps> = (props) => {
               </For>
             </nav>
           }
-          account={<>
-            <Show when={currentUser()}>
-              {(user) => <div class="flex items-center gap-2">
-                <Avatar seed={user().id} label={`Profile image for ${user().displayName || user().email}`} />
-                <span class="text-sm text-muted-foreground">{user().displayName || user().email}</span>
-              </div>}
-            </Show>
-            <For each={(() => { const principal = session(); return principal.status === "authenticated" ? principal.bindings : []; })()}>
-              {(binding) => <Badge variant="secondary" title={`${binding.scopeType}${binding.connectionId ? `: ${binding.connectionId}` : ""}${binding.hasCondition ? " · Conditional" : ""}`}>{binding.roleName} · {binding.scopeType}{binding.hasCondition ? " · Conditional" : ""}</Badge>}
-            </For>
-            <Show
-              when={(() => {
-                const principal = session();
-                return principal.status === "authenticated" && principal.roleName !== "" ? principal.roleName : "";
-              })()}
-            >
-              {(role) => <Badge variant="secondary">{role()}</Badge>}
-            </Show>
-            <LogoutButton />
-          </>}
+          account={<AccountMenu routeKey={`${location.pathname}${location.search}${location.hash}`} />}
         >
           {/* Authenticated pages are lazy chunks; the frame stays while a page's code loads. */}
           <Suspense fallback={<LoadingSkeleton label="Loading page…" />}>{props.children}</Suspense>

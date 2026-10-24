@@ -108,6 +108,7 @@ These decisions establish the Core 1 foundation.
 | [0080](0080-shared-typescript-workspace.md) | Shared TypeScript workspace and dependency catalog | Accepted |
 | [0081](0081-request-approval-decision-ownership.md) | Request approval and quorum decision ownership | Accepted |
 | [0082](0082-result-feature-source-ownership.md) | Result feature source ownership | Accepted |
+| [0083](0083-account-disclosure-and-action-lifetime.md) | Account disclosure and action lifetime | Accepted |
 
 ## Template
 ```markdown

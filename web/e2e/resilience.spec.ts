@@ -36,7 +36,8 @@ test.describe("sign-in return path", () => {
     await page.goto("/login");
     await signInForScenario(page, email, password);
     await page.goto("/requests");
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Account menu", exact: true }).click();
+    await page.getByRole("region", { name: "Account details", exact: true }).getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(/\/login$/);
   });
 });
@@ -372,10 +373,18 @@ test.describe("application resilience", () => {
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
     const exportButton = results.getByRole("button", { name: "Export CSV", exact: true });
     const csvDialog = page.getByRole("dialog", { name: "Export CSV", exact: true });
+    /** Waits for the modal's normal focus return before using result controls. */
+    const closeCsvExport = async (): Promise<void> => {
+      await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+      await expect(csvDialog).toHaveCount(0);
+      await expect(exportButton).toBeFocused();
+    };
     // Result controls are inert behind the modal; closing first cancels its old preparation.
     const viewChanges: Array<{ name: string; change: () => Promise<void> }> = [
       { name: "scroll", change: async () => {
-        await results.getByRole("region", { name: "Scrollable result rows", exact: true }).focus();
+        const viewport = results.getByRole("region", { name: "Scrollable result rows", exact: true });
+        await viewport.focus();
+        await expect(viewport).toBeFocused();
         await page.keyboard.press("End");
         await expect(results.getByText("Rows 16–25 of 25", { exact: true })).toBeVisible();
       } },
@@ -391,7 +400,7 @@ test.describe("application resilience", () => {
       await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
       await expect.poll(() => exportStarted).toBe(true);
       await expect(csvDialog.getByRole("button", { name: "Cancel export", exact: true })).toBeVisible();
-      await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+      await closeCsvExport();
       await viewChange.change();
       release();
       await expect(csvDialog).toHaveCount(0);
@@ -401,7 +410,7 @@ test.describe("application resilience", () => {
       await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
       await expect(csvDialog.getByRole("link", { name: "Save CSV file", exact: true }), `fresh export after ${viewChange.name} change`).toBeVisible();
       await expect(csvDialog.getByRole("button", { name: "Download CSV", exact: true })).toHaveCount(0);
-      await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+      await closeCsvExport();
     }
 
     // An obsolete failure cannot overwrite a later dialog after the result view changes.
@@ -413,7 +422,7 @@ test.describe("application resilience", () => {
     await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
     await expect.poll(() => failureStarted).toBe(true);
     await expect(csvDialog.getByRole("button", { name: "Cancel export", exact: true })).toBeVisible();
-    await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+    await closeCsvExport();
     await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
     await expect(results.getByRole("columnheader", { name: /marker/ })).toHaveAttribute("aria-sort", "descending");
     await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
@@ -421,7 +430,7 @@ test.describe("application resilience", () => {
     await exportButton.click();
     await expect(csvDialog.getByRole("alert")).toHaveCount(0);
     await expect(csvDialog.getByRole("link", { name: "Save CSV file", exact: true })).toHaveCount(0);
-    await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+    await closeCsvExport();
     await expect(exportButton).toBeEnabled();
     await page.unroute("**/portcullis.v1.QueryExecutions/ExportCSV");
   });
