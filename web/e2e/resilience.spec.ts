@@ -442,13 +442,16 @@ test.describe("application resilience", () => {
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
 
     const restoreExport = await failProcedure(page, "QueryExecutions/ExportCSV", "unavailable");
-    await results.getByRole("button", { name: "Export CSV", exact: true }).click();
+    const exportButton = results.getByRole("button", { name: "Export CSV", exact: true });
+    await exportButton.click();
     const csvDialog = page.getByRole("dialog", { name: "Export CSV", exact: true });
     await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
     // Streaming can surface the HTTP status; the failure must remain inside the export dialog.
     await expect(csvDialog.getByRole("alert")).toBeVisible();
     await expect(csvDialog.getByText(/expired or been evicted/)).toHaveCount(0);
     await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+    await expect(csvDialog).toHaveCount(0);
+    await expect(exportButton).toBeFocused();
     await expect(results.getByRole("alert")).toHaveCount(0);
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
     await restoreExport();
@@ -457,6 +460,7 @@ test.describe("application resilience", () => {
     await expect(viewport).toHaveAttribute("data-in-flight", "0");
     const restoreUnavailable = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
     await viewport.focus();
+    await expect(viewport).toBeFocused();
     await page.keyboard.press("End");
     await expect(results.getByRole("alert").filter({ hasText: "simulated failure" }).first()).toBeVisible();
     await expect(results.getByText(/expired or been evicted/)).toHaveCount(0);
