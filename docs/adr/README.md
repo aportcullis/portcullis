@@ -112,6 +112,7 @@ These decisions establish the Core 1 foundation.
 | [0084](0084-release-source-admission.md) | Release source admission | Accepted |
 | [0085](0085-startup-build-identity.md) | Startup build identity | Accepted |
 | [0086](0086-verified-image-index-promotion.md) | Verified image index promotion | Accepted |
+| [0087](0087-non-interactive-workspace-installation.md) | Non-interactive workspace installation | Accepted |
 
 ## Template
 ```markdown

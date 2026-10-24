@@ -69,7 +69,7 @@ proto-breaking:
 
 
 workspace-install:
-	pnpm install --frozen-lockfile
+	CI=true pnpm install --frozen-lockfile
 
 
 workspace-check: workspace-install
