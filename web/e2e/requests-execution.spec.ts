@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { signInForScenario } from "@e2e/login";
 import { loadTarget } from "@e2e/target";
 
-test("approved SQL executes once, pages and sorts exact values, filters and exports CSV", async ({
+test("approved SQL executes once, scrolls and sorts exact values, filters and exports CSV", async ({
   page,
   context,
 }) => {
@@ -65,7 +65,11 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
     recordedDuration,
   );
   await expect(dialog.getByText("9007199254740994", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Next page", exact: true }).click();
+  const viewport = dialog.getByRole("region", { name: "Scrollable result rows", exact: true });
+  await expect(dialog.getByText("Rows 1–10 of 25", { exact: true })).toBeVisible();
+  await viewport.focus();
+  await page.keyboard.press("End");
+  await expect(dialog.getByText("Rows 16–25 of 25", { exact: true })).toBeVisible();
   await expect(dialog.getByText("9007199254741018", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByRole("columnheader").filter({ hasText: "↑" })).toHaveCount(1);
@@ -77,7 +81,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   );
   await expect(dialog.getByRole("columnheader").filter({ hasText: "↓" })).toHaveCount(1);
   await expect(dialog.getByRole("columnheader").filter({ hasText: "↑" })).toHaveCount(0);
-  await expect(dialog.getByText(/25 rows · Page 1 of 2/)).toBeVisible();
+  await expect(dialog.getByText("Rows 1–10 of 25", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
@@ -111,7 +115,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
   await dialog.getByLabel("Filter results", { exact: true }).fill("9007199254740994");
   await dialog.getByRole("button", { name: "Filter results", exact: true }).click();
-  await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
+  await expect(dialog.getByText("Rows 1–1 of 1", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await expect(dialog.getByRole("columnheader", { name: /exact_value/ })).toHaveAttribute(
     "aria-sort",
@@ -119,7 +123,7 @@ test("approved SQL executes once, pages and sorts exact values, filters and expo
   );
   await dialog.getByRole("button", { name: /exact_value/ }).click();
   await dialog.getByRole("button", { name: /exact_value/ }).click();
-  await expect(dialog.getByText(/1 rows · Page 1 of 1/)).toBeVisible();
+  await expect(dialog.getByText("Rows 1–1 of 1", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Text", exact: true }).click();
   await expect(dialog.getByLabel("Text results")).toContainText("9007199254740994\t=formula");
   await expect(dialog.getByLabel("Text results")).not.toContainText("9007199254741018");

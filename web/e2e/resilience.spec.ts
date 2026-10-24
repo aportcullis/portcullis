@@ -170,17 +170,19 @@ test.describe("application resilience", () => {
     await restore();
   });
 
-  test("changing the result page keeps the shown rows until the next page arrives", async ({ page }) => {
+  test("scrolling to an unloaded result range preserves focus and shows only that range's rows", async ({ page }) => {
     await page.goto("/requests/new");
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
-    await page.getByLabel("Title", { exact: true }).fill("Result paging check");
-    await page.getByLabel("SQL", { exact: true }).fill("select 1000 + g as marker from generate_series(1, 25) as g order by g");
+    await page.getByLabel("Title", { exact: true }).fill("Result scrolling check");
+    await page.getByLabel("SQL", { exact: true }).fill("select 1000 + g as marker from generate_series(1, 125) as g order by g");
     await page.getByRole("button", { name: "Submit", exact: true }).click();
     const details = page.getByRole("region", { name: "Request details" });
     await details.getByRole("button", { name: "Execute", exact: true }).click();
     await details.getByRole("link", { name: "Result", exact: true }).click();
     const results = page.getByRole("region", { name: "Query results" });
+    const viewport = results.getByRole("region", { name: "Scrollable result rows", exact: true });
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
+    await expect(viewport).toHaveAttribute("data-in-flight", "0");
 
     let release = () => {};
     const held = new Promise<void>((resolve) => { release = resolve; });
@@ -189,15 +191,19 @@ test.describe("application resilience", () => {
       await route.continue();
     });
     try {
-      await results.getByRole("button", { name: "Next page", exact: true }).click();
-      await expect(results.getByRole("status").filter({ hasText: "Updating results…" })).toBeVisible();
-      await expect(results.getByText("1001", { exact: true })).toBeVisible();
-      await expect(results.getByRole("status").filter({ hasText: "Loading result…" })).toHaveCount(0);
-      await expect(results.getByRole("button", { name: "Next page", exact: true })).toBeDisabled();
-      release();
-      await expect(results.getByText("1021", { exact: true })).toBeVisible();
+      await viewport.focus();
+      await page.keyboard.press("End");
+      await expect(results.getByText("Rows 116–125 of 125", { exact: true })).toBeVisible();
+      await expect(results.getByRole("status").filter({ hasText: "Loading result rows…" })).toBeVisible();
       await expect(results.getByText("1001", { exact: true })).toHaveCount(0);
-      await expect(results.getByRole("status").filter({ hasText: "Updating results…" })).toHaveCount(0);
+      await expect(results.getByRole("status").filter({ hasText: "Loading result…" })).toHaveCount(0);
+      await expect(viewport).toBeFocused();
+      release();
+      await expect(results.getByText("1116", { exact: true })).toBeVisible();
+      await expect(results.getByText("1125", { exact: true })).toBeVisible();
+      await expect(results.getByText("1001", { exact: true })).toHaveCount(0);
+      await expect(results.getByRole("status").filter({ hasText: "Loading result rows…" })).toHaveCount(0);
+      await expect(viewport).toBeFocused();
     } finally {
       release();
       await page.unroute("**/portcullis.v1.QueryExecutions/GetResult");
@@ -308,10 +314,12 @@ test.describe("application resilience", () => {
     await expect(save).toHaveCount(0);
   });
 
-  test("a failed result view change keeps the controls on the view still shown", async ({ page }) => {
+  test("failed result sorts and filters discard mismatched rows and retry the requested view", async ({ page }) => {
+    let executionCalls = 0;
+    page.on("request", request => { if (request.url().endsWith("/portcullis.v1.QueryExecutions/Execute")) executionCalls++; });
     await page.goto("/requests/new");
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
-    await page.getByLabel("Title", { exact: true }).fill(`View rollback ${Date.now()}`);
+    await page.getByLabel("Title", { exact: true }).fill(`View retry ${Date.now()}`);
     await page.getByLabel("SQL", { exact: true }).fill("select 1000 + g as marker from generate_series(1, 25) as g order by g");
     await page.getByRole("button", { name: "Submit", exact: true }).click();
     const details = page.getByRole("region", { name: "Request details" });
@@ -321,44 +329,36 @@ test.describe("application resilience", () => {
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
     const markerHeader = results.getByRole("columnheader", { name: /marker/ });
 
-    // Page: a refused Next keeps page 1 selected, so the retry shows page 2 rather than skipping to page 3.
+    // A refused sort never labels old rows with the newly requested order.
     let restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
-    await results.getByRole("button", { name: "Next page", exact: true }).click();
-    await expect(results.getByText("simulated failure")).toBeVisible();
-    await expect(results.getByText(/Page 1 of/)).toBeVisible();
-    await restore();
-    await results.getByRole("button", { name: "Next page", exact: true }).click();
-    await expect(results.getByText("1021", { exact: true })).toBeVisible();
-    await results.getByRole("button", { name: "Previous page", exact: true }).click();
-    await expect(results.getByText("1001", { exact: true })).toBeVisible();
-
-    // Sort: a refused sort leaves the header announcing the order of the rows still shown.
-    restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
     await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
-    await expect(results.getByText("simulated failure")).toBeVisible();
-    await expect(markerHeader).not.toHaveAttribute("aria-sort", /.+/);
-    await expect(results.getByText("Original query order.", { exact: true })).toBeVisible();
+    await expect(results.getByRole("alert")).toContainText("simulated failure");
+    await expect(results.getByText("1001", { exact: true })).toHaveCount(0);
+    await expect(markerHeader).toHaveAttribute("aria-sort", "ascending");
     await restore();
+    await results.getByRole("button", { name: "Retry result", exact: true }).click();
+    await expect(results.getByText("1001", { exact: true })).toBeVisible();
+    await expect(results.getByText("Rows 1–10 of 25", { exact: true })).toBeVisible();
+    await expect(results.getByRole("alert")).toHaveCount(0);
 
-    // Filter: a refused filter keeps the applied (empty) filter, so the next page still pages the whole snapshot.
+    // A refused filter retains its authored value while withholding the former unfiltered rows.
     restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
     await results.getByLabel("Filter results").fill("1025");
     await results.getByRole("button", { name: "Filter results", exact: true }).click();
-    await expect(results.getByText("simulated failure")).toBeVisible();
+    await expect(results.getByRole("alert")).toContainText("simulated failure");
+    await expect(results.getByText("1001", { exact: true })).toHaveCount(0);
+    await expect(results.getByText("1025", { exact: true })).toHaveCount(0);
+    await expect(results.getByLabel("Filter results")).toHaveValue("1025");
     await restore();
-    await results.getByRole("button", { name: "Next page", exact: true }).click();
-    await expect(results.getByText("1021", { exact: true })).toBeVisible();
-    await results.getByRole("button", { name: "Previous page", exact: true }).click();
-
-    // Page size: a refused size change keeps the selected size of the rows still shown.
-    restore = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
-    await results.getByLabel("Rows per page").selectOption("50");
-    await expect(results.getByText("simulated failure")).toBeVisible();
-    await expect(results.getByLabel("Rows per page")).toHaveValue("20");
-    await restore();
+    await results.getByRole("button", { name: "Retry result", exact: true }).click();
+    await expect(results.getByText("1025", { exact: true })).toBeVisible();
+    await expect(results.getByText("Rows 1–1 of 1", { exact: true })).toBeVisible();
+    await expect(results.getByText("1001", { exact: true })).toHaveCount(0);
+    await expect(results.getByRole("alert")).toHaveCount(0);
+    expect(executionCalls).toBe(1);
   });
 
-  test("a CSV export survives changing the shown page, sort or filter while it streams", async ({ page }) => {
+  test("a CSV export survives scrolling, sorting and filtering while it streams", async ({ page }) => {
     // This scenario creates its own executed request so it runs alone as well as in sequence.
     await page.goto("/requests/new");
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
@@ -373,7 +373,11 @@ test.describe("application resilience", () => {
     const exportButton = results.getByRole("button", { name: "Export CSV", exact: true });
     // The export covers the whole snapshot, so a view change while it streams must neither drop it nor leave its button disabled.
     const viewChanges: Array<{ name: string; change: () => Promise<void> }> = [
-      { name: "page", change: () => results.getByRole("button", { name: "Next page", exact: true }).click() },
+      { name: "scroll", change: async () => {
+        await results.getByRole("region", { name: "Scrollable result rows", exact: true }).focus();
+        await page.keyboard.press("End");
+        await expect(results.getByText("Rows 16–25 of 25", { exact: true })).toBeVisible();
+      } },
       { name: "sort", change: async () => { await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click(); } },
       { name: "filter", change: async () => { await results.getByLabel("Filter results").fill("10"); await results.getByRole("button", { name: "Filter results", exact: true }).click(); } },
     ];
@@ -406,7 +410,7 @@ test.describe("application resilience", () => {
 
   test("result errors name expiry only for a missing snapshot and keep export failures separate", async ({ page }) => {
     await page.goto("/requests");
-    await page.getByRole("row", { name: /Result paging check/ }).getByRole("link", { name: "Result" }).click();
+    await page.getByRole("row", { name: /Result scrolling check/ }).getByRole("link", { name: "Result" }).click();
     const results = page.getByRole("region", { name: "Query results" });
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
 
@@ -418,8 +422,11 @@ test.describe("application resilience", () => {
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
     await restoreExport();
 
+    const viewport = results.getByRole("region", { name: "Scrollable result rows", exact: true });
+    await expect(viewport).toHaveAttribute("data-in-flight", "0");
     const restoreUnavailable = await failProcedure(page, "QueryExecutions/GetResult", "unavailable");
-    await results.getByRole("button", { name: "Next page", exact: true }).click();
+    await viewport.focus();
+    await page.keyboard.press("End");
     await expect(results.getByRole("alert").filter({ hasText: "simulated failure" }).first()).toBeVisible();
     await expect(results.getByText(/expired or been evicted/)).toHaveCount(0);
     await restoreUnavailable();

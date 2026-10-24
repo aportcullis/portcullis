@@ -1,6 +1,6 @@
 # M1 progress
 
-**Status: In progress · scope reviewed 2026-10-18 · verification reviewed 2026-10-18.**
+**Status: In progress · scope reviewed 2026-10-18 · verification reviewed 2026-10-24.**
 Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in [validation.md](validation.md).
 
 ## Established implementation
@@ -14,6 +14,7 @@ Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in 
 - Session capability discovery uses scope-filtered keyset batches beyond 1,024 resources; metadata failures preserve authentication and show explicit Me-based recovery per [ADR-0074](../../adr/0074-session-capability-discovery-and-recovery.md). Binding-summary budgets and management-form lifetime remain separate.
 - Result controls have aligned search, copy/export and paging controls; Text values wrap without dropping content at tested viewport widths in both themes.
 - Result tables use subtle dashed column separators and show a sorting arrow only on the active column. Table headers cycle sorting without a separate ordering selector.
+- Result navigation now uses bounded virtual rows over 50-row snapshot pages, with forward/backward refetch, nearby prefetch, five-page/64 MiB retained-payload limits and at most two unsettled reads. The visible range alone supplies Text and clipboard output; expiry, permission loss and superseded views discard protected rows. See the [2026-10-24 qualification](validation.md#bounded-result-navigation--2026-10-24).
 
 Per [ADR-0053](../../adr/0053-user-and-role-administration.md), user and role administration is M1 scope.
 Per [administration use cases](../../../internal/app/administration/users.go) and [administration persistence](../../../internal/infra/postgres/administration_store.go), backend components exist without establishing a complete administration UI.
@@ -48,3 +49,5 @@ The recorded PostgreSQL governance tests passed in the documented Docker-browser
 The [2026-10-18 dependency verification](validation.md#verification--2026-10-18) passed both required gates, including all 38 then-existing real-binary browser scenarios. The later [atomic activation qualification](validation.md#atomic-binding-authorization-activation-qualification--2026-10-18) records the active replacement, 345 frontend unit tests and 51 real-binary browser scenarios; its separate race evidence covers the changed authorization packages.
 This evidence covers the tested journey and does not establish completion of the entire M1 scope or capacity qualification.
 Per [scope.md](scope.md), release readiness requires all milestone completion criteria and both verification gates.
+
+The [2026-10-24 result-navigation qualification](validation.md#bounded-result-navigation--2026-10-24) passed the full functional gate with 398 web unit scenarios and 108 browser scenarios. The separate web dependency audit currently refuses two Vitest mocker advisories in the existing 4.1.11 dependency. CSV destination dialogs, the account menu and release acceptance remain incomplete; functional navigation evidence does not establish M1 readiness.

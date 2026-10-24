@@ -177,6 +177,24 @@
   .result-table :is(th, td):not(:last-child) {
     border-inline-end: 1px dashed var(--border);
   }
+  .result-viewport {
+    height: 464px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    overflow-anchor: none;
+  }
+  .result-viewport > div {
+    overflow: visible;
+  }
+  .result-viewport .result-table {
+    table-layout: fixed;
+    min-width: 36rem;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .result-viewport tbody tr[aria-rowindex] {
+    height: 40px;
+  }
   .result-text {
     min-width: 0;
     max-width: 100%;
