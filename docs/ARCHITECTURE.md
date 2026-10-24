@@ -5,23 +5,9 @@ For the recommended private-network production topology and remote access throug
 
 Authorization uses independent membership, reusable Roles and organization/connection Bindings with bounded CEL conditions. [ADR-0071](adr/0071-binding-authorization-activation.md) activates migration, bootstrap, sessions, protected adapters, governance and output together. The server selects each RPC's resource purpose and resolves ancestry from storage. Policy/workflow changes take the organization coordinator exclusively; coherent protected reads take it shared and filter candidates before pagination. Result/CSV output repeats current permission, ownership, expiry and session checks.
 
-The following ADR entries describe the historical preparation sequence; ADR-0071 supersedes their inactive-production boundaries.
+Role/Binding are structured domain data; Condition is checked CEL with explicit inputs and deterministic budgets. Application services own grant decisions and operational cancellation/deadline/concurrency bounds, while the CEL adapter evaluates supplied immutable artifacts and attributes without I/O or clock reads. Active management pages use the same server validation, preserve unsupported stored expressions and fence route/session responses. The [M1 progress record](milestones/m1/progress.md#accepted-authorization-replacement) and ADRs retain the preparation and atomic-activation history.
 
-[ADR-0063](adr/0063-condition-dsl-and-pure-evaluation.md) separates structured Role/Binding data, checked CEL conditions and pure predicate evaluation. The planned outer services resolve attributes and authoritative time, prepare immutable inputs and handle transactions/audit; the evaluator performs no I/O or clock reads. Condition forms generate the same server-validated CEL used by API clients.
-
-[ADR-0064](adr/0064-binding-schema-preparation-and-activation.md) introduces inactive binding/version/revision tables with runtime reads only. Backfill and replacement authorization are deferred to an atomic reader/writer activation; the runtime diagrams still describe the membership-based implementation.
-
-[ADR-0065](adr/0065-restricted-cel-condition-evaluation.md) implements identity binding/condition values and the restricted `cel.dev/cel-go` adapter behind condition application ports. The wrapper owns operational bounds; the adapter evaluates immutable checked ASTs and supplied scalar attributes without I/O or clock reads. It is qualified independently and injected through constructors in scenarios, while production composition-root authorization remains unchanged until cutover.
-
-[ADR-0066](adr/0066-resource-binding-authorization-snapshots.md) connects a read-only PostgreSQL binding repository to the resource authorization service and bounded CEL wrapper through consumer-owned ports. It resolves trusted ancestry, time, revision and grants in one repeatable-read snapshot and returns a bounded permission checkpoint. Database scenarios qualify this path independently; production composition, all workflow guards and atomic activation remain pending.
-
-[ADR-0067](adr/0067-binding-management-transactions.md) adds Binding creation, versioned updates and terminal revocation through a locked administration transaction port. PostgreSQL qualification covers unrestricted delegation, complete-catalog recovery protection, session/revision/audit atomicity and post-lock time. Prepared runtime tables remain read-only and production routes remain on legacy authority until atomic activation.
-
-[ADR-0068](adr/0068-binding-authority-account-and-role-management.md) adds independent account creation/status/setup and shared-role mutation services using the same locked Binding authority. Qualification covers all affected binding permissions, bounded subject session fanout and recovery protection across Role/Binding writers. These services remain inactive until the atomic API/session/governance and migration cutover.
-
-[ADR-0069](adr/0069-prepared-administration-rpc-contracts.md) connects generated Users/Roles/Bindings RPCs to the qualified management services and a coherent read-only administration snapshot. Production mounts the actual adapters behind a mandatory post-authentication pending interceptor returning Unavailable; there is no partial activation switch or replacement of legacy grants.
-
-[ADR-0070](adr/0070-prepared-administration-ui.md) adds lazy prepared management pages with independent RPC affordances, bounded revisioned lists, explicit source-preserving condition forms and route/session response fencing. UI binary-contract qualification is separate from real-server authorization evidence; the mandatory production inactive boundary remains.
+Request owns pure manual approval/rejection and quorum transitions through [ADR-0081](adr/0081-request-approval-decision-ownership.md). The PostgreSQL repository supplies the locked request, recorded decision, current eligible count and explicit database instant, then persists a changed state and its audit atomically. Under-quorum decisions preserve the request row. Lazy expiry, current resource permission checks, lock ordering and guarded updates remain transaction responsibilities. M1 resolves one self-hosted organization through consumer-owned repository ports while retaining organization-scoped storage and cross-organization refusal checks.
 
 ## Go source dependencies
 
@@ -57,16 +43,16 @@ Arrows point from the importing package toward an inner dependency. `cmd/portcul
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
 │ platform/  config / logging / health / assets / reqmeta / publicorigin                   │
-│ Shared support for outer layers; setting vocabulary exception: ADR-0017                  │
+│ Shared support for outer layers; typed setting and connection configuration              │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The `infra → app` arrow represents dependencies on consumer-owned port declarations, such as the dialect registry's submission and execution interfaces. Adapters can also satisfy Go interfaces structurally without importing the declaring package; it does not mean every adapter imports `app`. The lower arrow represents dependencies on domain models and contracts.
+The `infra → app` arrow includes consumer-owned port declarations, such as submission and execution interfaces, and delegation to inner application services such as resource authorization within a coherent SQL transaction. Adapters can also satisfy Go interfaces structurally without importing the declaring package. The lower arrow represents dependencies on domain models and contracts; it does not move grant or state-transition rules into SQL adapters.
 
 - `transport → app → domain`: handlers translate protocol data and delegate use cases; services orchestrate domain behavior through injected ports.
 - `domain/` imports only the standard library and other domain code, with no outward dependency on `app`, `infra`, `transport` or infrastructure SDKs.
 - Shared persistence contracts live in `domain/`; narrow use-case ports live beside their consumer in `app/`. `infra/` implements both.
-- `platform/` provides shared support. The [ADR-0017](adr/0017-runtime-settings-store.md) exception lets configuration and the logging vocabulary test reuse `domain/setting` descriptors without a dependency cycle.
+- `platform/` provides shared support. Configuration and the logging vocabulary test reuse `domain/setting` descriptors per [ADR-0017](adr/0017-runtime-settings-store.md); configuration also constructs typed `domain/connection.DestinationPolicy` values per [ADR-0051](adr/0051-connection-destination-policy.md). Domain packages retain their inward-only dependency rule.
 
 ## Frontend source dependencies
 
@@ -171,7 +157,7 @@ The production composition root currently registers PostgreSQL as the target ada
 | `cmd/portcullis` | Composition root, startup, migration mode and key-rotation command wiring |
 | `internal/transport/server` | HTTP limits, health endpoints, RPC mounts and embedded SPA delivery |
 | `internal/transport/connectapi` | Connect handlers, protocol conversion and security interceptors |
-| `internal/app` | `auth`, `authz`, `audit`, `auditevent`, `connection`, `connectionpolicy`, `accessrequest`, `execution`, `result`, `keyrotation` |
+| `internal/app` | `auth`, `authz`, `audit`, `auditevent`, `administration`, `condition`, `connection`, `connectionpolicy`, `accessrequest`, `execution`, `result`, `keyrotation` |
 | `internal/domain` | `identity`, `audit`, `connection`, `access`, `query`, `encryption`, `setting` models and contracts |
 | `internal/infra` | PostgreSQL repositories, crypto, SQL dialects, dialect registry, execution guard, Google OIDC and test adapters |
 | `internal/platform` | Viper configuration, structured logging, health, embedded assets and request metadata |

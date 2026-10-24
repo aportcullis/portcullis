@@ -106,6 +106,7 @@ These decisions establish the Core 1 foundation.
 | [0078](0078-css-first-stylesheet-ownership.md) | CSS-first stylesheet ownership | Accepted |
 | [0079](0079-frontend-runtime-validation.md) | Frontend runtime validation and explicit internal states | Accepted |
 | [0080](0080-shared-typescript-workspace.md) | Shared TypeScript workspace and dependency catalog | Accepted |
+| [0081](0081-request-approval-decision-ownership.md) | Request approval and quorum decision ownership | Accepted |
 
 ## Template
 ```markdown

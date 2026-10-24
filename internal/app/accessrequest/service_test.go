@@ -221,49 +221,48 @@ func (f *fakeRepo) countValid(id access.RequestID) int {
 	return n
 }
 
-func (f *fakeRepo) decide(id access.RequestID, approver identity.UserID, decision access.Decision, reason string, validity time.Duration) (access.Request, error) {
-	r, ok := f.requests[id]
+// recordApprovalDecision applies one eligible decision before storing the fake request and approval.
+func (f *fakeRepo) recordApprovalDecision(requestID access.RequestID, approverID identity.UserID, decision access.Decision, reason string, approvalValidity time.Duration) (access.Request, error) {
+	request, ok := f.requests[requestID]
 	if !ok {
 		return access.Request{}, access.ErrNotFound
 	}
 
-	if r.State == access.StateApproved && r.ExpiresAt != nil && r.ExpiresAt.Before(f.clock()) {
-		r.State = access.StateExpired
-		r.Reason = access.ReasonTTLExpired
-		f.requests[id] = r
+	if request.State == access.StateApproved && request.ExpiresAt != nil && request.ExpiresAt.Before(f.clock()) {
+		request.State = access.StateExpired
+		request.Reason = access.ReasonTTLExpired
+		f.requests[requestID] = request
 	}
-	if r.State != access.StatePending {
+	if request.State != access.StatePending {
 		return access.Request{}, access.ErrNotPending
 	}
-	a, err := access.NewApproval(id, r.OrganizationID, approver, r.RequesterID, decision, reason, f.clock())
+	approval, err := access.NewApproval(requestID, request.OrganizationID, approverID, request.RequesterID, decision, reason, f.clock())
 	if err != nil {
 		return access.Request{}, err
 	}
-	if !f.valid[approver] {
+	if !f.valid[approverID] {
 		return access.Request{}, access.ErrInvalidApproval
 	}
-	for _, prev := range f.approvals[id] {
-		if prev.ApproverID == approver {
+	for _, previousApproval := range f.approvals[requestID] {
+		if previousApproval.ApproverID == approverID {
 			return access.Request{}, access.ErrAlreadyDecided
 		}
 	}
-	f.approvals[id] = append(f.approvals[id], a)
-	switch decision {
-	case access.DecisionRejected:
-		r.State = access.StateRejected
-	case access.DecisionApproved:
-		if f.countValid(id) >= r.RequiredApprovals {
-			if r, err = r.Approved(f.clock(), validity); err != nil {
-				return access.Request{}, err
-			}
-		}
+	currentEligibleApprovalCount := int64(f.countValid(requestID))
+	if decision == access.DecisionApproved {
+		currentEligibleApprovalCount++
 	}
-	f.requests[id] = r
-	return r, nil
+	request, err = request.ApplyApprovalDecision(approval, currentEligibleApprovalCount, approvalValidity)
+	if err != nil {
+		return access.Request{}, err
+	}
+	f.approvals[requestID] = append(f.approvals[requestID], approval)
+	f.requests[requestID] = request
+	return request, nil
 }
 
 func (f *fakeRepo) Approve(_ context.Context, _ identity.OrganizationID, id access.RequestID, approver identity.UserID, reason string, validity time.Duration, evt audit.Event) (access.RequestView, error) {
-	r, err := f.decide(id, approver, access.DecisionApproved, reason, validity)
+	r, err := f.recordApprovalDecision(id, approver, access.DecisionApproved, reason, validity)
 	if err != nil {
 		return access.RequestView{}, err
 	}
@@ -272,7 +271,7 @@ func (f *fakeRepo) Approve(_ context.Context, _ identity.OrganizationID, id acce
 }
 
 func (f *fakeRepo) Reject(_ context.Context, _ identity.OrganizationID, id access.RequestID, approver identity.UserID, reason string, evt audit.Event) (access.RequestView, error) {
-	r, err := f.decide(id, approver, access.DecisionRejected, reason, 0)
+	r, err := f.recordApprovalDecision(id, approver, access.DecisionRejected, reason, 0)
 	if err != nil {
 		return access.RequestView{}, err
 	}

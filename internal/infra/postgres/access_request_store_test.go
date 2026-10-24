@@ -1391,8 +1391,8 @@ func TestManualDecisionTimestampsAgree(t *testing.T) {
 	if !decidedAt.Equal(updatedAt) || !decidedAt.Equal(occurredAt) {
 		t.Errorf("decision instants disagree: decided=%s updated=%s occurred=%s", decidedAt, updatedAt, occurredAt)
 	}
-	if diff := expiresAt.Sub(decidedAt); diff < validity-time.Second || diff > validity+time.Second {
-		t.Errorf("expires_at - decided_at = %s, want ~%s", diff, validity)
+	if duration := expiresAt.Sub(decidedAt); duration != validity {
+		t.Errorf("expires_at - decided_at = %s, want %s", duration, validity)
 	}
 
 	if decidedAt.UTC().Before(txStart.Add(-100 * time.Millisecond)) {
@@ -1435,6 +1435,9 @@ func TestRejectionAndSubQuorumTimestamps(t *testing.T) {
 	}
 	if view.Request.State != access.StatePending || view.Request.ExpiresAt != nil {
 		t.Errorf("after 1 of 2 approvals: state=%s expires=%v; want pending with no window", view.Request.State, view.Request.ExpiresAt)
+	}
+	if view.Request.Version != partial.Version || !view.Request.UpdatedAt.Equal(partial.UpdatedAt) {
+		t.Errorf("partial approval changed request version/time: version=%d updated=%s; want version=%d updated=%s", view.Request.Version, view.Request.UpdatedAt, partial.Version, partial.UpdatedAt)
 	}
 
 	if _, err := f.requests.Approve(ctx, f.org, partial.ID, approverA, "", time.Hour, reqEvent(audit.ActionAccessRequestApproved, partial.ID)); !errors.Is(err, access.ErrAlreadyDecided) {

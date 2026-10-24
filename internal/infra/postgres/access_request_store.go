@@ -368,120 +368,126 @@ func completeAutoApproval(events []audit.Event, row db.AccessRequest, validity t
 }
 
 // Approve records an eligible decision and transitions when quorum is reached.
-func (s *AccessRequestStore) Approve(ctx context.Context, org identity.OrganizationID, id access.RequestID, approver identity.UserID, reason string, validity time.Duration, evt audit.Event) (access.RequestView, error) {
-	return s.decide(ctx, org, id, approver, access.DecisionApproved, reason, validity, evt)
+func (s *AccessRequestStore) Approve(ctx context.Context, organization identity.OrganizationID, requestID access.RequestID, approverID identity.UserID, reason string, validity time.Duration, event audit.Event) (access.RequestView, error) {
+	return s.recordApprovalDecision(ctx, organization, requestID, approverID, access.DecisionApproved, reason, validity, event)
 }
 
 // Reject records a terminal rejection of a pending request.
-func (s *AccessRequestStore) Reject(ctx context.Context, org identity.OrganizationID, id access.RequestID, approver identity.UserID, reason string, evt audit.Event) (access.RequestView, error) {
-	return s.decide(ctx, org, id, approver, access.DecisionRejected, reason, 0, evt)
+func (s *AccessRequestStore) Reject(ctx context.Context, organization identity.OrganizationID, requestID access.RequestID, approverID identity.UserID, reason string, event audit.Event) (access.RequestView, error) {
+	return s.recordApprovalDecision(ctx, organization, requestID, approverID, access.DecisionRejected, reason, 0, event)
 }
 
-// decisionPermission returns the permission required for an approval decision.
-func decisionPermission(d access.Decision) string {
-	if d == access.DecisionRejected {
-		return "requests.reject"
+// resolveDecisionPermission returns the permission required to record a decision.
+func resolveDecisionPermission(decision access.Decision) identity.Permission {
+	if decision == access.DecisionRejected {
+		return identity.PermissionRequestsReject
 	}
-	return "requests.approve"
+	return identity.PermissionRequestsApprove
 }
 
-func (s *AccessRequestStore) decide(ctx context.Context, org identity.OrganizationID, id access.RequestID, approver identity.UserID, decision access.Decision, reason string, validity time.Duration, evt audit.Event) (access.RequestView, error) {
-	requestUUID, organizationUUID, err := parseRequestAndOrganizationUUIDs(id, org)
+// recordApprovalDecision persists an eligible domain decision and its audit atomically.
+func (s *AccessRequestStore) recordApprovalDecision(ctx context.Context, organization identity.OrganizationID, requestID access.RequestID, approverID identity.UserID, decision access.Decision, reason string, validity time.Duration, event audit.Event) (access.RequestView, error) {
+	requestUUID, organizationUUID, err := parseRequestAndOrganizationUUIDs(requestID, organization)
 	if err != nil {
 		return access.RequestView{}, err
 	}
-	aid, err := stringToUUID(string(approver))
+	approverUUID, err := stringToUUID(string(approverID))
 	if err != nil {
 		return access.RequestView{}, fmt.Errorf("approver id: %w", err)
 	}
-	var view access.RequestView
-	var refused error
-	err = s.withWorkflowTx(ctx, organizationUUID, func(q *db.Queries) error {
-		row, err := q.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: requestUUID, OrganizationID: organizationUUID})
+	canonicalApproverID := identity.UserID(uuidToString(approverUUID))
+	var resultView access.RequestView
+	var refusal error
+	err = s.withWorkflowTx(ctx, organizationUUID, func(queries *db.Queries) error {
+		lockedRow, err := queries.GetAccessRequestForUpdate(ctx, db.GetAccessRequestForUpdateParams{ID: requestUUID, OrganizationID: organizationUUID})
 		if err != nil {
 			return notFound(err, access.ErrNotFound)
 		}
-		// Lazy TTL, observed under the lock we now hold: a decision must never land on a request the deadline already took. `refused` carries the refusal out so the expiry transition commits (see observeOverdue).
-		expired, err := observeOverdue(ctx, q, requestUUID, organizationUUID, evt)
+		// Commit observed expiry before reporting the refused decision outside the transaction.
+		expired, err := observeOverdue(ctx, queries, requestUUID, organizationUUID, event)
 		if err != nil {
 			return err
 		}
 		if expired {
-			refused = access.ErrNotPending
+			refusal = access.ErrNotPending
 			return nil
 		}
-		r := toAccessRequest(row)
-		if r.State != access.StatePending {
+		request := toAccessRequest(lockedRow)
+		if request.State != access.StatePending {
 			return access.ErrNotPending
 		}
-		// Domain validation (shape, self-approval, rejection reason) against the LOCKED row's requester — the race-free enforcement point.
-		if _, err := access.NewApproval(id, org, approver, r.RequesterID, decision, reason, time.Now()); err != nil {
+		// Validate against the locked requester before assigning an authoritative database instant.
+		approval, err := access.NewApproval(request.ID, request.OrganizationID, canonicalApproverID, request.RequesterID, decision, reason, time.Time{})
+		if err != nil {
 			return err
 		}
-		// Recheck active status and action permission under the membership lock so concurrent revocation cannot authorize a stale approver.
-		if _, err := q.LockApproverMembership(ctx, db.LockApproverMembershipParams{
-			ApproverID: aid, OrganizationID: organizationUUID,
+		if _, err := queries.LockApproverMembership(ctx, db.LockApproverMembershipParams{
+			ApproverID: approverUUID, OrganizationID: organizationUUID,
 		}); err != nil {
 			return err
 		}
-		at, err := observeInstant(ctx, q)
+		observedAt, err := observeInstant(ctx, queries)
 		if err != nil {
 			return err
 		}
-		checkpoint, err := s.requestDecision(ctx, q, organizationUUID, requestUUID, aid, identity.Permission(decisionPermission(decision)), at)
+		permission := resolveDecisionPermission(decision)
+		authorizationDecision, err := s.requestDecision(ctx, queries, organizationUUID, requestUUID, approverUUID, permission, observedAt)
 		if err != nil {
 			return currentDecisionError(err)
 		}
-		// Permission, approval, transition, validity and audit share the database instant observed after the locks.
-		decidedAt, err := q.InsertApproval(ctx, db.InsertApprovalParams{
+		persistedDecisionTime, err := queries.InsertApproval(ctx, db.InsertApprovalParams{
 			RequestID:      requestUUID,
 			OrganizationID: organizationUUID,
-			ApproverID:     aid,
+			ApproverID:     approverUUID,
 			Decision:       string(decision),
 			Reason:         reason,
-			At:             timeToTS(at),
+			At:             timeToTS(observedAt),
 		})
 		if err != nil {
 			return onUniqueViolation(err, "approvals_one_decision_per_approver", access.ErrAlreadyDecided)
 		}
-		decided := tsToTime(decidedAt).UTC()
-		evt.OccurredAt = decided
+		approval.DecidedAt = tsToTime(persistedDecisionTime).UTC()
+		event.OccurredAt = approval.DecidedAt
 
-		from := r.State
-		switch decision {
-		case access.DecisionRejected:
-			if r, err = s.transitionAt(ctx, q, requestUUID, organizationUUID, from, access.StateRejected, nil, nil, decided); err != nil {
-				return err
-			}
-		case access.DecisionApproved:
-			count, err := s.countCurrentApprovals(ctx, q, organizationUUID, requestUUID, row.RequesterID, decided)
+		var eligibleApprovals int64
+		if decision == access.DecisionApproved {
+			eligibleApprovals, err = s.countCurrentApprovals(ctx, queries, organizationUUID, requestUUID, lockedRow.RequesterID, approval.DecidedAt)
 			if err != nil {
 				return err
 			}
-			if count >= int64(r.RequiredApprovals) {
-				// The window opens at the decision, so it is measured from the instant the DB stamped on the approval — not from the app's clock, which is a different clock than the one on the row.
-				expires := decided.Add(validity)
-				if r, err = s.transitionAt(ctx, q, requestUUID, organizationUUID, from, access.StateApproved, nil, &expires, decided); err != nil {
-					return err
-				}
+		}
+		nextRequest, err := request.ApplyApprovalDecision(approval, eligibleApprovals, validity)
+		if err != nil {
+			return err
+		}
+		previousState := request.State
+		if nextRequest.State != previousState {
+			// Only approval writes an expiry; rejection retains the stored value.
+			var approvalExpiry *time.Time
+			if nextRequest.State == access.StateApproved {
+				approvalExpiry = nextRequest.ExpiresAt
+			}
+			request, err = s.transitionAt(ctx, queries, requestUUID, organizationUUID, previousState, nextRequest.State, nil, approvalExpiry, approval.DecidedAt)
+			if err != nil {
+				return err
 			}
 		}
 
-		completeRequestEvent(&evt, r, from)
-		attachAuthorizationEvidence(&evt, checkpoint, identity.Permission(decisionPermission(decision)))
-		if err := insertAuditTx(ctx, q, evt); err != nil {
+		completeRequestEvent(&event, request, previousState)
+		attachAuthorizationEvidence(&event, authorizationDecision, permission)
+		if err := insertAuditTx(ctx, queries, event); err != nil {
 			return err
 		}
-		view, err = s.loadRequestViewInTransaction(ctx, q, requestUUID, organizationUUID, row.RequesterID)
+		resultView, err = s.loadRequestViewInTransaction(ctx, queries, requestUUID, organizationUUID, lockedRow.RequesterID)
 		return err
 	})
 	if err != nil {
 		return access.RequestView{}, err
 	}
-	if refused != nil {
-		return access.RequestView{}, refused
+	if refusal != nil {
+		return access.RequestView{}, refusal
 	}
-	return view, nil
+	return resultView, nil
 }
 
 // Cancel cancels the requester's draft, pending, or approved request.
