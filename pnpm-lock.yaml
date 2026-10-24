@@ -25,7 +25,17 @@ overrides:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.2
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.85.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   tests/load:
     dependencies:

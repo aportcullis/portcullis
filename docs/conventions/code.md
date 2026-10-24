@@ -37,6 +37,12 @@ Plan the split BEFORE creating files; prefer separation.
   - Split by kind: interfaces in `ports.go`, types in `types.go`, constants in `const.go`, and sentinels in `errors.go`.
   - Keep the primary type's constructor and methods in the main file.
 
+## TypeScript for Node and browser code
+
+Prefer TypeScript for maintained Node/browser source, including tests and automation. Migrate JavaScript as the affected concern changes; retain generated output or a documented format required by a tool. Native Node type stripping is execution support, so require a separate strict no-emit check and lint before tests run (ADR-0089).
+
+Keep repository tooling dependencies declared at their owning package and use the shared exact catalog. Use typed process outcomes, unknown at JSON boundaries, runtime guards/assertions and checked collection access; do not silence failures with any, assertions or suppression comments. Node-local imports use package subpaths that work at runtime; frontend imports retain their existing @/ boundary.
+
 ## Tests — TDD, black-box
 - Default to external `package X_test` (black-box) — test through the exported surface.
 - **White-box exceptions**

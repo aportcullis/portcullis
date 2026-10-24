@@ -40,6 +40,7 @@ Function names describe the operation and subject so the name alone tells what t
 Variable names are never single letters, apart from the receiver and test-handle exceptions in code.md; abbreviate no further than `idx` or `ind`. Every change and refactor follows all SOLID principles (see [code.md](docs/conventions/code.md)).
 Use Go doc comments and TypeScript JSDoc, with detailed rationale in ADRs and only essential inline invariants.
 Prefer receiver methods for private behavior belonging to an existing service or value object; keep independent pure operations free of artificial receiver dependencies.
+Prefer TypeScript for maintained Node/browser code, including tests and automation; migrate existing JavaScript when its concern changes, retaining generated output or documented tool requirements. Require static type checking before execution; native Node type stripping alone does not check types (ADR-0089).
 Validate untrusted frontend values at boundaries with Zod, then use explicit tagged states, `is` guards and runtime assertion functions. Minimize `any`, optional chaining and internal `null`/`undefined`; preserve genuine protocol and browser absence through explicit checks rather than invented defaults. See [frontend.md](docs/conventions/frontend.md).
 
 ## Map

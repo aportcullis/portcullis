@@ -139,8 +139,8 @@ test:
 test-race:
 	$(GO_TEST_ENV) bash .github/scripts/test-packages.sh race $(GO_TEST_PACKAGES)
 
-test-scheduling-check:
-	node --test tests/verification/*.test.mjs
+test-scheduling-check: workspace-install
+	pnpm run test:verification
 
 
 vuln:

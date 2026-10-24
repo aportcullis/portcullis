@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { assertPackageTargetSucceeded, cancelReadyPackageTarget, readPackageWitnesses, runPackageTarget, withPackageFixture, writePackageWithoutTests, writeWitnessPackage } from "./package-scheduling-fixture.mjs";
+import { assertPackageTargetSucceeded, cancelReadyPackageTarget, readPackageWitnesses, runPackageTarget, withPackageFixture, writePackageWithoutTests, writeWitnessPackage } from "#verification/package-scheduling-fixture";
 
 test("sequential packages use independent real Go parents and Testcontainers sessions", async () => {
   await withPackageFixture(async (context) => {
@@ -10,6 +10,7 @@ test("sequential packages use independent real Go parents and Testcontainers ses
     writeWitnessPackage(context, "second");
     const result = await runPackageTarget(context);
     const [first, second] = assertPackageTargetSucceeded(context, result, ["first", "second"]);
+    assert.ok(first !== undefined && second !== undefined, "Both selected packages must report executions");
     assert.notEqual(first.session, second.session, `Each package must have its own public Testcontainers session; observed Go parents ${first.parent} and ${second.parent}`);
     assert.notEqual(first.parent, second.parent, "Each package must have its own Go parent process");
   });
@@ -46,8 +47,10 @@ test("repeated target invocations remain uncached with fresh real sessions", asy
     assert.doesNotMatch(second.output, /\(cached\)/);
     const executions = readPackageWitnesses(context, "selected");
     assert.equal(executions.length, 2);
-    assert.notEqual(executions[0].parent, executions[1].parent);
-    assert.notEqual(executions[0].session, executions[1].session);
+    const [first, next] = executions;
+    assert.ok(first !== undefined && next !== undefined, "Both uncached runs must report executions");
+    assert.notEqual(first.parent, next.parent);
+    assert.notEqual(first.session, next.session);
   });
 });
 
@@ -109,7 +112,8 @@ test("an empty pattern expansion refuses before any package executes", async () 
   });
 });
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+const cancellationSignals: readonly ("SIGINT" | "SIGTERM")[] = ["SIGINT", "SIGTERM"];
+for (const signal of cancellationSignals) {
   test(`${signal} cancels the active real Go job without admitting a later package`, async () => {
     await withPackageFixture(async (context) => {
       writeWitnessPackage(context, "active", "wait");
@@ -128,8 +132,10 @@ test("an owned command deadline refuses and reaps the ready Go job before fixtur
     });
     const active = readPackageWitnesses(context, "active");
     assert.equal(active.length, 1);
-    assert.throws(() => process.kill(active[0].process, 0), { code: "ESRCH" });
-    assert.throws(() => process.kill(-active[0].group, 0), { code: "ESRCH" });
+    const [observation] = active;
+    assert.ok(observation !== undefined, "The timed-out active binary must report its observation");
+    assert.throws(() => process.kill(observation.process, 0), { code: "ESRCH" });
+    assert.throws(() => process.kill(-observation.group, 0), { code: "ESRCH" });
     assert.equal(readPackageWitnesses(context, "later").length, 0);
   });
 });

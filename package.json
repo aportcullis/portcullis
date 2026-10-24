@@ -2,12 +2,24 @@
   "name": "portcullis-workspace",
   "license": "Apache-2.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.34.6",
+  "imports": {
+    "#verification/*": "./tests/verification/*.ts"
+  },
   "scripts": {
-    "typecheck": "pnpm --recursive run typecheck",
-    "lint": "pnpm --recursive run lint",
-    "test": "pnpm --recursive run test",
+    "typecheck": "pnpm run typecheck:verification && pnpm --recursive --filter '!portcullis-workspace' run typecheck",
+    "lint": "pnpm run lint:verification && pnpm --recursive --filter '!portcullis-workspace' run lint",
+    "test": "pnpm run test:verification && pnpm --recursive --filter '!portcullis-workspace' run test",
     "test:workspace": "node --test tests/workspace/*.test.mjs",
-    "verify": "make verify"
+    "verify": "make verify",
+    "typecheck:verification": "tsc --noEmit -p tests/verification/tsconfig.json",
+    "lint:verification": "oxlint --deny-warnings --config tests/verification/oxlint.config.ts tests/verification",
+    "test:verification": "pnpm run typecheck:verification && pnpm run lint:verification && node --test tests/verification/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
   }
 }

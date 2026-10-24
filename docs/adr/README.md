@@ -114,6 +114,7 @@ These decisions establish the Core 1 foundation.
 | [0086](0086-verified-image-index-promotion.md) | Verified image index promotion | Accepted |
 | [0087](0087-non-interactive-workspace-installation.md) | Non-interactive workspace installation | Accepted |
 | [0088](0088-isolated-testcontainer-sessions.md) | Isolate Testcontainers sessions between test packages | Accepted |
+| [0089](0089-typed-repository-verification.md) | Type-check repository verification before execution | Accepted |
 
 ## Template
 ```markdown
