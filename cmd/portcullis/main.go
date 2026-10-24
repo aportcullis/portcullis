@@ -119,6 +119,7 @@ func run() error {
 	}
 
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat)
+	logger.Info("starting", "version", buildVersion)
 
 	// Refuse to start without a valid master key — encryption is mandatory.
 	keyring, err := crypto.LoadVersionedKeyring(cfg.MasterKey, cfg.MasterKeyFile, cfg.MasterKeyPrevious, cfg.MasterKeyPreviousFile)

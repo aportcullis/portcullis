@@ -110,6 +110,7 @@ These decisions establish the Core 1 foundation.
 | [0082](0082-result-feature-source-ownership.md) | Result feature source ownership | Accepted |
 | [0083](0083-account-disclosure-and-action-lifetime.md) | Account disclosure and action lifetime | Accepted |
 | [0084](0084-release-source-admission.md) | Release source admission | Accepted |
+| [0085](0085-startup-build-identity.md) | Startup build identity | Accepted |
 
 ## Template
 ```markdown

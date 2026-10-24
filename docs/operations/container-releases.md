@@ -38,6 +38,8 @@ Before publication, the tag must still exist with the same raw object and peeled
 
 These checks do not prove a tag's creation branch or enforce owner identity. Protect release tags and branches through repository rules as described above. Source identity, startup version and verified-image promotion have separate qualification evidence; source admission alone does not establish the other release criteria.
 
+Per [ADR-0085](../adr/0085-startup-build-identity.md), the release binary records its exact admitted Git tag, including the leading `v`, in one server-startup `INFO` event named `starting` with a `version` field. Ordinary untagged builds report `development`. Existing log-level filtering still applies; invalid logging configuration refuses before this event can be created. Health bodies/headers and the SPA do not expose the build version. Runtime environment changes cannot replace the identity compiled into the binary.
+
 ## Image references
 
 | Git tag | Published image tags |

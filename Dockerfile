@@ -20,7 +20,8 @@ COPY . .
 COPY --from=web /src/internal/platform/assets/dist ./internal/platform/assets/dist
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /portcullis ./cmd/portcullis
+ARG BUILD_VERSION=development
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.buildVersion=${BUILD_VERSION}" -o /portcullis ./cmd/portcullis
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aef9602f8710ec12bde19d593fed1f76c708531bb7aba205110f1029786ead7b
 COPY --from=build /portcullis /portcullis
