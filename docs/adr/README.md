@@ -70,7 +70,7 @@ These decisions establish the Core 1 foundation.
 | [0042](0042-private-network-deployment.md) | Private-network deployment through WARP or Tailscale | Accepted |
 | [0043](0043-load-package-imports.md) | Portable package-root imports for TypeScript k6 tests | Accepted |
 | [0044](0044-postgresql-string-interpretation.md) | Pin execution string interpretation and reject mismatched server reports | Accepted |
-| [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted |
+| [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted; package sessions superseded by [0088](0088-isolated-testcontainer-sessions.md) |
 | [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted |
 | [0047](0047-tagged-container-publication.md) | Verified tag releases to GHCR | Accepted; partly superseded by [ADR-0086](0086-verified-image-index-promotion.md) |
 | [0048](0048-commit-based-changelog.md) | Reviewed Conventional Commit changelogs with offline git-cliff | Accepted |
@@ -113,6 +113,7 @@ These decisions establish the Core 1 foundation.
 | [0085](0085-startup-build-identity.md) | Startup build identity | Accepted |
 | [0086](0086-verified-image-index-promotion.md) | Verified image index promotion | Accepted |
 | [0087](0087-non-interactive-workspace-installation.md) | Non-interactive workspace installation | Accepted |
+| [0088](0088-isolated-testcontainer-sessions.md) | Isolate Testcontainers sessions between test packages | Accepted |
 
 ## Template
 ```markdown

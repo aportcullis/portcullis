@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-04
+- **Partially superseded by:** [ADR-0088](0088-isolated-testcontainer-sessions.md) for Go package/session scheduling; concurrent verification groups and browser cleanup remain in effect.
 
 ## Context
 

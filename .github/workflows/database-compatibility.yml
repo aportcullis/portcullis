@@ -44,6 +44,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Verify selected target family and dialect scenarios
-        run: go test -p 1 -count=1 ./internal/infra/dbtest ./internal/infra/pgdialect
+        run: make test GO_TEST_PACKAGES='./internal/infra/dbtest ./internal/infra/pgdialect'
       - name: Verify browser workflows with PG18 metadata and the selected target
         run: make e2e

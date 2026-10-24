@@ -4,6 +4,7 @@
 .PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check generate-check proto-breaking
 .PHONY: workspace-install workspace-check dependency-audit
 .PHONY: release-image-check release-candidate-check
+.PHONY: test-scheduling-check
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -132,11 +133,14 @@ GO_TEST_PACKAGES ?= ./...
 GO_TEST_ENV := PORTCULLIS_TEST_DATABASE_REQUIRED=1
 
 test:
-	$(GO_TEST_ENV) go test -p 1 $(GO_TEST_PACKAGES) -count=1 -shuffle=on
+	$(GO_TEST_ENV) bash .github/scripts/test-packages.sh test $(GO_TEST_PACKAGES)
 
 
 test-race:
-	$(GO_TEST_ENV) go test -p 1 $(GO_TEST_PACKAGES) -count=1 -shuffle=on -race
+	$(GO_TEST_ENV) bash .github/scripts/test-packages.sh race $(GO_TEST_PACKAGES)
+
+test-scheduling-check:
+	node --test tests/verification/*.test.mjs
 
 
 vuln:
@@ -199,6 +203,7 @@ verify-static:
 	$(MAKE) -j1 generate-check
 	$(MAKE) -j1 proto-breaking
 	$(MAKE) -j1 changelog-check
+	$(MAKE) -j1 test-scheduling-check
 	go build ./...
 	go vet ./...
 	$(MAKE) -j1 lint
