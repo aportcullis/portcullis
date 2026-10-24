@@ -1,6 +1,6 @@
 import type { Component } from "solid-js";
 import type { QueryExecution } from "@/gen/portcullis/v1/query_executions_pb";
-import { formatExecutionDuration } from "@/features/request/executionMetrics";
+import { formatExecutionDuration } from "@/entities/request/executionMetrics";
 
 /** Defines the inputs owned by ExecutionSummary. */
 export type ExecutionSummaryProps = {

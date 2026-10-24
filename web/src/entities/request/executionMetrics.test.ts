@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
-import { formatExecutionDuration } from "@/features/request/executionMetrics";
+import { formatExecutionDuration } from "@/entities/request/executionMetrics";
 
 const recorded = (durationMs: bigint) => ({ state: AccessRequestState.SUCCEEDED, durationMs });
 

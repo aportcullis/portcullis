@@ -40,6 +40,7 @@ When shared logic needs a caller-specific piece (an error formatter, a label), *
 - **Always the `@/` alias** from `web/src` (`@/shared/ui/button`).
   Relative import paths — `./` AND `../`, including same-slice sibling files — are **forbidden**: write `@/entities/connection/model`, never `./model`.
   Enforced by Oxlint (`no-restricted-imports`, `make web-lint`).
+  Local CSS `@import` rules use the same alias through Vite; package stylesheet imports retain their package names.
 
 ## Vendored UI (shared/ui)
 - Components are copy-pasted from solid-ui (ADR-0013), reviewed on copy-in, and OWNED here: restyle freely, never blindly re-sync with upstream.

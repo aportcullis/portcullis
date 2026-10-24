@@ -8,7 +8,7 @@ Users need a concrete example showing how result sorting, filters, full cells, C
 
 ## Scope and starting points
 
-Expand the results section of the [product tour](../../media/product-tour.md) with a small synthetic PostgreSQL result example. Refer to [ResultPanel](../../../web/src/features/request/ResultPanel.tsx), the [result browser scenario](../../../web/e2e/requests-execution.spec.ts), and the [quickstart](../../operations/pg-alpha-quickstart.md). Keep this task to documentation and existing controls.
+Expand the results section of the [product tour](../../media/product-tour.md) with a small synthetic PostgreSQL result example. Refer to [ResultPanel](../../../web/src/features/result/ResultPanel.tsx), the [result browser scenario](../../../web/e2e/requests-execution.spec.ts), and the [quickstart](../../operations/pg-alpha-quickstart.md). Keep this task to documentation and existing controls.
 
 ## Completion criteria
 

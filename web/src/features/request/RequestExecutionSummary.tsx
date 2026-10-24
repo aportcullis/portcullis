@@ -4,7 +4,7 @@ import type { QueryExecution } from "@/gen/portcullis/v1/query_executions_pb";
 import { executionsClient } from "@/shared/api/client";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import { errorMessage } from "@/shared/api/errors";
-import { ExecutionSummary } from "@/features/request/ExecutionSummary";
+import { ExecutionSummary } from "@/entities/request/ExecutionSummary";
 
 /** Defines the inputs owned by RequestExecutionSummary. */
 export type RequestExecutionSummaryProps = {

@@ -2,9 +2,9 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import type { Component, JSX } from "solid-js";
 import { Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, splitProps } from "solid-js";
 
-import { createCsvExport, isCsvDownloadReady } from "@/features/request/csvExport";
-import type { CsvExportSnapshot, CsvReadyDownload } from "@/features/request/csvExport";
-import { describeResultError } from "@/features/request/resultErrors";
+import { createCsvExport, isCsvDownloadReady } from "@/features/result/csvExport";
+import type { CsvExportSnapshot, CsvReadyDownload } from "@/features/result/csvExport";
+import { describeResultError } from "@/features/result/resultErrors";
 import { executionsClient } from "@/shared/api/client";
 import { errorMessage, isAuthorizationRefusal } from "@/shared/api/errors";
 import { Button, buttonVariants } from "@/shared/ui/button";

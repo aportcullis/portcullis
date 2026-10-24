@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createCsvExport, isCsvDownloadReady, CSV_CLIPBOARD_BYTE_LIMIT, CSV_DOWNLOAD_BYTE_LIMIT } from "@/features/request/csvExport";
-import type { CsvExportController, CsvExportOptions, CsvExportRequest, CsvReadyDownload } from "@/features/request/csvExport";
+import { createCsvExport, isCsvDownloadReady, CSV_CLIPBOARD_BYTE_LIMIT, CSV_DOWNLOAD_BYTE_LIMIT } from "@/features/result/csvExport";
+import type { CsvExportController, CsvExportOptions, CsvExportRequest, CsvReadyDownload } from "@/features/result/csvExport";
 
 /** Yields bounded byte fragments as one CSV response. */
 async function* csvChunks(...chunks: Uint8Array[]): AsyncIterable<Uint8Array> {

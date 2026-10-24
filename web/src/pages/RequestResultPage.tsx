@@ -2,7 +2,7 @@ import type { Component } from "solid-js";
 import { Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
-import { ResultPanel } from "@/features/request/ResultPanel";
+import { ResultPanel } from "@/features/result/ResultPanel";
 
 /** Assembles a request page within the authenticated application shell. */
 const RequestResultPage: Component = () => {

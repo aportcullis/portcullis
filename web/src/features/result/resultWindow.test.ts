@@ -14,8 +14,8 @@ import {
   RESULT_CACHE_PAGE_LIMIT,
   RESULT_FETCH_LIMIT,
   RESULT_PAGE_SIZE,
-} from "@/features/request/resultWindow";
-import type { ResultWindowRead } from "@/features/request/resultWindow";
+} from "@/features/result/resultWindow";
+import type { ResultWindowRead } from "@/features/result/resultWindow";
 
 /** Provides explicitly scheduled read outcomes for request interleavings. */
 function deferredPage() {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cycleResultSorting } from "@/features/request/sorting";
+import { cycleResultSorting } from "@/features/result/sorting";
 
 describe("result sort selection", () => {
   it("cycles the same column through ascending, descending and original query order", () => {

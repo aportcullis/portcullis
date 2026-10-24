@@ -1,7 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 
-import { describeResultError } from "@/features/request/resultErrors";
+import { describeResultError } from "@/features/result/resultErrors";
 
 // The server maps an expired or evicted snapshot to FailedPrecondition ("result unavailable or expired"); other failures must not suggest expiry.
 const formatMessage = (err: unknown) => (err instanceof ConnectError ? err.rawMessage : "Request failed.");

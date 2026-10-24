@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import { CellValueSchema, QueryResultPageSchema, LogicalType } from "@/gen/portcullis/v1/query_executions_pb";
-import { resultText, resultClipboard } from "@/features/request/resultPresentation";
+import { resultText, resultClipboard } from "@/features/result/resultPresentation";
 
 const cell = (value: string) => create(CellValueSchema, { kind: { case: "stringValue", value } });
 

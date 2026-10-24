@@ -102,6 +102,8 @@ The SPA uses light Feature-Sliced Design. Arrows show the allowed downward impor
 
 Reusable components live in individual `shared/ui/<component>/` directories with an implementation, public API, example and README. Theme tokens and application layout live in `app/`; business actions stay in `features/`. See the [UI kit catalog](../web/src/shared/ui/README.md) and [frontend conventions](conventions/frontend.md) for reuse and customization.
 
+The request feature owns composition, review and execution actions; the result feature owns snapshot exploration and CSV export. Both consume the passive execution summary from the request entity. Result controllers retain their route/session lifetime and the app composes feature styles once through source aliases, per [ADR-0082](adr/0082-result-feature-source-ownership.md).
+
 ## Governed query runtime
 
 Here arrows mean runtime calls, not source imports. The metadata database and the governed target are different roles: the former stores Portcullis state, while the latter receives approved user SQL. This view focuses on execution and result exploration; other RPCs reuse the same transport and application boundaries.

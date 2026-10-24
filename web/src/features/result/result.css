@@ -1,0 +1,57 @@
+/* Result exploration layouts. */
+@layer components {
+  .result-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .result-filter {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .result-search-label {
+    display: flex;
+    flex: 1 1 18rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .result-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .result-table :is(th, td):not(:last-child) {
+    border-inline-end: 1px dashed var(--border);
+  }
+  .result-viewport {
+    height: 464px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    overflow-anchor: none;
+  }
+  .result-viewport > div {
+    overflow: visible;
+  }
+  .result-viewport .result-table {
+    table-layout: fixed;
+    min-width: 36rem;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .result-viewport tbody tr[aria-rowindex] {
+    height: 40px;
+  }
+  .result-text {
+    min-width: 0;
+    max-width: 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    tab-size: 8;
+  }
+}
