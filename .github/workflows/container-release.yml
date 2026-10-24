@@ -39,20 +39,33 @@ jobs:
     with:
       source_sha: ${{ needs.validate.outputs.source_sha }}
 
-  publish:
+  candidate:
     needs: [validate, verify]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
+    outputs:
+      repository: ${{ steps.image.outputs.repository }}
+      digest: ${{ steps.candidate.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ needs.validate.outputs.source_sha }}
-          fetch-depth: 0
-      - name: Record release notes
-        run: make --no-print-directory -s release-notes >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare image repository
+        id: image
+        env:
+          IMAGE_REPOSITORY: ${{ env.REGISTRY }}/${{ github.repository }}
+        shell: bash
+        run: |
+          image_repository=${IMAGE_REPOSITORY,,}
+          if [[ ! "$image_repository" =~ ^ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo 'Invalid image repository: expected a qualified GHCR repository.' >&2
+            exit 1
+          fi
+          printf 'repository=%s\n' "$image_repository" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GHCR
@@ -65,7 +78,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          images: ${{ steps.image.outputs.repository }}
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
@@ -77,7 +90,7 @@ jobs:
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           TAG_OID: ${{ needs.validate.outputs.tag_oid }}
         run: bash .github/scripts/verify-release-source.sh "$RELEASE_TAG" "$SOURCE_SHA" "$TAG_OID"
-      - name: Build and publish image
+      - name: Build candidate by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -86,21 +99,101 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             BUILD_VERSION=${{ github.ref_name }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          outputs: type=image,name=${{ steps.image.outputs.repository }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           labels: ${{ steps.meta.outputs.labels }}
           sbom: true
           provenance: mode=max
+      - name: Validate candidate digest
+        id: candidate
+        env:
+          CANDIDATE_DIGEST: ${{ steps.build.outputs.digest }}
+        shell: bash
+        run: |
+          if [[ ! "$CANDIDATE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo 'Invalid candidate digest: expected a full lowercase SHA-256 image digest.' >&2
+            exit 1
+          fi
+          printf 'digest=%s\n' "$CANDIDATE_DIGEST" >> "$GITHUB_OUTPUT"
+
+  candidate-smoke:
+    needs: [validate, candidate]
+    name: candidate (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.validate.outputs.source_sha }}
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify native candidate
+        env:
+          IMAGE_REPOSITORY: ${{ needs.candidate.outputs.repository }}
+          CANDIDATE_DIGEST: ${{ needs.candidate.outputs.digest }}
+          CANDIDATE_PLATFORM: ${{ matrix.platform }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/check-release-candidate.sh "$IMAGE_REPOSITORY" "$CANDIDATE_DIGEST" "$CANDIDATE_PLATFORM" "$RELEASE_TAG"
+
+  promote:
+    needs: [validate, candidate, candidate-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.validate.outputs.source_sha }}
+          fetch-depth: 0
+      - name: Record release notes
+        run: make --no-print-directory -s release-notes >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote verified candidate
+        env:
+          IMAGE_REPOSITORY: ${{ needs.candidate.outputs.repository }}
+          CANDIDATE_DIGEST: ${{ needs.candidate.outputs.digest }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          TAG_OID: ${{ needs.validate.outputs.tag_oid }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/promote-release-image.mjs "$IMAGE_REPOSITORY" "$CANDIDATE_DIGEST" "$RELEASE_TAG" "$SOURCE_SHA" "$TAG_OID"
       - name: Record published digest
         env:
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE_REPOSITORY: ${{ needs.candidate.outputs.repository }}
+          CANDIDATE_DIGEST: ${{ needs.candidate.outputs.digest }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          Published digest: \`$IMAGE_DIGEST\`
+          Published verified image: \`$IMAGE_REPOSITORY@$CANDIDATE_DIGEST\`
 
-          Tags:
-          \`\`\`
-          $IMAGE_TAGS
-          \`\`\`
+          Release: \`$RELEASE_TAG\`
           EOF

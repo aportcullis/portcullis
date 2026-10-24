@@ -29,6 +29,7 @@ These improve existing M1 workflows, separate from M3 personalization and review
 - CSV dialogs offer equivalent authorized CSV through clipboard or download, enforce clipboard size limits and preserve download on clipboard denial.
 - Account menus and CSV export dialogs support keyboard interaction, focus return and 320 px layouts without changing session, CSRF or result ownership checks.
 - Release admission requires the tag, event commit and matching release-branch tip to agree, pins subsequent verification/publication to that source and refuses later tag replacement or deletion. Publication promotes the verified image digest (ADR-0084).
+- After complete CI, upload one unaliased candidate under existing package visibility, verify that exact index on both native platforms and copy it unchanged to release aliases. Refuse full-version digest conflicts, allow equal-digest replay and document registry-write/visibility limits (ADR-0086).
 - Build version appears only in startup logs; Health responses do not expose it.
 - Review findings, documentation and CHANGELOG are resolved, and both `make verify` and `make supply-chain` pass before release readiness.
 

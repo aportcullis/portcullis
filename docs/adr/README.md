@@ -72,7 +72,7 @@ These decisions establish the Core 1 foundation.
 | [0044](0044-postgresql-string-interpretation.md) | Pin execution string interpretation and reject mismatched server reports | Accepted |
 | [0045](0045-testcontainers-package-scheduling.md) | Serialize package processes while retaining scenario concurrency and race detection | Accepted |
 | [0046](0046-similar-query-history-suggestions.md) | Authorized similar-query discovery with history navigation and draft reuse | Accepted |
-| [0047](0047-tagged-container-publication.md) | Verified tag releases to GHCR | Accepted |
+| [0047](0047-tagged-container-publication.md) | Verified tag releases to GHCR | Accepted; partly superseded by [ADR-0086](0086-verified-image-index-promotion.md) |
 | [0048](0048-commit-based-changelog.md) | Reviewed Conventional Commit changelogs with offline git-cliff | Accepted |
 | [0049](0049-multiarchitecture-container-builds.md) | AMD64/ARM64 cross-compilation and native image smoke gates | Accepted |
 | [0050](0050-private-vulnerability-reporting.md) | GitHub private vulnerability reporting | Accepted |
@@ -111,6 +111,7 @@ These decisions establish the Core 1 foundation.
 | [0083](0083-account-disclosure-and-action-lifetime.md) | Account disclosure and action lifetime | Accepted |
 | [0084](0084-release-source-admission.md) | Release source admission | Accepted |
 | [0085](0085-startup-build-identity.md) | Startup build identity | Accepted |
+| [0086](0086-verified-image-index-promotion.md) | Verified image index promotion | Accepted |
 
 ## Template
 ```markdown

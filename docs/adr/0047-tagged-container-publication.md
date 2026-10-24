@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-04
+- **Partially superseded by:** [ADR-0086](0086-verified-image-index-promotion.md) for candidate verification, publication permissions and full-version replay.
 
 ## Context
 

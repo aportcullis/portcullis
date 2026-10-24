@@ -32,6 +32,28 @@
     },
     {
       "customType": "regex",
+      "description": "Pinned release registry fixture",
+      "managerFilePatterns": [
+        "/^tests/release/promotion-fixture\\.mjs$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>registry):(?<currentValue>[0-9.]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Pinned release BuildKit fixture",
+      "managerFilePatterns": [
+        "/^tests/release/buildx-fixture\\.mjs$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>moby/buildkit):(?<currentValue>v[0-9.]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "Pinned sqlc code generator",
       "managerFilePatterns": [
         "/^\\.github/scripts/codegen-images\\.sh$/"

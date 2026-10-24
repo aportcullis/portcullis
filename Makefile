@@ -3,6 +3,7 @@
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
 .PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check generate-check proto-breaking
 .PHONY: workspace-install workspace-check dependency-audit
+.PHONY: release-image-check release-candidate-check
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -171,7 +172,14 @@ clean-check:
 release-check:
 	bash tests/release/tags.sh
 	bash tests/release/ci-source-input.sh
+	bash tests/release/candidate-digest-input.sh
 	bash tests/release/source.sh
+
+release-image-check:
+	node --test tests/release/promotion.test.mjs tests/release/registry-evidence.test.mjs
+
+release-candidate-check:
+	node --test tests/release/product-candidate.test.mjs
 
 # Concurrent verify groups (ADR-0045).
 VERIFY_LOG_DIR ?= $(or $(TMPDIR),/tmp)/portcullis-verify
@@ -184,6 +192,7 @@ verify-prepare: web e2e-browser load-bundle
 
 verify-static:
 	$(MAKE) -j1 release-check
+	$(MAKE) -j1 release-image-check
 	$(MAKE) -j1 dockerfile-check
 	$(MAKE) -j1 ignore-check
 	$(MAKE) -j1 clean-check

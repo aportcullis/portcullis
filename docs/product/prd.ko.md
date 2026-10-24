@@ -691,6 +691,7 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
 - M6는 API 안정화 후 Terraform/OpenTofu를 추가하고 인증·마스킹 완료 기준 이후 Gateway 배포를 제공한다. Kubernetes/CNPG 가용성만으로 애플리케이션 HA를 주장하지 않는다.
 - 태그 기반 배포는 기능·의존성 보안 검증 후 AMD64/ARM64 이미지와 SBOM/provenance를 발행한다. 전체 버전·커밋 태그와 안정 릴리스의 minor 별칭을 사용하고 implicit latest는 제공하지 않는다. 운영자는 태그를 보호하고 운영 이미지 digest를 고정한다.
 - 릴리스 태그는 일치하는 릴리스 브랜치에서 생성하고 검증한 이미지 digest를 승격해 발행한다. 릴리스 검증을 시작할 때 태그 커밋은 현재 release/vMAJOR.MINOR의 tip 및 실행을 발생시킨 커밋과 같아야 한다. 검증과 발행은 확정한 소스에 고정하고, 발행 전 태그 삭제·이동·주석 객체 교체를 거부한다. 이미 검증을 시작한 실행 중에는 브랜치 진행을 허용하지만, 브랜치가 진행한 뒤 오래된 태그로 검증을 새로 시작하면 거부한다(ADR-0084).
+- 전체 소스·기능·보안 게이트가 통과하면 attestation을 포함한 다중 플랫폼 후보 하나를 릴리스 별칭 없이 업로드한다. 정확히 그 digest를 추가로 검사하기 전에도 기존 패키지 공개 범위가 적용된다. 두 플랫폼이 모두 통과한 뒤 동일한 index를 승격한다. 다른 digest를 가리키는 전체 버전 별칭은 거부하고, 같은 digest의 재실행과 변경 가능한 minor·커밋 별칭은 허용한다. 레지스트리 사전 조회와 여러 별칭 쓰기는 원자적이지 않으므로 패키지 쓰기 권한을 제한한다(ADR-0086).
 
 Per [M2 범위](../milestones/m2/scope.md), 배포 완료 기준과 순서는 마일스톤 문서에서 정의한다.
 Per [ADR-0035](../adr/0035-kubernetes-cnpg-after-mysql.md), [ADR-0042](../adr/0042-private-network-deployment.md), [ADR-0047](../adr/0047-tagged-container-publication.md), [ADR-0049](../adr/0049-multiarchitecture-container-builds.md)와 [ADR-0054](../adr/0054-release-branches-and-documentation-policy.md), 패키징·운영 구성·릴리스 책임은 기술 결정이다.
