@@ -27,7 +27,7 @@ Ships as one Go binary with the SolidJS SPA embedded.
 Only owner-created Git tags assign versions; agents never tag or push, and `fix`/`refactor`/`perf` commits are prohibited until the owner releases `v0.1.0`: see [branch, version and commit rules](docs/conventions/tooling.md#branches-and-versions).
 
 ## Definition of done
-`make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, load-check and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Every test must pass before each small commit; all gates must be green before declaring a milestone complete.
+`make verify` must pass: Go build/vet/lint (0 issues), uncached Go tests, web typecheck/lint/tests, workspace/load checks and browser E2E against the real binary. `make supply-chain` is a separate required dependency-security gate, as in CI. Every test must pass before each small commit; all gates must be green before declaring a milestone complete.
 
 ## Conventions — see `docs/conventions/`
 - [code.md](docs/conventions/code.md) — layered DDD, file-split, tests/TDD, minimize-hardcoding.

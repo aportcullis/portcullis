@@ -2,6 +2,7 @@
 .PHONY: verify-prepare verify-static verify-go verify-browser
 .PHONY: load-test load-typecheck load-bundle load-check load-server query-bench
 .PHONY: keygen-check release-check changelog changelog-check release-notes image-check dockerfile-check ignore-check clean-check generate-check proto-breaking
+.PHONY: workspace-install workspace-check dependency-audit
 
 # Use only a disposable tmpfs; never run key-generation tests on the demo volume.
 keygen-check:
@@ -13,8 +14,7 @@ keygen-check:
 K6 ?= k6
 LOAD_FIXTURES ?= $(CURDIR)/tests/load/fixtures.local.json
 
-load-typecheck:
-	pnpm -C tests/load install --frozen-lockfile
+load-typecheck: workspace-install
 	pnpm -C tests/load run typecheck
 
 load-bundle: load-typecheck
@@ -67,8 +67,15 @@ proto-breaking:
 	bash tests/release/proto-breaking.sh
 
 
-web-install:
-	pnpm -C web install --frozen-lockfile
+workspace-install:
+	pnpm install --frozen-lockfile
+
+
+workspace-check: workspace-install
+	node --test tests/workspace/*.test.mjs
+
+
+web-install: workspace-install
 
 
 web: web-install
@@ -91,8 +98,11 @@ web-test: web-install
 	pnpm -C web test
 
 
-web-audit: web-install
-	pnpm -C web audit
+dependency-audit: workspace-install
+	pnpm audit
+
+
+web-audit: dependency-audit
 
 
 e2e: web e2e-browser
@@ -132,7 +142,7 @@ vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 
-audit: web-audit vuln
+audit: dependency-audit vuln
 
 
 export RELEASE_TAG IMAGE_PLATFORMS
@@ -184,6 +194,7 @@ verify-static:
 	$(MAKE) -j1 web-typecheck
 	$(MAKE) -j1 web-lint
 	$(MAKE) -j1 web-test
+	$(MAKE) -j1 workspace-check
 	$(MAKE) -j1 load-check
 
 verify-go:
@@ -216,11 +227,10 @@ clean:
 
 # Verify integrity and known vulnerabilities before delivery.
 .PHONY: supply-chain load-audit install-policy-test
-load-audit:
-	pnpm -C tests/load audit --audit-level=high
+load-audit: dependency-audit
 
-install-policy-test:
+install-policy-test: workspace-install
 	cd web && node --test tests/install-policy.test.mjs
 
-supply-chain: web-audit load-audit vuln install-policy-test
+supply-chain: dependency-audit vuln install-policy-test workspace-check
 	go mod verify

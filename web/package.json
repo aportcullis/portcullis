@@ -3,7 +3,6 @@
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.34.6",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -27,14 +26,14 @@
     "sql-formatter": "15.9.0",
     "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.2",
-    "zod": "4.6.6"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "2.12.1",
     "@playwright/test": "1.61.1",
-    "@types/node": "24.13.2",
-    "oxlint": "1.85.0",
-    "typescript": "7.0.2",
+    "@types/node": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:",
     "vite": "8.1.6",
     "vite-plugin-solid": "2.11.12",
     "vitest": "4.1.12"

@@ -1,6 +1,6 @@
 # ADR-0029: Dependency installation and supply-chain controls
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0080](0080-shared-typescript-workspace.md) for lockfile, installation-policy and audit scope; supply-chain controls remain in force.
 - **Date:** 2026-10-03
 
 ## Context

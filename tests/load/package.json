@@ -3,7 +3,6 @@
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.34.6",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "bundle": "mkdir -p dist && esbuild governance.ts async-execution.ts result-limits.ts wire.test.ts --bundle --format=esm --platform=neutral --target=es2022 --external:k6 --external:k6/* --outdir=dist",
@@ -12,13 +11,13 @@
   },
   "devDependencies": {
     "@types/k6": "2.3.0",
-    "@types/node": "24.13.2",
+    "@types/node": "catalog:",
     "esbuild": "0.28.2",
-    "oxlint": "1.85.0",
-    "typescript": "7.0.2"
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
-    "zod": "4.6.6"
+    "zod": "catalog:"
   },
   "imports": {
     "#load/*": "./*.ts"

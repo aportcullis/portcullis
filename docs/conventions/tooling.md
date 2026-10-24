@@ -11,6 +11,7 @@
   - `make lint` checks gofmt on every tracked Go file and runs pinned golangci-lint with the project’s Go toolchain. After compiler or analyzer upgrades on macOS, also check Linux-specific source with a host-built copy of the pinned analyzer: run it with `GOOS=linux GOARCH=amd64` and the same `run` options as `make lint`. Compile the tool for the host first, then apply the target environment during analysis; this supplements the native Linux CI gate (ADR-0029).
 - **Frontend verification**
   - `make web-lint`, `make web-typecheck`, and `make web-test` run Oxlint, TypeScript 7 native `tsc`, and Vitest.
+  - `make workspace-install` installs both TypeScript members from the root frozen lockfile; `make web-install` remains its compatibility alias. `make workspace-check` qualifies fresh shared installation, dependency ownership, lock/catalog drift and script refusal.
 - **Container images**
   - `make image-check` builds and smoke-tests Linux AMD64 and ARM64 images. `IMAGE_PLATFORMS` selects a supported variant; cross-architecture local execution needs emulation. CI uses native runners and both checks gate tagged publication (ADR-0049).
 - **Release history**
@@ -19,8 +20,8 @@
   - `make ignore-check` proves that the committed `.gitignore` and `.dockerignore` exclude package-manager configuration, keys, environment files, private load output and review ledgers while keeping generated sources, migrations and `.env.example`; included in `make verify`.
   - `make changelog-check` exercises real Git history and release boundaries; included in `make verify`. `make release-notes` renders only the current tag for the GHCR publication summary.
 - **Dependency security**
-  - `make vuln` runs pinned govulncheck; `make audit` also runs pnpm audit. `make supply-chain` verifies Go modules, audits both npm lockfiles and checks fresh-install script rejection; CI runs it after the functional gate.
-- `make generate` — `buf generate` (Connect Go + TS) through `go tool buf` with local plugins, and `sqlc generate` through the digest-pinned image in `.github/scripts/codegen-images.sh`; generation needs no network and no local buf or sqlc install (run `pnpm -C web install` first for the TypeScript plugin).
+  - `make vuln` runs pinned govulncheck; `make audit` also runs the root pnpm audit over all workspace importers with full default severity. `make supply-chain` verifies Go modules, audits the shared npm lockfile and checks fresh-install workspace/script policy; CI runs it after the functional gate.
+- `make generate` — `buf generate` (Connect Go + TS) through `go tool buf` with local plugins, and `sqlc generate` through the digest-pinned image in `.github/scripts/codegen-images.sh`; generation needs no network and no local buf or sqlc install (run the root frozen pnpm install first for the TypeScript plugin).
 - `make generate-check` regenerates in a disposable copy and fails on generated-code drift, `buf lint` violations or an untidy `go.mod`; `make proto-breaking` runs `buf breaking` against `origin/main`. Both are part of `make verify`.
 - `make load-check` — strict TypeScript, locally bundled k6 scripts and Zod RPC/fixture contract tests; included in `make verify`.
 - `make load-test` — k6 2.3.0 scenario tests against an isolated installation; fixture and sizing instructions in [performance guide](../performance/README.md).
@@ -34,6 +35,7 @@ The protobuf plugins are pinned through the runtimes themselves: `protoc-gen-go`
 ## Dependencies
 **Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification.
 Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.
+Per [ADR-0080](../adr/0080-shared-typescript-workspace.md), pnpm's version, installation policy, shared lockfile and exact common-dependency catalog belong at the repository root. Each member declares its own dependencies; catalog entries coordinate versions without granting undeclared imports. Update catalog and lockfile together, preserve the supply-chain controls and verify both members before committing.
 
 ## Branches and versions
 

@@ -1,7 +1,7 @@
 # Frontend conventions (web/ — SolidJS SPA)
 
 Stack: SolidJS + Vite + Zod + Tailwind v4 + Kobalte(vendored solid-ui) + Connect-ES v2 (ADR-0013, ADR-0079).
-Package manager is **pnpm only** (`pnpm -C web …`) — never npm/npx.
+Package manager is **pnpm only** — never npm/npx. Install from the repository root with `pnpm install --frozen-lockfile`; web and tests/load share one workspace, root lockfile and exact common-dependency catalog (ADR-0080). Keep dependencies declared by each member and run frontend scripts with `pnpm -C web …`.
 
 ## Structure — light FSD (Feature-Sliced Design)
 

@@ -1,0 +1,13 @@
+{
+  "name": "portcullis-workspace",
+  "license": "Apache-2.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.6",
+  "scripts": {
+    "typecheck": "pnpm --recursive run typecheck",
+    "lint": "pnpm --recursive run lint",
+    "test": "pnpm --recursive run test",
+    "test:workspace": "node --test tests/workspace/*.test.mjs",
+    "verify": "make verify"
+  }
+}
