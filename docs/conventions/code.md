@@ -15,6 +15,8 @@ Every new change and every refactor preserves these principles.
 Depend on **abstractions, not concretions** (DIP): a layer takes the behavior it needs as a **small, consumer-defined interface** (ISP — define it in the package that *uses* it, list only the methods that package calls), and the concrete implementation is **injected** via the constructor.
 "Accept interfaces, return structs."
 
+Prefer a receiver method for private behavior owned by an existing service, aggregate or value object. Its dependencies and invariants belong with that receiver. Keep independent pure operations as functions; visibility alone is not a reason to invent a type or attach unrelated behavior to one.
+
 - **Consumer-owned ports**
   - `app/auth` declares `PasswordHasher` and `CSRFProtector`; it never imports `infra/crypto`.
   - Crypto adapters satisfy those interfaces structurally without importing the app layer.

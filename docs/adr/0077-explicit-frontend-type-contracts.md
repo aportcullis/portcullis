@@ -1,6 +1,6 @@
 # ADR-0077: Explicit frontend type contracts and safe destructuring
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0079](0079-frontend-runtime-validation.md) for internal absence and runtime boundary validation; named contracts and reactive destructuring remain in force.
 - **Date:** 2026-10-21
 - **Refines:** ADR-0013, ADR-0031 and ADR-0076 for source maintainability.
 

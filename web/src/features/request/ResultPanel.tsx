@@ -29,12 +29,14 @@ import {
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { errorMessage, isAuthorizationRefusal } from "@/shared/api/errors";
 import { executionsClient } from "@/shared/api/client";
+import { createValidatedQueryResultReader } from "@/shared/api/queryResultValidation";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";
 import { CsvExportDialog } from "@/features/request/CsvExportDialog";
 import { describeResultError } from "@/features/request/resultErrors";
 import { cellText, resultText, resultClipboard } from "@/features/request/resultPresentation";
 import { cycleResultSorting } from "@/features/request/sorting";
 import { createResultWindow } from "@/features/request/resultWindow";
+import type { ResultWindowRead } from "@/features/request/resultWindow";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
 import { Button } from "@/shared/ui/button";
 import { nativeControlVariants } from "@/shared/ui/control";
@@ -75,7 +77,9 @@ export const ResultPanel: Component<ResultPanelProps> = (props) => {
   let viewport: HTMLDivElement | undefined;
   let copyInFlight = false;
   const windowController = createResultWindow({
-    readPage: (request, signal) => executionsClient.getResult(request, { signal }),
+    readPage: createValidatedQueryResultReader<ResultWindowRead>(
+      (request, signal) => executionsClient.getResult(request, { signal }),
+    ),
     onChange: () => setWindowRevision(value => value + 1),
     classifyError: error => {
       if (isAuthorizationRefusal(error)) return "refused";

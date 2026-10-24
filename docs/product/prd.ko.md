@@ -445,12 +445,13 @@ multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와
 | 관리 대상 DB 접근 | dialect adapter + native driver | PostgreSQL/MySQL 차이를 명시적으로 격리 |
 | 인증 | password(argon2id) + Google OIDC + M3 Keycloak OIDC + 서버사이드 세션 | `coreos/go-oidc` + `x/oauth2`, 서버사이드 콜백(프론트 SDK 없음). 추가 인증 연동은 이후 |
 | Authz | 리소스 기반 Role·Binding·Condition | ADR-0062에 따라 ADR-0071로 활성화. repository 조직 격리·cross-org 테스트 유지. metadata RLS는 MVP 미적용(ADR-0004, 스키마는 RLS-ready) |
-| 프론트엔드 | SolidJS SPA + Vite | CSR. `go:embed`로 바이너리에 포함 |
+| 프론트엔드 | SolidJS SPA + Vite + Zod | CSR. `go:embed`로 바이너리에 포함, 외부 입력의 런타임 검증 |
 | UI 라이브러리 | Kobalte + Tailwind + TanStack Table | 데이터 그리드가 제품 핵심 |
 | Schema 엔진 | Atlas Community CLI subprocess | 버전·checksum을 고정하고 `SchemaEngine` 인터페이스로 격리 |
 
 UI 요구사항은 §7에서 정의하며 화면 변경은 인증·권한·승인된 실행을 유지해야 한다.
 Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), 구현 세부사항은 해당 기능의 결정에서 관리한다.
+M1 결과 응답은 애플리케이션 상태에 들어오기 전에 런타임 계약을 검증하며, 다른 외부 데이터 경계도 작은 검증 단위로 확대한다. 잘못된 필수 값은 정상 값이나 SQL NULL로 대체하지 않고 해당 작업의 명시적인 오류와 복구 경로를 제공한다. 정상 값의 정밀도·표현, 기존 인가와 응답 수명을 보존하며 서버 검증·인가를 대체하지 않는다(ADR-0079).
 
 ### 5.2 메타데이터 저장소 원칙
 **"어디서 돌든 메타데이터는 PostgreSQL."** compose든 Helm이든 동일 스키마·쿼리·sqlc 코드가 동작.

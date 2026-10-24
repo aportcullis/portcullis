@@ -26,7 +26,8 @@
     "solid-js": "1.9.17",
     "sql-formatter": "15.9.0",
     "tailwind-merge": "3.6.0",
-    "tailwindcss": "4.3.2"
+    "tailwindcss": "4.3.2",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "2.12.1",

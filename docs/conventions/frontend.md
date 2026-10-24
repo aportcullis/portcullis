@@ -1,6 +1,6 @@
 # Frontend conventions (web/ — SolidJS SPA)
 
-Stack: SolidJS + Vite + Tailwind v4 + Kobalte(vendored solid-ui) + Connect-ES v2 (ADR-0013).
+Stack: SolidJS + Vite + Zod + Tailwind v4 + Kobalte(vendored solid-ui) + Connect-ES v2 (ADR-0013, ADR-0079).
 Package manager is **pnpm only** (`pnpm -C web …`) — never npm/npx.
 
 ## Structure — light FSD (Feature-Sliced Design)
@@ -53,6 +53,12 @@ See the [UI kit catalog and reuse guide](../../web/src/shared/ui/README.md) for 
 - All RPC goes through `shared/api` clients (Connect-ES v2, `createClient`); no raw fetch to API routes.
   The CSRF interceptor lives there — features/entities never touch cookies directly.
 - Auth/session errors render **uniform messages** (one string for every login rejection — the server is oracle-free and the UI must not undo that, ADR-0006).
+- **Validate external values once at their boundary**
+  - Use Zod for runtime shape and cross-field checks before an untrusted value enters application state; generated TypeScript types alone do not establish runtime validity.
+  - Keep domain-independent validation in `shared/lib` and wire-response schemas/adapters in `shared/api`, with no imports upward into features or entities.
+  - Reuse generated contracts, preserve valid data exactly and reject invalid required fields explicitly. Do not trim, coerce, default or render missing data as a valid value.
+  - Retain only validated fields; detach binary views when a cached cell would otherwise retain its original transport buffer. Do not validate again during each render or log rejected values, SQL, raw schema issues or response bodies.
+  - Keep failures scoped to the operation and preserve retry, session, authority and stale-response fences. Browser validation supplements server validation and authorization.
 - **Fence dialog sessions**
   - Fence work after every `await` through `shared/lib/dialogSession.ts`; closing and reopening remains possible while requests run.
   - Apply nothing when `runInSession` returns `superseded`; the close handler releases `busy`, `saving` and read loading immediately, even if the old request never settles. Old callbacks must not clear a reopened session's loading state.
@@ -100,6 +106,8 @@ Single-line control presentation follows ADR-0076: share `shared/ui/control` geo
 Keep nested JSX readable across multiple lines. Give mutation sequences and nontrivial event handlers explicit names outside the markup, keep state operations on separate lines, and name compound visibility/disposal predicates by intent. Formatting must preserve labels, whitespace meaning, permission checks and asynchronous lifecycle fences.
 
 Reuse existing controls, styles and helpers before adding another implementation. Extract shared behavior only where callers have the same contract; keep permission and lifecycle ownership explicit. Define clear prop and boundary types, reuse generated/library types, and let local values infer their types from those contracts. Use runtime validation and narrowing instead of type assertions, including `as const`.
+
+Use `unknown` for untrusted values, `is` predicates for runtime narrowing, and `asserts` functions only when they perform the checks and throw a safe error on failure. Avoid `any`, optional chaining and nullish fallbacks that conceal an invalid state. Prefer discriminated unions with required payloads for internal absence, progress, success and failure; minimize internal `null` and `undefined`. When generated protocols or browser APIs genuinely return an absent value, check it explicitly at the boundary and convert it to the appropriate state. Preserve SQL NULL as data and avoid artificial defaults. New or substantially changed code follows this rule without hand-editing generated code or replacing every browser/library type.
 
 Treat browser performance as part of review: avoid duplicate requests, unnecessary reactive effects and repeated expensive transformations. Share static presentation definitions outside component execution, preserve fine-grained updates and measure representative workflows before claiming a performance improvement. Abstraction must not introduce extra loading or broaden state retention.
 

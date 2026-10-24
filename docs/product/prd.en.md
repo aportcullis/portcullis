@@ -475,12 +475,13 @@ Acceptance includes real local/Claude Code/Codex client matrix, protocol compati
 | Target DB access | Dialect adapters/native drivers | Explicitly isolate PostgreSQL/MySQL differences |
 | Authentication | argon2id passwords, Google OIDC, M3 Keycloak OIDC, server sessions | `coreos/go-oidc` + `x/oauth2`, server callbacks without frontend SDK; broader federation later |
 | Authorization | Resource-aware Role/Binding/Condition | Activated per ADR-0071, following ADR-0062; repository org isolation and cross-org tests remain mandatory; no MVP metadata RLS, ADR-0004 |
-| Frontend | SolidJS SPA/Vite | CSR, embedded using `go:embed` |
+| Frontend | SolidJS SPA/Vite/Zod | CSR, embedded using `go:embed`, runtime validation of external values |
 | UI | Kobalte/Tailwind/TanStack Table | Data grid is central to the product |
 | Schema engine | Atlas Community CLI subprocess | Pin version/checksum and isolate behind `SchemaEngine` |
 
 UI requirements are in §7; customization must preserve authentication, authorization and approved execution.
 Per [ADR-0036](../adr/0036-ui-customization-boundaries.md), implementation details are maintained with the feature decision.
+Validate M1 result responses against their runtime contract before admitting them into frontend application state, and extend this to other external boundaries through small verified concerns. Reject invalid required values with an explicit operation-scoped error and recovery path instead of substituting valid data or SQL NULL. Preserve valid precision and representation, current authorization and response lifetimes; browser checks do not replace server validation or authorization (ADR-0079).
 
 ### 5.2 Metadata storage
 

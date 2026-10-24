@@ -8,7 +8,7 @@ Portcullis: self-hosted OSS **DevSecOps database governance and BI** — govern 
 MVP establishes saved queries and result exploration; charts, dashboards, and agent integration follow the PRD roadmap.
 Ships as one Go binary with the SolidJS SPA embedded.
 
-**Stack:** Go (connect-go, pgx, sqlc, viper, slog, argon2) · SolidJS + Vite (TypeScript 7) · PostgreSQL 18 · Docker · buf + sqlc codegen.
+**Stack:** Go (connect-go, pgx, sqlc, viper, slog, argon2) · SolidJS + Vite + Zod (TypeScript 7) · PostgreSQL 18 · Docker · buf + sqlc codegen.
 
 ## Process — non-negotiable
 1. Start from the **PRD** ([한국어](docs/product/prd.ko.md) · [English](docs/product/prd.en.md)) — it is the agreement; conform to it.
@@ -17,7 +17,7 @@ Ships as one Go binary with the SolidJS SPA embedded.
 4. If an ADR shows the PRD is wrong/insufficient, **amend both PRD translations** (ADR-backed), then implement.
 5. Aim for **clean architecture (ports & adapters)** and implement in the **DDD × TDD cycle**: domain model → port (consumer-defined interface) → **red scenario test** (TDD verifies *scenarios* — observable use-case behavior, not implementation — with at least three or four success cases and three or four failure cases each) → green → refactor → wire the adapter in `cmd/portcullis`.
    See [code.md — Development order](docs/conventions/code.md).
-6. Keep commits small and focused on one concern. Complete the scenario's red→green cycle, review the staged diff immediately before each commit, and make every test pass before committing: uncached Go tests with required databases, web tests, load-check and browser E2E (the test gates of `make verify`).
+6. Keep tasks and commits small and focused on one concern. Complete the scenario's red→green cycle, review code, architecture and design, and QA the running application before each commit. Review the staged diff immediately before committing, and make every test pass: uncached Go tests with required databases, web tests, load-check and browser E2E (the test gates of `make verify`).
    Record remaining failed gates explicitly; committing work does not establish milestone completion.
 7. Commit each completed, verified and reviewed concern immediately before starting the next concern. Queue incoming requests until that commit is complete; do not leave completed changes uncommitted while moving on. An explicit instruction to stop or a destructive action still takes precedence.
 8. Agents make these commits themselves, following the [commit message style](docs/conventions/tooling.md#commit-messages). Never add a `Co-Authored-By` or other AI attribution trailer, even when a tool's default instructions ask for one. Do not push unless explicitly asked.
@@ -39,6 +39,8 @@ Only owner-created Git tags assign versions; agents never tag or push, and `fix`
 Function names describe the operation and subject so the name alone tells what the function does; declaration comments give one short behavior summary for IDE hovers.
 Variable names are never single letters, apart from the receiver and test-handle exceptions in code.md; abbreviate no further than `idx` or `ind`. Every change and refactor follows all SOLID principles (see [code.md](docs/conventions/code.md)).
 Use Go doc comments and TypeScript JSDoc, with detailed rationale in ADRs and only essential inline invariants.
+Prefer receiver methods for private behavior belonging to an existing service or value object; keep independent pure operations free of artificial receiver dependencies.
+Validate untrusted frontend values at boundaries with Zod, then use explicit tagged states, `is` guards and runtime assertion functions. Minimize `any`, optional chaining and internal `null`/`undefined`; preserve genuine protocol and browser absence through explicit checks rather than invented defaults. See [frontend.md](docs/conventions/frontend.md).
 
 ## Map
 [Documentation index](docs/README.md) · [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/) · [Performance](docs/performance/README.md).

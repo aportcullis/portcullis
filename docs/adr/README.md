@@ -102,8 +102,9 @@ These decisions establish the Core 1 foundation.
 | [0074](0074-session-capability-discovery-and-recovery.md) | Session capability discovery and metadata recovery | Accepted |
 | [0075](0075-local-draft-and-setup-receipt-lifetimes.md) | Local creation drafts and setup receipts independent of protected-read revisions | Accepted |
 | [0076](0076-accessible-colors-and-control-sizing.md) | Accessible semantic colors and shared control sizing | Accepted |
-| [0077](0077-explicit-frontend-type-contracts.md) | Explicit frontend type contracts and safe destructuring | Accepted |
+| [0077](0077-explicit-frontend-type-contracts.md) | Explicit frontend type contracts and safe destructuring | Partly superseded by ADR-0079 |
 | [0078](0078-css-first-stylesheet-ownership.md) | CSS-first stylesheet ownership | Accepted |
+| [0079](0079-frontend-runtime-validation.md) | Frontend runtime validation and explicit internal states | Accepted |
 
 ## Template
 ```markdown
