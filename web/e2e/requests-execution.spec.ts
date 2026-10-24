@@ -189,8 +189,11 @@ test("approved SQL executes once, scrolls and sorts exact values, filters and ex
   await dialog.getByRole("button", { name: "Table", exact: true }).click();
   await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
   await dialog.getByRole("button", { name: "Export CSV", exact: true }).click();
-  const downloadLink = dialog.getByRole("link", { name: "Download CSV", exact: true });
+  const csvDialog = page.getByRole("dialog", { name: "Export CSV", exact: true });
+  await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
+  const downloadLink = csvDialog.getByRole("link", { name: "Save CSV file", exact: true });
   await expect(downloadLink).toBeVisible();
+  await expect(csvDialog.getByRole("button", { name: "Download CSV", exact: true })).toHaveCount(0);
   const downloadHref = (await downloadLink.getAttribute("href")) ?? "";
   expect(downloadHref).toMatch(/^blob:/);
   // The saved download is read back below; the page itself may not fetch its blob: URL because connect-src admits only the SPA origin.

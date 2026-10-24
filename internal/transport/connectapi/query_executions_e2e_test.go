@@ -59,7 +59,21 @@ func TestGovernedExecutionOwnershipReplayAndStreamCSRF(t *testing.T) {
 	if !strings.Contains(csv.String(), "9007199254740993,'=private-value") {
 		t.Fatalf("CSV escaping or precision lost: %q", csv.String())
 	}
-	missing, err := client.ExportCSV(ctx, connect.NewRequest(&portcullisv1.ExportQueryCSVRequest{RequestId: id}))
+	rawStream, err := client.ExportCSV(ctx, withCSRF(connect.NewRequest(&portcullisv1.ExportQueryCSVRequest{RequestId: id, Raw: true}), csrf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rawCSV strings.Builder
+	for rawStream.Receive() {
+		rawCSV.Write(rawStream.Msg().Data)
+	}
+	if err := rawStream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rawCSV.String(), "9007199254740993,=private-value") || strings.Contains(rawCSV.String(), "'=private-value") {
+		t.Fatal("explicit raw CSV changed values or retained spreadsheet escaping")
+	}
+	missing, err := client.ExportCSV(ctx, connect.NewRequest(&portcullisv1.ExportQueryCSVRequest{RequestId: id, Raw: true}))
 	if err == nil {
 		for missing.Receive() {
 		}
@@ -69,7 +83,7 @@ func TestGovernedExecutionOwnershipReplayAndStreamCSRF(t *testing.T) {
 		t.Fatalf("CSV missing CSRF: %v", err)
 	}
 	anonymous, _ := cookiejar.New(nil)
-	other, err := env.executionClient(anonymous).ExportCSV(ctx, connect.NewRequest(&portcullisv1.ExportQueryCSVRequest{RequestId: id}))
+	other, err := env.executionClient(anonymous).ExportCSV(ctx, connect.NewRequest(&portcullisv1.ExportQueryCSVRequest{RequestId: id, Raw: true}))
 	if err == nil {
 		for other.Receive() {
 		}
@@ -105,6 +119,15 @@ func TestGovernedExecutionOwnershipReplayAndStreamCSRF(t *testing.T) {
 		if err := operation(); connect.CodeOf(err) != connect.CodeNotFound {
 			t.Fatalf("foreign result read: %v", err)
 		}
+	}
+	foreignCSV, err := env.executionClient(otherJar).ExportCSV(ctx, withCSRF(connect.NewRequest(&portcullisv1.ExportQueryCSVRequest{RequestId: id, Raw: true}), otherCSRF))
+	if err == nil {
+		for foreignCSV.Receive() {
+		}
+		err = foreignCSV.Err()
+	}
+	if connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("foreign raw CSV: %v", err)
 	}
 	var starts, finishes int
 	var duration, affected *int64

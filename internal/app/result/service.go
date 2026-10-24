@@ -142,8 +142,13 @@ func (s *Service) Page(ctx context.Context, org identity.OrganizationID, owner i
 	return query.ResultPage{Columns: columns, Rows: rows, Page: page, PageSize: pageSize, TotalCount: count, TotalPages: totalPages, Truncated: sealed.Metadata.Truncated, ExpiresAt: sealed.Metadata.ExpiresAt}, nil
 }
 
-// ExportCSV streams schema and row chunks without retaining the whole result.
+// ExportCSV streams spreadsheet-safe schema and rows without retaining the whole result.
 func (s *Service) ExportCSV(ctx context.Context, org identity.OrganizationID, owner identity.UserID, id string, writer io.Writer) error {
+	return s.ExportCSVWithOptions(ctx, org, owner, id, query.CSVExportOptions{}, writer)
+}
+
+// ExportCSVWithOptions streams the requested representation without changing the cached snapshot.
+func (s *Service) ExportCSVWithOptions(ctx context.Context, org identity.OrganizationID, owner identity.UserID, id string, options query.CSVExportOptions, writer io.Writer) error {
 	if err := s.acquireWorker(ctx); err != nil {
 		return err
 	}
@@ -155,7 +160,7 @@ func (s *Service) ExportCSV(ctx context.Context, org identity.OrganizationID, ow
 	csvWriter := csv.NewWriter(writer)
 	header := make([]string, len(columns))
 	for idx, column := range columns {
-		header[idx] = escapeCSV(column.Name)
+		header[idx] = formatCSVField(column.Name, options)
 	}
 	if err := csvWriter.Write(header); err != nil {
 		return err
@@ -175,7 +180,7 @@ func (s *Service) ExportCSV(ctx context.Context, org identity.OrganizationID, ow
 		for _, row := range rows {
 			fields := make([]string, len(row))
 			for idx, cell := range row {
-				fields[idx] = escapeCSV(cellText(cell))
+				fields[idx] = formatCSVField(cellText(cell), options)
 			}
 			if err := csvWriter.Write(fields); err != nil {
 				return err
@@ -258,6 +263,14 @@ func cellText(cell query.CellValue) string {
 	default:
 		return cell.Text
 	}
+}
+
+// formatCSVField preserves raw opt-in while escaping spreadsheet prefixes by default.
+func formatCSVField(value string, options query.CSVExportOptions) string {
+	if options.Raw {
+		return value
+	}
+	return escapeCSV(value)
 }
 
 func escapeCSV(value string) string {

@@ -1,6 +1,6 @@
 # M1 progress
 
-**Status: In progress · scope reviewed 2026-10-18 · verification reviewed 2026-10-24.**
+**Status: In progress · scope reviewed 2026-10-24 · verification reviewed 2026-10-24.**
 Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in [validation.md](validation.md).
 
 ## Established implementation
@@ -12,9 +12,10 @@ Scope and acceptance live in [scope.md](scope.md); dated test evidence lives in 
 - Resource-aware Role/Binding/Condition authorization is active across bootstrap, sessions, administration, governance and protected reads/output per [ADR-0071](../../adr/0071-binding-authorization-activation.md).
 - Audit/request pagination uses complete batched snapshots beyond 1,024 candidates, with exact authorized totals and fresh off-page count witnesses per [ADR-0073](../../adr/0073-authorized-history-pagination.md). Other collection limits and remaining M1 acceptance are separate.
 - Session capability discovery uses scope-filtered keyset batches beyond 1,024 resources; metadata failures preserve authentication and show explicit Me-based recovery per [ADR-0074](../../adr/0074-session-capability-discovery-and-recovery.md). Binding-summary budgets and management-form lifetime remain separate.
-- Result controls have aligned search, copy/export and paging controls; Text values wrap without dropping content at tested viewport widths in both themes.
+- Result controls have aligned search, copy/export and navigation controls; Text values wrap without dropping content at tested viewport widths in both themes.
 - Result tables use subtle dashed column separators and show a sorting arrow only on the active column. Table headers cycle sorting without a separate ordering selector.
 - Result navigation now uses bounded virtual rows over 50-row snapshot pages, with forward/backward refetch, nearby prefetch, five-page/64 MiB retained-payload limits and at most two unsettled reads. The visible range alone supplies Text and clipboard output; expiry, permission loss and superseded views discard protected rows. See the [2026-10-24 qualification](validation.md#bounded-result-navigation--2026-10-24).
+- CSV settings now open before preparation, keep safe/raw choices, clipboard/file destinations, progress, cancellation and errors inside one dialog, and dispose obsolete temporary output. Real database scenarios qualify current authority and expiry at unary/CSV output boundaries; see the [CSV qualification](validation.md#csv-dialog-and-protected-output--2026-10-24).
 
 Per [ADR-0053](../../adr/0053-user-and-role-administration.md), user and role administration is M1 scope.
 Per [administration use cases](../../../internal/app/administration/users.go) and [administration persistence](../../../internal/infra/postgres/administration_store.go), backend components exist without establishing a complete administration UI.
@@ -50,4 +51,4 @@ The [2026-10-18 dependency verification](validation.md#verification--2026-10-18)
 This evidence covers the tested journey and does not establish completion of the entire M1 scope or capacity qualification.
 Per [scope.md](scope.md), release readiness requires all milestone completion criteria and both verification gates.
 
-The [2026-10-24 result-navigation qualification](validation.md#bounded-result-navigation--2026-10-24) passed the full functional gate with 398 web unit scenarios and 108 browser scenarios. The subsequent [dependency security qualification](validation.md#dependency-security-patches--2026-10-24) patches Vitest and the load tools’ Zod dependency, with both full gates passing. CSV destination dialogs, the account menu and release acceptance remain incomplete; functional navigation evidence does not establish M1 readiness.
+The [2026-10-24 result-navigation qualification](validation.md#bounded-result-navigation--2026-10-24) passed the full functional gate with 398 web unit scenarios and 108 browser scenarios. The subsequent [dependency security qualification](validation.md#dependency-security-patches--2026-10-24) patches Vitest and the load tools’ Zod dependency, with both full gates passing. The subsequent [CSV qualification](validation.md#csv-dialog-and-protected-output--2026-10-24) passes 411 web unit and 122 browser scenarios after code, architecture, design and actual-SPA QA. The account menu, frontend validation hardening and release acceptance remain incomplete; these completed concerns do not establish M1 readiness.

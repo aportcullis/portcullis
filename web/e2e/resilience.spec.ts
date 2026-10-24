@@ -358,7 +358,7 @@ test.describe("application resilience", () => {
     expect(executionCalls).toBe(1);
   });
 
-  test("a CSV export survives scrolling, sorting and filtering while it streams", async ({ page }) => {
+  test("closing CSV preparation before a result view change fences the old stream and permits a fresh export", async ({ page }) => {
     // This scenario creates its own executed request so it runs alone as well as in sequence.
     await page.goto("/requests/new");
     await page.getByLabel("Connection").selectOption({ label: "ReqTarget" });
@@ -371,7 +371,8 @@ test.describe("application resilience", () => {
     const results = page.getByRole("region", { name: "Query results" });
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
     const exportButton = results.getByRole("button", { name: "Export CSV", exact: true });
-    // The export covers the whole snapshot, so a view change while it streams must neither drop it nor leave its button disabled.
+    const csvDialog = page.getByRole("dialog", { name: "Export CSV", exact: true });
+    // Result controls are inert behind the modal; closing first cancels its old preparation.
     const viewChanges: Array<{ name: string; change: () => Promise<void> }> = [
       { name: "scroll", change: async () => {
         await results.getByRole("region", { name: "Scrollable result rows", exact: true }).focus();
@@ -384,26 +385,43 @@ test.describe("application resilience", () => {
     for (const viewChange of viewChanges) {
       let release = () => {};
       const held = new Promise<void>((resolve) => { release = resolve; });
-      await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { await held; await route.continue(); });
+      let exportStarted = false;
+      await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { exportStarted = true; await held; await route.continue(); });
       await exportButton.click();
-      await expect(exportButton, `export disabled while streaming (${viewChange.name})`).toBeDisabled();
+      await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
+      await expect.poll(() => exportStarted).toBe(true);
+      await expect(csvDialog.getByRole("button", { name: "Cancel export", exact: true })).toBeVisible();
+      await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
       await viewChange.change();
       release();
-      await expect(results.getByRole("link", { name: "Download CSV", exact: true }), `export finished after ${viewChange.name} change`).toBeVisible();
-      await expect(exportButton, `export enabled after ${viewChange.name} change`).toBeEnabled();
+      await expect(csvDialog).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Save CSV file", exact: true })).toHaveCount(0);
       await page.unroute("**/portcullis.v1.QueryExecutions/ExportCSV");
+      await exportButton.click();
+      await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
+      await expect(csvDialog.getByRole("link", { name: "Save CSV file", exact: true }), `fresh export after ${viewChange.name} change`).toBeVisible();
+      await expect(csvDialog.getByRole("button", { name: "Download CSV", exact: true })).toHaveCount(0);
+      await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
     }
 
-    // Failure path: an export refused after the view changed still reports its error and re-enables the button.
+    // An obsolete failure cannot overwrite a later dialog after the result view changes.
     let releaseFailure = () => {};
     const heldFailure = new Promise<void>((resolve) => { releaseFailure = resolve; });
-    await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { await heldFailure; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "unavailable", message: "simulated failure" }) }); });
+    let failureStarted = false;
+    await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", async (route) => { failureStarted = true; await heldFailure; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "unavailable", message: "simulated failure" }) }); });
     await exportButton.click();
+    await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
+    await expect.poll(() => failureStarted).toBe(true);
+    await expect(csvDialog.getByRole("button", { name: "Cancel export", exact: true })).toBeVisible();
+    await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
     await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
     await expect(results.getByRole("columnheader", { name: /marker/ })).toHaveAttribute("aria-sort", "descending");
     await results.getByRole("columnheader", { name: /marker/ }).getByRole("button").click();
     releaseFailure();
-    await expect(results.getByText(/^CSV export failed:/)).toBeVisible();
+    await exportButton.click();
+    await expect(csvDialog.getByRole("alert")).toHaveCount(0);
+    await expect(csvDialog.getByRole("link", { name: "Save CSV file", exact: true })).toHaveCount(0);
+    await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
     await expect(exportButton).toBeEnabled();
     await page.unroute("**/portcullis.v1.QueryExecutions/ExportCSV");
   });
@@ -416,9 +434,13 @@ test.describe("application resilience", () => {
 
     const restoreExport = await failProcedure(page, "QueryExecutions/ExportCSV", "unavailable");
     await results.getByRole("button", { name: "Export CSV", exact: true }).click();
-    // A streaming call may surface the HTTP status rather than the JSON message, so only the separate export prefix is asserted.
-    await expect(results.getByText(/^CSV export failed:/)).toBeVisible();
-    await expect(results.getByText(/expired or been evicted/)).toHaveCount(0);
+    const csvDialog = page.getByRole("dialog", { name: "Export CSV", exact: true });
+    await csvDialog.getByRole("button", { name: "Download CSV", exact: true }).click();
+    // Streaming can surface the HTTP status; the failure must remain inside the export dialog.
+    await expect(csvDialog.getByRole("alert")).toBeVisible();
+    await expect(csvDialog.getByText(/expired or been evicted/)).toHaveCount(0);
+    await csvDialog.getByRole("button", { name: "Close export", exact: true }).click();
+    await expect(results.getByRole("alert")).toHaveCount(0);
     await expect(results.getByText("1001", { exact: true })).toBeVisible();
     await restoreExport();
 

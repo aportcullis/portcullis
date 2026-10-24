@@ -6,7 +6,7 @@
 
 ## Context
 
-The header repeats the avatar, name, role and sign-out action, distracting from the current workflow. CSV preparation introduces another toolbar action instead of explaining the download choices in one place.
+The initial header repeated the avatar, name, role and sign-out action, distracting from the current workflow. Initial CSV preparation introduced another toolbar action instead of explaining the download choices in one place.
 Per [M1 scope](../milestones/m1/scope.md), account menus and CSV dialogs are small usability improvements to existing alpha workflows. Review inboxes, notification badges and profile-image personalization belong to [M3 scope](../milestones/m3/scope.md).
 Per [WAI-ARIA menu button guidance](https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/), account actions need an accessible trigger and keyboard interaction. Per [WAI-ARIA modal dialog guidance](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/), dialogs manage focus and return it on dismissal.
 

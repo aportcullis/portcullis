@@ -468,8 +468,10 @@ func (x *GetQueryResultRequest) GetFilter() string {
 }
 
 type ExportQueryCSVRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// Raw explicitly disables spreadsheet-formula escaping while retaining CSV quoting.
+	Raw           bool `protobuf:"varint,2,opt,name=raw,proto3" json:"raw,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -509,6 +511,13 @@ func (x *ExportQueryCSVRequest) GetRequestId() string {
 		return x.RequestId
 	}
 	return ""
+}
+
+func (x *ExportQueryCSVRequest) GetRaw() bool {
+	if x != nil {
+		return x.Raw
+	}
+	return false
 }
 
 type QueryCSVChunk struct {
@@ -984,10 +993,11 @@ const file_portcullis_v1_query_executions_proto_rawDesc = "" +
 	"\rfilter_column\x18\x06 \x01(\x05H\x01R\ffilterColumn\x88\x01\x01\x12\x16\n" +
 	"\x06filter\x18\a \x01(\tR\x06filterB\x0e\n" +
 	"\f_sort_columnB\x10\n" +
-	"\x0e_filter_column\"6\n" +
+	"\x0e_filter_column\"H\n" +
 	"\x15ExportQueryCSVRequest\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\tR\trequestId\"#\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x10\n" +
+	"\x03raw\x18\x02 \x01(\bR\x03raw\"#\n" +
 	"\rQueryCSVChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\"\x9d\x01\n" +
 	"\n" +

@@ -30,12 +30,13 @@ import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { errorMessage, isAuthorizationRefusal } from "@/shared/api/errors";
 import { executionsClient } from "@/shared/api/client";
 import { ExecutionSummary } from "@/features/request/ExecutionSummary";
+import { CsvExportDialog } from "@/features/request/CsvExportDialog";
 import { describeResultError } from "@/features/request/resultErrors";
 import { cellText, resultText, resultClipboard } from "@/features/request/resultPresentation";
 import { cycleResultSorting } from "@/features/request/sorting";
 import { createResultWindow } from "@/features/request/resultWindow";
 import { LoadingSkeleton } from "@/shared/ui/LoadingSkeleton";
-import { Button, buttonVariants } from "@/shared/ui/button";
+import { Button } from "@/shared/ui/button";
 import { nativeControlVariants } from "@/shared/ui/control";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 
@@ -68,19 +69,11 @@ export const ResultPanel: Component<ResultPanelProps> = (props) => {
   const [initialLoading, setInitialLoading] = createSignal(false);
   const [initialError, setInitialError] = createSignal("");
   const [terminalUnavailable, setTerminalUnavailable] = createSignal(false);
-  const [exporting, setExporting] = createSignal(false);
-  const [exportError, setExportError] = createSignal("");
-  const [downloadURL, setDownloadURL] = createSignal<string>();
   let revision = 0;
   let requestRevision = 0;
   let initialRead: AbortController | undefined;
   let viewport: HTMLDivElement | undefined;
   let copyInFlight = false;
-  const discardDownload = () => {
-    const url = downloadURL();
-    if (url) URL.revokeObjectURL(url);
-    setDownloadURL();
-  };
   const windowController = createResultWindow({
     readPage: (request, signal) => executionsClient.getResult(request, { signal }),
     onChange: () => setWindowRevision(value => value + 1),
@@ -136,11 +129,9 @@ export const ResultPanel: Component<ResultPanelProps> = (props) => {
   const discardProtectedOutput = () => {
     revision++;
     requestRevision++;
-    discardDownload();
     setFullCell();
     setCopying(false);
     setCopyMessage("");
-    setExporting(false);
   };
   const discardUnavailableSnapshot = () => {
     if (terminalUnavailable()) return;
@@ -201,7 +192,6 @@ export const ResultPanel: Component<ResultPanelProps> = (props) => {
   createEffect(on(() => props.requestId, () => {
     discardProtectedOutput();
     setTerminalUnavailable(false);
-    setExportError("");
     windowController.clear();
     setExecution();
     setColumns([]);
@@ -332,28 +322,16 @@ export const ResultPanel: Component<ResultPanelProps> = (props) => {
       if (captured === revision && capturedRequest === requestRevision) setCopying(false);
     }
   };
-  // The export streams the whole snapshot regardless of the shown page, sort or filter, so only a newer export or another request supersedes it.
-  let exportAttempt = 0;
-  const exportCSV = async () => {
-    const captured = requestRevision;
-    const attempt = ++exportAttempt;
-    const isCurrentExport = () => captured === requestRevision && attempt === exportAttempt;
-    setExporting(true);
-    setExportError("");
-    discardDownload();
-    try {
-      const chunks: Uint8Array<ArrayBuffer>[] = [];
-      for await (const chunk of executionsClient.exportCSV({ requestId: props.requestId ?? "" })) {
-        if (!isCurrentExport()) return;
-        chunks.push(new Uint8Array(chunk.data));
-      }
-      if (!isCurrentExport()) return;
-      setDownloadURL(URL.createObjectURL(new Blob(chunks, { type: "text/csv;charset=utf-8" })));
-    } catch (err) {
-      if (isCurrentExport()) setExportError(describeResultError(err, errorMessage));
-    } finally {
-      if (isCurrentExport()) setExporting(false);
-    }
+  const discardRefusedCsvOutput = () => {
+    windowController.clear();
+    setInitialError("Access to this result is no longer available.");
+    discardUnavailableSnapshot();
+    setExecution();
+  };
+  const discardUnavailableCsvOutput = (error: unknown) => {
+    windowController.clear();
+    setInitialError(resultFailureMessage(error));
+    discardUnavailableSnapshot();
   };
   return (
     <section aria-label="Query results" class="flex min-w-0 flex-col gap-6">
@@ -433,31 +411,11 @@ export const ResultPanel: Component<ResultPanelProps> = (props) => {
             >
               Copy visible rows
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={exporting()}
-              onClick={() => void exportCSV()}
-            >
-              Export CSV
-            </Button>
-            <Show when={downloadURL()}>
-              {(url) => (
-                <a
-                  class={buttonVariants({ size: "sm" })}
-                  href={url()}
-                  download="query-result.csv"
-                >
-                  Download CSV
-                </a>
-              )}
-            </Show>
-            <Show when={exportError()}>
-              <p role="alert" class="basis-full text-sm text-destructive-text">
-                CSV export failed: {exportError()}
-              </p>
-            </Show>
+            <CsvExportDialog
+              requestId={props.requestId}
+              onRefused={discardRefusedCsvOutput}
+              onUnavailable={discardUnavailableCsvOutput}
+            />
           </div>
         </div>
         <p role="status" class="text-sm text-muted-foreground">

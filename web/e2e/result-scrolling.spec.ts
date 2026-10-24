@@ -5,7 +5,6 @@ import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import {
   GetQueryResultRequestSchema,
   LogicalType,
-  QueryCSVChunkSchema,
   QueryExecutionSchema,
   QueryResultPageSchema,
   QueryResultRowSchema,
@@ -82,20 +81,6 @@ async function releaseResult(pending: PendingResultRead | undefined, marker = ""
     contentType: "application/proto",
     body: resultBody(pending.request, pending.expiresAt, marker),
   });
-}
-
-/** Supplies one binary CSV chunk and the successful Connect stream terminator. */
-function csvStreamBody(): Buffer {
-  const chunk = toBinary(QueryCSVChunkSchema, create(QueryCSVChunkSchema, {
-    data: new TextEncoder().encode(`entry_id,cohort\n${rowLabel(1)},group-odd\n`),
-  }));
-  const messageHeader = Buffer.alloc(5);
-  messageHeader.writeUInt32BE(chunk.byteLength, 1);
-  const completion = Buffer.from("{}");
-  const completionHeader = Buffer.alloc(5);
-  completionHeader[0] = 2;
-  completionHeader.writeUInt32BE(completion.byteLength, 1);
-  return Buffer.concat([messageHeader, Buffer.from(chunk), completionHeader, completion]);
 }
 
 /** Logs in against the binary and substitutes only execution and result responses. */
@@ -353,21 +338,12 @@ test("an expired snapshot clears already retained rows instead of leaving readab
   expect(workspace.executionCalls()).toBe(0);
 });
 
-test("local TTL expiry during held sort and filter reads clears cached and prepared output without SQL replay", async ({ page, context }) => {
+test("local TTL expiry during held sort and filter reads clears cached output without SQL replay", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.clock.install();
   const workspace = await openResultWorkspace(page);
   await workspace.panel.getByRole("button", { name: "Copy visible rows", exact: true }).click();
   await expect(workspace.panel.getByText("Copied 10 visible rows with column headers.", { exact: true })).toBeVisible();
-  await page.route("**/portcullis.v1.QueryExecutions/ExportCSV", route => route.fulfill({
-    status: 200,
-    contentType: "application/connect+proto",
-    body: csvStreamBody(),
-  }));
-  await workspace.panel.getByRole("button", { name: "Export CSV", exact: true }).click();
-  const download = workspace.panel.getByRole("link", { name: "Download CSV", exact: true });
-  await expect(download).toBeVisible();
-
   const pending: PendingResultRead[] = [];
   workspace.setReadOverride(async (route, request) => {
     if (request.sortColumn !== 0) return false;
@@ -379,14 +355,13 @@ test("local TTL expiry during held sort and filter reads clears cached and prepa
   await workspace.panel.getByLabel("Filter results", { exact: true }).fill("group-even");
   await workspace.panel.getByRole("button", { name: "Filter results", exact: true }).click();
   await expect.poll(() => pending.some(read => read.request.filter === "group-even")).toBe(true);
-  await expect(download).toBeVisible();
-
   await page.clock.fastForward(901_000);
   await expect(workspace.panel.getByRole("alert")).toContainText(/expired|evicted/);
   await expect(workspace.panel.getByText(/^row-\d{4}$/)).toHaveCount(0);
   await expect(workspace.panel.getByRole("button", { name: "Copy visible rows", exact: true })).toHaveCount(0);
   await expect(workspace.panel.getByRole("button", { name: "Export CSV", exact: true })).toHaveCount(0);
-  await expect(download).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Export CSV", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Save CSV file", exact: true })).toHaveCount(0);
   await expect(workspace.panel.getByText(/Copied \d+ visible rows/)).toHaveCount(0);
   for (const read of pending) await releaseResult(read, "late after local expiry");
   await expect(workspace.panel.getByText("late after local expiry", { exact: true })).toHaveCount(0);

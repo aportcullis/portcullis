@@ -24,7 +24,7 @@ type executionApp interface {
 type resultApp interface {
 	CheckAccess(context.Context, identity.OrganizationID, identity.UserID, string) error
 	Page(context.Context, identity.OrganizationID, identity.UserID, string, query.ResultPageQuery) (query.ResultPage, error)
-	ExportCSV(context.Context, identity.OrganizationID, identity.UserID, string, io.Writer) error
+	ExportCSVWithOptions(context.Context, identity.OrganizationID, identity.UserID, string, query.CSVExportOptions, io.Writer) error
 }
 
 // QueryExecutionsService exposes requester-only execution and cached results.
@@ -128,6 +128,7 @@ func (s *QueryExecutionsService) GetResult(ctx context.Context, req *connect.Req
 	return connect.NewResponse(toProtoResultPage(page)), nil
 }
 
+// ExportCSV streams requester-owned CSV with fresh authorization and an explicit raw-output choice.
 func (s *QueryExecutionsService) ExportCSV(ctx context.Context, req *connect.Request[portcullisv1.ExportQueryCSVRequest], stream *connect.ServerStream[portcullisv1.QueryCSVChunk]) error {
 	ctx, _, _ = operationForMessage(ctx, portcullisv1connect.QueryExecutionsExportCSVProcedure, req.Msg)
 	ctx = authz.WithoutOutputFence(ctx)
@@ -155,7 +156,7 @@ func (s *QueryExecutionsService) ExportCSV(ctx context.Context, req *connect.Req
 		}
 		return stream.Send(&portcullisv1.QueryCSVChunk{Data: data})
 	}}
-	return executionError(s.results.ExportCSV(ctx, org, user.ID, resultID, writer))
+	return executionError(s.results.ExportCSVWithOptions(ctx, org, user.ID, resultID, query.CSVExportOptions{Raw: req.Msg.GetRaw()}, writer))
 }
 
 type csvStreamWriter struct{ write func([]byte) error }

@@ -45,6 +45,8 @@ message GetQueryResultRequest {
 }
 message ExportQueryCSVRequest {
   string request_id = 1;
+  // Raw explicitly disables spreadsheet-formula escaping while retaining CSV quoting.
+  bool raw = 2;
 }
 message QueryCSVChunk {
   bytes data = 1;

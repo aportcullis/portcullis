@@ -65,6 +65,12 @@ func (b *testLogBuffer) String() string {
 
 func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	t.Helper()
+	return newConnsTestEnvWithResultOutput(t, nil)
+}
+
+// newConnsTestEnvWithResultOutput exposes a controlled output boundary while retaining the production authorization pipeline.
+func newConnsTestEnvWithResultOutput(t *testing.T, output *resultOutputProbe) *connsTestEnv {
+	t.Helper()
 	pool := dbtest.FreshPostgres(t)
 	ctx := context.Background()
 	if err := postgres.Migrate(ctx, pool); err != nil {
@@ -160,7 +166,12 @@ func newConnsTestEnv(t *testing.T) *connsTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	executionPath, executionHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultReader), chain, readLimit, connect.WithCodec(connectapi.ExecutionJSONCodec{}), connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, nil)))
+	var resultOutput resultOutputReader = resultReader
+	if output != nil {
+		output.service = resultReader
+		resultOutput = output
+	}
+	executionPath, executionHandler := portcullisv1connect.NewQueryExecutionsHandler(connectapi.NewQueryExecutionsService(authzSvc, executionSvc, resultOutput), chain, readLimit, connect.WithCodec(connectapi.ExecutionJSONCodec{}), connect.WithInterceptors(connectapi.NewStreamSecurityInterceptor(authSvc, nil)))
 	mux.Handle(executionPath, http.MaxBytesHandler(connectapi.BoundCSVWrites(executionHandler), server.MaxRequestBytes))
 	mux.Handle(authPath, http.MaxBytesHandler(authHandler, server.MaxRequestBytes))
 	mux.Handle(auditPath, http.MaxBytesHandler(auditHandler, server.MaxRequestBytes))
