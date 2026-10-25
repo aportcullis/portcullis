@@ -38,8 +38,11 @@ function ownedGroupExists(processGroup: number): boolean {
     process.kill(-processGroup, 0);
     return true;
   } catch (error: unknown) {
-    if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") throw error;
-    return false;
+    if (error instanceof Error && "code" in error) {
+      if (error.code === "ESRCH") return false;
+      if (error.code === "EPERM") return true;
+    }
+    throw error;
   }
 }
 
@@ -53,8 +56,8 @@ export function terminateOwnedVerificationGroup(processGroup: number): void {
   }
 }
 
-/** Requires natural group exit before fallback termination could hide a failure. */
-async function requireOwnedGroupAbsent(processGroup: number): Promise<void> {
+/** Requires the exact owned group to disappear within the existing cleanup deadline. */
+export async function requireOwnedVerificationGroupAbsent(processGroup: number): Promise<void> {
   const deadline = Date.now() + 3000;
   while (ownedGroupExists(processGroup)) {
     assert.ok(Date.now() < deadline, "The exact owned test group did not exit");
@@ -143,7 +146,7 @@ export async function executeOwnedVerification(
     const result = await Promise.race([finished.promise, expiration.promise]);
     if (result.kind === "deadline" || deadlineFired) throw createDeadlineError();
     if (result.kind === "failed") throw result.error;
-    await requireOwnedGroupAbsent(processGroup);
+    await requireOwnedVerificationGroupAbsent(processGroup);
     await requireCommandStreamsClosed(closed.promise);
     if (deadlineFired) throw createDeadlineError();
     if (activeProcess.kind === "ready") {
@@ -159,7 +162,7 @@ export async function executeOwnedVerification(
     } finally {
       await requireCommandStreamsClosed(closed.promise);
     }
-    await requireOwnedGroupAbsent(processGroup);
+    await requireOwnedVerificationGroupAbsent(processGroup);
     context.processState = { kind: "idle" };
   }
 }

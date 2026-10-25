@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { fork, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { terminateOwnedVerificationGroup } from "#verification/verification-process";
+
 type GroupMode = "leader-only" | "leader-descendant";
 type Descendant = { kind: "absent" } | { kind: "present"; process: number; parent: number };
 type GroupReady = { kind: "group-ready"; leader: number; descendant: Descendant };
 type NativeExit = { kind: "exited"; status: number | null; signal: NodeJS.Signals | null };
 type NativeFailure = { kind: "failed"; error: Error };
 type ScenarioFailure = { kind: "none" } | { kind: "failed"; error: unknown };
+type TerminationObservation = { kind: "returned" } | { kind: "failed"; error: unknown };
+type ZombieObservation = { kind: "observed"; probeError: Error; termination: TerminationObservation } | { kind: "failed"; error: unknown };
 
 /** Retains only the exact native child and membership recorded by this fixture. */
 export type OwnedGroupFixture = {
@@ -96,6 +100,34 @@ export function requireOwnedGroupPresent(context: OwnedGroupFixture): void {
   assert.equal(ownedGroupExists(context), true);
   if (context.members.kind === "ready" && context.members.value.descendant.kind === "present") {
     assert.equal(process.kill(context.members.value.descendant.process, 0), true);
+  }
+}
+
+/** Records Darwin's unreaped single-leader group without yielding to native reaping. */
+export function stageOwnedDarwinZombie(context: OwnedGroupFixture): ZombieObservation {
+  assert.equal(process.platform, "darwin");
+  assert.ok(context.members.kind === "ready" && context.members.value.descendant.kind === "absent");
+  requireOwnedGroupPresent(context);
+  try {
+    process.kill(-context.processGroup, "SIGKILL");
+  } catch (error: unknown) {
+    return { kind: "failed", error };
+  }
+  const deadline = performance.now() + 250;
+  while (true) {
+    try {
+      process.kill(-context.processGroup, 0);
+    } catch (error: unknown) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "EPERM") return { kind: "failed", error };
+      let termination: TerminationObservation = { kind: "returned" };
+      try {
+        terminateOwnedVerificationGroup(context.processGroup);
+      } catch (failure: unknown) {
+        termination = { kind: "failed", error: failure };
+      }
+      return { kind: "observed", probeError: error, termination };
+    }
+    if (performance.now() >= deadline) return { kind: "failed", error: new Error("The owned Darwin zombie group was not observed within the staging bound") };
   }
 }
 
