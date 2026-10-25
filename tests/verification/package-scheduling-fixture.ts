@@ -11,6 +11,7 @@ const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const moduleName = "github.com/aportcullis/portcullis";
 type PackageBehavior = "pass" | "fail" | "compile-error" | "wait";
 type PackageTarget = "test" | "test-race";
+type PackageFixtureFailure = { kind: "none" } | { kind: "failed"; error: unknown };
 
 /** Copies one actual Make recipe without executing unrelated project setup. */
 function readTestRecipe(lines: readonly string[], target: PackageTarget): string {
@@ -27,11 +28,12 @@ function readTestRecipe(lines: readonly string[], target: PackageTarget): string
   return `${target}:\n${recipe.join("\n")}\n`;
 }
 
-/** Runs a scenario in an owned module using the real pinned dependency graph. */
+/** Runs the pinned module scenario while preserving primary failures and disposal refusals. */
 export async function withPackageFixture(scenario: (context: VerificationContext) => Promise<void>): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "portcullis-package-scheduling-"));
   const environment: NodeJS.ProcessEnv = { ...process.env, GOWORK: "off", GOTOOLCHAIN: "local", GOFLAGS: "-mod=readonly", PORTCULLIS_TEST_DATABASE_REQUIRED: "0", PORTCULLIS_PACKAGE_WITNESSES: join(directory, "witnesses") };
   const context: VerificationContext = { directory, environment, processState: { kind: "idle" } };
+  let failure: PackageFixtureFailure = { kind: "none" };
   try {
     for (const name of ["go.mod", "go.sum"]) copyFileSync(join(projectRoot, name), join(directory, name));
     mkdirSync(join(directory, "witnesses"));
@@ -47,11 +49,18 @@ export async function withPackageFixture(scenario: (context: VerificationContext
       copyFileSync(join(projectRoot, runner), join(directory, runner));
     }
     await scenario(context);
-  } finally {
+  } catch (error: unknown) {
+    failure = { kind: "failed", error };
+  }
+  try {
     assert.equal(context.processState.kind, "idle", `Owned processes remain active; fixture retained at ${directory}`);
     rmSync(directory, { recursive: true, force: true });
     assert.equal(existsSync(directory), false, "Owned package fixture must be removed");
+  } catch (error: unknown) {
+    if (failure.kind === "failed") throw new AggregateError([failure.error, error], "Package fixture execution and disposal both failed");
+    throw error;
   }
+  if (failure.kind === "failed") throw failure.error;
 }
 
 /** Emit an observable test package without invoking Docker or replacing Go. */

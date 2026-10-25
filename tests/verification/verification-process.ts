@@ -43,6 +43,16 @@ function ownedGroupExists(processGroup: number): boolean {
   }
 }
 
+/** Terminates the retained owned group, accepting only its already-absent state. */
+export function terminateOwnedVerificationGroup(processGroup: number): void {
+  assert.ok(Number.isSafeInteger(processGroup) && processGroup > 1 && processGroup !== process.pid, "Only an exact owned process group may be terminated");
+  try {
+    process.kill(-processGroup, "SIGKILL");
+  } catch (error: unknown) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") throw error;
+  }
+}
+
 /** Requires natural group exit before fallback termination could hide a failure. */
 async function requireOwnedGroupAbsent(processGroup: number): Promise<void> {
   const deadline = Date.now() + 3000;
@@ -145,7 +155,7 @@ export async function executeOwnedVerification(
     clearTimeout(timer);
     child.stdin.destroy();
     try {
-      if (ownedGroupExists(processGroup)) process.kill(-processGroup, "SIGKILL");
+      if (ownedGroupExists(processGroup)) terminateOwnedVerificationGroup(processGroup);
     } finally {
       await requireCommandStreamsClosed(closed.promise);
     }
