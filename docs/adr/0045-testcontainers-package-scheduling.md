@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-04
-- **Partially superseded by:** [ADR-0088](0088-isolated-testcontainer-sessions.md) for Go package/session scheduling; concurrent verification groups and browser cleanup remain in effect.
+- **Partially superseded by:** [ADR-0088](0088-isolated-testcontainer-sessions.md) for Go package/session scheduling and [ADR-0095](0095-browser-container-ownership.md) for browser startup cleanup by owner PID; concurrent verification groups remain in effect.
 
 ## Context
 
@@ -20,8 +20,8 @@ Refuse fixture startup failures rather than skipping or retrying application SQL
 It then runs three groups concurrently: static checks, the Go test target (still `-p 1`) and the browser suite.
 
 The browser harness is a separate process tree with its own containers, so it runs with `TESTCONTAINERS_RYUK_DISABLED=true` and never joins the reaper startup race.
-Its cleanup does not depend on Ryuk: the runner terminates both containers on exit or signal.
-Each runner labels its containers with its own process ID, and a starting runner removes only labelled containers whose owner process has exited, so concurrent runs keep their databases.
+Per [ADR-0095](0095-browser-container-ownership.md), deferred cleanup attempts to terminate only the database handles returned to the current invocation, including handles returned with a startup error.
+Startup leaves pre-existing containers untouched; PID labels are diagnostic metadata because a local process probe cannot determine whether a harness in another namespace has exited. Abrupt termination can leave containers for operator-reviewed cleanup.
 Playwright reserves free loopback ports for each run instead of fixed ports, so concurrent browser runs never collide.
 Testcontainers documents disabling Ryuk when the environment performs its own cleanup.
 

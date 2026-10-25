@@ -1,9 +1,6 @@
 package main
 
-import (
-	"slices"
-	"testing"
-)
+import "testing"
 
 func TestPortFromEnvironmentReadsAssignedPorts(t *testing.T) {
 	for _, scenario := range []struct {
@@ -29,23 +26,5 @@ func TestPortFromEnvironmentRefusesMissingOrInvalidPorts(t *testing.T) {
 		if got, err := portFromEnvironment("E2E_TEST_PORT"); err == nil {
 			t.Errorf("portFromEnvironment(%q) = %d, want an error", value, got)
 		}
-	}
-}
-
-func TestStaleContainerIDsSelectsOnlyContainersWithoutALiveOwner(t *testing.T) {
-	alive := func(pid int) bool { return pid == 100 || pid == 200 }
-	containers := []labelledContainer{
-		{id: "live-a", owner: "100"},
-		{id: "dead", owner: "300"},
-		{id: "live-b", owner: "200"},
-		{id: "unowned", owner: ""},
-		{id: "garbled", owner: "not-a-pid"},
-	}
-	want := []string{"dead", "unowned", "garbled"}
-	if got := staleContainerIDs(containers, alive); !slices.Equal(got, want) {
-		t.Errorf("staleContainerIDs = %v, want %v", got, want)
-	}
-	if got := staleContainerIDs(nil, alive); len(got) != 0 {
-		t.Errorf("staleContainerIDs(nil) = %v, want none", got)
 	}
 }

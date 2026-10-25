@@ -25,6 +25,19 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
+// These labels support diagnostics; cleanup uses returned container handles.
+const (
+	browserContainerLabelKey   = "portcullis.test"
+	browserContainerLabelValue = "browser"
+	browserOwnerLabelKey       = "portcullis.test.owner"
+)
+
+// Stop grace leaves time for removal within the cleanup deadline.
+const (
+	browserDatabaseCleanupTimeout = 10 * time.Second
+	browserDatabaseStopTimeout    = 2 * time.Second
+)
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "browser test server:", err)
@@ -58,9 +71,6 @@ func run() error {
 	defer func() { _ = targetListener.Close() }()
 	startupCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	if err := removeStaleBrowserContainers(startupCtx); err != nil {
-		return fmt.Errorf("remove stale browser containers: %w", err)
-	}
 	targetImage, err := dbtest.PostgresTestImage()
 	if err != nil {
 		return err
@@ -68,8 +78,8 @@ func run() error {
 	databases := make([]*tcpostgres.PostgresContainer, 0, 2)
 	defer func() {
 		for _, database := range databases {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if err := database.Terminate(cleanupCtx); err != nil {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), browserDatabaseCleanupTimeout)
+			if err := database.Terminate(cleanupCtx, testcontainers.StopTimeout(browserDatabaseStopTimeout)); err != nil {
 				fmt.Fprintln(os.Stderr, "browser database cleanup:", err)
 			}
 			cleanupCancel()
@@ -78,12 +88,11 @@ func run() error {
 	startDatabase := func(image string) (*tcpostgres.PostgresContainer, error) {
 		database, err := tcpostgres.Run(startupCtx, image,
 			tcpostgres.WithDatabase("portcullis"), tcpostgres.WithUsername("portcullis"), tcpostgres.WithPassword("portcullis"),
-			testcontainers.WithLabels(map[string]string{browserContainerLabelKey: browserContainerLabelValue, browserOwnerLabelKey: harnessOwnerLabel()}), tcpostgres.BasicWaitStrategies())
-		if err != nil {
-			return nil, err
+			testcontainers.WithLabels(map[string]string{browserContainerLabelKey: browserContainerLabelValue, browserOwnerLabelKey: strconv.Itoa(os.Getpid())}), tcpostgres.BasicWaitStrategies())
+		if database != nil {
+			databases = append(databases, database)
 		}
-		databases = append(databases, database)
-		return database, nil
+		return database, err
 	}
 	metadataDatabase, err := startDatabase(dbtest.PostgresImage)
 	if err != nil {
