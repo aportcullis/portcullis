@@ -2,8 +2,8 @@
 
 > **언어:** 한국어 · [English](prd.en.md) · [문서 안내](../README.ko.md)
 > **번역 동기화:** 두 언어의 요구사항과 절 번호는 같은 변경에서 함께 갱신한다.
-> **지원 대상:** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. MySQL parity와 SQL 검토·미리보기를 우선하고 MCP Gateway는 M6로 미룬다(ADR-0026/0028).
-> **배포 순서:** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN 순서다.
+> **지원 대상:** 관리 대상은 PostgreSQL/MySQL이며 SQLite는 제외한다. 초기 ChatGPT·Claude 커넥터는 MySQL parity·배포·SQL 검토 이후 M2에 제공하고, 후속 에이전트 연동 확장은 M6에 둔다(ADR-0090).
+> **배포 순서:** M2는 MySQL parity → Kubernetes(Helm/Kustomize)·CNPG → SQL 검토·EXPLAIN → 초기 ChatGPT·Claude 커넥터 순서다.
 > **작성일:** 2026-06-27
 > **한 줄 정의:** 데이터베이스 접근·변경을 통제·감사하는 DevSecOps 도구이자, 쿼리와 결과를 분석·시각화·공유하는 셀프호스트 오픈소스 BI 도구.
 > **문서 역할:** MVP의 범위·정책·인수 조건을 정의하는 제품 계약. 세부 구현 선택은 별도 ADR에서 관리한다.
@@ -86,6 +86,7 @@ MVP의 저장 쿼리와 결과 그리드를 기반으로 BI 기능을 단계적�
 - **쿼리 자산화:** private 또는 organization-shared 저장 쿼리, 버전, 즐겨찾기, 파라미터, 실행 이력에서 저장.
 - **결과:** 최대 10,000행 및 바이트 상한이 있는 임시 결과 스냅샷, 표 탐색과 CSV export.
 - **감사:** 인증, 요청, 승인, 실행, 관리 작업의 구조화된 append-only 이벤트.
+- **AI 커넥터:** M2에서 외부 ChatGPT·Claude 연동을 제공하며, 보호 출력·검증된 등록·만료가 있는 사용자 위임을 선행 조건으로 둔다(4.12–4.13).
 
 #### 제외
 - PostgreSQL/MySQL 외 추가 관리 대상 DB, 임시 접근 세션과 DB proxy.
@@ -341,12 +342,11 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM은 MVP와 parity track의 필수 범�
 - SIEM 연동(audit webhook/JSON export)
 - ML 이상 탐지 (audit 기반 위험 점수 → 4.8 AI Review와 연계)
 - SAML/SCIM (수요 검증 후)
-- **Agent Gateway 연동:** 에이전트가 Portcullis의 기능에 접근할 수 있는 연동 경로를 단계적으로 추가한다.
-  - ADR-0028로 표준 로컬/원격 MCP Gateway를 조건부 M6(4.13)로 상향한다. 브라우저 WebMCP(4.10)는 선택 후속 adapter이며 초기 Gateway 선행 조건이 아니다.
-  - 착수 시 에이전트 신원, 사용자 위임, 최소 권한, 승인 경계, 감사 추적을 정의한다.
-  - Gateway 제품·프로토콜·인증 방식과 구현 순서는 수요 검증 후 ADR로 결정한다.
+- **에이전트 연동 확장:** 초기 M2 ChatGPT·Claude 커넥터를 바탕으로 M6에서 추가 클라이언트·전송 방식과 선택적인 브라우저 WebMCP를 제공한다(4.10/4.13). 보호 출력, 검증된 신원, 제한된 사용자 위임과 감사 귀속을 유지하며, 구현 방식은 노출 전에 ADR로 결정한다.
 
 ### 4.8 AI Review (옵션 value layer, post-MVP)
+
+Portcullis가 호출하는 이 선택적 검토 기능은 M2에서 사용자가 위임한 외부 커넥터(4.13)와 구분한다.
 
 거버넌스의 진짜 비용은 사람 리뷰 시간과 리뷰어 전문성이다(성공지표 2.4의 승인 turnaround와 직결).
 AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
@@ -387,7 +387,7 @@ AI를 **승인 흐름의 보조 리뷰어**로 얹어 이를 줄인다.
 
 ### 4.10 WebMCP 쿼리 보조 (M6 / Reach)
 
-브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. ADR-0028로 로컬/원격 MCP Gateway를 M6에 두며 브라우저 WebMCP는 선택 후속 adapter로 둔다. WebMCP 활성화에는 M4 마스킹 인수 통과와 M6의 인증된 에이전트 등록·권한 부여가 추가로 필요하다(ADR-0027). 등록을 연동보다 먼저 제공한다.
+브라우저 WebMCP는 M5 완료와 쿼리·검토 API 안정화 이후 M6로 미룬다(ADR-0026, ADR-0024/0025 순서 변경). MVP 인수 범위에서 제외하며 PostgreSQL/MySQL parity와 사람이 사용하는 SQL 검토·미리보기를 우선한다. SQLite는 계속 제외한다. 초기 외부 ChatGPT·Claude 커넥터는 ADR-0090에 따라 M2에 두고 브라우저 WebMCP는 선택적인 M6 어댑터로 유지한다. WebMCP 활성화에는 M4 마스킹 인수와 해당 어댑터의 검증된 등록·위임 시나리오가 필요하다. M2 신원 경계를 재사용·확장하며 브라우저 API 자체를 에이전트 신원의 근거로 삼지 않는다.
 
 - 연결 탐색, 화면에 보이는 SQL·타입 파라미터 작성, 명시적 초안 저장·제출, 요청·승인 상태 조회, 요청자만의 승인된 실행, 제한된 결과 페이지 조회를 각각 도구로 제공한다. Read 쿼리부터 시작하며, 폼을 채우는 것만으로 자동 저장·실행하지 않는다.
 - 스키마 탐색은 제한·인가·감사를 갖춘 catalog use case를 정의한 뒤 추가한다. 저장 쿼리 탐색·재사용은 Library가 해당 자산을 제공할 때 연동한다. 어느 경로도 임의 SQL 실행 권한을 부여하지 않는다.
@@ -404,20 +404,20 @@ M3는 4.5/ADR-0012의 고정된 불변 Git/Atlas artifact로 schema status → d
 
 EXPLAIN ANALYZE, 실행 후 rollback하는 일반 쿼리 dry-run, AI review, 인덱스 추천은 후속 범위로 유지한다. 기본 검토 정보는 정확한 영향 row 수나 위험 점수를 약속하지 않는다.
 
-### 4.12 민감정보 마스킹과 등록된 에이전트 (M4 → M6)
+### 4.12 보호 출력과 등록된 에이전트 (M2 → M4)
 
-M4에서 서버 마스킹·출력 보류를 먼저 제공하고 M6에서 에이전트 등록 후 연동한다(ADR-0027). 기존 SQL audit redaction은 결과 데이터 마스킹이 아니다. admin이 버전별 조직·connection 공개 규칙을 관리하고 API·cell·CSV·SQL/catalog/plan/review metadata·후속 tool 출력 직렬화 전에 적용한다. 처음에는 값 전체 가리기·필드 제외부터 제공한다. 요청자 소유권은 마스킹을 우회하지 않으며 사람의 원문 예외는 별도 명시 권한과 audit가 필요하다. 초기 에이전트에는 원문 예외가 없다. 승인 SQL·parameter, 실행 의미, 암호화 원본과 기존 보존 정책은 유지한다.
+M2에서 초기 ChatGPT·Claude 클라이언트를 등록·연결하기 전에 기본 거부 방식의 보호 출력을 검증한다(ADR-0090). M4는 이를 버전별 조직·connection 공개 규칙으로 확장하고 API·cell·CSV·SQL/catalog/plan/review metadata 직렬화 전에 적용한다. 기존 SQL audit redaction은 결과 데이터 마스킹이 아니다. 처음에는 값 전체 가리기·필드 제외부터 제공하며, 보호를 검증하지 못한 필드는 계속 보류한다. 요청자 소유권은 마스킹을 우회하지 않으며 사람의 원문 예외는 별도 명시 권한과 audit가 필요하다. 초기 에이전트에는 원문 예외가 없다. 승인 SQL·parameter, 실행 의미, 암호화 원본과 기존 보존 정책은 유지한다.
 
 에이전트 출력은 기본 거부하며 명시 허용된 보호 필드만 제공한다. secret·credential·원문 SQL/parameter·민감 cell 원문은 보내지 않는다. 출처 불명·alias·expression, 검증되지 않은 free-text/JSON·미지원 encoding은 보류하고 마스킹 오류는 안전하게 거부한다. 매 조회·export·응답에서 현재 정책을 재검증하고 규칙 변경 시 준비된 export·오래된 변환 cache를 무효화한다. 숨긴 값을 유추할 수 있는 sort/filter/search는 제한한다. audit에는 정책 버전·판단만 남기고 민감 값은 남기지 않는다. 자동 탐지는 정책 설정 보조이며 인가 근거가 아니다.
-UI/API/CSV/full-cell 일치, metadata/plan/error 누출, 파생 값, 오래된 cache, 실패, 조직 격리와 두 DB의 canary-secret 시나리오를 인수 조건으로 둔다.
+M4 인수 조건은 UI/API/CSV/full-cell 일치, metadata/plan/error 누출, 파생 값, 오래된 cache, 실패, 조직 격리와 두 DB의 canary-secret 시나리오다. M2는 M4를 기다리지 않고 초기 커넥터가 노출하는 모든 필드와 출력 경로의 보호를 먼저 입증해야 한다.
 
-마스킹 통과 후 조직 admin이 stable ID·owner·연동 종류·pending/disabled/active/revoked 상태·허용 tool/connection·보호 출력 정책·만료가 있는 사용자 위임을 가진 에이전트를 등록한다. 등록 시 권한은 없고 활성화는 명시적이다. 변경·사용을 audit한다. 실제 권한은 인증 사용자·검증된 agent grant·조직/connection·마스킹 정책의 교집합이다. 제출한 이름/ID는 신뢰하지 않는다. 회수·만료·로그아웃 시 후속 호출을 거부하고 진행 응답도 fence한다. 명시적 사용자 실행 요청·별도 검토·quorum·payload 무결성·1회 실행을 유지하며 자동 승인/반려 tool은 제공하지 않는다.
+M2 커넥터 출력 보호를 통과한 뒤 조직 admin이 stable ID·owner·연동 종류·pending/disabled/active/revoked 상태·허용 tool/connection·보호 출력 정책·만료가 있는 사용자 위임을 가진 에이전트를 등록한다. 등록 시 권한은 없고 활성화는 명시적이다. 변경·사용을 audit한다. 실제 권한은 인증 사용자·검증된 agent grant·조직/connection·마스킹 정책의 교집합이다. 제출한 이름/ID는 신뢰하지 않는다. 회수·만료·로그아웃 시 후속 호출을 거부하고 진행 응답도 fence한다. 명시적 사용자 실행 요청·별도 검토·quorum·payload 무결성·1회 실행을 유지하며 자동 승인/반려 tool은 제공하지 않는다.
 
-연동 전 transport ADR로 호출자를 활성 등록·위임에 결합하는 방법을 입증한다. native WebMCP만으로 에이전트를 인증할 수 없으며 신원을 확인하지 못하면 보호 기능을 거부한다. 등록은 실행 plugin 설치나 임의 endpoint fetch가 아니다. M6 MCP Gateway 인가는 browser token 전달 없이 4.13/ADR-0028을 따른다. 위조 ID·타 조직·회수/만료 grant·권한 교집합·보호 출력이 인수 조건이다. 이는 Portcullis 경유 공개를 통제하며 외부 에이전트의 독립적인 browser/DOM 접근을 통제한다고 약속하지 않는다.
+연동 전 transport ADR로 호출자를 활성 등록·위임에 결합하는 방법을 입증한다. native WebMCP만으로 에이전트를 인증할 수 없으며 신원을 확인하지 못하면 보호 기능을 거부한다. 등록은 실행 plugin 설치나 임의 endpoint fetch가 아니다. Gateway 인가는 browser token 전달 없이 4.13/ADR-0090을 따른다. 위조 ID·타 조직·회수/만료 grant·권한 교집합·보호 출력이 인수 조건이다. 이는 Portcullis 경유 공개를 통제하며 외부 에이전트의 독립적인 browser/DOM 접근을 통제한다고 약속하지 않는다.
 
-### 4.13 에이전트 중립 MCP Gateway와 배포 (M6)
+### 4.13 에이전트 중립 MCP Gateway와 배포 (M2 / M6)
 
-M4 마스킹과 M6 등록·권한 인수 통과 후 Streamable HTTP 표준 MCP Gateway와 같은 인증 endpoint로 연결하는 로컬 stdio bridge를 opt-in 제공한다(ADR-0028). vendor SDK 종속 없이 로컬 일반 client·Claude Code·Codex를 대상으로 한다. 기록된 client 버전·협상 protocol·인가·실제 거버넌스 tool 과업 통과 후에만 지원으로 표시한다. 브라우저 WebMCP는 선택 후속이며 초기 Gateway 인수 조건이 아니다. Go 단일 binary의 선택 adapter/subcommand와 기존 app port를 유지한다.
+M2 커넥터의 보호 출력·등록·위임 인수를 통과한 뒤 외부 ChatGPT·Claude 클라이언트를 위한 표준 HTTP MCP endpoint를 opt-in 제공한다(ADR-0090). M6는 로컬 일반 클라이언트·Claude Code·Codex 등으로 지원을 확장하고 같은 인증 endpoint에 연결하는 로컬 stdio bridge를 추가한다. 에이전트 중립적인 애플리케이션 경계를 유지하며, 기록된 클라이언트 버전·협상 프로토콜·인가·실제 거버넌스 과업을 통과한 뒤에만 지원으로 표시한다. 브라우저 WebMCP는 선택 후속이며 초기 Gateway 인수 조건이 아니다. Go 단일 binary의 선택 adapter/subcommand와 기존 app port를 유지한다.
 agent/model 실행·hosting, 임의 MCP server proxy, bridge의 대상 DB 직접 연결은 제공하지 않는다.
 
 Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만료가 있는 위임을 검증하고 사용자/조직/connection/tool/마스킹 권한의 교집합을 적용한다. 표준 HTTP 인가·resource discovery는 검증된 호환 provider를 사용하며 외부 배포할 수 있다. 등록은 OAuth client 등록과 다르며 암묵 권한을 부여하지 않는다. 비인증 local 모드, cookie/token 전달, agent 이름 header 신뢰는 금지한다. stdio stdout은 protocol 전용, stderr는 정제하며 credential은 제한된 범위로 예제·로그에서 제외한다. local HTTP는 기본 loopback, 배포 시 TLS/origin 제어가 필요하다.
@@ -426,7 +426,7 @@ Gateway는 요청마다 인증 issuer/audience/expiry/scope·활성 등록·만�
 인프라는 TLS/ingress·provider hosting·Secret 전달/rotation·network policy·관측 배포를 맡고 Portcullis는 신원과 업무 정책 검증을 유지한다. endpoint·인가 discovery routing, Secret 참조, probe, resource/body/stream limit과 네트워크 제한의 Helm/Kustomize 예제를 제공한다. NetworkPolicy에는 적용 plugin이, Secret에는 보호된 저장·접근이 필요하다. Kubernetes routing/discovery·rotation·proxy buffering/timeout·재시작/종료·우회 차단을 검증한다.
 multi-replica 주장은 pod-local grant가 아닌 공유 등록/회수 상태와 1회 실행 테스트 통과 후 가능하다.
 
-실제 로컬/Claude Code/Codex client matrix, protocol 호환, auth discovery, 거부/위조/타 조직/만료/회수 접근, masking canary, 연결 끊김/취소·재실행 거부를 인수 조건으로 둔다. 정확한 auth provider와 protocol 구현은 착수 전 후속 ADR로 정한다. 계획된 M6이며 MVP 범위 밖이다.
+M2 인수 조건은 실제 ChatGPT·Claude 클라이언트 과업, 프로토콜 호환, 인가 탐색, 거부·위조·타 조직·만료·회수 접근, 보호 출력 canary, 연결 끊김·취소·재실행 거부와 두 주체의 표시·감사 귀속이다(7.5). M6는 추가 클라이언트와 전송 방식을 각각 검증한다. 정확한 인가 제공자와 프로토콜 구현은 착수 전 후속 ADR로 정한다. 초기 커넥터는 계획된 M2/MVP 범위이며 아직 호환성이 입증되지 않았다.
 
 ---
 
@@ -512,6 +512,7 @@ Per [ADR-0004](../adr/0004-metadata-rls.md), [ADR-0009](../adr/0009-audit-integr
 
 - 행위자, 조직, 시각, 동작, 대상, 결과, 이전·다음 상태와 요청·payload 증거를 구조화된 타임라인에 기록한다.
 - 사람과 시스템·서비스 동작의 주체를 명시한다. 대상 실행을 허용한 모든 시도에는 시작 증거와 확인된 결과 또는 `outcome_unknown`이 있어야 한다.
+- M2 에이전트 경유 동작은 검증된 클라이언트·등록 ID와 위임한 사람의 ID, 위임 참조를 함께 기록한다. 인가된 감사 화면에 두 주체를 표시하며, 이름·이미지·주장된 모델명은 신원이나 별도 정족수 참여자의 근거가 아니다.
 - payload·상태·정책 위반, 포화와 종료 등 소유권이 확인된 실행 거부는 승인을 소비하지 않고 기록한다.
 - 비식별 SQL, statement 종류, 영향 행 수와 실행 시간은 기록할 수 있다. 원본 SQL, 주석, 리터럴·파라미터 값, 자격증명, 토큰과 결과 행은 감사·로그에 남기지 않는다.
 - 연결을 보관 처리해도 요청·결정·실행·감사 이력을 유지한다. Runtime 권한으로 감사 기록을 수정·삭제할 수 없고 자동 승인의 주체는 시스템이다.
@@ -574,6 +575,13 @@ Per [ADR-0055](../adr/0055-result-exploration-layout.md), 결과 컨트롤은 �
   Connect server-streaming(또는 폴백 폴링)으로 갱신.
   폴백 폴링은 새 요청이 보이도록 목록 첫 페이지를 계속 갱신하고, 그 밖에는 표시된 요청 중 아직 바뀔 수 있는 요청이 있을 때만 갱신한다. 종료 상태 요청의 상세는 폴링하지 않는다(ADR-0037).
 - 이메일·Slack 등 외부 채널 알림은 post-MVP(외부 발송 인프라·설정과 함께). 2.2의 "알림 엔진" 비목표는 BI성 알림을 가리키며 이 승인 알림과 구분된다.
+
+### 7.5 연결된 AI의 신원 표시 (M2)
+
+- 에이전트가 참여한 검토나 동작에는 AI·클라이언트 아바타의 우측하단에 연결한 사람의 작은 아바타를 겹쳐 표시한다.
+- 마우스 올리기, 키보드 포커스와 터치로 클라이언트·책임 사용자·연결 및 위임 상태를 확인할 수 있어야 한다. 마우스를 올리지 않아도 신원을 확인할 수 있어야 한다.
+- 인가된 감사 화면은 회수·만료된 과거 위임을 포함해 안정적인 클라이언트·사용자 귀속을 유지한다. 미확인 신원은 명시하며 보호 동작을 허용하지 않는다.
+- 이미지가 없으면 기존 프로필 이미지 대체 표시를 사용한다. 이름·이미지·주장된 모델명은 표시 정보이며, 인가와 별도 검토자 판단은 검증된 고유 신원을 사용한다(4.12/6.1).
 
 ---
 
@@ -686,9 +694,9 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
 ## 9. 배포
 
 - M1은 SPA를 포함한 컨테이너, Docker Compose 빠른 시작과 비공개 HTTPS 운영 구성을 제공한다. 네트워크 접근 권한이 로그인·권한·승인·감사를 대신하지 않는다.
-- M2는 MySQL parity 이후 단일 인스턴스 Helm/Kustomize 배포를 추가하고 외부 또는 CloudNativePG 관리 메타데이터 PostgreSQL 18과 PostgreSQL 실행 대상을 지원한다.
+- M2는 MySQL parity 이후 단일 인스턴스 Helm/Kustomize 배포를 추가하고 외부 또는 CloudNativePG 관리 메타데이터 PostgreSQL 18과 PostgreSQL 실행 대상을 지원한다. 초기 커넥터 endpoint는 인가 탐색·라우팅, 보호 출력, 위임과 회수를 추가로 검증한다.
 - Kubernetes 배포는 자격증명·키를 보존하고 migration 소유자와 runtime 계정을 분리하며 TLS 검증·백업·복원을 지원한다. 결과 유실 시 SQL을 재실행하지 않는다.
-- M6는 API 안정화 후 Terraform/OpenTofu를 추가하고 인증·마스킹 완료 기준 이후 Gateway 배포를 제공한다. Kubernetes/CNPG 가용성만으로 애플리케이션 HA를 주장하지 않는다.
+- M6는 API 안정화 후 Terraform/OpenTofu를 추가하고 M2 Gateway를 추가 클라이언트·전송 방식으로 확장한다. Kubernetes/CNPG 가용성만으로 애플리케이션 HA를 주장하지 않는다.
 - 태그 기반 배포는 기능·의존성 보안 검증 후 AMD64/ARM64 이미지와 SBOM/provenance를 발행한다. 전체 버전·커밋 태그와 안정 릴리스의 minor 별칭을 사용하고 implicit latest는 제공하지 않는다. 운영자는 태그를 보호하고 운영 이미지 digest를 고정한다.
 - 릴리스 태그는 일치하는 릴리스 브랜치에서 생성하고 검증한 이미지 digest를 승격해 발행한다. 릴리스 검증을 시작할 때 태그 커밋은 현재 release/vMAJOR.MINOR의 tip 및 실행을 발생시킨 커밋과 같아야 한다. 검증과 발행은 확정한 소스에 고정하고, 발행 전 태그 삭제·이동·주석 객체 교체를 거부한다. 이미 검증을 시작한 실행 중에는 브랜치 진행을 허용하지만, 브랜치가 진행한 뒤 오래된 태그로 검증을 새로 시작하면 거부한다(ADR-0084).
 - 전체 소스·기능·보안 게이트가 통과하면 attestation을 포함한 다중 플랫폼 후보 하나를 릴리스 별칭 없이 업로드한다. 정확히 그 digest를 추가로 검사하기 전에도 기존 패키지 공개 범위가 적용된다. 두 플랫폼이 모두 통과한 뒤 동일한 index를 승격한다. 다른 digest를 가리키는 전체 버전 별칭은 거부하고, 같은 digest의 재실행과 변경 가능한 minor·커밋 별칭은 허용한다. 레지스트리 사전 조회와 여러 별칭 쓰기는 원자적이지 않으므로 패키지 쓰기 권한을 제한한다(ADR-0086).
@@ -718,11 +726,11 @@ M1은 첫 출하 가능한 alpha이며 M3 완료가 MVP 경계이고, 제품 검
 | --- | --- | --- |
 | M0 | 토대 | [M0](../milestones/m0/scope.md) |
 | M1 | PostgreSQL 거버넌스 + 사용자·역할·Binding 관리 | [M1](../milestones/m1/scope.md) |
-| M2 | MySQL → Kubernetes/CNPG → SQL 검토·EXPLAIN | [M2](../milestones/m2/scope.md) |
+| M2 | MySQL → Kubernetes/CNPG → SQL 검토·EXPLAIN → 초기 ChatGPT·Claude 커넥터 | [M2](../milestones/m2/scope.md) |
 | M3 | 쿼리 자산 + schema 미리보기 + Keycloak SSO + 요청 대화; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | 마스킹 → 임시 console·인증 확장 | [M4](../milestones/m4/scope.md) |
 | M5 | schema 승인·apply·복구·verify | [M5](../milestones/m5/scope.md) |
-| M6 | provider + 에이전트 권한·MCP Gateway | [M6](../milestones/m6/scope.md) |
+| M6 | provider + 추가 MCP 클라이언트·전송 방식과 선택적 WebMCP | [M6](../milestones/m6/scope.md) |
 | M7 | 장기 연구 후보 | [M7](../milestones/m7/scope.md) |
 
 ---

@@ -1,7 +1,8 @@
 # ADR-0027: Sensitive-data masking before agent registration and integration
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0090](0090-early-delegated-ai-connectors.md)
 - **Date:** 2026-10-03
+- **Replacement scope:** ADR-0090 advances initial ChatGPT/Claude connectors and their protection/registration prerequisites to M2; other decisions below remain in force.
 
 > **Gateway amendment:** [ADR-0028](0028-agent-neutral-mcp-gateway.md) promotes local/remote standard MCP Gateway to gated M6; browser WebMCP is an optional follow-up. Masking and registration prerequisites remain binding. Earlier remote/headless Later placement is superseded.
 

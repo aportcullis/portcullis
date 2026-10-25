@@ -1,7 +1,8 @@
 # ADR-0035: Kubernetes and CloudNativePG immediately after MySQL parity
 
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0090](0090-early-delegated-ai-connectors.md)
 - **Date:** 2026-10-03
+- **Replacement scope:** ADR-0090 advances initial ChatGPT/Claude connectors and their protection/registration prerequisites to M2; other decisions below remain in force.
 
 ## Context
 

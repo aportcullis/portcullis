@@ -2,8 +2,8 @@
 
 > **Language:** English · [한국어](prd.ko.md) · [Documentation](../README.md)
 > **Translations:** Update requirements and section numbers in both languages in the same change.
-> **Target scope:** PostgreSQL/MySQL targets only; SQLite excluded. MySQL parity and SQL review/preview precede deferred M6 MCP Gateway (ADR-0026/0028).
-> **Deployment sequencing:** M2 is MySQL parity → Kubernetes (Helm/Kustomize) and CNPG → SQL review/EXPLAIN.
+> **Target scope:** PostgreSQL/MySQL targets only; SQLite excluded. Initial ChatGPT/Claude connectors belong to M2 after MySQL parity, deployment and SQL review; broader agent integration follows in M6 (ADR-0090).
+> **Deployment sequencing:** M2 is MySQL parity → Kubernetes (Helm/Kustomize) and CNPG → SQL review/EXPLAIN → initial ChatGPT/Claude connectors.
 > **Created:** 2026-06-27.
 > **Definition:** A self-hosted open-source DevSecOps tool governing database access and changes, and a BI tool for analyzing, visualizing, and sharing queries and results.
 > **Role:** The product contract defining MVP scope, policies, and acceptance criteria; detailed implementation choices belong in ADRs.
@@ -93,6 +93,7 @@ Expand BI gradually from MVP saved queries and result grids.
 - **Query assets:** Private or organization-shared saved queries, versions, favorites, parameters, and saving from execution history.
 - **Results:** Temporary snapshots capped at 10,000 rows and a byte limit, table navigation, and CSV export.
 - **Audit:** Structured append-only events for authentication, requests, approvals, execution, and administration.
+- **AI connectors:** Initial external ChatGPT/Claude integration in M2, gated by protected output, verified registration and expiring human delegation (§4.12–4.13).
 
 #### Excluded
 
@@ -363,12 +364,11 @@ Kubernetes exec, MongoDB/MSSQL, SAML/SCIM are not mandatory for MVP/parity; prio
 - SIEM audit webhooks/JSON export.
 - ML anomaly detection from audit risk scores, linked to §4.8.
 - SAML/SCIM after demand validation.
-- **Agent Gateway integration:** Gradually add a path for agents to access Portcullis capabilities.
-  - ADR-0028 promotes the standard local/remote MCP Gateway to gated M6 (§4.13); browser WebMCP (§4.10) is an optional follow-up, not the initial gateway prerequisite.
-  - Define agent identity, user delegation, least privilege, approval boundaries, and audit attribution when starting the milestone.
-  - Choose the gateway product, protocol, authentication, and implementation sequence through ADRs after demand validation.
+- **Agent integration extensions:** M6 expands the initial M2 ChatGPT/Claude connectors to additional clients/transports and optional browser WebMCP (§4.10/§4.13). Preserve protected output, verified identity, scoped human delegation and audit attribution; select implementation details through ADRs before exposure.
 
 ### 4.8 AI Review (optional value layer, post-MVP)
+
+This optional Portcullis-invoked reviewer is separate from M2's user-delegated external connectors (§4.13).
 
 Human review time and expertise drive governance cost and approval turnaround (§2.4).
 An optional advisory reviewer can reduce it without locking core features; hosted AI is a possible paid offering, with monetization awaiting a separate decision.
@@ -410,8 +410,8 @@ This section replaces the separate PRD previously required to start M4.
 
 ### 4.10 WebMCP query assistance (M6 / Reach)
 
-Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. ADR-0028 promotes local/remote MCP Gateway integration to M6; browser WebMCP is an optional subsequent adapter.
-WebMCP activation additionally requires M4 masking acceptance and M6 authenticated agent registration/grants (ADR-0027); registration precedes integration.
+Browser WebMCP is deferred to M6 after M5 and stable query/review APIs (ADR-0026, amending ADR-0024/0025). It is outside MVP acceptance. PostgreSQL/MySQL parity and human SQL review/preview take priority. SQLite remains excluded. Initial external ChatGPT/Claude connectors belong to M2 under ADR-0090; browser WebMCP remains an optional M6 adapter.
+WebMCP activation requires the M4 masking acceptance and its own verified registration/delegation scenarios. Reuse and extend the M2 identity boundary; a browser API does not prove agent identity.
 
 - Expose connection discovery, visible SQL/typed-parameter composition, explicit draft save/submit, request/approval-state inspection, requester-only approved execution and bounded result-page retrieval as separate tools. Start with read queries; filling a form must not automatically persist or execute it.
 - Add schema discovery only through a bounded, authorized and audited catalog use case. Discover/reuse saved queries when Library supplies those assets. Neither path grants arbitrary SQL execution.
@@ -430,23 +430,23 @@ Actual apply must revalidate artifact and target state.
 
 EXPLAIN ANALYZE, execute-then-rollback query dry-run, AI review and index recommendations remain deferred. Basic review facts do not promise exact affected rows or a risk score.
 
-### 4.12 Sensitive-data masking and registered agents (M4 → M6)
+### 4.12 Protected output and registered agents (M2 → M4)
 
-Deliver server-side masking/withholding in M4 before registering or connecting agents in M6 (ADR-0027). Existing SQL audit redaction is not result-data masking. Admins manage versioned organization/connection disclosure rules; apply them before serialization across APIs, cells, CSV, SQL/catalog/plan/review metadata and future tools. Start with full redaction/omission.
+M2 must qualify default-deny protected output before registering and connecting its initial ChatGPT/Claude clients (ADR-0090). M4 expands this into versioned organization/connection disclosure rules applied before serialization across APIs, cells, CSV and SQL/catalog/plan/review metadata. Existing SQL audit redaction is not result-data masking. Start with full redaction/omission; fields without qualified protection remain withheld.
 Requester ownership does not bypass masking; any human raw-view exception requires separate explicit permission and audit. Agents have no raw-view exception initially. Preserve approved SQL/parameters, execution semantics, encrypted originals and existing retention.
 
 Agent output is default-deny and releases only approved protected fields. Never send secrets, credentials, raw SQL/parameters or raw sensitive cells. Withhold unknown lineage/aliases/expressions, unqualified free-text/JSON or unsupported encodings; masking errors refuse safely. Recheck current policy on every read/export/response and invalidate stale exports/transformed caches after rule changes.
-Restrict sorting/filtering/search that could disclose hidden values. Audit policy versions/decisions without sensitive values. Automatic detection assists policy setup, not authorization. Acceptance includes UI/API/CSV/full-cell parity, metadata/plan/error leaks, derived values, stale caches, failures, org isolation and canary-secret tests against both DBs.
+Restrict sorting/filtering/search that could disclose hidden values. Audit policy versions/decisions without sensitive values. Automatic detection assists policy setup, not authorization. M4 acceptance includes UI/API/CSV/full-cell parity, metadata/plan/error leaks, derived values, stale caches, failures, org isolation and canary-secret tests against both DBs. M2 must prove these protections for every field and output path exposed by its initial connectors rather than waiting for M4.
 
-After masking passes, org admins register agents with stable ID, owner, integration kind, pending/disabled/active/revoked state, allowed tools/connections, protected-output policy and expiring user delegation. Registration starts without grants; activation is explicit. Audit changes and use. Effective access intersects authenticated user, verified agent grant, org/connection and masking policies.
+After M2 connector-output protection passes, org admins register agents with stable ID, owner, integration kind, pending/disabled/active/revoked state, allowed tools/connections, protected-output policy and expiring user delegation. Registration starts without grants; activation is explicit. Audit changes and use. Effective access intersects authenticated user, verified agent grant, org/connection and masking policies.
 Claimed names/IDs are untrusted. Revocation/expiry/logout prevents later calls and fences pending responses. Retain explicit user execution intent, distinct review, quorum, payload integrity and single-use execution; no automatic approval/rejection tools.
 
-Before integration, a transport ADR must prove caller binding to an active registration/delegation. Native WebMCP alone is not agent authentication; refuse protected capabilities when identity cannot be verified. Registration neither installs executable plugins nor fetches arbitrary endpoints. M6 MCP Gateway authorization follows §4.13/ADR-0028 without browser-token passthrough.
+Before integration, a transport ADR must prove caller binding to an active registration/delegation. Native WebMCP alone is not agent authentication; refuse protected capabilities when identity cannot be verified. Registration neither installs executable plugins nor fetches arbitrary endpoints. Gateway authorization follows §4.13/ADR-0090 without browser-token passthrough.
 Acceptance includes forged IDs, cross-org access, revoked/expired grants, permission intersection and protected output. This governs Portcullis-mediated disclosure; it cannot constrain an external agent's independent browser/DOM access.
 
-### 4.13 Agent-neutral MCP Gateway and deployment (M6)
+### 4.13 Agent-neutral MCP Gateway and deployment (M2 / M6)
 
-After M4 masking and M6 registration/grants pass, provide an opt-in standard MCP Gateway over Streamable HTTP and a local stdio bridge to the same authenticated endpoint (ADR-0028). Target local generic clients, Claude Code and Codex without vendor SDK dependence. A client is supported only after its recorded version, negotiated protocol, authorization and real governed tool journey pass.
+After M2 connector protection, registration and delegation pass, provide an opt-in standard HTTP MCP endpoint for external ChatGPT and Claude clients (ADR-0090). M6 extends support to additional clients, including local generic clients, Claude Code and Codex, and a local stdio bridge to the same authenticated endpoint. Preserve the agent-neutral application boundary. A client is supported only after its recorded version, negotiated protocol, authorization and real governed tool journey pass.
 Browser WebMCP is an optional follow-up, not the initial Gateway gate. Preserve one Go binary with optional adapter/subcommand and existing application ports; do not run or host agents/models, proxy arbitrary MCP servers, or let the bridge connect directly to target DBs.
 
 Gateway validates authenticated issuer/audience/expiry/scope, active registration and expiring delegation per request; scopes intersect user/org/connection/tool/masking permissions. Standard HTTP authorization/resource discovery uses a tested compatible provider, which may be external. Registration is not OAuth client registration and never grants implicit access.
@@ -456,7 +456,7 @@ Retain explicit user intent, distinct approval, immutable payload, one-time leas
 Infrastructure owns TLS/ingress, provider hosting, Secret delivery/rotation, network policy and observability deployment; Portcullis retains identity and business-policy enforcement. Provide Helm/Kustomize examples for endpoint and auth-discovery routing, Secret references, probes, resource/body/stream limits and network restrictions.
 NetworkPolicy needs an enforcing plugin; Secrets need protected storage and access. Validate Kubernetes routing/discovery, rotation, proxy buffering/timeouts, restart/shutdown and no bypass. Multi-replica claims require shared registration/revocation state and one-time execution tests, not pod-local grants.
 
-Acceptance includes real local/Claude Code/Codex client matrix, protocol compatibility, auth discovery, denied/spoofed/cross-org/expired/revoked access, masking canaries, disconnect/cancel handling and replay refusal. Exact auth-provider and protocol implementation choices require follow-up ADRs before implementation. This is planned M6 scope, outside MVP.
+M2 acceptance includes real ChatGPT and Claude client journeys, protocol compatibility, auth discovery, denied/spoofed/cross-org/expired/revoked access, protected-output canaries, disconnect/cancel handling, replay refusal and dual-identity presentation/audit (§7.5). M6 qualifies each additional client and transport independently. Exact auth-provider and protocol implementation choices require follow-up ADRs before implementation. Initial connectors are planned M2/MVP scope; compatibility is not yet established.
 
 ---
 
@@ -542,6 +542,7 @@ Current table definitions belong in [tracked migrations](../../migrations/); fut
 
 - Record actor, organization, time, action, target, outcome, previous/next states and request/payload evidence in a structured timeline.
 - Attribute human and system/service actions explicitly; every admitted target attempt has start evidence and a confirmed outcome or `outcome_unknown`.
+- M2 agent-mediated actions record both the verified client/registration ID and delegating human ID with their delegation reference. Authorized audit views show both; client names, images and claimed model labels never establish identity or distinct quorum participants.
 - Record refused owner-verified execution attempts without consuming approval, including invalid payload/state/policy, saturation and shutdown.
 - Audit may include redacted SQL, statement class, affected rows and duration; raw SQL, comments, literal/parameter values, credentials, tokens and result rows must not appear in audit/logs.
 - Archive preserves request, decision, execution and audit history; runtime access cannot update/delete audit, and automatic approval belongs to the system.
@@ -607,6 +608,13 @@ Per [ADR-0055](../adr/0055-result-exploration-layout.md), result controls stay a
 - In-app notifications belong to MVP because approval turnaround directly affects the ≤30-minute median decision target (§2.4).
 - Approvers see pending badges/lists; requesters see approval/rejection/expiry changes, refreshed through streaming or fallback polling. Fallback polling keeps the first list page current so new requests appear, and otherwise runs only while a shown request can still change; a terminal request's details are not polled (ADR-0037).
 - Email/Slack delivery and its infrastructure/settings are post-MVP; the §2.2 alert-engine exclusion refers to BI alerts, not approval notifications.
+
+### 7.5 Connected AI identity (M2)
+
+- Show the AI/client avatar with the connected person's smaller avatar over its lower-right corner in mediated reviews and other attributed actions.
+- Hover, keyboard focus and touch disclose the client, accountable person and connection/delegation state; identity must remain available without hover.
+- Preserve stable client and human attribution in authorized audit views, including historical revoked/expired delegations. Unknown or unverifiable identity is explicit and cannot authorize protected actions.
+- Use existing profile-image fallbacks when an image is absent. Names, images and claimed model labels are presentation; authorization and distinct-reviewer rules use verified stable identities (§4.12/§6.1).
 
 ---
 
@@ -729,9 +737,9 @@ Per [ADR-0010](../adr/0010-runtime-and-transport-defaults.md), [ADR-0016](../adr
 ## 9. Deployment
 
 - M1 ships the embedded-SPA container with a Docker Compose quickstart and private HTTPS production topology; network access does not replace application login, authorization, approval or audit.
-- M2 adds single-instance Helm/Kustomize deployment after MySQL parity, with external or CloudNativePG-managed metadata PostgreSQL 18 and governed PostgreSQL targets.
+- M2 adds single-instance Helm/Kustomize deployment after MySQL parity, with external or CloudNativePG-managed metadata PostgreSQL 18 and governed PostgreSQL targets. Its initial connector endpoint additionally qualifies authorization discovery/routing, protected output, delegation and revocation.
 - Kubernetes deployment preserves secrets/keys, separates migration-owner/runtime credentials, verifies TLS, supports backup/restore and tolerates lost results without rerunning SQL.
-- M6 adds Terraform/OpenTofu after API stability and Gateway deployment after identity/masking acceptance. Kubernetes/CNPG availability alone does not establish application HA.
+- M6 adds Terraform/OpenTofu after API stability and expands the M2 Gateway to further qualified clients/transports. Kubernetes/CNPG availability alone does not establish application HA.
 - Tagged publication verifies functionality and dependency security, then publishes AMD64/ARM64 images with SBOM/provenance, full-version/commit tags, stable minor aliases and no implicit latest. Operators protect tags and pin production digests.
 - Release tags belong to the matching release branch, and publication promotes the verified image digest. At admission, the tag commit must equal the current release/vMAJOR.MINOR tip and the triggering commit. Pin verification and publication to that admitted source; refuse a deleted, moved or reannotated tag before publication. Branch advancement during an admitted run is allowed, while a new admission for an older tag after advancement refuses (ADR-0084).
 - After the complete source/function/security gates, upload one attested multi-platform candidate without release aliases; existing package visibility applies even before the additional native checks of that exact digest. Promote that unchanged index only after both platforms pass. Refuse a full-version alias pointing to a different digest, allow equal-digest replay and retain mutable minor/commit aliases; restrict package writers because registry preflight and multiple alias writes are not atomic (ADR-0086).
@@ -761,11 +769,11 @@ M1 is the first releasable alpha; M3 completes MVP, subject to product validatio
 | --- | --- | --- |
 | M0 | Foundation | [M0](../milestones/m0/scope.md) |
 | M1 | PostgreSQL governance + user/role/binding administration | [M1](../milestones/m1/scope.md) |
-| M2 | MySQL → Kubernetes/CNPG → SQL review/EXPLAIN | [M2](../milestones/m2/scope.md) |
+| M2 | MySQL → Kubernetes/CNPG → SQL review/EXPLAIN → initial ChatGPT/Claude connectors | [M2](../milestones/m2/scope.md) |
 | M3 | Query assets + schema preview + Keycloak SSO + request discussion; MVP | [M3](../milestones/m3/scope.md) |
 | M4 | Masking → temporary console and identity | [M4](../milestones/m4/scope.md) |
 | M5 | Schema approval/apply/recovery/verify | [M5](../milestones/m5/scope.md) |
-| M6 | Providers + agent grants/MCP Gateway | [M6](../milestones/m6/scope.md) |
+| M6 | Providers + additional MCP clients/transports and optional WebMCP | [M6](../milestones/m6/scope.md) |
 | M7 | Research candidates | [M7](../milestones/m7/scope.md) |
 
 ---

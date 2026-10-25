@@ -49,18 +49,18 @@ These decisions establish the Core 1 foundation.
 | [0021](0021-governed-query-execution.md) | Governed PostgreSQL execution, leases, catalog gate, and results | Accepted |
 | [0022](0022-page-first-workflows.md) | Page-first workflows, routed request composition/review/results | Accepted |
 | [0023](0023-local-sql-formatting.md) | Local PostgreSQL formatting for editable requests | Accepted |
-| [0024](0024-webmcp-next-milestone.md) | WebMCP browser boundary (original M2 sequence) | Accepted |
+| [0024](0024-webmcp-next-milestone.md) | WebMCP browser boundary (original M2 sequence) | Partly superseded by ADR-0090 |
 | [0025](0025-sql-database-first-expansion.md) | SQL database parity first; exclude SQLite from target scope | Accepted |
-| [0026](0026-review-tools-before-agent-integration.md) | Early SQL review/EXPLAIN and schema preview; defer WebMCP to M6 | Accepted |
-| [0027](0027-masking-before-agent-registration.md) | Sensitive-data masking before agent registration and integration | Accepted |
-| [0028](0028-agent-neutral-mcp-gateway.md) | Agent-neutral local/remote MCP Gateway and Kubernetes infrastructure boundary | Accepted |
+| [0026](0026-review-tools-before-agent-integration.md) | Early SQL review/EXPLAIN and schema preview; defer WebMCP to M6 | Partly superseded by ADR-0090 |
+| [0027](0027-masking-before-agent-registration.md) | Sensitive-data masking before agent registration and integration | Partly superseded by ADR-0090 |
+| [0028](0028-agent-neutral-mcp-gateway.md) | Agent-neutral local/remote MCP Gateway and Kubernetes infrastructure boundary | Partly superseded by ADR-0090 |
 | [0029](0029-dependency-supply-chain-controls.md) | Dependency installation, provenance and immutable tooling controls | Partly superseded by ADR-0080 |
 | [0030](0030-database-version-qualification-window.md) | PostgreSQL 16–19 compatibility maintenance and version qualification | Accepted |
 | [0031](0031-typescript-seven-native-tooling.md) | TypeScript 7 and native lint enforcement without the classic compiler API | Accepted |
 | [0032](0032-request-title-and-body.md) | Access request titles and explanatory bodies | Accepted |
 | [0033](0033-type-aware-result-sorting.md) | Type-aware result sorting and explicit query-order restoration | Superseded by ADR-0058 |
 | [0034](0034-apache-two-project-license.md) | Apache License 2.0 for Portcullis | Accepted |
-| [0035](0035-kubernetes-cnpg-after-mysql.md) | Kubernetes/CNPG immediately after MySQL parity | Accepted |
+| [0035](0035-kubernetes-cnpg-after-mysql.md) | Kubernetes/CNPG immediately after MySQL parity | Partly superseded by ADR-0090 |
 | [0036](0036-ui-customization-boundaries.md) | UI design values and layout independent of governance | Accepted |
 | [0037](0037-page-hierarchy-and-responsive-ux.md) | Page hierarchy and responsive request workflows | Accepted |
 | [0038](0038-inline-request-workflow.md) | Inline request workflow from authorized summary facts | Accepted |
@@ -115,6 +115,7 @@ These decisions establish the Core 1 foundation.
 | [0087](0087-non-interactive-workspace-installation.md) | Non-interactive workspace installation | Accepted |
 | [0088](0088-isolated-testcontainer-sessions.md) | Isolate Testcontainers sessions between test packages | Accepted |
 | [0089](0089-typed-repository-verification.md) | Type-check repository verification before execution | Accepted |
+| [0090](0090-early-delegated-ai-connectors.md) | Initial delegated AI connectors in M2 | Accepted |
 
 ## Template
 ```markdown

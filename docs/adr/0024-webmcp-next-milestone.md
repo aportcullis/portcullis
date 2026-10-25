@@ -1,7 +1,8 @@
 # ADR-0024: WebMCP query assistance first in Bridge (M2)
-- **Status:** Accepted
+- **Status:** Partly superseded by [ADR-0090](0090-early-delegated-ai-connectors.md)
 - **Decision history:** ordering and DB scope amended by [ADR-0025](0025-sql-database-first-expansion.md) (roadmap scope; implementation follows the M1 release gate)
 - **Date:** 2026-10-03
+- **Replacement scope:** ADR-0090 advances initial ChatGPT/Claude connectors and their protection/registration prerequisites to M2; other decisions below remain in force.
 
 > **Sequence amendment:** [ADR-0026](0026-review-tools-before-agent-integration.md) advances M2 SQL review/EXPLAIN and M3 schema preview, defers WebMCP to M6 after M5, and removes WebMCP from MVP acceptance. Earlier sequence text below is historical.
 

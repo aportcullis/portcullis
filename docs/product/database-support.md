@@ -1,6 +1,6 @@
 # Database feature support
 
-**Updated: 2026-10-05.** This table describes Portcullis product support, not whether an engine can run in Docker. PostgreSQL governance has recorded passing evidence; M1 administration and release safeguards are still in progress. MySQL is the next committed target; it is not selectable or supported yet.
+**Scope updated: 2026-10-25; engine evidence retains the dates below.** This table describes Portcullis product support, not whether an engine can run in Docker. PostgreSQL governance has recorded passing evidence; M1 release readiness remains incomplete. MySQL is the next committed target; it is not selectable or supported yet.
 [ADR-0025](../adr/0025-sql-database-first-expansion.md) limits committed targets to PostgreSQL/MySQL and removes SQLite from support scope.
 
 ## Committed target feature matrix
@@ -32,12 +32,13 @@
 | Schema migration status and SQL dry-run preview | Planned (M3; no apply) | Planned (M3; no apply) |
 | Deterministic schema impact facts | Planned (M3; estimates/unknowns) | Planned (M3; estimates/unknowns) |
 | EXPLAIN ANALYZE / execute-then-rollback query dry-run | Deferred; no support claim | Deferred; no support claim |
-| Server-side sensitive-data masking (cells/API/CSV/metadata) | Planned (M4; separate from SQL audit redaction) | Planned (M4) |
-| Agent registration, scoped grants and revocation | Planned (M6 after masking gate) | Planned (M6 after masking gate) |
-| Registered-agent MCP Gateway (HTTP + local stdio bridge) | Planned M6 after M5, masking and registration | Planned M6 after M5, masking and registration |
-| Local clients / Claude Code / Codex | M6 compatibility targets; not verified | M6 compatibility targets; not verified |
-| Optional browser WebMCP adapter | Follow-up after Gateway; identity gate required | Follow-up after Gateway; identity gate required |
-| Gateway Helm/Kustomize deployment examples | Planned M6; Kubernetes acceptance pending | Planned M6; Kubernetes acceptance pending |
+| Initial connector protected output, verified registration and expiring human delegation | Planned M2 after SQL review; default-deny output first | Planned M2 after SQL review; same security gate |
+| External ChatGPT / Claude connectors and dual-identity UX/audit | Planned M2; real client/version/protocol/auth journeys required | Planned M2; same compatibility gate |
+| Broader server-side sensitive-data masking (cells/API/CSV/metadata) | Planned M4; extends the M2 minimum gate, separate from SQL audit redaction | Planned M4; same disclosure gate |
+| Expanded Gateway providers/clients and local stdio bridge | Planned M6 after M5 and broader masking qualification | Planned M6; same security gate |
+| Local clients / Claude Code / Codex | M6 expansion targets; not verified | M6 expansion targets; not verified |
+| Optional browser WebMCP adapter | Planned M6 follow-up; identity/browser gates required | Planned M6 follow-up; same gates |
+| Expanded Gateway Helm/Kustomize deployment examples | Planned M6 on the M2 deployment baseline | Planned M6 on the M2 deployment baseline |
 | Charts/dashboards | Later candidate | Later candidate |
 | Git-sourced schema migration governance | Planned (M5; object matrix pending) | Planned (M5; object matrix pending) |
 | Native DB client proxy / temporary web SQL console | Proxy deferred; console planned (M4) | Proxy deferred; console planned (M4) |
@@ -65,7 +66,11 @@ Qualification status is separate from the maintenance window; no new syntax/exte
 
 Primary sources checked 2026-10-03: [PostgreSQL versions](https://www.postgresql.org/support/versioning/), [19 schedule](https://wiki.postgresql.org/wiki/PostgreSQL_19_Open_Items), [MySQL release tracks](https://dev.mysql.com/doc/refman/9.7/en/mysql-releases.html), [26.7 notes](https://dev.mysql.com/doc/relnotes/mysql/26.7/en/) and [8.0 lifecycle](https://www.mysql.com/support/eol-notice.html).
 
-The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3), including PostgreSQL/MySQL parity, Kubernetes/CNPG deployment, basic SQL review/EXPLAIN and schema preview, remains the MVP boundary. MCP Gateway/WebMCP are excluded from MVP under [ADR-0026](../adr/0026-review-tools-before-agent-integration.md).
+The M1 gate establishes correctness for its recorded environment. Capacity/soak qualification is separate. Library (M3) remains the MVP boundary, including PostgreSQL/MySQL parity, Kubernetes/CNPG deployment, basic SQL review/EXPLAIN, initial M2 external ChatGPT/Claude connectors and M3 schema preview. The M2 order is MySQL parity → Kubernetes/CNPG → SQL review → initial connector acceptance.
+
+Inside that final track, minimum protected output precedes registration, explicit expiring human delegation and client integration; every call intersects current human Binding and verified agent authority. Preserve human review/quorum, no self-approval, immutable single-use execution, revocation/expiry and ongoing-output fencing without SQL replay. Planned identity UI shows the connected human's small avatar on the AI avatar's lower-right corner, exposes both identities accessibly and records both in audit.
+
+These are future M2 acceptance criteria, not shipped or M1 capabilities. Broader masking remains M4; provider/client/stdio and optional browser WebMCP expansion remain M6. See [ADR-0090](../adr/0090-early-delegated-ai-connectors.md) and [PRD §4.13](prd.en.md#413-agent-neutral-mcp-gateway-and-deployment-m2--m6).
 
 ## Additional engines and excluded scope
 
