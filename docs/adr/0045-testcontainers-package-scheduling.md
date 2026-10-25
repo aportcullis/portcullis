@@ -27,7 +27,7 @@ Testcontainers documents disabling Ryuk when the environment performs its own cl
 
 Each group keeps its steps in order and writes `<group>.log` to a fresh per-run temporary directory outside the checkout (`$TMPDIR/portcullis-verify.XXXXXX`, prefix overridable with `VERIFY_LOG_DIR`).
 Endpoint protection on the working tree therefore cannot refuse a rewrite of the previous log.
-Only a failed group's log is printed, because GNU Make 3.81 on macOS cannot synchronize concurrent output.
+Group commands and their merged standard output/error stream live through `tee` while the same output is retained in the group log. Each group announces its start and log path, then reports its elapsed time and outcome. The group recipe uses Bash `pipefail`, so a failed verification command or log write fails the group. Recursive Make and its existing process-group cancellation remain in place. Concurrent groups may interleave their output on GNU Make 3.81.
 
 ## Consequences
 

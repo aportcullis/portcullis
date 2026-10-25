@@ -220,14 +220,16 @@ verify-go:
 verify-browser:
 	$(MAKE) -j1 e2e-run
 
+verify-group-%: SHELL := /bin/bash
 verify-group-%:
-	@start=$$(date +%s); \
-	if $(MAKE) --no-print-directory -j1 verify-$* > $(VERIFY_LOG_DIR)/$*.log 2>&1; then \
-		echo "verify-$* passed in $$(( $$(date +%s) - start ))s"; \
+	@set -o pipefail; start=$$(date +%s); \
+	echo "verify-$* started; full log in $(VERIFY_LOG_DIR)/$*.log"; \
+	if $(MAKE) --no-print-directory -j1 verify-$* 2>&1 | tee "$(VERIFY_LOG_DIR)/$*.log"; then \
+		echo "verify-$* passed in $$(( $$(date +%s) - start ))s; full log in $(VERIFY_LOG_DIR)/$*.log"; \
 	else \
-		echo "verify-$* FAILED; full log in $(VERIFY_LOG_DIR)/$*.log" >&2; \
-		tail -n 200 $(VERIFY_LOG_DIR)/$*.log >&2; \
-		exit 1; \
+		status=$$?; \
+		echo "verify-$* FAILED in $$(( $$(date +%s) - start ))s; full log in $(VERIFY_LOG_DIR)/$*.log" >&2; \
+		exit "$$status"; \
 	fi
 
 
