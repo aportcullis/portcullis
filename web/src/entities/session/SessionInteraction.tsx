@@ -11,7 +11,9 @@ export function SessionInteraction(props: ParentProps) {
 /** Ends a refused interaction before metadata recovery can recreate its drafts or delivery. */
 function AdmittedInteraction(props: ParentProps) {
   const [refused, setRefused] = createSignal(false);
-  const unsubscribe = observeAuthorizationFailures(() => setRefused(true));
+  const unsubscribe = observeAuthorizationFailures(failure => {
+    if (failure.kind === "session" || failure.scope === "interaction") setRefused(true);
+  });
   onCleanup(unsubscribe);
   return <Show when={!refused()} fallback={<p role="alert">Permission changed. Local inputs and setup delivery were cleared. Reload to check your current access.</p>}>{props.children}</Show>;
 }

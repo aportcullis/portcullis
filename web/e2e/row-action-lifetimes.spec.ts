@@ -3,13 +3,23 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { MeResponseSchema, UserSchema } from "@/gen/portcullis/v1/auth_pb";
 import { AccessRequestState, ListAccessRequestsResponseSchema } from "@/gen/portcullis/v1/access_requests_pb";
-import { fulfillConnectError } from "@e2e/rpc";
+import { fulfillConnectError, type ConnectErrorCode } from "@e2e/rpc";
 
 const actorID = "00000000-0000-4000-8000-000000000001";
 const requestID = "00000000-0000-4000-8000-000000000002";
 const connectionID = "00000000-0000-4000-8000-000000000003";
 
 type HeldRouteState = { kind: "waiting" } | { kind: "received"; route: Route };
+type ExecutionActionScenario = {
+  method: "Execute" | "Cancel";
+  button: "Execute" | "Stop execution";
+  state: AccessRequestState;
+};
+const executionActionScenarios: ExecutionActionScenario[] = [
+  { method: "Execute", button: "Execute", state: AccessRequestState.APPROVED },
+  { method: "Cancel", button: "Stop execution", state: AccessRequestState.EXECUTING },
+];
+const authorizationRefusals: ConnectErrorCode[] = ["unauthenticated", "permission_denied"];
 
 function createHeldRoute() {
   let state: HeldRouteState = { kind: "waiting" };
@@ -46,9 +56,13 @@ async function createRequestWorkspace(page: Page) {
   let metadataUnavailable = false;
   let requestState = AccessRequestState.APPROVED;
   let listCalls = 0;
-  await page.route("**/portcullis.v1.Auth/Me", route => metadataUnavailable
-    ? fulfillConnectError(route, "unavailable")
-    : route.fulfill({ status: 200, contentType: "application/proto", body: Buffer.from(toBinary(MeResponseSchema, snapshot)) }));
+  let metadataCalls = 0;
+  await page.route("**/portcullis.v1.Auth/Me", route => {
+    metadataCalls++;
+    return metadataUnavailable
+      ? fulfillConnectError(route, "unavailable")
+      : route.fulfill({ status: 200, contentType: "application/proto", body: Buffer.from(toBinary(MeResponseSchema, snapshot)) });
+  });
   await page.route("**/portcullis.v1.AccessRequests/List", route => {
     listCalls++;
     return route.fulfill({ status: 200, contentType: "application/proto", body: Buffer.from(toBinary(ListAccessRequestsResponseSchema, create(ListAccessRequestsResponseSchema, {
@@ -63,7 +77,59 @@ async function createRequestWorkspace(page: Page) {
     setUnavailable: (value: boolean) => { metadataUnavailable = value; },
     setRequestState: (value: AccessRequestState) => { requestState = value; },
     readListCallCount: () => listCalls,
+    readMetadataCallCount: () => metadataCalls,
   };
+}
+
+for (const action of executionActionScenarios) {
+  for (const code of authorizationRefusals) {
+    test(`an earlier ${action.method} ${code} cannot refuse a new route's creation interaction`, async ({ page }) => {
+      const { snapshot, row, setRequestState } = await createRequestWorkspace(page);
+      snapshot.capabilities.push("requests.create");
+      setRequestState(action.state);
+      const { captureRoute, hasReceivedRoute, readReceivedRoute } = createHeldRoute();
+      const pattern = `**/portcullis.v1.QueryExecutions/${action.method}`;
+      let writes = 0;
+      await page.route(pattern, route => { writes++; captureRoute(route); });
+      await page.route("**/portcullis.v1.AccessRequests/ListRequestableConnections", route => route.fulfill({
+        status: 200, contentType: "application/proto", body: Buffer.alloc(0),
+      }));
+      await page.goto("/requests");
+      await row.getByRole("button", { name: action.button, exact: true }).click();
+      await expect.poll(hasReceivedRoute).toBe(true);
+      await page.getByRole("button", { name: "New request", exact: true }).click();
+      await expect(page).toHaveURL(/\/requests\/new$/);
+      await page.getByLabel("Title", { exact: true }).fill("Current request composition");
+      const completed = page.waitForResponse(pattern);
+      await fulfillConnectError(readReceivedRoute(), code);
+      await (await completed).finished();
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Current request composition");
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      expect(writes).toBe(1);
+    });
+
+    test(`a fresh same-authority Me fences an earlier ${action.method} ${code} notification`, async ({ page }) => {
+      const { row, setRequestState, readMetadataCallCount } = await createRequestWorkspace(page);
+      setRequestState(action.state);
+      const { captureRoute, hasReceivedRoute, readReceivedRoute } = createHeldRoute();
+      const pattern = `**/portcullis.v1.QueryExecutions/${action.method}`;
+      let writes = 0;
+      await page.route(pattern, route => { writes++; captureRoute(route); });
+      await page.goto("/requests");
+      await row.getByRole("button", { name: action.button, exact: true }).click();
+      await expect.poll(hasReceivedRoute).toBe(true);
+      await refreshSession(page);
+      const callsAfterRefresh = readMetadataCallCount();
+      const completed = page.waitForResponse(pattern);
+      await fulfillConnectError(readReceivedRoute(), code, "Earlier execution authorization refusal.");
+      await (await completed).finished();
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(row.getByRole("alert")).toHaveText("Earlier execution authorization refusal.");
+      expect(readMetadataCallCount()).toBe(callsAfterRefresh);
+      expect(writes).toBe(1);
+    });
+  }
 }
 
 test("invalid requester data fails the list safely and a refreshed valid response restores owner actions", async ({ page }) => {

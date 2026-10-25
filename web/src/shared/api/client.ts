@@ -9,7 +9,7 @@ import { ConnectionPolicies } from "@/gen/portcullis/v1/connection_policies_pb";
 import { Connections } from "@/gen/portcullis/v1/connections_pb";
 import { QueryExecutions } from "@/gen/portcullis/v1/query_executions_pb";
 import { readCSRFTokenCookie } from "@/shared/lib/csrf";
-import { notifyAuthorizationFailure } from "@/shared/api/authorization";
+import { authorizationCallScope, notifyAuthorizationFailure } from "@/shared/api/authorization";
 
 // Every call echoes the CSRF cookie in the X-CSRF-Token header (double submit, ADR-0006). Public procedures ignore the header, so sending it untargeted is harmless and saves per-call bookkeeping.
 const csrf: Interceptor = (next) => (req) => {
@@ -20,17 +20,21 @@ const csrf: Interceptor = (next) => (req) => {
   return next(req);
 };
 
-// Use binary Connect encoding so JSON escaping cannot inflate accepted SQL beyond the 64 KiB request limit (ADR-0010). Sessions use same-origin cookies.
 const admission: Interceptor = next => async request => {
+  const scope = request.contextValues.get(authorizationCallScope);
   try { return await next(request); }
   catch (error) {
+    if (scope.kind !== "interaction" && !scope.isCurrent()) throw error;
     if (request.service.typeName !== Auth.typeName && error instanceof ConnectError) {
-      if (error.code === Code.Unauthenticated) notifyAuthorizationFailure("session");
-      if (error.code === Code.PermissionDenied) notifyAuthorizationFailure("permission");
+      if (error.code === Code.Unauthenticated) notifyAuthorizationFailure({ kind: "session" });
+      if (error.code === Code.PermissionDenied) notifyAuthorizationFailure({
+        kind: "permission", scope: scope.kind === "background-read" ? "background-read" : "interaction",
+      });
     }
     throw error;
   }
 };
+// Use binary Connect encoding so JSON escaping cannot inflate accepted SQL beyond the 64 KiB request limit (ADR-0010). Sessions use same-origin cookies.
 const transport = createConnectTransport({ baseUrl: "/", interceptors: [csrf, admission], useBinaryFormat: true });
 
 export const authClient = createClient(Auth, transport);

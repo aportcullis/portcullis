@@ -28,7 +28,7 @@ const RequestResultPage = lazy(() => import("@/pages/RequestResultPage"));
 // Composition root: global CSS, the router, the one-time session resolve, and the cross-entity lifecycle wiring (a leaf entity must not import another, so the "purge a principal's cached data when the principal changes" rule lives here, at the composition root that legitimately sees both entities).
 const App: Component = () => {
   onMount(() => {
-    const unsubscribe = observeAuthorizationFailures(failure => { void (failure === "session" ? refreshRevokedSession() : load()); });
+    const unsubscribe = observeAuthorizationFailures(failure => { void (failure.kind === "session" ? refreshRevokedSession() : load()); });
     const refresh = () => { if (!document.hidden) void load(); };
     const timer = setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);

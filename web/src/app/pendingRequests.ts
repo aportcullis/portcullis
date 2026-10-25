@@ -1,35 +1,54 @@
-import { createEffect, createSignal, onCleanup } from "solid-js";
-import { hasPermission, session } from "@/entities/session/store";
+import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { Code, ConnectError } from "@connectrpc/connect";
+import { hasPermission, session, sessionAuthorizationKey } from "@/entities/session/store";
+import { createBackgroundAuthorizationContext } from "@/shared/api/authorization";
 import { requestsClient } from "@/shared/api/client";
+import { accessRequestTotalCountSchema } from "@/shared/api/accessRequestValidation";
+
+export type PendingCountState = { kind: "unavailable" } | { kind: "ready"; totalCount: bigint };
 
 /** Polls the visible pending count and fences responses after a session change. */
-export function createPendingRequests() {
-  const [count, setCount] = createSignal(0n);
-  createEffect(() => {
+export function createPendingRequestCount() {
+  const [count, setCount] = createSignal<PendingCountState>({ kind: "unavailable" });
+  const authorizationKey = createMemo(sessionAuthorizationKey);
+  createEffect(on(authorizationKey, capturedAuthorizationKey => {
     const principal = session();
-    setCount(0n);
+    setCount({ kind: "unavailable" });
     if (principal.status !== "authenticated" || !hasPermission("requests.list") || !hasPermission("requests.approve")) return;
     let active = true;
     let inFlight = false;
-    const refresh = async () => {
-      if (document.hidden || inFlight) return;
+    const refreshPendingCount = async () => {
+      if (!active || document.hidden || inFlight) return;
+      const readPrincipal = session();
+      const isCurrentPendingRead = () => active &&
+        authorizationKey() === capturedAuthorizationKey && session() === readPrincipal;
+      if (!isCurrentPendingRead()) return;
       inFlight = true;
       try {
-        const response = await requestsClient.list({ state: "pending", page: 1, pageSize: 10 });
-        if (active && session() === principal) setCount(response.totalCount);
-      } catch { /* Retain the last count; the requests page exposes retrieval errors. */ }
+        const { totalCount } = await requestsClient.list(
+          { state: "pending", page: 1, pageSize: 10 },
+          { contextValues: createBackgroundAuthorizationContext(isCurrentPendingRead) },
+        );
+        if (!isCurrentPendingRead()) return;
+        const validatedCount = accessRequestTotalCountSchema.safeParse(totalCount);
+        setCount(validatedCount.success ? { kind: "ready", totalCount: validatedCount.data } : { kind: "unavailable" });
+      } catch (error) {
+        if (isCurrentPendingRead() && error instanceof ConnectError && (
+          error.code === Code.PermissionDenied || error.code === Code.Unauthenticated
+        )) setCount({ kind: "unavailable" });
+      }
       finally { inFlight = false; }
     };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 30_000);
-    const reconnect = () => void refresh();
-    window.addEventListener("online", reconnect);
-    document.addEventListener("visibilitychange", reconnect);
+    void refreshPendingCount();
+    const timer = setInterval(() => void refreshPendingCount(), 30_000);
+    const refreshPendingCountAfterReconnect = () => void refreshPendingCount();
+    window.addEventListener("online", refreshPendingCountAfterReconnect);
+    document.addEventListener("visibilitychange", refreshPendingCountAfterReconnect);
     onCleanup(() => {
       active = false; clearInterval(timer);
-      window.removeEventListener("online", reconnect);
-      document.removeEventListener("visibilitychange", reconnect);
+      window.removeEventListener("online", refreshPendingCountAfterReconnect);
+      document.removeEventListener("visibilitychange", refreshPendingCountAfterReconnect);
     });
-  });
+  }));
   return count;
 }

@@ -1,23 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
+import type { ConnectTransportOptions } from "@connectrpc/connect-web";
 
-
-type TransportOptions = { baseUrl: string; useBinaryFormat?: boolean };
 const createConnectTransport = vi.hoisted(() =>
-  vi.fn((options: TransportOptions) => ({ kind: "transport", baseUrl: options.baseUrl })),
+  vi.fn((options: ConnectTransportOptions) => ({ kind: "transport", baseUrl: options.baseUrl })),
 );
 vi.mock("@connectrpc/connect-web", () => ({ createConnectTransport }));
-vi.mock("@connectrpc/connect", () => ({
-  createClient: vi.fn(() => ({})),
-  Code: {},
-  ConnectError: class {},
-}));
+vi.mock("@connectrpc/connect", async importOriginal => {
+  const implementation = await importOriginal<typeof import("@connectrpc/connect")>();
+  return { ...implementation, createClient: vi.fn(() => ({})) };
+});
 
 describe("api transport", () => {
   it("uses the binary format so payload sizes match what the server budgets", async () => {
     await import("@/shared/api/client");
 
     expect(createConnectTransport).toHaveBeenCalledTimes(1);
-    const options: unknown = createConnectTransport.mock.calls[0]?.[0];
+    const call = createConnectTransport.mock.calls[0];
+    assert.isDefined(call, "Transport options were not captured");
+    const [options] = call;
     expect(options).toMatchObject({ useBinaryFormat: true });
   });
 });

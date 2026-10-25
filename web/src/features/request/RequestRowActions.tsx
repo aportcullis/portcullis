@@ -17,6 +17,7 @@ import type { RowActionOperation, RowActionRegistry } from "@/features/request/r
 import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import { executionsClient } from "@/shared/api/client";
+import { createOwnedInteractionAuthorizationContext } from "@/shared/api/authorization";
 
 export type RequestRowActionScope = { kind: "list"; registry: RowActionRegistry } |
   { kind: "details"; refresh: () => void };
@@ -112,16 +113,27 @@ export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
     if (isCurrentAction() && hasPermission("requests.list")) void loadAccessRequests();
   };
 
+  const captureExecutionAuthorizationContext = (isCurrentAction: () => boolean) => {
+    const startingSession = session();
+    return createOwnedInteractionAuthorizationContext(() => isCurrentAction() && session() === startingSession);
+  };
+
   const executeRequest = (): Promise<void> => runRequestAction("request", async (requestId, isCurrentAction) => {
     try {
-      await executionsClient.execute({ requestId });
+      await executionsClient.execute(
+        { requestId },
+        { contextValues: captureExecutionAuthorizationContext(isCurrentAction) },
+      );
     } finally {
       refreshAfterExecution(requestId, isCurrentAction);
     }
   });
 
   const stopExecution = (): Promise<void> => runRequestAction("stopExecution", async (requestId, isCurrentAction) => {
-    await executionsClient.cancel({ requestId });
+    await executionsClient.cancel(
+      { requestId },
+      { contextValues: captureExecutionAuthorizationContext(isCurrentAction) },
+    );
     refreshAfterExecution(requestId, isCurrentAction);
   });
 

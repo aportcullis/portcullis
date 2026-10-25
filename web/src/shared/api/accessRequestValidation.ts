@@ -18,6 +18,7 @@ export type ValidatedAccessRequestDetails = GetAccessRequestResponse & { request
 export type ValidatedAccessRequestList = ListAccessRequestsResponse & { items: ValidatedAccessRequest[] };
 
 const maxSignedInteger = 9223372036854775807n;
+export const accessRequestTotalCountSchema = z.bigint().min(0n).max(maxSignedInteger);
 const unsignedIntegerSchema = z.number().int().min(0).max(4294967295);
 const timestampSchema: z.ZodType<Timestamp> = z.object({
   $typeName: z.literal("google.protobuf.Timestamp"),
@@ -98,7 +99,7 @@ const requestListSchema: z.ZodType<ValidatedAccessRequestList> = z.object({
   items: z.array(accessRequestSchema),
   page: z.number().int().min(1).max(4294967295),
   pageSize: z.union([z.literal(10), z.literal(20), z.literal(50), z.literal(100)]),
-  totalCount: z.bigint().min(0n).max(maxSignedInteger),
+  totalCount: accessRequestTotalCountSchema,
   totalPages: unsignedIntegerSchema,
 });
 
