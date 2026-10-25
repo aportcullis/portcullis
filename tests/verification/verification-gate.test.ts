@@ -1,6 +1,7 @@
+import assert, { AssertionError } from "node:assert/strict";
 import test from "node:test";
 
-import { assertDeclaredToolsOwned, assertGateLaunched, assertGateRefused, runCanonicalGate, runNativeGateSource, withVerificationGateFixture, writeGateSource, writeGateValueModule } from "#verification/verification-gate-fixture";
+import { assertDeclaredToolsOwned, assertGateLaunched, assertGateRefused, linkDependencyToProjectTool, linkModulesToProjectTools, runCanonicalGate, runNativeGateSource, withVerificationGateFixture, writeGateSource, writeGateValueModule } from "#verification/verification-gate-fixture";
 
 const validBody = "const count: number = 7; assert.equal(count, 7);";
 
@@ -42,6 +43,35 @@ test("a fresh frozen root install owns its compiler, Node types and linter", asy
     await assertDeclaredToolsOwned(context);
     writeGateSource(context, validBody);
     assertGateLaunched(context, await runCanonicalGate(context));
+  });
+});
+
+test("fresh root tools remain owned through a workspace directory alias", async () => {
+  await withVerificationGateFixture(async (context) => {
+    writeGateSource(context, validBody);
+    assertGateLaunched(context, await runCanonicalGate(context));
+    await assertDeclaredToolsOwned(context);
+  }, "aliased");
+});
+
+/** Recognizes the ownership refusal rather than an unrelated install or tool failure. */
+function isToolOwnershipRefusal(error: unknown): boolean {
+  return error instanceof AssertionError && error.message === "Tool resolution must remain in the fresh fixture modules";
+}
+
+test("tool ownership refuses one dependency linked outside the fresh fixture", async () => {
+  await withVerificationGateFixture(async (context) => {
+    await assertDeclaredToolsOwned(context);
+    linkDependencyToProjectTool(context);
+    await assert.rejects(assertDeclaredToolsOwned(context), isToolOwnershipRefusal);
+  });
+});
+
+test("tool ownership refuses a whole modules root linked outside the fresh fixture", async () => {
+  await withVerificationGateFixture(async (context) => {
+    await assertDeclaredToolsOwned(context);
+    linkModulesToProjectTools(context);
+    await assert.rejects(assertDeclaredToolsOwned(context), isToolOwnershipRefusal);
   });
 });
 
