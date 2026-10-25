@@ -280,6 +280,7 @@ test("the export dialog traps keyboard focus, returns it on Escape and fits 320 
   await workspace.trigger.focus();
   await page.keyboard.press("Enter");
   await expect(workspace.dialog).toHaveAttribute("aria-modal", "true");
+  await expect(workspace.dialog.getByRole("checkbox", { name: "Spreadsheet-safe output", exact: true })).toBeFocused();
   for (let index = 0; index < 12; index++) {
     await page.keyboard.press("Tab");
     expect(await workspace.dialog.evaluate(element => {
