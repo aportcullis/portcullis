@@ -14,17 +14,18 @@ keygen-check:
 		--tmpfs /secrets:rw,mode=0700 "$$image" sh /keygen/test-master-key.sh
 
 K6 ?= k6
+PNPM ?= pnpm
 LOAD_FIXTURES ?= $(CURDIR)/tests/load/fixtures.local.json
 
 load-typecheck: workspace-install
-	pnpm -C tests/load run typecheck
+	"$(PNPM)" -C tests/load run typecheck
 
 load-bundle: load-typecheck
-	pnpm -C tests/load bundle
+	"$(PNPM)" -C tests/load bundle
 
 load-check: load-bundle
-	pnpm -C tests/load lint
-	pnpm -C tests/load test
+	"$(PNPM)" -C tests/load lint
+	"$(PNPM)" -C tests/load test
 
 load-test: load-check
 	$(K6) run -e LOAD_FIXTURES="$(LOAD_FIXTURES)" tests/load/dist/governance.js
@@ -70,51 +71,51 @@ proto-breaking:
 
 
 workspace-install:
-	CI=true pnpm install --frozen-lockfile
+	CI=true "$(PNPM)" install --frozen-lockfile
 
 
 workspace-check: workspace-install
-	pnpm run test:workspace
+	"$(PNPM)" run test:workspace
 
 
 web-install: workspace-install
 
 
 web: web-install
-	pnpm -C web build
+	"$(PNPM)" -C web build
 
 
 web-dev: web-install
-	pnpm -C web dev
+	"$(PNPM)" -C web dev
 
 
 web-typecheck: web-install
-	pnpm -C web typecheck
+	"$(PNPM)" -C web typecheck
 
 
 web-lint: web-install
-	pnpm -C web lint
+	"$(PNPM)" -C web lint
 
 
 web-test: web-install
-	pnpm -C web test
+	"$(PNPM)" -C web test
 
 
 dependency-audit: workspace-install
-	pnpm audit
+	"$(PNPM)" audit
 
 
 web-audit: dependency-audit
 
 
 e2e: web e2e-browser
-	pnpm -C web e2e
+	"$(PNPM)" -C web e2e
 
 e2e-browser:
-	pnpm -C web exec playwright install --with-deps chromium
+	"$(PNPM)" -C web exec playwright install --with-deps chromium
 
 e2e-run:
-	pnpm -C web e2e
+	"$(PNPM)" -C web e2e
 
 
 build:
@@ -140,7 +141,7 @@ test-race:
 	$(GO_TEST_ENV) bash .github/scripts/test-packages.sh race $(GO_TEST_PACKAGES)
 
 test-scheduling-check: workspace-install
-	pnpm run test:verification
+	"$(PNPM)" run test:verification
 
 
 vuln:
@@ -246,7 +247,7 @@ clean:
 load-audit: dependency-audit
 
 install-policy-test: workspace-install
-	cd web && node --test tests/install-policy.test.mjs
+	"$(PNPM)" run test:install-policy
 
 supply-chain: dependency-audit vuln install-policy-test workspace-check
 	go mod verify

@@ -16,5 +16,5 @@
     "noUnusedParameters": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["*.ts", "../workspace/*.ts"]
+  "include": ["*.ts", "../workspace/*.ts", "../load/workspace-probe.ts"]
 }

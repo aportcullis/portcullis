@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { addReviewedSyntheticPackage, assertInstallRefused, clearInstalledModules, install, installBaseline, members, readPackageManifest, requireJsonRecord, runCommand, syntheticName, withWorkspaceFixture, workspaceRoot } from "#workspace/workspace-fixture";
+import { runWorkspaceProbe } from "#workspace/workspace-probe-fixture";
 
 /** Reads a runtime module witness without trusting JSON output. */
 function readModuleWitness(output: string): { version: string; module: string } {
@@ -19,15 +20,7 @@ test("fresh root frozen install gives both members the same usable Zod module", 
     await installBaseline(context);
     const modules: { version: string; module: string }[] = [];
     for (const member of members) {
-      const result = await runCommand(context, "pnpm", ["--filter", member.name, "exec", process.execPath, "--input-type=module", "-e", `
-        import assert from 'node:assert/strict';
-        import { createRequire } from 'node:module';
-        import { realpathSync } from 'node:fs';
-        import { z } from 'zod';
-        const require = createRequire(import.meta.url);
-        assert.deepEqual(z.object({ valid: z.boolean() }).parse({ valid: false }), { valid: false });
-        console.log(JSON.stringify({ version: require('zod/package.json').version, module: realpathSync(require.resolve('zod')) }));
-      `]);
+      const result = await runWorkspaceProbe(context, member, { kind: "module" });
       assert.equal(result.status, 0, result.output);
       modules.push(readModuleWitness(result.output));
     }
@@ -43,15 +36,7 @@ test("member commands retain their package ownership and shared compiler tools",
   await withWorkspaceFixture(async (context) => {
     await installBaseline(context);
     for (const member of members) {
-      const result = await runCommand(context, "pnpm", ["--filter", member.name, "exec", process.execPath, "--input-type=module", "-e", `
-        import assert from 'node:assert/strict';
-        import { readFileSync } from 'node:fs';
-        import { resolve } from 'node:path';
-        const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
-        assert.equal(manifest.name, ${JSON.stringify(member.name)});
-        assert.equal(process.cwd(), resolve(${JSON.stringify(join(context.directory, member.directory))}));
-        for (const operation of ${JSON.stringify(member.scripts)}) assert.equal(typeof manifest.scripts[operation], 'string', operation);
-      `]);
+      const result = await runWorkspaceProbe(context, member, { kind: "member", name: member.name, directory: join(context.directory, member.directory), scripts: member.scripts });
       assert.equal(result.status, 0, result.output);
       for (const [tool, version] of [["tsc", "7.0.2"], ["oxlint", "1.85.0"]]) {
         assert.ok(tool !== undefined && version !== undefined);
@@ -79,7 +64,9 @@ test("reviewed blocked dependency remains usable without running its script", as
   await withWorkspaceFixture(async (context) => {
     await installBaseline(context);
     await addReviewedSyntheticPackage(context);
-    const result = await runCommand(context, process.execPath, ["-e", `require('node:assert/strict').equal(require('${syntheticName}').usable, 'reviewed-without-build')`]);
+    const member = members.find(({ name }) => name === "portcullis-load-tests");
+    assert.ok(member !== undefined);
+    const result = await runWorkspaceProbe(context, member, { kind: "synthetic", packageName: syntheticName });
     assert.equal(result.status, 0, result.output);
     assert.equal(existsSync(context.marker), false);
   });
@@ -140,6 +127,7 @@ test("fresh frozen install refuses an unreviewed dependency script", async () =>
     const policyPath = join(context.directory, "pnpm-workspace.yaml");
     const policy = readFileSync(policyPath, "utf8");
     writeFileSync(policyPath, policy.replace(`  ${syntheticName}: false\n`, ""));
-    await assertInstallRefused(context, "ERR_PNPM_IGNORED_BUILDS", lockBefore);
+    const refusal = await assertInstallRefused(context, "ERR_PNPM_IGNORED_BUILDS", lockBefore);
+    assert.match(refusal.output, new RegExp(`\\b${syntheticName}\\b`));
   });
 });

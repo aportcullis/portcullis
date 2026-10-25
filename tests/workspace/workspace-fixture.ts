@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,9 +35,10 @@ export function readPackageManifest(path: string): JsonRecord {
   return parsed;
 }
 
-/** Runs a real command with the shared owned-group cleanup and native exit checks. */
+/** Runs an owned command while retaining the admitted package manager. */
 export async function runCommand(context: VerificationContext, command: string, arguments_: readonly string[]): Promise<VerificationResult> {
-  const result = await executeOwnedVerification(context, command, arguments_);
+  const executable = command === "pnpm" ? requireActivePackageManager(context.environment) : command;
+  const result = await executeOwnedVerification(context, executable, arguments_);
   assert.equal(result.signal, null, `Command was terminated: ${command}`);
   return result;
 }
@@ -50,9 +52,20 @@ export async function resolveWorkspaceStore(context: VerificationContext, root: 
   return store;
 }
 
+/** Retains the declared package manager that admitted the current test script. */
+export function requireActivePackageManager(environment: NodeJS.ProcessEnv): string {
+  const { npm_execpath: executable, npm_config_user_agent: userAgent } = environment;
+  assert.ok(typeof executable === "string" && isAbsolute(executable), "The active pnpm script launcher must be an absolute path; run the checked workspace script");
+  const { packageManager } = readPackageManifest(join(workspaceRoot, "package.json"));
+  assert.ok(typeof packageManager === "string" && /^pnpm@\d+\.\d+\.\d+$/.test(packageManager), "The root must declare an exact pnpm version");
+  const expectedAgent = `pnpm/${packageManager.slice("pnpm@".length)}`;
+  assert.ok(typeof userAgent === "string" && userAgent.split(" ")[0] === expectedAgent, "The active package manager must match the declared pnpm version");
+  return executable;
+}
+
 /** Copies real frozen inputs without inheriting installed modules or losing command ownership. */
 export async function withWorkspaceFixture(scenario: (context: WorkspaceFixture) => Promise<void>, storeMode: "canonical" | "owned-empty" = "canonical"): Promise<void> {
-  const directory = mkdtempSync(join(tmpdir(), "portcullis-workspace-"));
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "portcullis-workspace-")));
   const marker = join(directory, "unreviewed-script-ran");
   const environment: NodeJS.ProcessEnv = { ...process.env, CI: "true", PORTCULLIS_SCRIPT_MARKER: marker };
   if (storeMode === "owned-empty") {
@@ -75,7 +88,7 @@ export async function withWorkspaceFixture(scenario: (context: WorkspaceFixture)
   }
   try {
     assert.equal(context.processState.kind, "idle", `Owned processes remain active; workspace fixture retained at ${directory}`);
-    rmSync(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
     assert.equal(existsSync(directory), false, "The owned workspace fixture must be removed");
   } catch (error: unknown) {
     if (failure.kind === "failed") throw new AggregateError([failure.error, error], "Workspace scenario and disposal both failed");
@@ -125,11 +138,15 @@ export async function assertInstallRefused(context: WorkspaceFixture, category: 
 export async function addReviewedSyntheticPackage(context: WorkspaceFixture): Promise<void> {
   const packageDirectory = join(context.directory, "synthetic/package");
   mkdirSync(packageDirectory, { recursive: true });
+  const postinstall = join(context.directory, "fixture-postinstall.ts");
+  copyFileSync(join(workspaceRoot, "tests/workspace/non-interactive-install-postinstall.ts"), postinstall);
+  context.environment.PORTCULLIS_FIXTURE_NODE = process.execPath;
+  context.environment.PORTCULLIS_FIXTURE_POSTINSTALL = postinstall;
   writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
-    name: syntheticName, version: "1.0.0", main: "index.cjs",
-    scripts: { postinstall: "node -e \"require('node:fs').writeFileSync(process.env.PORTCULLIS_SCRIPT_MARKER, 'synthetic')\"" },
+    name: syntheticName, version: "1.0.0", main: "index.json",
+    scripts: { postinstall: '"$PORTCULLIS_FIXTURE_NODE" "$PORTCULLIS_FIXTURE_POSTINSTALL"' },
   }));
-  writeFileSync(join(packageDirectory, "index.cjs"), "module.exports = { usable: 'reviewed-without-build' };\n");
+  writeFileSync(join(packageDirectory, "index.json"), JSON.stringify({ usable: "reviewed-without-build" }));
   const archive = await runCommand(context, "tar", ["-czf", join(context.directory, "synthetic.tgz"), "-C", join(context.directory, "synthetic"), "package"]);
   assert.equal(archive.status, 0, archive.output);
   const manifestPath = join(context.directory, "package.json");

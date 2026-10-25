@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { executeOwnedVerification, type VerificationContext, type VerificationResult } from "#verification/verification-process";
+import { requireActivePackageManager } from "#workspace/workspace-fixture";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const workspaceInputs = ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", "web/package.json", "tests/load/package.json"];
@@ -13,6 +15,13 @@ const verificationInputs = [
   "tests/verification/verification-process.ts", "tests/verification/package-witness.ts",
   "tests/workspace/tsconfig.json", "tests/workspace/workspace-fixture.ts",
   "tests/workspace/package-workspace.test.ts", "tests/workspace/workspace-store.test.ts",
+  "tests/workspace/non-interactive-install-fixture.ts", "tests/workspace/non-interactive-install-terminal.ts",
+  "tests/workspace/non-interactive-install.test.ts", "tests/workspace/fixture-paths.test.ts",
+  "tests/workspace/non-interactive-install-config.ts", "tests/workspace/non-interactive-install-witness.ts",
+  "tests/workspace/non-interactive-install-hook.ts", "tests/workspace/non-interactive-install-postinstall.ts",
+  "tests/workspace/non-interactive-install-config.test.ts",
+  "tests/workspace/non-interactive-install-launcher.test.ts", "tests/workspace/non-interactive-install-path-probe.sh",
+  "tests/workspace/workspace-probe-fixture.ts", "tests/load/workspace-probe.ts",
 ];
 type ToolDependency = "typescript" | "@types/node" | "oxlint";
 export type GateScope = "verification" | "workspace";
@@ -47,9 +56,8 @@ export async function withVerificationGateFixture(scenario: (context: Verificati
   const physicalDirectory = join(ownedBase, "project");
   const directory = location === "direct" ? physicalDirectory : join(ownedBase, "workspace-alias");
   const marker = join(directory, "runtime-launch-marker");
-  const legacyMarker = join(directory, "legacy-launch-marker");
-  const launchMarkers = scope === "workspace" ? [marker, legacyMarker] : [marker];
-  const environment: NodeJS.ProcessEnv = { ...process.env, PORTCULLIS_GATE_MARKER: marker, PORTCULLIS_LEGACY_GATE_MARKER: legacyMarker };
+  const launchMarkers = [marker];
+  const environment: NodeJS.ProcessEnv = { ...process.env, PNPM: requireActivePackageManager(process.env), PORTCULLIS_GATE_MARKER: marker };
   delete environment.NODE_TEST_CONTEXT;
   const context: VerificationGateFixture = { directory, marker, scope, launchMarkers, environment, processState: { kind: "idle" } };
   let failure: GateFailure = { kind: "none" };
@@ -63,7 +71,6 @@ export async function withVerificationGateFixture(scenario: (context: Verificati
       copyFileSync(join(projectRoot, source), destination);
     }
     writeFileSync(join(directory, "Makefile"), `.PHONY: workspace-install test-scheduling-check workspace-check\n${readMakeTarget("workspace-install")}\n${readMakeTarget("test-scheduling-check")}\n${readMakeTarget("workspace-check")}`);
-    if (scope === "workspace") writeLegacyGateSource(context);
     snapshot = { kind: "copied", contents: workspaceInputs.map((source) => readFileSync(join(directory, source))) };
     const installation = await executeOwnedVerification(context, "make", ["workspace-install"]);
     assert.equal(installation.status, 0, `A real fresh frozen root install must work before gate admission:\n${installation.output}`);
@@ -80,28 +87,13 @@ export async function withVerificationGateFixture(scenario: (context: Verificati
   }
   try {
     assert.equal(context.processState.kind, "idle", `Owned processes remain active; gate fixture retained at ${ownedBase}`);
-    rmSync(ownedBase, { recursive: true, force: true });
+    await rm(ownedBase, { recursive: true, force: true });
     assert.equal(existsSync(ownedBase), false, "The physical gate fixture and its alias must be removed");
   } catch (error: unknown) {
     if (failure.kind === "failed") throw new AggregateError([failure.error, error], "Gate execution and disposal both failed");
     throw error;
   }
   if (failure.kind === "failed") throw failure.error;
-}
-
-/** Creates a legacy-format witness only inside the fixture to qualify the dual test globs. */
-function writeLegacyGateSource(context: VerificationGateFixture): void {
-  writeFileSync(join(context.directory, "tests/workspace/legacy.test.mjs"), `import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
-import test from "node:test";
-
-test("legacy workspace execution witness", () => {
-  const marker = process.env.PORTCULLIS_LEGACY_GATE_MARKER;
-  if (typeof marker !== "string") throw new Error("The owned legacy gate marker must be configured");
-  assert.notEqual(marker, "");
-  writeFileSync(marker, "executed");
-});
-`);
 }
 
 /** Writes runnable erasable TypeScript with a witness at the execution boundary. */
@@ -129,7 +121,7 @@ export const gateValue: GateValue = { kind: "ready", value: 7 };
 `);
 }
 
-/** Removes both typed and applicable legacy launch witnesses before each command. */
+/** Removes the applicable launch witnesses before each command. */
 function clearGateLaunchWitnesses(context: VerificationGateFixture): void {
   for (const marker of context.launchMarkers) rmSync(marker, { force: true });
 }
@@ -143,7 +135,7 @@ export async function runCanonicalGate(context: VerificationGateFixture): Promis
 /** Runs the same source directly to prove it is executable before static admission. */
 export async function runNativeGateSource(context: VerificationGateFixture): Promise<VerificationResult> {
   clearGateLaunchWitnesses(context);
-  const sources = context.scope === "workspace" ? ["tests/workspace/legacy.test.mjs", "tests/workspace/gate.test.ts"] : ["tests/verification/gate.test.ts"];
+  const sources = [`tests/${context.scope}/gate.test.ts`];
   return executeOwnedVerification(context, process.execPath, ["--test", ...sources]);
 }
 
@@ -184,7 +176,7 @@ export async function assertDeclaredToolsOwned(context: VerificationGateFixture)
     assert.equal(readInstalledVersion(context.directory, dependency), readInstalledVersion(projectRoot, dependency));
   }
   for (const tool of ["tsc", "oxlint"]) {
-    const result = await executeOwnedVerification(context, "pnpm", ["exec", tool, "--version"]);
+    const result = await executeOwnedVerification(context, requireActivePackageManager(context.environment), ["exec", tool, "--version"]);
     assert.equal(result.status, 0, result.output);
     assert.notEqual(result.output.trim(), "");
   }

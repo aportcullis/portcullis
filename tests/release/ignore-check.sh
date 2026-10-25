@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local secrets and private notes must stay out of git and Docker contexts, while build inputs must remain.
+# Local secrets, temporary output and private notes must stay out of Docker contexts, while build inputs must remain.
 excluded=(
   web/.npmrc
   tests/load/.npmrc
@@ -12,11 +12,18 @@ excluded=(
   deploy/local/.env
   secrets/demo.key
 )
+docker_excluded=(
+  "${excluded[@]}"
+  tmp/build/input.txt
+  tmp/.verification/witnesses/result.json
+  tmp/cache/package.data
+)
 retained=(
   .env.example
   migrations/0001_example.sql
   web/src/gen/portcullis/v1/example_pb.ts
   gen/portcullis/v1/example.pb.go
+  internal/tmp/input.json
 )
 
 context="$(mktemp -d)"
@@ -46,14 +53,14 @@ for path in "${retained[@]}"; do
 done
 
 cp .dockerignore "$context/.dockerignore"
-for path in "${excluded[@]}" "${retained[@]}"; do
+for path in "${docker_excluded[@]}" "${retained[@]}"; do
   mkdir -p "$context/$(dirname "$path")"
   echo marker > "$context/$path"
 done
 printf 'FROM busybox:1.37\nCOPY . /context\n' > "$context/Dockerfile.ignore-check"
 docker build --quiet --tag "$image" --file "$context/Dockerfile.ignore-check" "$context" >/dev/null
 copied="$(docker run --rm "$image" find /context -type f)"
-for path in "${excluded[@]}"; do
+for path in "${docker_excluded[@]}"; do
   if grep -qxF "/context/$path" <<<"$copied"; then
     echo "Docker context includes $path" >&2
     failures=$((failures + 1))

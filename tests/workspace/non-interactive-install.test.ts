@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+
 import {
   assertInstallAccepted,
   assertInstallRefused,
-  installThroughHookTerminal,
   installThroughPipe,
   memberDirectories,
   packageName,
   withInstallFixture,
-} from "./non-interactive-install-fixture.mjs";
+} from "#workspace/non-interactive-install-fixture";
+import { installThroughHookTerminal } from "#workspace/non-interactive-install-terminal";
+import { readPackageManifest, requireJsonRecord } from "#workspace/workspace-fixture";
 
 test("fresh piped installation preserves the caller's absent CI and usable members", async () => {
   await withInstallFixture((context) => assertInstallAccepted(context, installThroughPipe(context)));
@@ -49,8 +51,10 @@ test("the real recipe refuses a member manifest that disagrees with the frozen l
   await withInstallFixture((context) => {
     assertInstallAccepted(context, installThroughPipe(context));
     const manifestPath = join(context.directory, "web/package.json");
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    manifest.dependencies[packageName] = "file:../changed.tgz";
+    const manifest = readPackageManifest(manifestPath);
+    const { dependencies } = manifest;
+    requireJsonRecord(dependencies);
+    dependencies[packageName] = "file:../changed.tgz";
     writeFileSync(manifestPath, JSON.stringify(manifest));
     assertInstallRefused(context, installThroughPipe(context), /\bERR_PNPM_OUTDATED_LOCKFILE\b/);
   });

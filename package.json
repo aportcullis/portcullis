@@ -9,14 +9,15 @@
     "#workspace/*": "./tests/workspace/*.ts"
   },
   "scripts": {
-    "typecheck": "pnpm run typecheck:verification && pnpm --recursive --filter '!portcullis-workspace' run typecheck",
-    "lint": "pnpm run lint:verification && pnpm --recursive --filter '!portcullis-workspace' run lint",
-    "test": "pnpm run test:verification && pnpm run test:workspace && pnpm --recursive --filter '!portcullis-workspace' run test",
-    "test:workspace": "pnpm run typecheck:verification && pnpm run lint:verification && node --test tests/workspace/*.test.mjs tests/workspace/*.test.ts",
-    "verify": "make verify",
+    "typecheck": "\"$npm_execpath\" run typecheck:verification && \"$npm_execpath\" --recursive --filter '!portcullis-workspace' run typecheck",
+    "lint": "\"$npm_execpath\" run lint:verification && \"$npm_execpath\" --recursive --filter '!portcullis-workspace' run lint",
+    "test": "\"$npm_execpath\" run test:verification && \"$npm_execpath\" run test:workspace && \"$npm_execpath\" --recursive --filter '!portcullis-workspace' run test",
+    "test:workspace": "\"$npm_execpath\" run typecheck:verification && \"$npm_execpath\" run lint:verification && node --test tests/workspace/*.test.ts",
+    "verify": "PNPM=\"$npm_execpath\" make verify",
     "typecheck:verification": "tsc --noEmit -p tests/verification/tsconfig.json",
-    "lint:verification": "oxlint --deny-warnings --config tests/verification/oxlint.config.ts tests/verification tests/workspace/*.ts",
-    "test:verification": "pnpm run typecheck:verification && pnpm run lint:verification && node --test tests/verification/*.test.ts"
+    "lint:verification": "oxlint --deny-warnings --config tests/verification/oxlint.config.ts tests/verification/*.ts tests/workspace/*.ts tests/load/workspace-probe.ts",
+    "test:verification": "\"$npm_execpath\" run typecheck:verification && \"$npm_execpath\" run lint:verification && node --test tests/verification/*.test.ts",
+    "test:install-policy": "\"$npm_execpath\" run typecheck:verification && \"$npm_execpath\" run lint:verification && node --test tests/workspace/package-workspace.test.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",

@@ -1,5 +1,6 @@
 .git
 bin
+tmp/**
 web/node_modules
 **/node_modules
 .test-docker
