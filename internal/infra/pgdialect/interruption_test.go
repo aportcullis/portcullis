@@ -3,13 +3,18 @@ package pgdialect_test
 import (
 	"context"
 	"errors"
+	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/aportcullis/portcullis/internal/domain/connection"
 	"github.com/aportcullis/portcullis/internal/domain/query"
+	"github.com/aportcullis/portcullis/internal/infra/dbtest"
+	"github.com/aportcullis/portcullis/internal/infra/pgdialect"
 )
 
 // slowInsertSQL is an allowlisted write that runs for many seconds before inserting one row.
@@ -64,9 +69,6 @@ func alreadyCancelled(*testing.T) context.Context {
 	return ctx
 }
 
-// uninterrupted returns a context that never ends.
-func uninterrupted(*testing.T) context.Context { return context.Background() }
-
 func TestInterruptionBeforeCommitIsMarkedRolledBack(t *testing.T) {
 	t.Parallel()
 	for _, scenario := range []struct {
@@ -95,38 +97,152 @@ func TestInterruptionBeforeCommitIsMarkedRolledBack(t *testing.T) {
 	}
 }
 
+// waitForBlockedCommit observes this fixture's deferred COMMIT waiting on its blocking transaction.
+func waitForBlockedCommit(t *testing.T, pool *pgxpool.Pool, blockingPID uint32, executionDone <-chan struct{}) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var blocked bool
+		err := pool.QueryRow(ctx, `SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND query = 'COMMIT'
+              AND state = 'active' AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+              AND $1::integer = ANY(pg_blocking_pids(pid))
+        )`, blockingPID).Scan(&blocked)
+		if err != nil {
+			t.Fatalf("observe deferred COMMIT: %v", err)
+		}
+		if blocked {
+			return
+		}
+		select {
+		case <-executionDone:
+			t.Fatal("execution ended before the deferred COMMIT barrier")
+		case <-ctx.Done():
+			t.Fatal("execution did not reach the deferred COMMIT barrier")
+		case <-ticker.C:
+		}
+	}
+}
+
+// interruptBlockedCommit interrupts a real COMMIT after observing its deferred trigger's lock wait.
+func interruptBlockedCommit(t *testing.T, pool *pgxpool.Pool, target connection.Target, credential connection.Credential, cancelAtCommit bool) error {
+	t.Helper()
+	fixture, err := os.ReadFile("testdata/commit-interruption.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), string(fixture)); err != nil {
+		t.Fatal(err)
+	}
+	fixtureContext, cancelFixture := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelFixture()
+	blocker, err := pool.Begin(fixtureContext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelCleanup()
+		if err := blocker.Rollback(cleanupContext); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			t.Errorf("release deferred COMMIT barrier: %v", err)
+		}
+	}()
+	if _, err := blocker.Exec(fixtureContext, "SELECT pg_advisory_xact_lock('public.exec_t'::regclass::oid::bigint)"); err != nil {
+		t.Fatal(err)
+	}
+	executionContext, cancelExecution := context.WithCancel(context.Background())
+	if !cancelAtCommit {
+		deadlineContext, cancelDeadline := context.WithTimeout(executionContext, 10*time.Second)
+		defer cancelDeadline()
+		executionContext = deadlineContext
+	}
+	executionDone := make(chan struct{})
+	var executionError error
+	dialect := pgdialect.New(pgdialect.Options{Destinations: dbtest.TargetDestinationPolicy(t), LockTimeout: 30 * time.Second})
+	go func() {
+		defer close(executionDone)
+		stream, err := dialect.Execute(executionContext, target, connection.TLSModeDisable, credential, query.Execution{
+			SQL: "INSERT INTO exec_t (id, v) VALUES (1, 'a')", Class: query.ClassWrite,
+			MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 30,
+		})
+		executionError = err
+		if err == nil {
+			for stream.Next() {
+			}
+			executionError = stream.Err()
+			if err := stream.Close(); executionError == nil {
+				executionError = err
+			}
+		}
+	}()
+	defer func() {
+		cancelExecution()
+		select {
+		case <-executionDone:
+			return
+		case <-time.After(5 * time.Second):
+		}
+		cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelCleanup()
+		if err := blocker.Rollback(cleanupContext); err != nil {
+			t.Errorf("release stalled COMMIT barrier: %v", err)
+		}
+		select {
+		case <-executionDone:
+		case <-time.After(5 * time.Second):
+			t.Error("execution did not stop after releasing its COMMIT barrier")
+		}
+	}()
+	waitForBlockedCommit(t, pool, blocker.Conn().PgConn().PID(), executionDone)
+	if err := executionContext.Err(); err != nil {
+		t.Fatalf("context ended before observing deferred COMMIT: %v", err)
+	}
+	if cancelAtCommit {
+		cancelExecution()
+	}
+	select {
+	case <-executionDone:
+		return executionError
+	case <-fixtureContext.Done():
+		t.Fatal("execution did not stop within the COMMIT fixture budget")
+		return fixtureContext.Err()
+	}
+}
+
 func TestCommitInterruptionStaysUncertainWhileServerTimeoutIsConfirmed(t *testing.T) {
 	t.Parallel()
 	for _, scenario := range []struct {
 		name           string
-		startContext   interruptionContext
 		sql            string
 		class          query.StatementClass
-		slowCommit     bool
-		timeoutSeconds int
+		cancelAtCommit bool
 		wantCause      error
 		wantSQLState   string
 	}{
-		{"owner cancel while commit runs deferred work", cancelAfter(500 * time.Millisecond), "INSERT INTO exec_t (id, v) VALUES (1, 'a')", query.ClassWrite, true, 30, context.Canceled, ""},
-		{"local deadline while commit runs deferred work", expireAfter(500 * time.Millisecond), "INSERT INTO exec_t (id, v) VALUES (1, 'a')", query.ClassWrite, true, 30, context.DeadlineExceeded, ""},
-		{"server statement timeout before commit", uninterrupted, slowInsertSQL, query.ClassWrite, false, 1, nil, "57014"},
-		{"server statement timeout on a read", uninterrupted, "SELECT count(*) FROM generate_series(1, 100000) a, generate_series(1, 100000) b", query.ClassRead, false, 1, nil, "57014"},
+		{"owner cancel while commit runs deferred work", "", query.ClassWrite, true, context.Canceled, ""},
+		{"local deadline while commit runs deferred work", "", query.ClassWrite, false, context.DeadlineExceeded, ""},
+		{"server statement timeout before commit", slowInsertSQL, query.ClassWrite, false, nil, "57014"},
+		{"server statement timeout on a read", "SELECT count(*) FROM generate_series(1, 100000) a, generate_series(1, 100000) b", query.ClassRead, false, nil, "57014"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
-			pool, target, cred := freshExec(t)
-			if scenario.slowCommit {
-				installSlowCommitTrigger(t, pool, 4)
-			}
-			_, _, _, err := runExec(scenario.startContext(t), t, target, cred, query.Execution{SQL: scenario.sql, Class: scenario.class, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: scenario.timeoutSeconds})
+			pool, target, credential := freshExec(t)
 			if scenario.wantCause != nil {
+				err := interruptBlockedCommit(t, pool, target, credential, scenario.cancelAtCommit)
 				if !errors.Is(err, scenario.wantCause) || errors.Is(err, query.ErrInterruptedBeforeCommit) {
 					t.Fatalf("commit interruption = %v, want an uncertain %v", err, scenario.wantCause)
 				}
 				return
 			}
-			var execErr *query.ExecError
-			if !errors.As(err, &execErr) || execErr.SQLState != scenario.wantSQLState || errors.Is(err, query.ErrInterruptedBeforeCommit) {
+			_, _, _, err := runExec(context.Background(), t, target, credential, query.Execution{
+				SQL: scenario.sql, Class: scenario.class, MaxRows: 100, MaxResultBytes: 4096, TimeoutSeconds: 1,
+			})
+			var executionError *query.ExecError
+			if !errors.As(err, &executionError) || executionError.SQLState != scenario.wantSQLState || errors.Is(err, query.ErrInterruptedBeforeCommit) {
 				t.Fatalf("server timeout = %v, want confirmed SQLSTATE %s", err, scenario.wantSQLState)
 			}
 			if committed := countCommittedRows(t, pool); committed != 0 {

@@ -78,6 +78,8 @@ Confirmed SQL refusal is failed; a missing or saturated result cache does not ch
 Snapshot persistence runs on `context.WithoutCancel` with its own 10-second bound (revised 2026-10-04): it previously shared the execution deadline, so a statement finishing near its timeout or a cancellation arriving after COMMIT silently dropped a committed result.
 A rejected or failed snapshot records `result_store_full` or `result_persistence_failed` as `result_unavailable_reason` in EXECUTION_FINISHED metadata; the reason is a fixed vocabulary validated by the domain, never store error text. Source: [Go context.WithoutCancel](https://pkg.go.dev/context#WithoutCancel).
 
+The interruption integration fixture holds deferred COMMIT work on a transaction-scoped advisory lock and observes that exact blocked COMMIT before cancelling or awaiting the local deadline. A deliberately delayed INSERT verifies that pre-COMMIT latency cannot choose the interruption phase. Observation and execution have separate bounds; failing to reach the barrier fails fixture setup rather than proving a COMMIT outcome. Sources: [PostgreSQL activity and wait events](https://www.postgresql.org/docs/18/monitoring-stats.html), [PostgreSQL advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html#ADVISORY-LOCKS).
+
 ### Result and notification contracts
 
 Result snapshots use one DEK per result, independently authenticated schema/100-row chunks, owner-and-organization-scoped reads, 15-minute TTL, and ADR-0011 admission/eviction.
