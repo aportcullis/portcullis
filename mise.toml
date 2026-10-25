@@ -1,0 +1,3 @@
+# Keep the local pnpm identical to package.json's packageManager so commands never switch versions mid-run.
+[tools]
+pnpm = "10.34.6"

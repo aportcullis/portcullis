@@ -39,6 +39,7 @@ The protobuf plugins are pinned through the runtimes themselves: `protoc-gen-go`
 **Pinned** — Docker base images to patch tags, npm to exact builds — and kept current by **Renovate** (`renovate.json`). PostgreSQL pins in Compose, the test catalog and README capture harness are tracked. Major promotions are disabled for Compose and regex managers; PostgreSQL 19 preview updates stay on `19betaN` until explicit GA qualification.
 Docker compatibility suffixes such as `-alpine3.24` remain fixed; changing that platform suffix requires a reviewed update.
 Per [ADR-0080](../adr/0080-shared-typescript-workspace.md), pnpm's version, installation policy, shared lockfile and exact common-dependency catalog belong at the repository root. Each member declares its own dependencies; catalog entries coordinate versions without granting undeclared imports. Update catalog and lockfile together, preserve the supply-chain controls and verify both members before committing.
+The root `mise.toml` pins the same pnpm version as `packageManager`, so a mise-managed shell runs it directly instead of relying on pnpm's own version switching; update both together.
 The root also declares the catalogued compiler, Node types and linter used by repository verification. Its own checks run explicitly alongside recursive member checks, without enabling root recursion or adding a runtime transpiler (ADR-0089).
 
 ## Branches and versions
