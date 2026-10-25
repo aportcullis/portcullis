@@ -6,7 +6,7 @@ import type { ValidatedAccessRequest, ValidatedAccessRequestDetails } from "@/sh
 import { AccessRequestValidationError } from "@/shared/api/accessRequestValidation";
 import { instanceConfig } from "@/entities/instance/config";
 import {
-  actorLabel,
+  formatRequestActorLabel,
   isExecutionOutcomeState,
   isLiveRequestState,
   stateBadge,
@@ -22,6 +22,7 @@ import {
   updateDraft,
 } from "@/entities/request/store";
 import { hasPermission, session } from "@/entities/session/store";
+import { formatRequestMutationError } from "@/features/request/errors";
 import { errorMessage, isAuthorizationRefusal } from "@/shared/api/errors";
 import { createOpenFetch } from "@/shared/lib/openFetch";
 import {
@@ -200,7 +201,7 @@ export const RequestDetailsPanel: Component<RequestDetailsPanelProps> = (props) 
     setBusy(false);
     if (outcome.status === "failed") {
       const { error } = outcome;
-      setActionError(errorMessage(error));
+      setActionError(formatRequestMutationError(error));
       return;
     }
     refresh();
@@ -262,7 +263,7 @@ export const RequestDetailsPanel: Component<RequestDetailsPanelProps> = (props) 
                 </Badge>
               </h1>
               <p class="text-sm text-muted-foreground">
-                {readHeaderRequest().connectionName} · requested by {actorLabel(readHeaderRequest().requester)}
+                {readHeaderRequest().connectionName} · requested by {formatRequestActorLabel(readHeaderRequest().requester)}
               </p>
             </>;
           }}

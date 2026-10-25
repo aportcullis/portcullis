@@ -1,13 +1,13 @@
 import type { Component } from "solid-js";
 import { For, Show } from "solid-js";
 
-import { actorLabel } from "@/entities/request/model";
-import type { AccessRequest, AccessRequestPayload } from "@/gen/portcullis/v1/access_requests_pb";
+import { formatRequestActorLabel } from "@/entities/request/model";
+import type { AccessRequestPayload } from "@/gen/portcullis/v1/access_requests_pb";
+import type { ValidatedAccessRequest } from "@/shared/api/accessRequestValidation";
 import { Badge } from "@/shared/ui/badge";
 
-/** Defines the inputs owned by RequestEvidence. */
 export type RequestEvidenceProps = {
-  request: AccessRequest;
+  request: ValidatedAccessRequest;
   payload: AccessRequestPayload | undefined;
 };
 
@@ -83,7 +83,7 @@ export const RequestEvidence: Component<RequestEvidenceProps> = (props) => (
               >
                 {decision.decision}
               </Badge>
-              <span>{actorLabel(decision.approver)}</span>
+              <span>{formatRequestActorLabel(decision.approver)}</span>
               <Show when={decision.reason !== ""}>
                 <span class="text-muted-foreground">— {decision.reason}</span>
               </Show>

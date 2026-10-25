@@ -13,9 +13,10 @@ import type {
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { parseValidatedValue, ValidationError } from "@/shared/lib/validation";
 
-export type ValidatedAccessRequest = AccessRequest & { requester: RequestActor };
-export type ValidatedAccessRequestDetails = GetAccessRequestResponse & { request: ValidatedAccessRequest };
-export type ValidatedAccessRequestList = ListAccessRequestsResponse & { items: ValidatedAccessRequest[] };
+export type ValidatedRequestApproval = Omit<RequestApproval, "approver"> & { approver: RequestActor };
+export type ValidatedAccessRequest = Omit<AccessRequest, "requester" | "approvals"> & { requester: RequestActor; approvals: ValidatedRequestApproval[] };
+export type ValidatedAccessRequestDetails = Omit<GetAccessRequestResponse, "request"> & { request: ValidatedAccessRequest };
+export type ValidatedAccessRequestList = Omit<ListAccessRequestsResponse, "items"> & { items: ValidatedAccessRequest[] };
 
 const maxSignedInteger = 9223372036854775807n;
 export const accessRequestTotalCountSchema = z.bigint().min(0n).max(maxSignedInteger);
@@ -31,9 +32,9 @@ const requestActorSchema: z.ZodType<RequestActor> = z.object({
   email: z.string(),
   displayName: z.string(),
 });
-const requestApprovalSchema: z.ZodType<RequestApproval> = z.object({
+const requestApprovalSchema: z.ZodType<ValidatedRequestApproval> = z.object({
   $typeName: z.literal("portcullis.v1.RequestApproval"),
-  approver: requestActorSchema.optional(),
+  approver: requestActorSchema,
   decision: z.enum(["approved", "rejected"]),
   reason: z.string(),
   decidedAt: timestampSchema.optional(),
@@ -108,6 +109,14 @@ export class AccessRequestValidationError extends ValidationError {
     super();
     this.name = "AccessRequestValidationError";
     this.message = "The access request response is invalid.";
+  }
+}
+
+export function parseAccessRequest(input: unknown): ValidatedAccessRequest {
+  try {
+    return parseValidatedValue(accessRequestSchema, input);
+  } catch {
+    throw new AccessRequestValidationError();
   }
 }
 

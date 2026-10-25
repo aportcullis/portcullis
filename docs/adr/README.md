@@ -118,6 +118,7 @@ These decisions establish the Core 1 foundation.
 | [0090](0090-early-delegated-ai-connectors.md) | Initial delegated AI connectors in M2 | Accepted |
 | [0091](0091-independent-execution-stop-actions.md) | Independent execution and stop actions | Accepted |
 | [0093](0093-background-read-refusal-ownership.md) | Background and execution refusal ownership | Accepted |
+| [0094](0094-required-access-request-response-data.md) | Required access-request response data | Accepted |
 | [0095](0095-browser-container-ownership.md) | Browser container ownership | Accepted |
 
 ## Template

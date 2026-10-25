@@ -3,13 +3,13 @@ import { createRoot, createSignal } from "solid-js";
 import { Code, ConnectError } from "@connectrpc/connect";
 
 import type {
-  AccessRequest,
   RequestableConnection,
   TypedParam,
 } from "@/gen/portcullis/v1/access_requests_pb";
 import { requestsClient } from "@/shared/api/client";
 import {
   AccessRequestValidationError,
+  parseAccessRequest,
   parseAccessRequestDetails,
   parseAccessRequestList,
 } from "@/shared/api/accessRequestValidation";
@@ -178,12 +178,14 @@ const store = createRoot(() => {
     params: TypedParam[],
     title = "",
     body = "",
-  ): Promise<AccessRequest | undefined> {
+  ): Promise<ValidatedAccessRequest> {
     const gen = generation;
     // A refused create/submit is the signal that our picture of the targets may be stale — the connection was archived, or its policy moved — so the cache is invalidated on ANY failure rather than on a guessed set of codes: an extra refetch on the next open is cheaper than offering a dead target.
-    const { request } = await withTargetInvalidation(() =>
+    const { request: wireRequest } = await withTargetInvalidation(() =>
       requestsClient.create({ connectionId, sql, params, title, body }),
     );
+    const request = parseAccessRequest(wireRequest);
+    if (request.connectionId !== connectionId) throw new AccessRequestValidationError();
     await afterMutation(gen);
     return request;
   }
@@ -204,12 +206,14 @@ const store = createRoot(() => {
     params: TypedParam[],
     title = "",
     body = "",
-  ): Promise<AccessRequest | undefined> {
+  ): Promise<ValidatedAccessRequest> {
     const gen = generation;
     // Wrapped like create and submit: submitting a SAVED draft edits it first, so THIS is the call that meets an archived connection. Leaving it out kept the cache trusted, and the recovery that re-reads the request's real state never ran (it only fires when the cache is stale).
-    const { request } = await withTargetInvalidation(() =>
+    const { request: wireRequest } = await withTargetInvalidation(() =>
       requestsClient.updateDraft({ id, expectedVersion, sql, params, title, body }),
     );
+    const request = parseAccessRequest(wireRequest);
+    if (request.id !== id) throw new AccessRequestValidationError();
     await afterMutation(gen);
     return request;
   }

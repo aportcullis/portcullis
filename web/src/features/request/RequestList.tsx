@@ -2,7 +2,7 @@ import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
 import { For, Show, createEffect, createMemo, createSignal, on, onMount, onCleanup } from "solid-js";
 
-import { actorLabel, requestStateFilterOptions, shouldPollRequestList, stateBadge, stateLabel } from "@/entities/request/model";
+import { formatRequestActorLabel, requestStateFilterOptions, shouldPollRequestList, stateBadge, stateLabel } from "@/entities/request/model";
 import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { filterSelectClass } from "@/features/request/selectStyles";
@@ -153,7 +153,7 @@ export const RequestList: Component = () => {
                         </button>
                       </TableCell>
                       <TableCell class="font-medium">{connectionName}</TableCell>
-                      <TableCell class="text-muted-foreground">{actorLabel(requester)}</TableCell>
+                      <TableCell class="text-muted-foreground">{formatRequestActorLabel(requester)}</TableCell>
                       <TableCell class="text-muted-foreground">{statementClass === "" ? "—" : statementClass}</TableCell>
                       <TableCell>
                         <Badge variant={stateBadge(effectiveState)}>{stateLabel(effectiveState)}</Badge>

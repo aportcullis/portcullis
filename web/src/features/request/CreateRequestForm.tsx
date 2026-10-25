@@ -17,6 +17,7 @@ import {
 } from "@/entities/request/store";
 import { hasPermission, sessionAuthorizationKey } from "@/entities/session/store";
 import { mayReturnToSavedDraft } from "@/features/request/actions";
+import { formatRequestMutationError } from "@/features/request/errors";
 import type { RequestDraft } from "@/features/request/draft";
 import {
   createEmptyRequestDraft,
@@ -126,38 +127,36 @@ export const CreateRequestForm: Component = () => {
     setSettled(false);
   };
 
-  // persist writes the current form to the draft — creating it the first time, updating the same draft on every subsequent call — and returns its id and current version. A saved draft, or undefined when the store fenced the response itself (a different principal signed in mid-flight) — there is then no id to submit.
-  type SavedDraft = { id: string; version: bigint } | undefined;
+  type SavedDraft = { id: string; version: bigint };
 
-  const persist = async (): Promise<SessionOutcome<SavedDraft>> => {
+  const persistDraft = async (): Promise<SessionOutcome<SavedDraft>> => {
     if (savedId() === "") {
       const created = await runInSession(() =>
         createAccessRequest(connectionId(), draft().sql, toTypedRequestParameters(draft()), draft().title, draft().body),
       );
       if (created.status !== "ok") return created;
-      if (!created.value) return { status: "ok", value: undefined };
+      const { value: { id, version } } = created;
       // Only NOW is this session's draft: writing the id into a form the user has since reopened would point the next request at the previous draft.
-      setSavedId(created.value.id);
-      setSavedVersion(created.value.version);
-      return { status: "ok", value: { id: created.value.id, version: created.value.version } };
+      setSavedId(id);
+      setSavedVersion(version);
+      return { status: "ok", value: { id, version } };
     }
     const updated = await runInSession(() =>
       updateDraft(savedId(), savedVersion(), draft().sql, toTypedRequestParameters(draft()), draft().title, draft().body),
     );
     if (updated.status !== "ok") return updated;
-    if (!updated.value) return { status: "ok", value: undefined };
-    setSavedVersion(updated.value.version);
-    return { status: "ok", value: { id: updated.value.id, version: updated.value.version } };
+    const { value: { id, version } } = updated;
+    setSavedVersion(version);
+    return { status: "ok", value: { id, version } };
   };
 
-  // refused reports a failure on the form that asked for it. The refusal also marked the target cache stale; refresh it while the page is still open so the picker reflects the world the server just showed us, instead of waiting for a close/reopen that would discard the SQL.
-  const refused = (error: unknown) => {
+  const showRequestMutationFailure = (error: unknown) => {
     setBusy(false);
-    setError(errorMessage(error));
+    setError(formatRequestMutationError(error));
     if (targetsStale()) void refreshTargets();
   };
 
-  const run = async (submit: boolean) => {
+  const saveOrSubmitRequest = async (submit: boolean) => {
     if (connectionId() === "") {
       setError("Choose a connection.");
       return;
@@ -170,26 +169,26 @@ export const CreateRequestForm: Component = () => {
     setError("");
     setBusy(true);
 
-    const saved = await persist();
+    const saved = await persistDraft();
     if (saved.status === "superseded") return;
     if (saved.status === "failed") {
-      refused(saved.error);
+      showRequestMutationFailure(saved.error);
       return;
     }
     const draftRow = saved.value;
-    if (submit && draftRow) {
+    if (submit) {
       // Submit with the version the server actually assigned, not a hardcode.
       const sent = await runInSession(() =>
         submitAccessRequest(draftRow.id, draftRow.version),
       );
       if (sent.status === "superseded") return;
       if (sent.status === "failed") {
-        refused(sent.error);
+        showRequestMutationFailure(sent.error);
         return;
       }
     }
     setBusy(false);
-    if (draftRow) navigate(hasPermission("requests.get") ? `/requests/${draftRow.id}` : "/requests");
+    navigate(hasPermission("requests.get") ? `/requests/${draftRow.id}` : "/requests");
   };
 
   return (
@@ -278,12 +277,12 @@ export const CreateRequestForm: Component = () => {
                   type="button"
                   variant="outline"
                   disabled={busy()}
-                  onClick={() => void run(false)}
+                  onClick={() => void saveOrSubmitRequest(false)}
                 >
                   Save draft
                 </Button>
               </Show>
-              <Button type="button" disabled={busy()} onClick={() => void run(true)}>
+              <Button type="button" disabled={busy()} onClick={() => void saveOrSubmitRequest(true)}>
                 Submit
               </Button>
             </Show>
