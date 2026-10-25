@@ -16,5 +16,5 @@
     "noUnusedParameters": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "../workspace/*.ts"]
 }

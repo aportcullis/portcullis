@@ -8,17 +8,23 @@ import { executeOwnedVerification, type VerificationContext, type VerificationRe
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const workspaceInputs = ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", "web/package.json", "tests/load/package.json"];
-const verificationConfiguration = ["tests/verification/tsconfig.json", "tests/verification/oxlint.config.ts"];
+const verificationInputs = [
+  "tests/verification/tsconfig.json", "tests/verification/oxlint.config.ts",
+  "tests/verification/verification-process.ts", "tests/verification/package-witness.ts",
+  "tests/workspace/tsconfig.json", "tests/workspace/workspace-fixture.ts",
+  "tests/workspace/package-workspace.test.ts", "tests/workspace/workspace-store.test.ts",
+];
 type ToolDependency = "typescript" | "@types/node" | "oxlint";
+export type GateScope = "verification" | "workspace";
 type FixtureLocation = "direct" | "aliased";
 type GateFailure = { kind: "none" } | { kind: "failed"; error: unknown };
 type WorkspaceSnapshot = { kind: "not-copied" } | { kind: "copied"; contents: Buffer[] };
 
 /** Supplies the owned launch witness alongside the normal process context. */
-export type VerificationGateFixture = VerificationContext & { marker: string };
+export type VerificationGateFixture = VerificationContext & { marker: string; scope: GateScope; launchMarkers: readonly string[] };
 
 /** Copies one actual target and its recipe, retaining its prerequisite declaration. */
-function readMakeTarget(target: "workspace-install" | "test-scheduling-check"): string {
+function readMakeTarget(target: "workspace-install" | "test-scheduling-check" | "workspace-check"): string {
   const lines = readFileSync(join(projectRoot, "Makefile"), "utf8").split("\n");
   const positions = lines.flatMap((line, index) => line.startsWith(`${target}:`) ? [index] : []);
   const [position] = positions;
@@ -36,25 +42,28 @@ function readMakeTarget(target: "workspace-install" | "test-scheduling-check"): 
 }
 
 /** Installs declared root tools in a fresh fixture before qualifying its canonical gate. */
-export async function withVerificationGateFixture(scenario: (context: VerificationGateFixture) => Promise<void>, location: FixtureLocation = "direct"): Promise<void> {
+export async function withVerificationGateFixture(scenario: (context: VerificationGateFixture) => Promise<void>, location: FixtureLocation = "direct", scope: GateScope = "verification"): Promise<void> {
   const ownedBase = mkdtempSync(join(tmpdir(), "portcullis-verification-gate-"));
   const physicalDirectory = join(ownedBase, "project");
   const directory = location === "direct" ? physicalDirectory : join(ownedBase, "workspace-alias");
   const marker = join(directory, "runtime-launch-marker");
-  const environment: NodeJS.ProcessEnv = { ...process.env, PORTCULLIS_GATE_MARKER: marker };
+  const legacyMarker = join(directory, "legacy-launch-marker");
+  const launchMarkers = scope === "workspace" ? [marker, legacyMarker] : [marker];
+  const environment: NodeJS.ProcessEnv = { ...process.env, PORTCULLIS_GATE_MARKER: marker, PORTCULLIS_LEGACY_GATE_MARKER: legacyMarker };
   delete environment.NODE_TEST_CONTEXT;
-  const context: VerificationGateFixture = { directory, marker, environment, processState: { kind: "idle" } };
+  const context: VerificationGateFixture = { directory, marker, scope, launchMarkers, environment, processState: { kind: "idle" } };
   let failure: GateFailure = { kind: "none" };
   let snapshot: WorkspaceSnapshot = { kind: "not-copied" };
   try {
     mkdirSync(physicalDirectory);
     if (location === "aliased") symlinkSync(physicalDirectory, directory, "dir");
-    for (const source of [...workspaceInputs, ...verificationConfiguration]) {
-      const destination = join(directory, source);
+    for (const source of [...workspaceInputs, ...verificationInputs]) {
+      const destination = join(directory, source.replace(/\.test\.ts$/, ".source.ts"));
       mkdirSync(dirname(destination), { recursive: true });
       copyFileSync(join(projectRoot, source), destination);
     }
-    writeFileSync(join(directory, "Makefile"), `.PHONY: workspace-install test-scheduling-check\n${readMakeTarget("workspace-install")}\n${readMakeTarget("test-scheduling-check")}`);
+    writeFileSync(join(directory, "Makefile"), `.PHONY: workspace-install test-scheduling-check workspace-check\n${readMakeTarget("workspace-install")}\n${readMakeTarget("test-scheduling-check")}\n${readMakeTarget("workspace-check")}`);
+    if (scope === "workspace") writeLegacyGateSource(context);
     snapshot = { kind: "copied", contents: workspaceInputs.map((source) => readFileSync(join(directory, source))) };
     const installation = await executeOwnedVerification(context, "make", ["workspace-install"]);
     assert.equal(installation.status, 0, `A real fresh frozen root install must work before gate admission:\n${installation.output}`);
@@ -80,9 +89,24 @@ export async function withVerificationGateFixture(scenario: (context: Verificati
   if (failure.kind === "failed") throw failure.error;
 }
 
+/** Creates a legacy-format witness only inside the fixture to qualify the dual test globs. */
+function writeLegacyGateSource(context: VerificationGateFixture): void {
+  writeFileSync(join(context.directory, "tests/workspace/legacy.test.mjs"), `import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import test from "node:test";
+
+test("legacy workspace execution witness", () => {
+  const marker = process.env.PORTCULLIS_LEGACY_GATE_MARKER;
+  if (typeof marker !== "string") throw new Error("The owned legacy gate marker must be configured");
+  assert.notEqual(marker, "");
+  writeFileSync(marker, "executed");
+});
+`);
+}
+
 /** Writes runnable erasable TypeScript with a witness at the execution boundary. */
 export function writeGateSource(context: VerificationGateFixture, body: string, imports = ""): void {
-  writeFileSync(join(context.directory, "tests/verification/gate.test.ts"), `import assert from "node:assert/strict";
+  writeFileSync(join(context.directory, `tests/${context.scope}/gate.test.ts`), `import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import test from "node:test";
 ${imports}
@@ -99,36 +123,44 @@ test("canonical gate execution witness", () => {
 
 /** Writes one typed helper to exercise real Node package-subpath resolution. */
 export function writeGateValueModule(context: VerificationGateFixture): void {
-  writeFileSync(join(context.directory, "tests/verification/gate-value.ts"), `/** Defines a value supplied through the repository alias. */
+  writeFileSync(join(context.directory, `tests/${context.scope}/gate-value.ts`), `/** Defines a value supplied through the repository alias. */
 export type GateValue = { kind: "ready"; value: number };
 export const gateValue: GateValue = { kind: "ready", value: 7 };
 `);
 }
 
+/** Removes both typed and applicable legacy launch witnesses before each command. */
+function clearGateLaunchWitnesses(context: VerificationGateFixture): void {
+  for (const marker of context.launchMarkers) rmSync(marker, { force: true });
+}
+
 /** Runs the copied actual Make gate without inheriting an earlier launch witness. */
 export async function runCanonicalGate(context: VerificationGateFixture): Promise<VerificationResult> {
-  rmSync(context.marker, { force: true });
-  return executeOwnedVerification(context, "make", ["test-scheduling-check"]);
+  clearGateLaunchWitnesses(context);
+  return executeOwnedVerification(context, "make", [context.scope === "workspace" ? "workspace-check" : "test-scheduling-check"]);
 }
 
 /** Runs the same source directly to prove it is executable before static admission. */
 export async function runNativeGateSource(context: VerificationGateFixture): Promise<VerificationResult> {
-  rmSync(context.marker, { force: true });
-  return executeOwnedVerification(context, process.execPath, ["--test", "tests/verification/gate.test.ts"]);
+  clearGateLaunchWitnesses(context);
+  const sources = context.scope === "workspace" ? ["tests/workspace/legacy.test.mjs", "tests/workspace/gate.test.ts"] : ["tests/verification/gate.test.ts"];
+  return executeOwnedVerification(context, process.execPath, ["--test", ...sources]);
 }
 
 /** Requires successful execution of the fixture's actual test body. */
 export function assertGateLaunched(context: VerificationGateFixture, result: VerificationResult): void {
   assert.equal(result.status, 0, result.output);
-  assert.equal(existsSync(context.marker), true, `A successful canonical command must execute the fixture body:\n${result.output}`);
-  assert.equal(readFileSync(context.marker, "utf8"), "executed");
+  for (const marker of context.launchMarkers) {
+    assert.equal(existsSync(marker), true, `A successful canonical command must execute every applicable fixture body:\n${result.output}`);
+    assert.equal(readFileSync(marker, "utf8"), "executed");
+  }
 }
 
 /** Refuses the intended static category before any fixture test body can launch. */
 export function assertGateRefused(context: VerificationGateFixture, result: VerificationResult, category: RegExp): void {
-  assert.notEqual(result.status, 0, `The checked gate must reject runnable invalid source; launch witness exists: ${existsSync(context.marker)}\n${result.output}`);
+  assert.notEqual(result.status, 0, `The checked gate must reject runnable invalid source; launch witness exists: ${context.launchMarkers.some((marker) => existsSync(marker))}\n${result.output}`);
   assert.match(result.output, category, result.output);
-  assert.equal(existsSync(context.marker), false, "Static refusal must precede test-body execution");
+  for (const marker of context.launchMarkers) assert.equal(existsSync(marker), false, "Static refusal must precede every applicable test-body execution");
 }
 
 /** Reads a declared package version through an explicit JSON boundary. */

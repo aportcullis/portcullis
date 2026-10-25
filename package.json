@@ -5,16 +5,17 @@
   "type": "module",
   "packageManager": "pnpm@10.34.6",
   "imports": {
-    "#verification/*": "./tests/verification/*.ts"
+    "#verification/*": "./tests/verification/*.ts",
+    "#workspace/*": "./tests/workspace/*.ts"
   },
   "scripts": {
     "typecheck": "pnpm run typecheck:verification && pnpm --recursive --filter '!portcullis-workspace' run typecheck",
     "lint": "pnpm run lint:verification && pnpm --recursive --filter '!portcullis-workspace' run lint",
-    "test": "pnpm run test:verification && pnpm --recursive --filter '!portcullis-workspace' run test",
-    "test:workspace": "node --test tests/workspace/*.test.mjs",
+    "test": "pnpm run test:verification && pnpm run test:workspace && pnpm --recursive --filter '!portcullis-workspace' run test",
+    "test:workspace": "pnpm run typecheck:verification && pnpm run lint:verification && node --test tests/workspace/*.test.mjs tests/workspace/*.test.ts",
     "verify": "make verify",
     "typecheck:verification": "tsc --noEmit -p tests/verification/tsconfig.json",
-    "lint:verification": "oxlint --deny-warnings --config tests/verification/oxlint.config.ts tests/verification",
+    "lint:verification": "oxlint --deny-warnings --config tests/verification/oxlint.config.ts tests/verification tests/workspace/*.ts",
     "test:verification": "pnpm run typecheck:verification && pnpm run lint:verification && node --test tests/verification/*.test.ts"
   },
   "devDependencies": {

@@ -18,7 +18,7 @@ export default defineConfig({
     "no-restricted-imports": ["error", {
       patterns: [{
         group: ["./*", "../*", "/*", "file:*"],
-        message: "Use #verification/ imports for repository verification modules."
+        message: "Use #verification/ or #workspace/ imports for repository verification modules."
       }]
     }]
   }

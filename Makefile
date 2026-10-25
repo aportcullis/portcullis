@@ -74,7 +74,7 @@ workspace-install:
 
 
 workspace-check: workspace-install
-	node --test tests/workspace/*.test.mjs
+	pnpm run test:workspace
 
 
 web-install: workspace-install
