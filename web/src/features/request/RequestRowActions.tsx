@@ -1,6 +1,6 @@
 import { A } from "@solidjs/router";
 import type { Component } from "solid-js";
-import { Show, onCleanup } from "solid-js";
+import { Show, createMemo, onCleanup } from "solid-js";
 
 import {
   cancelAccessRequest,
@@ -9,76 +9,128 @@ import {
 } from "@/entities/request/store";
 import { errorMessage } from "@/shared/api/errors";
 import { isExecutionOutcomeState } from "@/entities/request/model";
-import type { AccessRequest } from "@/gen/portcullis/v1/access_requests_pb";
+import type { ValidatedAccessRequest } from "@/shared/api/accessRequestValidation";
 import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import { hasPermission, session, sessionAuthorizationKey } from "@/entities/session/store";
 import { mayCancel, maySubmitDraft } from "@/features/request/actions";
-import type { RowActionRegistry } from "@/features/request/rowActionState";
+import type { RowActionOperation, RowActionRegistry } from "@/features/request/rowActionState";
 import { createRowActionRegistry } from "@/features/request/rowActionState";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import { executionsClient } from "@/shared/api/client";
 
-/** Defines the inputs owned by RequestRowActions. */
+export type RequestRowActionScope = { kind: "list"; registry: RowActionRegistry } |
+  { kind: "details"; refresh: () => void };
+
 export type RequestRowActionsProps = {
-  request: AccessRequest;
-  onChanged?: () => void;
-  executionOnly?: boolean;
-  // The list owns this so pending and error state survive a refresh that recreates the row.
-  rowActions?: RowActionRegistry;
+  request: ValidatedAccessRequest;
+  scope: RequestRowActionScope;
 };
 
-// Offers owner actions according to request state and each operation's permission.
 export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
-  const rowActions = props.rowActions ?? createRowActionRegistry();
+  const rowActions = createMemo(() => {
+    const { scope } = props;
+    if (scope.kind === "list") {
+      const { registry } = scope;
+      return registry;
+    }
+    const registry = createRowActionRegistry();
+    const { dispose } = registry;
+    onCleanup(dispose);
+    return registry;
+  });
   let mounted = true;
   onCleanup(() => {
     mounted = false;
   });
-  const actionState = () => rowActions.stateFor(props.request.id);
+  const actionState = () => {
+    const { id } = props.request;
+    const { stateFor } = rowActions();
+    return stateFor(id);
+  };
+  const stopState = () => {
+    const { id } = props.request;
+    const { stateFor } = rowActions();
+    return stateFor(id, "stopExecution");
+  };
 
   const isOwner = () => {
     const principal = session();
-    return (
-      principal.status === "authenticated" && principal.user.id === props.request.requester?.id
-    );
+    if (principal.status !== "authenticated") return false;
+    const { user: { id: userId } } = principal;
+    const { requester: { id: requesterId } } = props.request;
+    return userId === requesterId;
   };
-  const showSubmit = () =>
-    !props.executionOnly && maySubmitDraft(props.request, isOwner(), hasPermission);
-  const showCancel = () =>
-    !props.executionOnly && mayCancel(props.request, isOwner(), hasPermission);
-  const showExecute = () =>
-    isOwner() &&
-    hasPermission("requests.execute") &&
-    props.request.effectiveState === AccessRequestState.APPROVED;
-  const showStop = () =>
-    isOwner() &&
-    hasPermission("requests.execute") &&
-    props.request.effectiveState === AccessRequestState.EXECUTING;
-  const showResult = () =>
-    isOwner() &&
-    hasPermission("requests.get") &&
-    isExecutionOutcomeState(props.request.effectiveState);
+  const showSubmit = () => {
+    const { request, scope } = props;
+    return scope.kind === "list" && maySubmitDraft(request, isOwner(), hasPermission);
+  };
+  const showCancel = () => {
+    const { request, scope } = props;
+    return scope.kind === "list" && mayCancel(request, isOwner(), hasPermission);
+  };
+  const showExecute = () => {
+    const { effectiveState } = props.request;
+    return isOwner() && hasPermission("requests.execute") && effectiveState === AccessRequestState.APPROVED;
+  };
+  const showStop = () => {
+    const { effectiveState } = props.request;
+    return isOwner() && hasPermission("requests.execute") && effectiveState === AccessRequestState.EXECUTING;
+  };
+  const showResult = () => {
+    const { effectiveState } = props.request;
+    return isOwner() && hasPermission("requests.get") && isExecutionOutcomeState(effectiveState);
+  };
 
-  // Settles against the request ID rather than this component, which a list refresh may already have replaced; a changed authorization snapshot discards the outcome.
-  const act = async (work: () => Promise<unknown>) => {
-    const requestId = props.request.id;
+  const runRequestAction = async (
+    operation: RowActionOperation,
+    work: (requestId: string, isCurrentAction: () => boolean) => Promise<unknown>,
+  ): Promise<void> => {
+    const { begin, settle, isCurrentAttempt } = rowActions();
+    const { id: requestId } = props.request;
     const authorizationKey = sessionAuthorizationKey();
-    const attempt = rowActions.begin(requestId);
+    const admission = begin(requestId, operation);
+    if (admission.kind !== "started") return;
+    const { attempt } = admission;
+    const isCurrentAction = () => sessionAuthorizationKey() === authorizationKey &&
+      isCurrentAttempt(requestId, attempt, operation);
     try {
-      await work();
-      if (sessionAuthorizationKey() === authorizationKey) rowActions.settle(requestId, attempt, "");
+      await work(requestId, isCurrentAction);
+      if (isCurrentAction()) settle(requestId, attempt, "", operation);
     } catch (error: unknown) {
-      if (sessionAuthorizationKey() === authorizationKey)
-        rowActions.settle(requestId, attempt, errorMessage(error));
+      if (isCurrentAction()) settle(requestId, attempt, errorMessage(error), operation);
     }
   };
 
-  // Reports the change to the owning page while it is still shown, after the list refresh that may recreate this row.
-  const refreshAfterExecution = async (authorizationKey: string) => {
-    if (sessionAuthorizationKey() !== authorizationKey) return;
-    if (hasPermission("requests.list")) await loadAccessRequests();
-    if (mounted && sessionAuthorizationKey() === authorizationKey) props.onChanged?.();
+  const refreshAfterExecution = (requestId: string, isCurrentAction: () => boolean): void => {
+    if (!isCurrentAction()) return;
+    const { scope, request: { id } } = props;
+    if (mounted && id === requestId && scope.kind === "details") {
+      const { refresh } = scope;
+      refresh();
+    }
+    // List row replacement keeps its owner alive; leaving that list disposes its registry.
+    if (isCurrentAction() && hasPermission("requests.list")) void loadAccessRequests();
   };
+
+  const executeRequest = (): Promise<void> => runRequestAction("request", async (requestId, isCurrentAction) => {
+    try {
+      await executionsClient.execute({ requestId });
+    } finally {
+      refreshAfterExecution(requestId, isCurrentAction);
+    }
+  });
+
+  const stopExecution = (): Promise<void> => runRequestAction("stopExecution", async (requestId, isCurrentAction) => {
+    await executionsClient.cancel({ requestId });
+    refreshAfterExecution(requestId, isCurrentAction);
+  });
+
+  const submitRequest = (): Promise<void> => {
+    const { version } = props.request;
+    return runRequestAction("request", requestId => submitAccessRequest(requestId, version));
+  };
+
+  const cancelRequest = (): Promise<void> => runRequestAction("request", requestId => cancelAccessRequest(requestId));
 
   return (
     <Show when={showSubmit() || showCancel() || showExecute() || showStop() || showResult()}>
@@ -87,16 +139,7 @@ export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
           <Button
             size="sm"
             disabled={actionState().busy}
-            onClick={() =>
-              void act(async () => {
-                const authorizationKey = sessionAuthorizationKey();
-                try {
-                  await executionsClient.execute({ requestId: props.request.id });
-                } finally {
-                  await refreshAfterExecution(authorizationKey);
-                }
-              })
-            }
+            onClick={() => void executeRequest()}
           >
             Execute
           </Button>
@@ -105,14 +148,8 @@ export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
           <Button
             size="sm"
             variant="outline"
-            disabled={actionState().busy}
-            onClick={() =>
-              void act(async () => {
-                const authorizationKey = sessionAuthorizationKey();
-                await executionsClient.cancel({ requestId: props.request.id });
-                if (mounted && sessionAuthorizationKey() === authorizationKey) props.onChanged?.();
-              })
-            }
+            disabled={stopState().busy}
+            onClick={() => void stopExecution()}
           >
             Stop execution
           </Button>
@@ -130,13 +167,16 @@ export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
             {actionState().error}
           </span>
         </Show>
+        <Show when={stopState().error !== ""}>
+          <span role="alert" class="text-sm text-destructive-text">
+            {stopState().error}
+          </span>
+        </Show>
         <Show when={showSubmit()}>
           <Button
             size="sm"
             disabled={actionState().busy}
-            onClick={() =>
-              void act(() => submitAccessRequest(props.request.id, props.request.version))
-            }
+            onClick={() => void submitRequest()}
           >
             Submit
           </Button>
@@ -146,7 +186,7 @@ export const RequestRowActions: Component<RequestRowActionsProps> = (props) => {
             size="sm"
             variant="outline"
             disabled={actionState().busy}
-            onClick={() => void act(() => cancelAccessRequest(props.request.id))}
+            onClick={() => void cancelRequest()}
           >
             Cancel
           </Button>

@@ -8,8 +8,12 @@ import type {
   RequestableConnection,
 } from "@/gen/portcullis/v1/access_requests_pb";
 import {
+  AccessRequestState,
   AccessRequestSchema,
+  GetAccessRequestResponseSchema,
   ListAccessRequestsResponseSchema,
+  RequestActorSchema,
+  RequestApprovalSchema,
   RequestableConnectionSchema,
 } from "@/gen/portcullis/v1/access_requests_pb";
 
@@ -31,6 +35,7 @@ import {
   accessRequests,
   approveAccessRequest,
   createAccessRequest,
+  getAccessRequest,
   invalidateTargets,
   listError,
   listStale,
@@ -64,8 +69,18 @@ function deferred<T>(): Deferred<T> {
 }
 
 
-const req = (id: string, state = 0): AccessRequest =>
-  create(AccessRequestSchema, { id, version: 1n, state, effectiveState: state });
+function createRequestReadModel(id: string, state = AccessRequestState.DRAFT) {
+  const requester = create(RequestActorSchema, { id: "owner-1", email: "owner@example.com", displayName: "Owner" });
+  const request = create(AccessRequestSchema, {
+    id,
+    connectionId: "conn-1",
+    requester,
+    version: 1n,
+    state,
+    effectiveState: state,
+  });
+  return { ...request, requester };
+}
 
 const target = (id: string): RequestableConnection =>
   create(RequestableConnectionSchema, { id, displayName: id });
@@ -90,7 +105,7 @@ describe("request store principal fence", () => {
     resetAccessRequests();
 
 
-    created.resolve({ request: req("req-a") });
+    created.resolve({ request: createRequestReadModel("req-a") });
     await pending;
 
     // The late response must NOT enter the new principal's cache.
@@ -106,7 +121,7 @@ describe("request store mutations vs the list refresh", () => {
     client.list.mockClear();
 
     setMayListAccessRequests(false);
-    client.create.mockResolvedValueOnce({ request: req("req-created") });
+    client.create.mockResolvedValueOnce({ request: createRequestReadModel("req-created") });
 
     await expect(createAccessRequest("conn-1", "select 1", [])).resolves.toMatchObject({
       id: "req-created",
@@ -117,7 +132,7 @@ describe("request store mutations vs the list refresh", () => {
 
   it("keeps the mutation's result when the refresh itself fails", async () => {
     resetAccessRequests();
-    client.create.mockResolvedValueOnce({ request: req("req-created") });
+    client.create.mockResolvedValueOnce({ request: createRequestReadModel("req-created") });
     client.list.mockRejectedValueOnce(new Error("boom"));
 
     // The create succeeded; a failed re-read is news about the LIST, not about the create, and it must not surface as a rejected mutation.
@@ -142,8 +157,8 @@ describe("request store mutations vs the list refresh", () => {
 
   it("still refreshes when the caller can list", async () => {
     resetAccessRequests();
-    client.create.mockResolvedValueOnce({ request: req("req-created") });
-    client.list.mockResolvedValue(page([req("req-created")], 1n));
+    client.create.mockResolvedValueOnce({ request: createRequestReadModel("req-created") });
+    client.list.mockResolvedValue(page([createRequestReadModel("req-created")], 1n));
 
     await createAccessRequest("conn-1", "select 1", []);
     expect(client.list).toHaveBeenCalled();
@@ -313,7 +328,7 @@ describe("request store target list", () => {
 describe("request store failed list refresh", () => {
   async function loadOnePendingRow(): Promise<void> {
     resetAccessRequests();
-    client.list.mockResolvedValueOnce(page([req("req-kept", 2)], 1n));
+    client.list.mockResolvedValueOnce(page([createRequestReadModel("req-kept", 2)], 1n));
     await loadAccessRequests();
     expect(accessRequests().map((row) => row.id)).toEqual(["req-kept"]);
   }
@@ -348,7 +363,7 @@ describe("request store failed list refresh", () => {
     await loadOnePendingRow();
     client.list.mockRejectedValueOnce(new ConnectError("unavailable", Code.Unavailable));
     await loadAccessRequests();
-    client.list.mockResolvedValueOnce(page([req("req-fresh", 2)], 1n));
+    client.list.mockResolvedValueOnce(page([createRequestReadModel("req-fresh", 2)], 1n));
     await loadAccessRequests();
     expect(accessRequests().map((row) => row.id)).toEqual(["req-fresh"]);
     expect(listStale()).toBe(false);
@@ -405,14 +420,14 @@ describe("request store list consistency", () => {
   it("refetches the current page after a mutation instead of merging blindly", async () => {
     resetAccessRequests();
 
-    const pendingRow = req("req-pending", 2);
+    const pendingRow = createRequestReadModel("req-pending", 2);
     client.list.mockResolvedValue(page([pendingRow], 1n));
     setFilter("pending");
     await loadAccessRequests();
     expect(accessRequests().map((row) => row.id)).toEqual(["req-pending"]);
 
     // Approving it makes it no longer match the filter. The mutation response alone cannot know that, so the store must re-read the page: the server now returns an empty pending page.
-    client.approve.mockResolvedValueOnce({ request: req("req-pending", 3) });
+    client.approve.mockResolvedValueOnce({ request: createRequestReadModel("req-pending", 3) });
     client.list.mockResolvedValue(page([], 0n));
 
     await approveAccessRequest("req-pending", "ok");
@@ -420,5 +435,157 @@ describe("request store list consistency", () => {
     // The approved row must be gone from the pending view, and the totals must match the server — not a locally patched guess.
     expect(accessRequests()).toHaveLength(0);
     expect(totalCount()).toBe(0n);
+  });
+});
+
+describe("request read model boundary", () => {
+  it("retains the requester's exact identity fields in a successful list", async () => {
+    resetAccessRequests();
+    const request = createRequestReadModel("req-exact-owner");
+    request.requester = { $typeName: "portcullis.v1.RequestActor", id: "owner-1", email: "  Owner@Example.com  ", displayName: "  요청자 🌱  " };
+    client.list.mockResolvedValueOnce(page([request], 1n));
+    await loadAccessRequests();
+    expect(accessRequests()).toEqual([request]);
+    expect(listState()).toBe("ready");
+    expect(listError()).toBe("");
+  });
+
+  it("preserves exact integer versions and genuine absent draft timestamps", async () => {
+    resetAccessRequests();
+    const request = createRequestReadModel("req-exact-versions");
+    request.version = 9007199254740993n;
+    request.connectionConfigVersion = 9007199254740995n;
+    client.list.mockResolvedValueOnce(page([request], 1n));
+    await loadAccessRequests();
+    expect(accessRequests()).toEqual([request]);
+  });
+
+  it("reads details without inventing an absent authorized payload", async () => {
+    const response = create(GetAccessRequestResponseSchema, { request: createRequestReadModel("req-no-payload") });
+    client.get.mockResolvedValueOnce(response);
+    await expect(getAccessRequest("req-no-payload")).resolves.toEqual(response);
+  });
+
+  it("preserves authorized SQL, parameter text and precise timestamps in details", async () => {
+    const request = createRequestReadModel("req-payload", AccessRequestState.PENDING);
+    request.submittedAt = { $typeName: "google.protobuf.Timestamp", seconds: 1792800000n, nanos: 123456789 };
+    const response = create(GetAccessRequestResponseSchema, {
+      request,
+      payload: { sql: "select :amount", params: [{ name: "amount", type: "decimal", value: "001.2300" }], title: "", body: "  설명  " },
+    });
+    client.get.mockResolvedValueOnce(response);
+    await expect(getAccessRequest(request.id)).resolves.toEqual(response);
+  });
+
+  it("retains only validated list fields and detaches the original actor object", async () => {
+    resetAccessRequests();
+    const request = createRequestReadModel("req-detached");
+    Object.assign(request, { privateWireField: "private-value" });
+    Object.assign(request.requester, { privateActorField: "private-actor" });
+    client.list.mockResolvedValueOnce(page([request], 1n));
+    await loadAccessRequests();
+    request.requester.id = "changed-after-retention";
+    expect(accessRequests()).toHaveLength(1);
+    for (const retained of accessRequests()) {
+      expect(retained.requester.id).toBe("owner-1");
+      expect("privateWireField" in retained).toBe(false);
+      expect("privateActorField" in retained.requester).toBe(false);
+    }
+  });
+
+  it("retains authorized approval and payload fields without unknown detail data", async () => {
+    const request = createRequestReadModel("req-detail-fields", AccessRequestState.APPROVED);
+    const approval = create(RequestApprovalSchema, { approver: { id: "reviewer-1", email: "", displayName: "" }, decision: "approved", reason: "  Reviewed  ", valid: true });
+    const response = create(GetAccessRequestResponseSchema, {
+      request: { ...request, approvals: [approval] },
+      payload: { sql: "select :text", params: [{ name: "text", type: "string", value: "  exact  " }], title: "", body: "" },
+    });
+    client.get.mockResolvedValueOnce(Object.assign(response, { privateWireField: "private-value" }));
+    const parsed = await getAccessRequest(request.id);
+    expect("privateWireField" in parsed).toBe(false);
+    expect(parsed.request.approvals).toEqual([approval]);
+    expect(parsed.payload).toEqual(response.payload);
+  });
+
+  it("refuses a first list response with no requester instead of inventing an actor", async () => {
+    resetAccessRequests();
+    const request = create(AccessRequestSchema, { id: "req-missing-owner", connectionId: "conn-1", state: AccessRequestState.DRAFT, effectiveState: AccessRequestState.DRAFT, version: 1n });
+    client.list.mockResolvedValueOnce(page([request], 1n));
+    await loadAccessRequests();
+    expect(listState()).toBe("error");
+    expect(accessRequests()).toEqual([]);
+    expect(listError()).toBe("The access request response is invalid.");
+  });
+
+  it("refuses a malformed actor without disclosing its values or retaining a valid prefix", async () => {
+    resetAccessRequests();
+    const response = page([createRequestReadModel("req-valid-prefix")], 2n);
+    const malformed = { ...createRequestReadModel("req-malformed"), requester: { $typeName: "portcullis.v1.RequestActor", id: "private-owner-id", email: 42, displayName: "private-display-name" } };
+    client.list.mockResolvedValueOnce({ ...response, items: [...response.items, malformed] });
+    await loadAccessRequests();
+    expect(accessRequests()).toEqual([]);
+    expect(listState()).toBe("error");
+    expect(listError()).toBe("The access request response is invalid.");
+  });
+
+  it("keeps only the previously validated rows on malformed refresh and recovers", async () => {
+    resetAccessRequests();
+    const retained = createRequestReadModel("req-retained");
+    client.list.mockResolvedValueOnce(page([retained], 1n));
+    await loadAccessRequests();
+    const malformed = { ...createRequestReadModel("req-rejected"), requester: { $typeName: "portcullis.v1.RequestActor", id: "", email: "private@example.com", displayName: "Private" } };
+    client.list.mockResolvedValueOnce({ ...page([], 1n), items: [malformed] });
+    await loadAccessRequests();
+    expect(accessRequests()).toEqual([retained]);
+    expect(listStale()).toBe(true);
+    expect(listState()).toBe("error");
+    client.list.mockResolvedValueOnce(page([createRequestReadModel("req-recovered")], 1n));
+    await loadAccessRequests();
+    expect(accessRequests().map(({ id }) => id)).toEqual(["req-recovered"]);
+    expect(listStale()).toBe(false);
+    expect(listError()).toBe("");
+  });
+
+  it("drops a malformed delayed list response after principal disposal", async () => {
+    resetAccessRequests();
+    const delayed = deferred<unknown>();
+    client.list.mockReturnValueOnce(delayed.promise);
+    const pending = loadAccessRequests();
+    resetAccessRequests();
+    delayed.resolve({ items: [{ requester: "private-old-principal" }] });
+    await pending;
+    expect(accessRequests()).toEqual([]);
+    expect(listState()).toBe("idle");
+    expect(listError()).toBe("");
+  });
+
+  it("rejects absent request details with an operation-safe error", async () => {
+    client.get.mockResolvedValueOnce(create(GetAccessRequestResponseSchema));
+    await expect(getAccessRequest("req-absent")).rejects.toThrow("The access request response is invalid.");
+  });
+
+  it("rejects details with a missing requester instead of returning an unsafe read model", async () => {
+    client.get.mockResolvedValueOnce(create(GetAccessRequestResponseSchema, {
+      request: { id: "req-no-requester", connectionId: "conn-1", state: AccessRequestState.DRAFT, effectiveState: AccessRequestState.DRAFT, version: 1n },
+    }));
+    await expect(getAccessRequest("req-no-requester")).rejects.toThrow("The access request response is invalid.");
+  });
+
+  it("rejects malformed non-actor fields before their data enters list state", async () => {
+    resetAccessRequests();
+    const request = { ...createRequestReadModel("req-malformed-state"), state: 999, title: "private-query-title" };
+    client.list.mockResolvedValueOnce({ ...page([], 1n), items: [request] });
+    await loadAccessRequests();
+    expect(accessRequests()).toEqual([]);
+    expect(listError()).toBe("The access request response is invalid.");
+  });
+
+  it("rejects malformed detail timestamps and payloads without retaining sensitive fields", async () => {
+    const request = createRequestReadModel("req-invalid-detail");
+    const response = create(GetAccessRequestResponseSchema, { request });
+    client.get.mockResolvedValueOnce({ ...response, request: { ...request, submittedAt: { $typeName: "google.protobuf.Timestamp", seconds: 0n, nanos: 1000000000 } } });
+    await expect(getAccessRequest(request.id)).rejects.toThrow("The access request response is invalid.");
+    client.get.mockResolvedValueOnce({ ...response, payload: { $typeName: "portcullis.v1.AccessRequestPayload", sql: "private-sql", params: [{ $typeName: "portcullis.v1.TypedParam", name: "private-parameter", type: "string", value: 42 }], title: "", body: "" } });
+    await expect(getAccessRequest(request.id)).rejects.toThrow("The access request response is invalid.");
   });
 });

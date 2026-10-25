@@ -2,7 +2,6 @@ import { A, useNavigate } from "@solidjs/router";
 import type { Component } from "solid-js";
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
-import { AccessRequestState } from "@/gen/portcullis/v1/access_requests_pb";
 import {
   cancelAccessRequest,
   createAccessRequest,
@@ -92,8 +91,8 @@ export const CreateRequestForm: Component = () => {
       setError(errorMessage(outcome.error));
       return;
     }
-    const state = outcome.value.request?.effectiveState ?? AccessRequestState.DRAFT;
-    setSettled(resolveUnavailableTargetRequestState(state) === "already-settled");
+    const { value: { request: { effectiveState } } } = outcome;
+    setSettled(resolveUnavailableTargetRequestState(effectiveState) === "already-settled");
     setError(
       settled()
         ? "This draft's connection was archived, so the draft was cancelled with it. Close this and start a new request."

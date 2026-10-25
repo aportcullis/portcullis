@@ -8,6 +8,15 @@ import type {
   TypedParam,
 } from "@/gen/portcullis/v1/access_requests_pb";
 import { requestsClient } from "@/shared/api/client";
+import {
+  AccessRequestValidationError,
+  parseAccessRequestDetails,
+  parseAccessRequestList,
+} from "@/shared/api/accessRequestValidation";
+import type {
+  ValidatedAccessRequest,
+  ValidatedAccessRequestDetails,
+} from "@/shared/api/accessRequestValidation";
 import type { ListLoadState } from "@/shared/lib/listLoadState";
 import { errorMessage } from "@/shared/api/errors";
 
@@ -27,7 +36,7 @@ function listQueryKey(page: number, pageSize: number, stateFilter: string): stri
 
 // The access-request list store, mirroring the connection store's guard discipline (generation / listRevision / loadSeq) so a slow response from a previous principal or a pre-mutation snapshot can never repopulate the cache for the current user (ADR-0018 UI). The server owns visibility scope; the store just renders what it returns.
 const store = createRoot(() => {
-  const [accessRequests, setAccessRequests] = createSignal<AccessRequest[]>([]);
+  const [accessRequests, setAccessRequests] = createSignal<ValidatedAccessRequest[]>([]);
   // The connections this caller may target. Served by the access-request RPC (requests.create), NOT the admin connection list — the seeded requester and approver roles hold no connections.list (ADR-0008/0018).
   const [targets, setTargets] = createSignal<RequestableConnection[]>([]);
   const [listError, setListError] = createSignal("");
@@ -110,7 +119,7 @@ const store = createRoot(() => {
     const query = listQueryKey(page(), pageSize(), stateFilter());
     setListState("loading");
     try {
-      const res = await requestsClient.list({
+      const response = await requestsClient.list({
         page: page(),
         pageSize: pageSize(),
         state: stateFilter(),
@@ -120,11 +129,12 @@ const store = createRoot(() => {
         void loadAccessRequests();
         return;
       }
-      setAccessRequests(res.items);
-      setPage(res.page || 1);
-      setPageSize(res.pageSize || 20);
-      setTotalCount(res.totalCount);
-      setTotalPages(res.totalPages);
+      const { items, page: responsePage, pageSize: responsePageSize, totalCount: responseTotalCount, totalPages: responseTotalPages } = parseAccessRequestList(response);
+      setAccessRequests(items);
+      setPage(responsePage);
+      setPageSize(responsePageSize);
+      setTotalCount(responseTotalCount);
+      setTotalPages(responseTotalPages);
       displayedQuery = listQueryKey(page(), pageSize(), stateFilter());
       setListStale(false);
       setListError("");
@@ -135,7 +145,7 @@ const store = createRoot(() => {
         void loadAccessRequests();
         return;
       }
-      setListError(errorMessage(err));
+      setListError(err instanceof AccessRequestValidationError ? err.message : errorMessage(err));
       setListState("error");
       // A transient failure says nothing about which requests exist, so the rows of the same query stay on screen marked stale. Lost authorization, or rows that answered a different query, must not survive.
       if (isAuthorizationFailure(err) || query !== displayedQuery) {
@@ -228,8 +238,8 @@ const store = createRoot(() => {
     await afterMutation(gen);
   }
 
-  async function getAccessRequest(id: string) {
-    return requestsClient.get({ id });
+  async function getAccessRequest(id: string): Promise<ValidatedAccessRequestDetails> {
+    return parseAccessRequestDetails(await requestsClient.get({ id }));
   }
 
   function goToPage(next: number): void {

@@ -3,42 +3,82 @@ import { createSignal } from "solid-js";
 /** Pending and failure state of one request row's action, independent of the row object that rendered it. */
 export type RowActionState = { busy: boolean; error: string };
 
-type TrackedRowAction = RowActionState & { attempt: number };
+export type RowActionOperation = "request" | "stopExecution";
+
+type TrackedRowAction = { kind: "idle" } | { kind: "pending"; attempt: number } |
+  { kind: "settled"; attempt: number; error: string };
+type TrackedRowOperations = Readonly<Record<RowActionOperation, TrackedRowAction>>;
+type RowActionAdmission = { kind: "started"; attempt: number } | { kind: "busy" } | { kind: "disposed" };
 
 const idleRowAction: RowActionState = { busy: false, error: "" };
+const idleRowOperations: TrackedRowOperations = {
+  request: { kind: "idle" },
+  stopExecution: { kind: "idle" },
+};
 
 /** Holds row action state by request ID so a list refresh that recreates rows keeps it. */
 export function createRowActionRegistry() {
-  const [actions, setActions] = createSignal<ReadonlyMap<string, TrackedRowAction>>(new Map());
+  const [actions, setActions] = createSignal<ReadonlyMap<string, TrackedRowOperations>>(new Map());
   // Attempts are numbered across all rows and clears, so a number from a cleared registry or another row never matches.
   let nextAttempt = 0;
+  let disposed = false;
 
-  /** Returns the current action state of the request's row. */
-  const stateFor = (requestId: string): RowActionState => {
-    const tracked = actions().get(requestId);
-    return tracked ? { busy: tracked.busy, error: tracked.error } : idleRowAction;
+  const readTrackedRowAction = (requestId: string, operation: RowActionOperation): TrackedRowAction => {
+    const rowOperations = actions().get(requestId);
+    return rowOperations === undefined ? idleRowOperations[operation] : rowOperations[operation];
   };
 
-  /** Marks the row busy and returns the attempt number its completion must present. */
-  const begin = (requestId: string): number => {
+  const recordRowAction = (requestId: string, operation: RowActionOperation, action: TrackedRowAction): void => {
+    setActions(current => {
+      const rowOperations = current.get(requestId);
+      const retainedOperations = rowOperations === undefined ? idleRowOperations : rowOperations;
+      return new Map(current).set(requestId, { ...retainedOperations, [operation]: action });
+    });
+  };
+
+  const stateFor = (requestId: string, operation: RowActionOperation = "request"): RowActionState => {
+    const tracked = readTrackedRowAction(requestId, operation);
+    const { kind } = tracked;
+    if (kind === "idle") return idleRowAction;
+    if (kind === "pending") return { busy: true, error: "" };
+    const { error } = tracked;
+    return { busy: false, error };
+  };
+
+  const isCurrentAttempt = (requestId: string, attempt: number, operation: RowActionOperation = "request"): boolean => {
+    if (disposed) return false;
+    const tracked = readTrackedRowAction(requestId, operation);
+    if (tracked.kind !== "pending") return false;
+    const { attempt: pendingAttempt } = tracked;
+    return pendingAttempt === attempt;
+  };
+
+  const begin = (requestId: string, operation: RowActionOperation = "request"): RowActionAdmission => {
+    if (disposed) return { kind: "disposed" };
+    if (readTrackedRowAction(requestId, operation).kind === "pending") return { kind: "busy" };
     const attempt = ++nextAttempt;
-    setActions((current) => new Map(current).set(requestId, { busy: true, error: "", attempt }));
-    return attempt;
+    recordRowAction(requestId, operation, { kind: "pending", attempt });
+    return { kind: "started", attempt };
   };
 
-  /** Records the outcome of the row's current attempt; an empty error means success, and a superseded attempt changes nothing. */
-  const settle = (requestId: string, attempt: number, error: string): void => {
-    if (actions().get(requestId)?.attempt !== attempt) return;
-    setActions((current) => new Map(current).set(requestId, { busy: false, error, attempt }));
+  const settle = (requestId: string, attempt: number, error: string, operation: RowActionOperation = "request"): void => {
+    if (!isCurrentAttempt(requestId, attempt, operation)) return;
+    recordRowAction(requestId, operation, { kind: "settled", attempt, error });
   };
 
-  /** Forgets every row's state, fencing attempts still in flight. */
   const clear = (): void => {
     nextAttempt++;
     setActions(new Map());
   };
 
-  return { stateFor, begin, settle, clear };
+  /** Permanently ends the owning view's action lifetime without aborting server work. */
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    clear();
+  };
+
+  return { stateFor, begin, settle, clear, dispose, isCurrentAttempt };
 }
 
 export type RowActionRegistry = ReturnType<typeof createRowActionRegistry>;

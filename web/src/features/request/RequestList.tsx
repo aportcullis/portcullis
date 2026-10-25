@@ -35,16 +35,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/ui/table";
+type RequestWorkflowExpansion = { kind: "collapsed" } | { kind: "expanded"; requestId: string };
 
-
-
-// RequestList owns viewing the access requests: it fetches on mount, renders the table with state badges, and provides the filter and explicit page controls (§7.1). The details page carries the approve/reject/cancel affordances.
 export const RequestList: Component = () => {
-  const [expandedId, setExpandedId] = createSignal<string>();
+  const [workflowExpansion, setWorkflowExpansion] = createSignal<RequestWorkflowExpansion>({ kind: "collapsed" });
   // Row action state lives at list level, keyed by request ID: a refresh replaces row objects, and <For> recreates their components.
   const rowActions = createRowActionRegistry();
+  const { clear: clearRowActions, dispose: disposeRowActions } = rowActions;
+  onCleanup(disposeRowActions);
   const authorizationKey = createMemo(sessionAuthorizationKey);
-  createEffect(on(authorizationKey, () => rowActions.clear(), { defer: true }));
+  createEffect(on(authorizationKey, clearRowActions, { defer: true }));
   onMount(() => {
     void loadAccessRequests();
     const refresh = () => { if (!document.hidden) void loadAccessRequests(); };
@@ -60,6 +60,15 @@ export const RequestList: Component = () => {
   });
   const start = () => rangeStart(page(), pageSize(), totalCount());
   const end = () => rangeEnd(page(), pageSize(), accessRequests().length, totalCount());
+  const isRequestExpanded = (requestId: string): boolean => {
+    const expansion = workflowExpansion();
+    if (expansion.kind === "collapsed") return false;
+    const { requestId: expandedRequestId } = expansion;
+    return expandedRequestId === requestId;
+  };
+  const toggleRequestWorkflow = (requestId: string): void => {
+    setWorkflowExpansion(isRequestExpanded(requestId) ? { kind: "collapsed" } : { kind: "expanded", requestId });
+  };
 
   return (
     <div class="flex min-w-0 flex-col gap-4">
@@ -74,7 +83,7 @@ export const RequestList: Component = () => {
           onChange={(event) => setFilter(event.currentTarget.value)}
         >
           <option value="">All states</option>
-          <For each={requestStateFilterOptions}>{(option) => <option value={option.value}>{option.label}</option>}</For>
+          <For each={requestStateFilterOptions}>{({ value, label }) => <option value={value}>{label}</option>}</For>
         </select>
       </div>
 
@@ -117,34 +126,62 @@ export const RequestList: Component = () => {
           </TableHeader>
           <TableBody>
             <For each={accessRequests()}>
-              {(accessRequest) => (
-                <>
-                <TableRow>
-                  <TableCell class="max-w-80 break-words font-medium"><button class="inline-flex items-start gap-2 text-left text-primary underline-offset-4 hover:underline" aria-expanded={expandedId() === accessRequest.id} aria-controls={`workflow-${accessRequest.id}`} onClick={() => setExpandedId(expandedId() === accessRequest.id ? undefined : accessRequest.id)}><span aria-hidden="true">{expandedId() === accessRequest.id ? "▾" : "▸"}</span><span>{accessRequest.title || "Untitled request"}</span></button></TableCell>
-                  <TableCell class="font-medium">{accessRequest.connectionName}</TableCell>
-                  <TableCell class="text-muted-foreground">{actorLabel(accessRequest.requester)}</TableCell>
-                  <TableCell class="text-muted-foreground">{accessRequest.statementClass || "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={stateBadge(accessRequest.effectiveState)}>{stateLabel(accessRequest.effectiveState)}</Badge>
-                  </TableCell>
-                  <TableCell class="text-muted-foreground">
-                    {accessRequest.validApprovals.toString()} / {accessRequest.requiredApprovals}
-                  </TableCell>
-                  <TableCell class="text-right">
-                    <span class="inline-flex items-center gap-2">
-                      {/* Details reads through Get, which the server gates on requests.get — a role with list but not get would otherwise get a button that only ever fails. The owner's Submit/Cancel need requests.create instead, so they hang off the row itself. */}
-                      <Show when={hasPermission("requests.get")}>
-                        <A class={buttonVariants({ variant: "ghost", size: "sm" })} href={`/requests/${accessRequest.id}`}>
-                          Details
-                        </A>
-                      </Show>
-                      <RequestRowActions request={accessRequest} rowActions={rowActions} />
-                    </span>
-                  </TableCell>
-                </TableRow>
-                <Show when={expandedId() === accessRequest.id}><TableRow><TableCell colSpan={7} class="bg-muted/30"><RequestWorkflow request={accessRequest} mayOpenDetails={hasPermission("requests.get")} /></TableCell></TableRow></Show>
-                </>
-              )}
+              {accessRequest => {
+                const {
+                  id,
+                  title,
+                  connectionName,
+                  requester,
+                  statementClass,
+                  effectiveState,
+                  validApprovals,
+                  requiredApprovals,
+                } = accessRequest;
+                return (
+                  <>
+                    <TableRow>
+                      <TableCell class="max-w-80 break-words font-medium">
+                        <button
+                          type="button"
+                          class="inline-flex items-start gap-2 text-left text-primary underline-offset-4 hover:underline"
+                          aria-expanded={isRequestExpanded(id)}
+                          aria-controls={`workflow-${id}`}
+                          onClick={() => toggleRequestWorkflow(id)}
+                        >
+                          <span aria-hidden="true">{isRequestExpanded(id) ? "▾" : "▸"}</span>
+                          <span>{title === "" ? "Untitled request" : title}</span>
+                        </button>
+                      </TableCell>
+                      <TableCell class="font-medium">{connectionName}</TableCell>
+                      <TableCell class="text-muted-foreground">{actorLabel(requester)}</TableCell>
+                      <TableCell class="text-muted-foreground">{statementClass === "" ? "—" : statementClass}</TableCell>
+                      <TableCell>
+                        <Badge variant={stateBadge(effectiveState)}>{stateLabel(effectiveState)}</Badge>
+                      </TableCell>
+                      <TableCell class="text-muted-foreground">
+                        {validApprovals.toString()} / {requiredApprovals}
+                      </TableCell>
+                      <TableCell class="text-right">
+                        <span class="inline-flex items-center gap-2">
+                          <Show when={hasPermission("requests.get")}>
+                            <A class={buttonVariants({ variant: "ghost", size: "sm" })} href={`/requests/${id}`}>
+                              Details
+                            </A>
+                          </Show>
+                          <RequestRowActions request={accessRequest} scope={{ kind: "list", registry: rowActions }} />
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                    <Show when={isRequestExpanded(id)}>
+                      <TableRow>
+                        <TableCell colSpan={7} class="bg-muted/30">
+                          <RequestWorkflow request={accessRequest} mayOpenDetails={hasPermission("requests.get")} />
+                        </TableCell>
+                      </TableRow>
+                    </Show>
+                  </>
+                );
+              }}
             </For>
           </TableBody>
         </Table>

@@ -116,6 +116,7 @@ These decisions establish the Core 1 foundation.
 | [0088](0088-isolated-testcontainer-sessions.md) | Isolate Testcontainers sessions between test packages | Accepted |
 | [0089](0089-typed-repository-verification.md) | Type-check repository verification before execution | Accepted |
 | [0090](0090-early-delegated-ai-connectors.md) | Initial delegated AI connectors in M2 | Accepted |
+| [0091](0091-independent-execution-stop-actions.md) | Independent execution and stop actions | Accepted |
 
 ## Template
 ```markdown
