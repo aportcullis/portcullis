@@ -3,6 +3,7 @@ import type { Page, Route } from "@playwright/test";
 /** Connect error codes the browser scenarios simulate, with the HTTP status the Connect protocol maps them to. */
 const connectErrorStatus = {
   unavailable: 503,
+  deadline_exceeded: 504,
   not_found: 404,
   permission_denied: 403,
   unauthenticated: 401,

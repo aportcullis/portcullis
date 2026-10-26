@@ -152,8 +152,9 @@ func run() error {
 		"PORTCULLIS_DATABASE_URL="+dsn, "PORTCULLIS_MASTER_KEY="+base64.StdEncoding.EncodeToString(key),
 		"PORTCULLIS_ALLOW_PRIVILEGED_RUNTIME=true", "PORTCULLIS_STARTUP_MIGRATE=true",
 		"PORTCULLIS_ADDR="+applicationAddress, "PORTCULLIS_SHUTDOWN_TIMEOUT=5s", "PORTCULLIS_SHUTDOWN_INTERRUPT_TIMEOUT=2s",
-		// Functional browser journeys retain finite condition limits without measuring cold compilation latency.
+		// Functional journeys use finite budgets; latency qualification is separate.
 		"PORTCULLIS_CONDITION_TIMEOUT=1s",
+		"PORTCULLIS_RESOURCE_AUTHORIZATION_TIMEOUT=5s",
 		"PORTCULLIS_CONNECTION_ALLOWED_CIDRS="+strings.Join(dbtest.TargetDestinationCIDRs, ","),
 		"PORTCULLIS_SETUP_TOKEN_FILE="+setupTokenFile)
 	applicationLog, err := os.Create(applicationLogPath)

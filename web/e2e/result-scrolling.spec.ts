@@ -276,6 +276,30 @@ test("a late ascending result cannot replace a newer descending view", async ({ 
   await expectBoundedWindow(workspace);
 });
 
+test("an old ascending deadline cannot change a newer filtered view", async ({ page }) => {
+  const workspace = await openResultWorkspace(page);
+  const pendingRoutes: Route[] = [];
+  workspace.setReadOverride(async (route, request) => {
+    if (request.sortColumn !== 0 || request.descending || request.filter !== "") return false;
+    pendingRoutes.push(route);
+    return true;
+  });
+  await workspace.panel.getByRole("button", { name: /entry_id/ }).click();
+  await expect.poll(() => pendingRoutes.length).toBe(1);
+  const [pendingRoute] = pendingRoutes;
+  if (!pendingRoute) throw new Error("Expected an intercepted ascending result read");
+  await workspace.panel.getByLabel("Filter results", { exact: true }).fill("group-even");
+  await workspace.panel.getByRole("button", { name: "Filter results", exact: true }).click();
+  await expect(workspace.panel.getByText("Rows 1–10 of 300", { exact: true })).toBeVisible();
+  await expect(workspace.region.getByText(rowLabel(2), { exact: true })).toBeVisible();
+  await fulfillConnectError(pendingRoute, "deadline_exceeded", "request deadline exceeded");
+  await expect(workspace.region).toHaveAttribute("data-in-flight", "0");
+  await expect(workspace.panel.getByRole("alert")).toHaveCount(0);
+  await expect(workspace.panel.getByText("Rows 1–10 of 300", { exact: true })).toBeVisible();
+  await expect(workspace.region.getByText(rowLabel(2), { exact: true })).toBeVisible();
+  await expectBoundedWindow(workspace);
+});
+
 test("a late filter result cannot repopulate a newer filter's cache or visible rows", async ({ page }) => {
   const workspace = await openResultWorkspace(page);
   let pending: PendingResultRead | undefined;
@@ -294,6 +318,32 @@ test("a late filter result cannot repopulate a newer filter's cache or visible r
   await releaseResult(pending, "stale even response");
   await expect(workspace.panel.getByText("stale even response", { exact: true })).toHaveCount(0);
   await expect(workspace.region.getByText(rowLabel(2), { exact: true })).toHaveCount(0);
+  await expectBoundedWindow(workspace);
+});
+
+test("a current filter deadline withholds rows and permits explicit Retry without SQL replay", async ({ page }) => {
+  const workspace = await openResultWorkspace(page);
+  let refuseFilter = true;
+  workspace.setReadOverride(async (route, request) => {
+    if (!refuseFilter || request.filter !== "group-even") return false;
+    await fulfillConnectError(route, "deadline_exceeded", "request deadline exceeded");
+    return true;
+  });
+  await workspace.panel.getByLabel("Filter results", { exact: true }).fill("group-even");
+  await workspace.panel.getByRole("button", { name: "Filter results", exact: true }).click();
+  await expect(workspace.panel.getByRole("alert")).toHaveText("request deadline exceeded");
+  await expect(workspace.region.getByText(/^row-\d{4}$/)).toHaveCount(0);
+  await expect(workspace.region).toHaveAttribute("data-retained-pages", "0");
+  await expect(workspace.panel.getByText("Rows 0–0 of 0", { exact: true })).toBeVisible();
+  await expect(workspace.panel.getByLabel("Filter results", { exact: true })).toHaveValue("group-even");
+  const retryButton = workspace.panel.getByRole("button", { name: "Retry result", exact: true });
+  await expect(retryButton).toBeVisible();
+  expect(workspace.reads.filter(request => request.filter === "group-even")).toHaveLength(1);
+  refuseFilter = false;
+  await retryButton.click();
+  await expect(workspace.panel.getByText("Rows 1–10 of 300", { exact: true })).toBeVisible();
+  await expect(workspace.region.getByText(rowLabel(2), { exact: true })).toBeVisible();
+  await expect(workspace.panel.getByRole("alert")).toHaveCount(0);
   await expectBoundedWindow(workspace);
 });
 

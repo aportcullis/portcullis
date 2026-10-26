@@ -113,6 +113,9 @@ test("approved SQL executes once, scrolls and sorts exact values, filters and ex
   });
   await dialog.getByRole("button", { name: /recorded_at/ }).click();
   await expect(dialog.getByText("Original query order.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Rows 1–10 of 25", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("row").nth(1)).toContainText("9007199254740994");
+  await expect(viewport).toHaveAttribute("data-in-flight", "0");
   await dialog.getByLabel("Filter results", { exact: true }).fill("9007199254740994");
   await dialog.getByRole("button", { name: "Filter results", exact: true }).click();
   await expect(dialog.getByText("Rows 1–1 of 1", { exact: true })).toBeVisible();

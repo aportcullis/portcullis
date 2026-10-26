@@ -72,6 +72,6 @@ Every test passes before each small commit; any remaining failed non-test gate m
 The browser harness builds the real embedded application and uses the [Testcontainers PostgreSQL module](https://golang.testcontainers.org/modules/postgres/) with its readiness strategy.
 `web/playwright.config.ts` reserves free loopback ports once and passes them as `E2E_APP_PORT` and `E2E_TARGET_PORT`, so concurrent browser runs never share a port.
 The harness serves its fixture coordinates on the target port and attempts shutdown cleanup of its own databases and server. Database cleanup uses only handles returned to that invocation, including partial startup failures; startup leaves pre-existing containers untouched. PID labels do not establish ownership across namespaces, and abrupt termination can leave containers for operator-reviewed cleanup (ADR-0095).
-The fixture clears inherited application configuration before supplying its disposable database and key.
+The fixture clears inherited application configuration before supplying its disposable database and key. Its functional condition and resource-authorization budgets are explicitly one and five seconds respectively (ADR-0045); these do not establish production latency or capacity.
 
 For a restricted host browser environment, the [Docker browser E2E guide](../operations/browser-e2e.md) runs Chromium remotely while preserving the same real-binary, Testcontainers and native CSV file-readback assertions.
